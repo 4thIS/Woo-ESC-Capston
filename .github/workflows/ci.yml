@@ -1,9 +1,9 @@
 # GitHub Actions — 경로 기반 다층 게이트
 # 원리: paths 필터로 바뀐 영역의 job만 실행한다. main 브랜치 보호에서 이 체크들을 "required"로 켠다.
 #
-# 계약(lora_proto/)이 바뀌면 firmware와 server 두 job이 함께 돈다.
+# 계약(lora_proto/)이 바뀌면 firmware·server·modempi 세 job이 함께 돈다.
 # 프로토콜 상수의 C++ 헤더 ↔ Python 미러 일치 검사와 test_vectors.json 라운드트립은
-# 각각 server의 pytest와 firmware의 native 유닛 테스트가 담당한다(스펙 §10.1).
+# 각각 modempi의 pytest와 firmware의 native 유닛 테스트가 담당한다(v2 §10.1).
 #
 # 각 job은 그 영역의 프로젝트 매니페스트가 생기기 전까지 스스로 건너뛴다.
 # 구현 단계 P1~P4에서 매니페스트가 커밋되면 자동으로 검증이 켜진다.
@@ -22,6 +22,7 @@ jobs:
     outputs:
       firmware: ${{ steps.filter.outputs.firmware }}
       server: ${{ steps.filter.outputs.server }}
+      modempi: ${{ steps.filter.outputs.modempi }}
       web: ${{ steps.filter.outputs.web }}
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +36,10 @@ jobs:
               - '.github/workflows/ci.yml'
             server:
               - 'server/**'
+              - 'lora_proto/**'
+              - '.github/workflows/ci.yml'
+            modempi:
+              - 'modempi/**'
               - 'lora_proto/**'
               - '.github/workflows/ci.yml'
             web:
@@ -122,6 +127,44 @@ jobs:
     #   postgres:
     #     image: postgres:16-alpine
     #     env: { POSTGRES_PASSWORD: ci_only }
+
+  # ===== modempi: 모뎀Pi 서비스 (Python + uv) =====
+  modempi:
+    needs: changes
+    if: ${{ needs.changes.outputs.modempi == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: modempi
+    steps:
+      - uses: actions/checkout@v4
+      - name: 영역 준비 여부 확인
+        id: manifest
+        run: |
+          if [ -f pyproject.toml ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::modempi/pyproject.toml 이 아직 없어 검증을 건너뜁니다 (S5·S6에서 추가)"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.manifest.outputs.ready == 'true'
+        with:
+          python-version: '3.12'
+      - name: setup
+        if: steps.manifest.outputs.ready == 'true'
+        run: |
+          pip install uv
+          uv sync --frozen
+      - name: lint
+        if: steps.manifest.outputs.ready == 'true'
+        run: uv run ruff check .
+      - name: format check
+        if: steps.manifest.outputs.ready == 'true'
+        run: uv run ruff format --check .
+      - name: test
+        if: steps.manifest.outputs.ready == 'true'
+        run: uv run pytest -q
 
   # ===== web: Vue 3 (TypeScript + pnpm) =====
   web:

@@ -40,15 +40,15 @@ repos:
       - id: clang-format
         files: '^firmware/.*\.(c|cc|cpp|h|hpp)$'
 
-  # ── server: ruff (Python) ────────────────────────────────
+  # ── server · modempi: ruff (Python) ──────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.7.4
     hooks:
       - id: ruff
         args: [--fix]
-        files: '^server/'
+        files: '^(server|modempi)/'
       - id: ruff-format
-        files: '^server/'
+        files: '^(server|modempi)/'
 
   # ── web: prettier (TS/Vue/CSS) ───────────────────────────
   - repo: local
