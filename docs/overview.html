@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Woo LoRa RoomSign — 팀 구상도·실행 계획</title>
+<style>
+  :root{
+    --paper:#FAFAF8; --paper-2:#F1F1EE; --ink:#1B1B1F; --ink-2:#4A4D57; --ink-3:#7A7E8A;
+    --rule:#DCDDE2; --red:#C8102E; --red-soft:#FBE9EC; --ok:#2E7D4F; --ok-soft:#E6F3EB; --warn:#9A6700; --warn-soft:#FFF4D6;
+    --cw:#C8102E; --dh:#1F6FB2; --wj:#2E7D4F; --mh:#8A4FBF;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --paper:#15161A; --paper-2:#1E1F25; --ink:#E9E9E4; --ink-2:#B6B8C0; --ink-3:#858995; --rule:#2E3038;
+      --red:#E8475C; --red-soft:#3A1A20; --ok:#5DBB86; --ok-soft:#1A2E22; --warn:#E3B341; --warn-soft:#3A2F10;
+      --cw:#E8475C; --dh:#5AA5E6; --wj:#5DBB86; --mh:#B98AE0; }
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"IBM Plex Sans KR","Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;font-size:15px;line-height:1.65}
+  .layout{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+  nav{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--rule);padding:28px 18px;background:var(--paper-2)}
+  nav .brand{font-weight:700;font-size:15px;margin:0 0 4px}
+  nav .sub{font-size:12px;color:var(--ink-3);margin:0 0 18px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  nav a{display:block;color:var(--ink-2);text-decoration:none;font-size:13.5px;padding:5px 8px;border-radius:4px}
+  nav a:hover{background:var(--paper);color:var(--ink)}
+  nav a.sec{font-weight:600;color:var(--ink);margin-top:10px}
+  main{padding:40px 48px 100px;max-width:1040px}
+  header.top{border-bottom:3px solid var(--ink);padding-bottom:18px;margin-bottom:34px}
+  .eyebrow{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:0 0 8px}
+  h1{font-size:30px;line-height:1.2;margin:0 0 10px;font-weight:700;text-wrap:balance}
+  h2{font-size:22px;margin:56px 0 14px;padding-top:8px;border-top:1px solid var(--rule);scroll-margin-top:20px}
+  h2 .n{font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--red);font-weight:500;margin-right:10px}
+  h3{font-size:16px;margin:26px 0 8px}
+  h4{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:18px 0 6px;font-weight:600}
+  p{margin:0 0 10px;max-width:74ch}
+  ul,ol{margin:0 0 10px;padding-left:22px;max-width:74ch}
+  li{margin:2px 0}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:6px 0 16px}
+  th{text-align:left;font-weight:600;color:var(--ink-3);font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;padding:0 10px 7px 0;border-bottom:1px solid var(--rule);vertical-align:bottom}
+  td{padding:8px 10px 8px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+  td:first-child{white-space:nowrap}
+  .tw{overflow-x:auto}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;background:var(--paper-2);padding:1px 5px;border-radius:3px}
+  pre{background:var(--paper-2);border:1px solid var(--rule);padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace;margin:8px 0 14px}
+  pre code{background:none;padding:0}
+  .callout{background:var(--paper-2);border-left:3px solid var(--red);padding:12px 16px;margin:14px 0;max-width:80ch}
+  .callout p{margin:0}.callout p+p{margin-top:8px}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:3px;white-space:nowrap;color:#fff}
+  .cw{background:var(--cw)}.dh{background:var(--dh)}.wj{background:var(--wj)}.mh{background:var(--mh)}
+  .tag{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:3px;white-space:nowrap}
+  .tag.hw{background:var(--warn-soft);color:var(--warn)}.tag.no{background:var(--ok-soft);color:var(--ok)}.tag.key{background:var(--red-soft);color:var(--red)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .card{border:1px solid var(--rule);border-radius:6px;padding:14px 16px;background:var(--paper)}
+  .card h3{margin:0 0 8px;font-size:15px}
+  .diagram{background:var(--paper-2);border:1px solid var(--rule);border-radius:6px;padding:10px;overflow-x:auto;margin:10px 0 16px}
+  .diagram svg{display:block;min-width:820px;width:100%;height:auto}
+  .diagram text{font-family:"IBM Plex Sans KR","Pretendard","Malgun Gothic",system-ui,sans-serif;fill:var(--ink)}
+  .diagram .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;fill:var(--ink-2)}
+  .diagram .box{fill:var(--paper);stroke:var(--ink);stroke-width:1.4}
+  .diagram .boxk{fill:var(--red-soft);stroke:var(--red);stroke-width:1.4}
+  .diagram .arrow{stroke:var(--ink-2);stroke-width:1.6;fill:none;marker-end:url(#ah)}
+  .diagram .arrowr{stroke:var(--red);stroke-width:1.6;fill:none;marker-end:url(#ahr)}
+  .diagram .dash{stroke-dasharray:5 4}
+  .check{list-style:none;padding:0;margin:0 0 14px;max-width:80ch}
+  .check li{display:grid;grid-template-columns:22px 1fr;gap:10px;padding:6px 0;border-bottom:1px dotted var(--rule);align-items:start}
+  .check input{width:16px;height:16px;margin-top:4px;accent-color:var(--red)}
+  .check label{cursor:pointer}
+  .check label small{display:block;color:var(--ink-3);font-size:12.5px}
+  .progress{font-size:12.5px;color:var(--ink-3);margin:-6px 0 8px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .dep{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.5;white-space:pre;background:var(--paper-2);border:1px solid var(--rule);padding:14px 16px;overflow-x:auto;color:var(--ink-2);margin:8px 0 16px}
+  .dep b{color:var(--red);font-weight:500}
+  .num{font-variant-numeric:tabular-nums}
+  .week td:first-child{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:500}
+  .week tr.ms td{background:var(--red-soft)}
+  footer{margin-top:60px;border-top:1px solid var(--rule);padding-top:14px;color:var(--ink-3);font-size:12.5px}
+  @media (max-width:900px){.layout{grid-template-columns:1fr}nav{position:static;height:auto;border-right:0;border-bottom:1px solid var(--rule)}main{padding:24px 18px 80px}.grid2{grid-template-columns:1fr}}
+  @media print{nav{display:none}.layout{grid-template-columns:1fr}main{max-width:none;padding:0}h2{break-before:page}h2:first-of-type{break-before:auto}.check input{accent-color:#000}}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <p class="brand">Woo LoRa RoomSign</p>
+  <p class="sub">4thIS/Woo-ESC-Capston</p>
+  <a href="#s1" class="sec">1. 한눈에 보기</a>
+  <a href="#s2" class="sec">2. 시스템 구상도</a>
+  <a href="#s3" class="sec">3. 데이터 흐름</a>
+  <a href="#s4" class="sec">4. 리포 구조·소유권</a>
+  <a href="#s5" class="sec">5. 영역 간 계약</a>
+  <a href="#s6" class="sec">6. 서브프로젝트</a>
+  <a href="#s7" class="sec">7. 일정·마일스톤</a>
+  <a href="#s8" class="sec">8. 체크리스트</a>
+  <a href="#s8a">&nbsp;&nbsp;온보딩</a>
+  <a href="#s8b">&nbsp;&nbsp;PR 절차</a>
+  <a href="#s8c">&nbsp;&nbsp;부품 발주</a>
+  <a href="#s8d">&nbsp;&nbsp;4주차 통합</a>
+  <a href="#s8e">&nbsp;&nbsp;중간점검</a>
+  <a href="#s8f">&nbsp;&nbsp;경진대회</a>
+  <a href="#s8g">&nbsp;&nbsp;최종발표</a>
+  <a href="#s9" class="sec">9. 리스크</a>
+  <a href="#s10" class="sec">10. 문서 인덱스</a>
+</nav>
+<main>
+<header class="top">
+  <p class="eyebrow">캡스톤디자인 2026-2 · Woo팀 · 기준일 2026-09-09 (2주차)</p>
+  <h1>e-Paper + LoRa 저전력 강의실 시간표 게시 시스템 — 구상도와 실행 계획</h1>
+  <p>이 문서는 팀원 넷이 <strong>같은 그림</strong>을 보기 위한 것입니다. 스펙 원본은 <code>docs/specs/</code>의 두 마크다운이고, 여기서는 그 내용을 요약·시각화하고 체크리스트로 바꿨습니다. 두 문서가 충돌하면 <strong>스펙이 이깁니다</strong>.</p>
+</header>
+
+<!-- ===================== 1 ===================== -->
+<h2 id="s1"><span class="n">1</span>한눈에 보기</h2>
+<p><strong>문제.</strong> 강의실 문의 종이 시간표는 학기 중 휴강·보강·대관이 반영되지 않는다. 정보는 포털에만 있고, 학생이 서 있는 문 앞에는 없다.</p>
+<p><strong>해법.</strong> 배선 없이 문에 붙는 배터리 구동 e-Paper 단말이, 관리자가 웹에서 바꾼 내용을 LoRa로 받아 <em>수업 중 / 쉬는 시간 / 휴강 / 빈 강의실 / 시험 중 / 특강 / 대여 중</em>을 상시 표시한다. 서버가 죽어도 단말은 자기 시계·자기 데이터로 옳은 화면을 유지한다.</p>
+
+<h3>장비 이름 — 이 세 이름만 쓴다</h3>
+<div class="tw"><table>
+<tr><th>이름</th><th>실체</th><th>수량</th><th>한 줄 책임</th></tr>
+<tr><td><strong>메인Pi</strong></td><td>Raspberry Pi (보유). 인터넷에서 닿는 곳</td><td>전체 1대</td><td>웹서버·DB 원본·버전 부여. 여러 학교의 모뎀Pi와 WebSocket</td></tr>
+<tr><td><strong>모뎀Pi</strong></td><td>Raspberry Pi (보유) + Heltec V3 모뎀(USB)</td><td>학교 건물당 1대</td><td>메인Pi에서 받은 작업을 보관·전처리해 LoRa로 송신. 매시 TIME</td></tr>
+<tr><td><strong>ESP노드</strong></td><td>Heltec WiFi LoRa 32 V3 + 7.5" 3색 e-Paper + LiPo</td><td>강의실 문마다 (앞문·뒷문 = unit 1·2)</td><td>수신·저장·상태 판단·렌더·절전</td></tr>
+</table></div>
+<p>Heltec V3에 올라가는 펌웨어는 둘이다: <strong>모뎀 펌웨어</strong>(모뎀Pi에 USB로 붙는 것)와 <strong>노드 펌웨어</strong>(ESP노드).</p>
+
+<h3>팀·역할</h3>
+<div class="tw"><table>
+<tr><th>사람</th><th>GitHub</th><th>브랜치</th><th>영역</th><th>책임</th></tr>
+<tr><td><span class="pill cw">cw</span> 박찬우</td><td><code>@ssenu</code></td><td><code>cw</code></td><td><code>lora_proto/</code> · <code>firmware/</code>(무선·절전·스케줄링) · <code>modempi/lora/</code></td><td><strong>팀장(PM)</strong>. spec·plan 설계, 계약·인프라, <strong>PR 머지</strong>. LoRa 파이프라인(전처리→송신), 노드 펌웨어</td></tr>
+<tr><td><span class="pill dh">dh</span> 김도현</td><td><code>@Hyeon02-kr</code></td><td><code>dh</code></td><td><code>firmware/src/terminal/render*</code> · <code>firmware/src/fonts/</code></td><td>e-Paper 렌더링·화면 레이아웃. 모뎀 펌웨어 지원, 노드 저장 계층</td></tr>
+<tr><td><span class="pill wj">wj</span> 이우진</td><td><code>@leemonta9482</code></td><td><code>wj</code></td><td><code>server/</code> · <code>web/</code> · <code>modempi/link/</code></td><td>메인Pi 서버(FastAPI)·관리자/학생 웹(Vue) 풀스택, 메인Pi↔모뎀Pi WebSocket 링크</td></tr>
+<tr><td><span class="pill mh">mh</span> 전민홍</td><td><code>@jmh7706jmh-ops</code></td><td><code>mh</code></td><td><code>web/src/styles/</code> · <code>web/src/components/ui/</code> · <code>web/src/assets/</code></td><td>웹 퍼블리싱·디자인시스템</td></tr>
+</table></div>
+
+<h3>확정된 제약</h3>
+<div class="tw"><table>
+<tr><th>항목</th><th>값</th></tr>
+<tr><td>철석 마감</td><td><strong>경진대회 2026-11-19~20 (12주차)</strong> — 참가신청서·작품보고서·판넬 + 동작 전시</td></tr>
+<tr><td>중간점검 / 최종발표</td><td>7~8주차 (중간보고서) / 15주차 (12월 초). 과제 시행 ~12/14, 결과보고 12/8~12/21</td></tr>
+<tr><td>하드웨어</td><td>Pi 2대 <strong>보유</strong>. Heltec·e-Paper·배터리 <strong>미발주</strong> → 도착 예상 5주차(10월 초)</td></tr>
+<tr><td>범위</td><td>계획서 전체 <strong>− 재실 감지 센서</strong>. "점유율" = 시간표·예약 기반 배정률 + 노드 상태 변화 로그. 학사 연동 = <strong>관리자 CSV 업로드</strong></td></tr>
+<tr><td>전시 규모</td><td>메인Pi 1 + 모뎀Pi 1 + ESP노드 2. 두 Pi 사이는 휴대폰 핫스팟 또는 직결 이더넷</td></tr>
+<tr><td>스택</td><td>펌웨어 PlatformIO/C++17 · 메인Pi FastAPI/Python 3.12(uv) · 모뎀Pi Python asyncio(uv) · 웹 Vue 3/TS(pnpm)</td></tr>
+</table></div>
+
+<!-- ===================== 2 ===================== -->
+<h2 id="s2"><span class="n">2</span>시스템 구상도</h2>
+<div class="diagram">
+<svg viewBox="0 0 980 470" role="img" aria-label="메인Pi, 모뎀Pi, ESP노드 3계층 구상도">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#4A4D57"/></marker>
+    <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#C8102E"/></marker>
+  </defs>
+  <!-- 사용자 -->
+  <rect x="20" y="40" width="130" height="54" rx="5" class="box"/>
+  <text x="85" y="62" text-anchor="middle" font-size="13" font-weight="600">관리자 · 학생</text>
+  <text x="85" y="80" text-anchor="middle" class="mono">브라우저 / QR</text>
+  <path d="M150 67 H210" class="arrow"/>
+  <text x="180" y="60" text-anchor="middle" class="mono">HTTPS</text>
+
+  <!-- 메인Pi -->
+  <rect x="210" y="20" width="230" height="150" rx="6" class="box"/>
+  <text x="325" y="42" text-anchor="middle" font-size="14" font-weight="700">메인Pi</text>
+  <text x="325" y="58" text-anchor="middle" class="mono">server/ (wj) · web/ (wj·mh)</text>
+  <text x="222" y="82" font-size="12">• FastAPI + Vue 3 (관리자·학생 웹)</text>
+  <text x="222" y="99" font-size="12">• DB 원본: 학교·건물·강의실·시간표·예약·시험</text>
+  <text x="222" y="116" font-size="12">• room_versions → NEW_VER 부여</text>
+  <text x="222" y="133" font-size="12">• outbox 작업 큐 · 모뎀Pi 레지스트리</text>
+  <text x="222" y="150" font-size="12">• WS 허브 <tspan class="mono">lora_service/hub.py</tspan></text>
+
+  <!-- WS -->
+  <path d="M440 70 H520" class="arrow"/>
+  <path d="M520 100 H440" class="arrow"/>
+  <text x="480" y="60" text-anchor="middle" class="mono">job / config</text>
+  <text x="480" y="118" text-anchor="middle" class="mono">job_result / uplink</text>
+  <text x="480" y="140" text-anchor="middle" font-size="11" fill="#7A7E8A">인터넷 · WebSocket</text>
+  <text x="480" y="154" text-anchor="middle" font-size="11" fill="#7A7E8A">(모뎀Pi가 먼저 접속, NAT 안)</text>
+
+  <!-- 모뎀Pi -->
+  <rect x="520" y="20" width="260" height="190" rx="6" class="box"/>
+  <text x="650" y="42" text-anchor="middle" font-size="14" font-weight="700">모뎀Pi (건물당 1대)</text>
+  <text x="650" y="58" text-anchor="middle" class="mono">modempi/</text>
+  <rect x="532" y="68" width="110" height="60" rx="4" class="box" style="stroke:#2E7D4F"/>
+  <text x="587" y="86" text-anchor="middle" font-size="12" font-weight="600">link/ (wj)</text>
+  <text x="587" y="102" text-anchor="middle" class="mono">WS 클라이언트</text>
+  <text x="587" y="116" text-anchor="middle" class="mono">인증·재접속</text>
+  <rect x="656" y="68" width="112" height="60" rx="4" class="box" style="stroke:#C8102E"/>
+  <text x="712" y="86" text-anchor="middle" font-size="12" font-weight="600">lora/ (cw)</text>
+  <text x="712" y="102" text-anchor="middle" class="mono">전처리·워커·TXN</text>
+  <text x="712" y="116" text-anchor="middle" class="mono">modem.py · TIME</text>
+  <rect x="532" y="138" width="236" height="26" rx="4" class="boxk"/>
+  <text x="650" y="155" text-anchor="middle" class="mono">store.py — JobStore (SQLite) 계약 ⑦ · 공용</text>
+  <path d="M587 128 V138" class="arrow"/><path d="M712 138 V128" class="arrow"/>
+  <text x="650" y="185" text-anchor="middle" font-size="11" fill="#7A7E8A">인터넷 끊겨도: 받은 작업 계속 송신, TIME은 자기 NTP 시계로</text>
+  <text x="650" y="200" text-anchor="middle" font-size="11" fill="#7A7E8A">시간표 사본은 갖지 않음 (원본은 메인Pi 하나)</text>
+
+  <!-- 모뎀 펌웨어 -->
+  <path d="M780 115 H840" class="arrow"/>
+  <text x="810" y="106" text-anchor="middle" class="mono">USB 시리얼</text>
+  <text x="810" y="132" text-anchor="middle" class="mono">JSON lines</text>
+  <rect x="840" y="80" width="120" height="70" rx="5" class="box"/>
+  <text x="900" y="102" text-anchor="middle" font-size="12" font-weight="600">모뎀 펌웨어</text>
+  <text x="900" y="118" text-anchor="middle" class="mono">Heltec V3 · SX1262</text>
+  <text x="900" y="134" text-anchor="middle" class="mono">firmware/src/modem</text>
+
+  <!-- LoRa -->
+  <path d="M900 150 V230" class="arrowr"/>
+  <text x="915" y="195" class="mono" fill="#C8102E">LoRa 922.5 MHz</text>
+  <text x="915" y="209" class="mono">CAD(LBT) · 프레임 ≤255 B</text>
+
+  <!-- ESP노드들 -->
+  <g>
+    <rect x="560" y="240" width="170" height="110" rx="6" class="box"/>
+    <text x="645" y="262" text-anchor="middle" font-size="13" font-weight="700">ESP노드 E301-1</text>
+    <text x="645" y="278" text-anchor="middle" class="mono">firmware/src/terminal</text>
+    <text x="570" y="298" font-size="11.5">• 딥슬립 + Rx duty cycle 웨이크</text>
+    <text x="570" y="313" font-size="11.5">• LittleFS 저장 · 버전 4종</text>
+    <text x="570" y="328" font-size="11.5">• determineLayout → RenderModel</text>
+    <text x="570" y="343" font-size="11.5">• e-Paper 7.5" 3색 렌더 (dh)</text>
+  </g>
+  <rect x="750" y="240" width="170" height="110" rx="6" class="box"/>
+  <text x="835" y="262" text-anchor="middle" font-size="13" font-weight="700">ESP노드 E302-1</text>
+  <text x="835" y="278" text-anchor="middle" class="mono">(전시: 2대)</text>
+  <text x="835" y="305" text-anchor="middle" font-size="11.5">같은 구조</text>
+  <text x="835" y="322" text-anchor="middle" font-size="11.5">BLD·ROOM·UNIT 필터로</text>
+  <text x="835" y="337" text-anchor="middle" font-size="11.5">자기 것만 처리</text>
+  <path d="M880 230 L835 240" class="arrowr dash"/>
+  <path d="M880 230 L700 240" class="arrowr dash"/>
+  <path d="M645 350 V385" class="arrow"/>
+  <text x="660" y="372" class="mono">ACK · STATUS · HELLO (업링크)</text>
+
+  <!-- 하단: 소유권 범례 -->
+  <rect x="20" y="380" width="500" height="70" rx="5" fill="none" stroke="#DCDDE2"/>
+  <text x="32" y="400" font-size="12" font-weight="600">버전과 TXN이 갈리는 이유</text>
+  <text x="32" y="418" font-size="11.5">NEW_VER(무엇이 최신인가) = 원본 옆 → <tspan font-weight="600">메인Pi</tspan></text>
+  <text x="32" y="434" font-size="11.5">TXN(이 프레임을 재수신했는가) = 실제 송신·재시도가 일어나는 곳 → <tspan font-weight="600">모뎀Pi</tspan></text>
+  <text x="560" y="410" font-size="11.5">NET_ID는 <tspan font-weight="600">학교 단위</tspan> (인접 캠퍼스 간섭 차단)</text>
+  <text x="560" y="428" font-size="11.5">건물은 헤더 BLD 바이트로 구분</text>
+</svg>
+</div>
+
+<div class="grid2">
+<div class="card"><h3>메인Pi가 갖는 것 / 갖지 않는 것</h3>
+<p><strong>갖는다:</strong> DB 원본, <code>room_versions</code>, <code>outbox</code>, <code>terminal_status</code>, <code>pending_devices</code>, <code>modems</code>(모뎀Pi 레지스트리)</p>
+<p><strong>갖지 않는다:</strong> 무선 파라미터 실행, TXN, 재시도, 프레임 바이트</p></div>
+<div class="card"><h3>모뎀Pi가 갖는 것 / 갖지 않는 것</h3>
+<p><strong>갖는다:</strong> 로컬 <code>jobs</code> 큐(SQLite), 노드 목록(메인이 내려줌), codec, TXN·재시도·FIFO·단일 인플라이트·CAD</p>
+<p><strong>갖지 않는다:</strong> 시간표 원본, 버전 부여, 사용자</p></div>
+</div>
+
+<!-- ===================== 3 ===================== -->
+<h2 id="s3"><span class="n">3</span>데이터 흐름 — "웹에서 휴강 등록"이 화면에 닿기까지</h2>
+<div class="tw"><table>
+<tr><th>#</th><th>어디서</th><th>무슨 일</th><th>근거</th></tr>
+<tr><td class="num">1</td><td>메인Pi 웹</td><td>관리자가 휴강 등록 → <code>api.enqueue_resv_set(...)</code> 호출. 한 트랜잭션에서 <code>room_versions[resv]</code> +1(255→1 롤링) 하고 그 값을 <code>NEW_VER</code>로 <code>outbox</code>에 삽입 (<code>state=queued</code>). 호수의 유닛이 2개면 행 2개, 같은 NEW_VER</td><td>v2 §8.3 · 로드맵 §4.5</td></tr>
+<tr><td class="num">2</td><td>메인Pi 허브</td><td>그 건물의 모뎀Pi가 연결되어 있으면 <code>job</code> 메시지 송신. 모뎀Pi가 <code>job_accepted</code>로 답하면 <code>dispatched</code>. <strong><code>dispatched</code>는 재전송하지 않는다</strong> → 중복 없음</td><td>로드맵 §4.2</td></tr>
+<tr><td class="num">3</td><td>모뎀Pi 링크</td><td><code>job</code>을 검증 없이 <code>JobStore.put_job()</code> → <code>received</code></td><td>로드맵 §4.3</td></tr>
+<tr><td class="num">4</td><td>모뎀Pi 파이프라인</td><td><code>pick_next()</code>: priority(TIME 0 · RESV 1 · SLOT/EXAM/CMD 3 · FILE 5), 같은 노드에 <code>sending</code> 있으면 건너뜀. codec으로 프레임 조립, TXN 배정(노드별 1~255 롤링), <code>modem.py</code>로 <code>{"op":"tx","frame":…,"wake":true,"ack_ms":3000}</code></td><td>v2 §8.4 (모뎀Pi로 이관)</td></tr>
+<tr><td class="num">5</td><td>모뎀 펌웨어</td><td>CRC8 검증 → CAD(채널 비었나) → wake 프리앰블 3 s + 프레임 송신 → 3 s ACK 대기 → <code>tx_done acked|no_ack|cad_busy|error</code></td><td>v2 §4.4</td></tr>
+<tr><td class="num">6</td><td>ESP노드</td><td>딥슬립 중 DIO1 웨이크 → 헤더 NET_ID·BLD·ROOM·UNIT 필터 → 같은 TXN이면 <code>DUP</code> ACK → 적용 후 자기 버전을 NEW_VER로. <code>(new − old) mod 256 ≠ 1</code>이면 적용은 하되 <code>GAP</code> ACK → <strong>렌더 완료 후 ACK</strong> → 다음 변경 시각까지 재슬립</td><td>v2 §3.4·§3.5·§6</td></tr>
+<tr><td class="num">7</td><td>모뎀Pi 파이프라인</td><td>ACK 매칭(NET_ID·TYPE=ACK·BLD/ROOM/UNIT/TXN) → <code>acked</code>. <code>no_ack</code>면 5 → 20 → 60 s 후 재시도, 3회 실패 → <code>failed</code>. <code>BUSY</code>면 5 s 후(시도 횟수 증가 없음)</td><td>v2 §8.4</td></tr>
+<tr><td class="num">8</td><td>모뎀Pi 링크 → 메인Pi</td><td><code>job_result</code> 업로드 → <code>outbox.acked</code>, <code>terminal_status</code> 갱신. <code>GAP</code>이면 메인이 <code>RecordProvider</code>로 레코드를 읽어 FILE 작업 생성(전체 재동기)</td><td>로드맵 §4.2</td></tr>
+</table></div>
+
+<div class="callout">
+<p><strong>갱신 지연 기준 (확정): 정상 수신 시 30 s 이내 / 재전송 포함 최대 90 s.</strong> 지연 = 허브(≤0.1 s) + 인터넷(≤1 s) + 큐 픽업(≤0.5 s) + 전송·프리앰블(awake 0.3 s, WOR 1~3 s) + <strong>e-Paper 리프레시 15~20 s</strong> ≈ 20~25 s. 재시도 한 번이면 30 s를 넘으므로 상한 90 s. 벤치 기준: 100회 중 95회 이상 30 s, 전부 90 s.</p>
+<p>측정: 시작 = 웹 저장 응답(<code>outbox.created_at</code>), 끝 = <strong>리프레시 완료 후 ACK</strong>(<code>finished_at</code>). 히스토그램을 대시보드에 노출해 심사 때 실측치로 보여준다.</p>
+</div>
+
+<h3>시간 동기와 오프라인</h3>
+<ul>
+<li>모뎀Pi가 <strong>매시 :00:05에 TIME 브로드캐스트</strong>(자기 NTP 시계). 하루 1회(03:00) REQUEST_STATUS 플래그 → 노드들이 0~300 s 랜덤 지연 후 STATUS 업링크.</li>
+<li>인터넷이 끊겨도 모뎀Pi는 로컬 큐를 계속 송신하고 TIME을 계속 낸다. 결과는 쌓아뒀다 재접속 시 몰아서 보고(<code>hello.pending_results</code>). 24 h 이상 끊기면 메인이 <code>dispatched</code>를 <code>failed(modem_offline)</code>로.</li>
+<li>노드는 25 h 이상 TIME을 못 받으면 STATUS에 <code>CLOCK_STALE</code>. 렌더는 계속한다(fail-operational).</li>
+</ul>
+
+<h3>프로비저닝(초기 설치)</h3>
+<ol>
+<li>미설정 노드 부팅 → <code>HELLO(mac, fw, batt)</code> 송신, 화면에 <code>NEW-xxxx</code>(MAC 하위 2 B) 표시</li>
+<li>모뎀Pi → <code>uplink</code> → 메인 <code>pending_devices(modem_id, mac)</code></li>
+<li>관리자 웹에서 강의실·유닛 배정 → 그 모뎀Pi로 <code>SET_ROOM</code> job + <code>config.nodes</code> 갱신</li>
+<li>노드가 MAC 일치 확인 후 정체성 저장, 이후 자기 주소 프레임만 처리</li>
+</ol>
+
+<!-- ===================== 4 ===================== -->
+<h2 id="s4"><span class="n">4</span>리포 구조 · 소유권 · 규율</h2>
+<pre><code>Woo-ESC-Capston/
+├── CLAUDE.md                  ← 협업 헌법. 사람·AI 모두 최우선으로 읽는다
+├── lora_proto/                ← 프로토콜 계약 단일 진실원 (cw). proto.h 원본 + proto.py 미러 + codec + test_vectors.json
+├── firmware/                  ← PlatformIO C++ (cw / 렌더·fonts는 dh)
+│   ├── lib/lora_codec/        ← C++ codec, 단말·모뎀 공용 (보호 계층)
+│   ├── src/terminal/          ← 노드 펌웨어      src/modem/ ← 모뎀 펌웨어      src/fonts/ ← 폰트·이미지
+│   └── test/                  ← Unity, [env:native]
+├── server/                    ← 메인Pi FastAPI (wj). lora_service/ 는 cw 필수 리뷰
+├── modempi/                   ← 모뎀Pi 서비스.  link/ (wj) · lora/ (cw) · store.py·main.py (공용)
+├── web/                       ← Vue 3 (wj). styles/ · components/ui/ · assets/ 는 mh
+├── docs/specs/ · docs/plans/  ← 설계서 · 작업지시서 (템플릿 포함)
+└── .github/                   ← CODEOWNERS · CI(경로 기반 5 job) · PR 템플릿</code></pre>
+
+<h3>규율 세 겹 (막고 + 이해시킨다)</h3>
+<div class="tw"><table>
+<tr><th>겹</th><th>파일</th><th>무엇을 하나</th></tr>
+<tr><td>규범</td><td>루트·영역 <code>CLAUDE.md</code></td><td>왜 이런 경계인지 설명. 영역마다 스택·계층 책임·"절대 하지 말 것"</td></tr>
+<tr><td>자동 배정</td><td><code>.github/CODEOWNERS</code></td><td>PR이 경로를 건드리면 소유자가 필수 리뷰어. 마지막 매칭이 이기므로 좁은 경로가 아래</td></tr>
+<tr><td>자동 차단</td><td><code>.pre-commit-config.yaml</code> · <code>ci.yml</code></td><td>커밋 순간: gitleaks·개인키·<code>.env</code> 차단, ruff·prettier·clang-format. PR: 바뀐 영역 job만 lint·test. 매니페스트 없는 영역은 자동 skip</td></tr>
+</table></div>
+
+<h3>절대 하지 말 것 (루트 CLAUDE.md 요약)</h3>
+<ol>
+<li>비밀키·<code>.env</code>·인증서 커밋 금지</li>
+<li><code>main</code> 직접 push 금지. <strong>PR 머지는 팀장(@ssenu)만</strong> — 담당자의 역할은 승인 버튼까지</li>
+<li>계약(<code>lora_proto/</code>·DB 마이그레이션·응답 스키마·WS 메시지) 변경과 그 계약을 쓰는 코드를 <strong>같은 PR에 섞지 않음</strong>. 계약 먼저 머지 후 코드(lockstep)</li>
+<li>보호 계층(<code>lora_proto/</code>, <code>firmware/lib/lora_codec/</code>, <code>server/lora_service/</code>, <code>modempi/store.py</code>, <code>web/src/styles/</code>·<code>components/ui/</code>)을 기준 대조 없이 수정 금지</li>
+<li><code>git push --force</code>, <code>git reset --hard</code> 금지</li>
+<li>다른 영역 디렉토리 수정 금지 — 필요하면 <strong>이슈로 요청</strong></li>
+</ol>
+
+<!-- ===================== 5 ===================== -->
+<h2 id="s5"><span class="n">5</span>영역 간 계약 7개 — 4주차까지 동결</h2>
+<p>병행 개발이 성립하려면 이 일곱이 문서로 고정돼야 한다. ◎는 이미 스펙에 있고, ○는 해당 서브프로젝트 spec에서 정한다.</p>
+<div class="tw"><table>
+<tr><th>#</th><th>계약</th><th>양쪽</th><th>상태</th><th>어디에</th></tr>
+<tr><td>①</td><td>공중 프레임 규격 (헤더 9 B + 페이로드 ≤245 B + CRC8, TYPE 16종)</td><td>모뎀·노드 펌웨어 ↔ 모뎀Pi 파이프라인</td><td>◎ v2 §3</td><td><code>lora_proto/proto.h</code> + <code>proto.py</code> + <code>test_vectors.json</code></td></tr>
+<tr><td>②</td><td>모뎀 시리얼 프로토콜 (115200, JSON lines: <code>tx/cfg/ping/stats/reset</code> ↔ <code>ready/tx_done/rx/pong/stats/log</code>)</td><td>모뎀 펌웨어 ↔ <code>modem.py</code> / fake 모뎀</td><td>◎ v2 §4.2·4.3</td><td>S1</td></tr>
+<tr><td>③</td><td><code>lora_service/api.py</code> 시그니처 + <code>RecordProvider</code> 콜백</td><td>메인Pi 웹 도메인 ↔ LoRa 계층</td><td>◎ v2 §8.6·8.7</td><td>S2</td></tr>
+<tr><td>④</td><td><code>RenderModel</code> 구조체 (layout, 이전·현재·다음 3슬롯, 오늘 목록 12, QR URL, 배터리)</td><td>노드 상태 판단(cw) → 렌더(dh)</td><td>○ 로드맵 §4.1 확정</td><td>S3</td></tr>
+<tr><td>⑤</td><td>CSV 포맷 + 웹 REST 윤곽 (FastAPI 자동 OpenAPI가 mock 소스)</td><td>관리자·학생 웹 ↔ 메인Pi</td><td>○</td><td>S2</td></tr>
+<tr><td>⑥</td><td>메인Pi ↔ 모뎀Pi WebSocket (<code>hello/config/job/job_accepted/cancel/time_now/job_result/uplink/ping</code>)</td><td>허브(wj) ↔ 링크(wj)</td><td>○ 로드맵 §4.2 확정</td><td>S2·S5</td></tr>
+<tr><td>⑦</td><td>모뎀Pi 내부 <code>JobStore</code> (SQLite <code>jobs</code>·<code>uplinks</code>·<code>config</code> + 얇은 인터페이스)</td><td>링크(wj) ↔ 파이프라인(cw)</td><td>○ 로드맵 §4.3 확정</td><td>S5·S6</td></tr>
+</table></div>
+
+<h3>계약 ⑥ 작업 상태 (메인Pi <code>outbox.state</code>)</h3>
+<pre><code>queued ──(job 송신, 모뎀Pi job_accepted)──▶ dispatched ──(job_result)──▶ acked | failed
+   │                                              │
+   └─ 메인은 queued 만 재전송                     └─ 모뎀Pi 로컬 큐에 있음. 끊겨도 계속 시도. 24 h 넘으면 failed(modem_offline)</code></pre>
+
+<h3>계약 ⑦ 인터페이스 (누가 무엇을 부르나)</h3>
+<div class="tw"><table>
+<tr><th>링크 (wj)</th><th>파이프라인 (cw)</th></tr>
+<tr><td><code>put_job</code> · <code>cancel_job</code> · <code>pending_results</code> · <code>mark_uploaded</code> · <code>set_config</code> · <code>pending_uplinks</code> · <code>mark_uplinks_uploaded</code></td><td><code>pick_next</code> · <code>update</code> · <code>add_subjobs</code>(유닛 분해) · <code>get_config</code> · <code>on_config_changed</code> · <code>put_uplink</code></td></tr>
+</table></div>
+<p><strong>서로 import하지 않는다.</strong> wj는 fake 허브로, cw는 fake 모뎀 + <code>put_job()</code>으로 각자 상대 없이 테스트한다.</p>
+
+<!-- ===================== 6 ===================== -->
+<h2 id="s6"><span class="n">6</span>서브프로젝트 S1~S11</h2>
+<p>각 서브프로젝트는 자기 <strong>spec → plan → 구현</strong> 사이클을 갖는다. 접근법은 <strong>B</strong>: 하드웨어 없는 첫 3주에 <em>fake 모뎀·fake 허브·렌더 프리뷰</em>로 넷이 병행 → 부품 도착 즉시 수직 슬라이스.</p>
+<div class="tw"><table>
+<tr><th>#</th><th>서브프로젝트</th><th>담당</th><th>HW</th><th>기존 스펙</th><th>의존</th><th>상태</th></tr>
+<tr><td>S1</td><td><code>lora_proto</code> + C++/Python codec + 테스트 벡터 + fake 모뎀</td><td><span class="pill cw">cw</span></td><td><span class="tag no">✗</span></td><td>◎ §2·§3·§4</td><td>—</td><td>plan 완료 (PR #2)</td></tr>
+<tr><td>S2</td><td>메인Pi 서버: 도메인·CSV·REST + <code>lora_service</code>(outbox·버전·<code>api.py</code>·WS 허브·모뎀 레지스트리)</td><td><span class="pill wj">wj</span> (cw 리뷰)</td><td><span class="tag no">✗</span></td><td>◎ §8 개정 / ○</td><td>S1</td><td>spec 대기</td></tr>
+<tr><td>S3</td><td>렌더 계층 이식 + 호스트 PNG 프리뷰</td><td><span class="pill dh">dh</span></td><td><span class="tag no">✗</span></td><td>○</td><td>—</td><td>spec 대기</td></tr>
+<tr><td>S4</td><td>관리자 웹: 시간표·휴강·예약·시험기간 CRUD, CSV 업로드, 모뎀Pi 등록·노드 배정, 노드 모니터</td><td><span class="pill wj">wj</span> <span class="pill mh">mh</span></td><td><span class="tag no">✗</span></td><td>○</td><td>S2</td><td>—</td></tr>
+<tr><td>S5</td><td>모뎀Pi 링크: WS 클라이언트·인증·재접속·JobStore 삽입·결과/업링크 업로드</td><td><span class="pill wj">wj</span></td><td>Pi</td><td>○ §4.2·4.3</td><td>S2 허브</td><td>—</td></tr>
+<tr><td>S6</td><td>모뎀Pi LoRa 파이프라인: JobStore 소비 → 전처리 → 워커(TXN·재시도) → <code>modem.py</code> → TIME</td><td><span class="pill cw">cw</span></td><td>Pi + fake</td><td>◎ §8.4 이관</td><td>S1</td><td>—</td></tr>
+<tr><td>S7</td><td>모뎀 펌웨어 + P0 SF 실측</td><td><span class="pill cw">cw</span> (dh 지원)</td><td><span class="tag hw">✓</span></td><td>◎ §4·§10.3</td><td>S1, HW</td><td>—</td></tr>
+<tr><td>S8</td><td>노드 펌웨어 깨어있는 모드 (수신·저장·상태판단·ACK) + S3 결합</td><td><span class="pill cw">cw</span> <span class="pill dh">dh</span></td><td><span class="tag hw">✓</span></td><td>◎ §5·§6</td><td>S1, S3, S7</td><td>—</td></tr>
+<tr><td>S9</td><td>노드 절전(WOR)·프로비저닝·STATUS</td><td><span class="pill cw">cw</span></td><td><span class="tag hw">✓</span></td><td>◎ §6.7·§7</td><td>S8</td><td>—</td></tr>
+<tr><td>S10</td><td>학생 웹 + QR + 분석 대시보드 (빈 강의실, 주간 시간표, 배정률·공강 차트, 갱신 지연 히스토그램)</td><td><span class="pill wj">wj</span> <span class="pill mh">mh</span></td><td><span class="tag no">✗</span></td><td>○</td><td>S2, S4</td><td>—</td></tr>
+<tr><td>S11</td><td>Pi 2대 이식 · 2대 소크 · 케이스 · 전력 실측</td><td><span class="pill cw">cw</span></td><td><span class="tag hw">✓</span></td><td>◎ §10.4·10.5</td><td>S9</td><td>—</td></tr>
+</table></div>
+
+<div class="dep">S1 proto ──┬──▶ S2 메인Pi ──▶ S4 관리자웹 ──▶ S10 학생웹·대시보드
+           │        │ (허브)
+           │        └────▶ S5 모뎀Pi 링크 ──┐
+           │                                ├─[JobStore]─▶ <b>4주차 Pi↔Pi 통합</b> (fake 모뎀)
+           ├──▶ S6 모뎀Pi 파이프라인 ───────┘
+           │                                 │
+S3 렌더 ───┼──▶ S8 노드(awake) ◀── S7 모뎀펌웨어 ◀── [HW 도착 5주차]   ← <b>첫 E2E, 7~8주차 중간점검</b>
+           │        │
+           │        ▼
+           │      S9 WOR·프로비저닝 ──▶ S11 Pi 이식·소크·전력</div>
+
+<h3>하드웨어 없는 3주의 "가짜 하드웨어" 셋</h3>
+<div class="tw"><table>
+<tr><th>것</th><th>어디</th><th>누가 쓰나</th><th>왜 버려지지 않나</th></tr>
+<tr><td>fake 모뎀</td><td><code>modempi/lora/fake_modem.py</code> (S1)</td><td>cw의 파이프라인(S6), 나중엔 S7 모뎀 펌웨어 드라이버 검증</td><td>시나리오 주입(no_ack·GAP·BUSY·FILE_MISSING·DUP)이 CI 워커 테스트로 남는다</td></tr>
+<tr><td>fake 허브</td><td><code>server/tests/fake_hub.py</code> (S2)</td><td>wj의 링크(S5)</td><td>WS 왕복·재접속 테스트가 CI에 남는다</td></tr>
+<tr><td>렌더 프리뷰</td><td><code>firmware/tools/render_preview.py</code> + <code>[env:native]</code> (S3)</td><td>dh — 8개 레이아웃 PNG를 하드웨어 없이 디자인, mh·wj가 PR에서 리뷰</td><td>같은 픽스처가 실기 <code>TEST_RENDER</code>와 Unity 스냅샷 테스트 입력이 된다</td></tr>
+</table></div>
+
+<!-- ===================== 7 ===================== -->
+<h2 id="s7"><span class="n">7</span>일정 · 마일스톤</h2>
+<div class="tw"><table class="week">
+<tr><th>주차</th><th><span class="pill cw">cw</span></th><th><span class="pill dh">dh</span></th><th><span class="pill wj">wj</span></th><th><span class="pill mh">mh</span></th></tr>
+<tr><td>2 (9/9~)</td><td>S1 spec·plan ✔, <code>proto.h</code>/<code>proto.py</code>, S6 spec</td><td>S3 spec, 프레임버퍼 클래스</td><td>S2 spec(도메인·CSV·REST·⑥), S5 spec</td><td>디자인 토큰·<code>components/ui</code></td></tr>
+<tr><td>3</td><td>codec 양방향 + 벡터 CI, fake 모뎀, <code>JobStore</code></td><td>v1 렌더 이식, 픽스처 8개, 첫 PNG</td><td>DB·마이그레이션, CSV 임포트, WS 허브, fake 허브</td><td>관리자 화면 마크업(mock)</td></tr>
+<tr class="ms"><td>4</td><td>S6 파이프라인 + fake 테스트, <strong>계약 7개 동결</strong>, <strong>Pi↔Pi 통합</strong>, 부품 발주 확인</td><td>레이아웃 8개 PNG 리뷰 완료</td><td>S5 링크, <code>api.py</code>, <strong>Pi↔Pi 통합</strong></td><td>관리자 화면 ↔ 실제 API</td></tr>
+<tr><td>5~7</td><td>P0 SF 실측 → S7 모뎀 펌웨어 → S8 노드 awake</td><td>실제 패널 렌더, S7 지원, S8 저장·<code>nextChangeAt</code></td><td>관리자 웹 ↔ 실기</td><td>관리자 웹 완성</td></tr>
+<tr class="ms"><td>7~8</td><td colspan="4"><strong>첫 E2E 루프 — 중간점검 시연</strong> (메인Pi → 모뎀Pi → 노드 1대, 깨어있는 모드) + 중간보고서</td></tr>
+<tr><td>8~10</td><td>S9 WOR·프로비저닝</td><td>화면 폴리싱·QR</td><td>S10 학생웹 API·대시보드 집계</td><td>S10 화면</td></tr>
+<tr><td>11</td><td>S11 Pi 이식, 2대 소크, 판넬·작품보고서</td><td colspan="3">판넬·보고서 분담</td></tr>
+<tr class="ms"><td>12 (11/19~20)</td><td colspan="4"><strong>경진대회</strong></td></tr>
+<tr><td>13~15</td><td>전력 실측, 케이스</td><td colspan="3">결과보고서, 최종발표 (15주차)</td></tr>
+</table></div>
+
+<h3>마일스톤 완료 기준 (측정 가능한 것만)</h3>
+<div class="tw"><table>
+<tr><th>시점</th><th>보여줄 것</th><th>완료 기준</th></tr>
+<tr><td>4주차</td><td>Pi↔Pi 통합</td><td>계약 7개 문서화 · S1 CI 녹색 · 메인Pi 웹 저장 → 모뎀Pi fake 모뎀 로그에 프레임 hex → <code>job_result</code>가 대시보드에 <code>acked</code> · 렌더 PNG 8장 · "끊고 붙이기" 시나리오 통과</td></tr>
+<tr><td>7~8주차</td><td>웹 → 메인Pi → 모뎀Pi → LoRa → e-Paper</td><td>v2 벤치 §10.2-1·3 통과 · 갱신 지연 <strong>50회 중 48회 이상 30 s</strong></td></tr>
+<tr><td>12주차</td><td>노드 2대 배터리·절전, 관리자·학생 웹, 대시보드, 두 Pi 분리</td><td>웨이크 수신률 ≥ 95 % · <strong>100회 중 95회 이상 30 s, 전부 90 s</strong> · 2대 동시 독립 갱신 · 4시간 무교체 · 모뎀Pi 인터넷 30분 끊고 재접속 → 결과 보고 정상</td></tr>
+<tr><td>15주차</td><td>위 + 전력·소크</td><td>딥슬립 ≤ 120 µA · 일 ≤ 15 mAh 실측표 · 1주 소크 <code>last_seen_at</code> 공백 없음</td></tr>
+</table></div>
+
+<!-- ===================== 8 ===================== -->
+<h2 id="s8"><span class="n">8</span>체크리스트</h2>
+<p>체크 상태는 <strong>이 브라우저에만</strong> 저장됩니다(localStorage). 팀 공유 진행률은 GitHub 이슈·PR이 원본이고, 여기는 각자 확인용입니다.</p>
+
+<h3 id="s8a">8-A. 온보딩 — 각자 한 번</h3>
+<p class="progress" data-for="onb"></p>
+<ul class="check" data-key="onb">
+<li><input type="checkbox" id="onb1"><label for="onb1">리포 클론 후 <code>CLAUDE.md</code>, 자기 영역 <code>CLAUDE.md</code>, 스펙 두 개(<code>docs/specs/</code>) 정독<small>규율 파일이 "왜"를 설명한다. 30분이면 읽는다.</small></label></li>
+<li><input type="checkbox" id="onb2"><label for="onb2">자기 브랜치 확인: <code>git fetch && git checkout &lt;cw|dh|wj|mh&gt;</code>. 원격에 없으면 <code>git branch &lt;이름&gt; main && git push -u origin &lt;이름&gt;</code><small>현재 원격에 있는 브랜치: main, cw. dh·wj·mh는 각자 첫 push 때 생긴다.</small></label></li>
+<li><input type="checkbox" id="onb3"><label for="onb3"><code>pip install pre-commit && pre-commit install</code><small>커밋 순간 비밀키·포맷을 잡는다. 이걸 안 깔면 CI에서 뒤늦게 빨개진다.</small></label></li>
+<li><input type="checkbox" id="onb4"><label for="onb4">Python 영역(server·modempi·lora_proto): <code>uv</code> 설치 → 해당 디렉토리에서 <code>uv sync</code></label></li>
+<li><input type="checkbox" id="onb5"><label for="onb5">웹(web): Node 20 + <code>corepack enable</code> → <code>pnpm install</code></label></li>
+<li><input type="checkbox" id="onb6"><label for="onb6">펌웨어(firmware): VS Code + PlatformIO 확장, 호스트 C++ 툴체인(Windows는 MSYS2 또는 VS Build Tools), <code>clang-format</code><small><code>pio test -e native</code>가 뜨는지 확인. 하드웨어 없이도 codec·렌더 테스트가 돈다.</small></label></li>
+<li><input type="checkbox" id="onb7"><label for="onb7">GitHub 알림 설정: 자기가 CODEOWNER인 경로의 PR 리뷰 요청을 받도록</label></li>
+<li><input type="checkbox" id="onb8"><label for="onb8">팀장(cw)만: <code>main</code> 브랜치 보호 — PR 필수 · Code Owners 승인 필수 · status check <code>firmware/server/modempi/web</code> · <strong>Restrict who can push → ssenu</strong></label></li>
+</ul>
+
+<h3 id="s8b">8-B. PR 하나를 낼 때마다</h3>
+<p class="progress" data-for="pr"></p>
+<ul class="check" data-key="pr">
+<li><input type="checkbox" id="pr1"><label for="pr1">이 작업의 spec/plan이 있는가? (오타·문서·한 줄 수정은 예외, 그래도 PR은 거친다)</label></li>
+<li><input type="checkbox" id="pr2"><label for="pr2">자기 브랜치(또는 거기서 분기한 <code>feature/</code>)에서 작업했다. <code>main</code>에 직접 커밋하지 않았다</label></li>
+<li><input type="checkbox" id="pr3"><label for="pr3">커밋 메시지가 Conventional Commits: <code>feat(server):</code> <code>fix(firmware):</code> <code>style(web):</code> <code>feat(proto):</code> <code>feat(backhaul):</code> <code>docs:</code> <code>chore(infra):</code></label></li>
+<li><input type="checkbox" id="pr4"><label for="pr4">자기 영역만 고쳤다. 타 영역이 필요하면 코드 대신 이슈를 냈다</label></li>
+<li><input type="checkbox" id="pr5"><label for="pr5">테스트를 먼저 썼고(실패 → 구현 → 통과), 로컬 게이트 통과: Python <code>uv run pytest && uv run ruff check . && uv run ruff format --check .</code> / 웹 <code>pnpm test && pnpm lint</code> / 펌웨어 <code>pio test -e native && pio check</code></label></li>
+<li><input type="checkbox" id="pr6"><label for="pr6">계약(①~⑦, DB 마이그레이션, 응답 스키마)을 바꿨다면 <strong>계약 PR을 따로 먼저</strong> 냈다 (lockstep). 새 필드는 additive</label></li>
+<li><input type="checkbox" id="pr7"><label for="pr7">PR 템플릿 체크리스트를 다 채웠다. 검증 명령과 결과를 적었다. 하드웨어 동작이면 벤치 표를 붙였다</label></li>
+<li><input type="checkbox" id="pr8"><label for="pr8">CI 녹색 확인. 리뷰 반영은 <strong>추가 커밋</strong>으로(force push 금지)</label></li>
+<li><input type="checkbox" id="pr9"><label for="pr9">승인이 끝나면 <strong>직접 머지하지 않고 팀장에게 알린다</strong></label></li>
+</ul>
+
+<h3 id="s8c">8-C. 부품 발주 (v2 §1.1·1.2 BOM) — 팀장</h3>
+<p class="progress" data-for="bom"></p>
+<div class="tw"><table>
+<tr><th>부품</th><th>모델</th><th>수량 (노드 2 + 모뎀 1)</th><th>비고</th></tr>
+<tr><td>MCU + LoRa</td><td>Heltec WiFi LoRa 32 V3 (ESP32-S3FN8 + SX1262, 863~928 MHz)</td><td class="num">3</td><td>devicemart no=14894560</td></tr>
+<tr><td>e-Paper</td><td>Waveshare 7.5" (B) 800×480 흑/백/적, UC8179, 24핀 FPC (기존 보유분 확인) 또는 Goodisplay GDEY075Z08</td><td class="num">2</td><td>no=15331635</td></tr>
+<tr><td>패널 어댑터</td><td>Goodisplay DESPI-C02 (24핀 SPI, 3.3 V)</td><td class="num">2</td><td>no=15331593</td></tr>
+<tr><td>배터리</td><td>DTP105085 3.7 V 5,000 mAh, Molex 51021 1.25 mm 2핀, KC</td><td class="num">2</td><td>no=15285796. <strong>PCM 내장 여부·커넥터 극성 확인 필수</strong></td></tr>
+<tr><td>노드 안테나</td><td>Heltec U.FL 스틱 3 dBi 915 MHz</td><td class="num">2</td><td>no=14898693</td></tr>
+<tr><td>모뎀 피그테일</td><td>Seeed SMA–I-PEX 120 mm</td><td class="num">1</td><td>no=14601923</td></tr>
+<tr><td>모뎀 안테나</td><td>EBYTE TX4G-JKC-19 5 dBi 698~960 MHz SMA</td><td class="num">1</td><td>no=15177101</td></tr>
+<tr><td>Pi</td><td>보유 2대 (메인Pi·모뎀Pi) + USB-C 케이블</td><td>—</td><td>구매 없음</td></tr>
+</table></div>
+<ul class="check" data-key="bom">
+<li><input type="checkbox" id="bom1"><label for="bom1">기존 보유 e-Paper 패널 수량·상태 확인 (v1 프로토타입에서 회수)</label></li>
+<li><input type="checkbox" id="bom2"><label for="bom2">DTP105085 스펙시트에서 PCM(보호회로) 내장 여부와 Heltec V3 배터리 커넥터 극성 확인</label></li>
+<li><input type="checkbox" id="bom3"><label for="bom3">견적 합산이 재료비 52만 원 안인지 확인 (10만 원 이상이면 물품검수조서 필요, 매월 25일까지 결제)</label></li>
+<li><input type="checkbox" id="bom4"><label for="bom4">발주 완료 → 도착 예정일을 로드맵 §6.4 "5주차 기점"에 반영</label></li>
+<li><input type="checkbox" id="bom5"><label for="bom5">수령 시 물품 검수 사진(수량 보이게) + 영수증 → 정산 서류</label></li>
+</ul>
+
+<h3 id="s8d">8-D. 4주차 — 계약 동결 + Pi↔Pi 통합</h3>
+<p class="progress" data-for="w4"></p>
+<ul class="check" data-key="w4">
+<li><input type="checkbox" id="w41"><label for="w41">S1 PR 머지: <code>lora_proto</code> CI 녹색, <code>test_vectors.json</code> 27개, C++ Unity 8개 통과 <span class="pill cw">cw</span></label></li>
+<li><input type="checkbox" id="w42"><label for="w42">계약 ③⑤: <code>api.py</code> 시그니처, CSV 컬럼, REST 엔드포인트 목록이 S2 spec에 확정 <span class="pill wj">wj</span></label></li>
+<li><input type="checkbox" id="w43"><label for="w43">계약 ④: <code>RenderModel</code> 최종 필드와 픽스처 JSON 형식이 S3 spec에 확정, 하루 최대 교시 결정 <span class="pill dh">dh</span> <span class="pill cw">cw</span></label></li>
+<li><input type="checkbox" id="w44"><label for="w44">계약 ⑥⑦: WS 메시지 필드와 <code>jobs</code> 컬럼이 S2·S5·S6 spec에서 로드맵 §4.2·4.3과 일치 <span class="pill wj">wj</span> <span class="pill cw">cw</span></label></li>
+<li><input type="checkbox" id="w45"><label for="w45">렌더 프리뷰 PNG 8장(레이아웃 1~8) PR에 첨부, mh·wj 리뷰 완료 <span class="pill dh">dh</span></label></li>
+<li><input type="checkbox" id="w46"><label for="w46">메인Pi(실기)에 서버 기동, 모뎀Pi(실기)에 <code>modempi</code> 기동(fake 모뎀 모드), WS 접속·<code>hello/config</code> 확인</label></li>
+<li><input type="checkbox" id="w47"><label for="w47">관리자 웹에서 휴강 저장 → 모뎀Pi fake 모뎀 로그에 프레임 hex → <code>job_result</code> → 메인Pi 대시보드 <code>acked</code></label></li>
+<li><input type="checkbox" id="w48"><label for="w48">모뎀Pi 네트워크 끊고 작업 2개 저장 → 다시 붙이면 <code>pending_results</code> 보고, 중복 송신 없음</label></li>
+<li><input type="checkbox" id="w49"><label for="w49">부품 발주 완료·도착일 확정</label></li>
+</ul>
+
+<h3 id="s8e">8-E. 7~8주차 — 중간점검 시연</h3>
+<p class="progress" data-for="mid"></p>
+<ul class="check" data-key="mid">
+<li><input type="checkbox" id="mid1"><label for="mid1">P0: 게이트웨이 후보 위치에서 SF7/9/10 각 20패킷 RSSI·SNR·PER 측정 → <code>RP_SF</code> 확정, <code>config.radio</code>에 반영 <span class="pill cw">cw</span></label></li>
+<li><input type="checkbox" id="mid2"><label for="mid2">모뎀 펌웨어: <code>ping/tx/rx</code> 루프백, fake 모뎀 대신 실물로 S6 파이프라인 통과 <span class="pill cw">cw</span> <span class="pill dh">dh</span></label></li>
+<li><input type="checkbox" id="mid3"><label for="mid3">노드 awake 모드: 전 TYPE 수신·저장·ACK, 벤치 §10.2-1(전 TYPE 왕복)·§10.2-3(타겟 격리·DUP·GAP→FILE 재동기·재부팅 영속성) <span class="pill cw">cw</span></label></li>
+<li><input type="checkbox" id="mid4"><label for="mid4">실제 패널에 8개 레이아웃 렌더, 렌더 완료 후 ACK 순서 고정 <span class="pill dh">dh</span></label></li>
+<li><input type="checkbox" id="mid5"><label for="mid5">갱신 지연 50회 측정 → 48회 이상 30 s. 표를 중간보고서에</label></li>
+<li><input type="checkbox" id="mid6"><label for="mid6">관리자 웹: 시간표 CSV 업로드, 휴강·예약·시험기간 등록, 노드 상태 모니터 <span class="pill wj">wj</span> <span class="pill mh">mh</span></label></li>
+<li><input type="checkbox" id="mid7"><label for="mid7">중간보고서: 계획서 대비 진도, 사용 도구·부품, 측정표. 발표회 서식(서식 6)·사진·영수증</label></li>
+<li><input type="checkbox" id="mid8"><label for="mid8">부품이 7주차까지 안 왔을 때의 대안 시연(Pi↔Pi + fake 모뎀 + 렌더 PNG) 준비</label></li>
+</ul>
+
+<h3 id="s8f">8-F. 12주차 — 경진대회 (11/19~20)</h3>
+<p class="progress" data-for="fin"></p>
+<ul class="check" data-key="fin">
+<li><input type="checkbox" id="fin1"><label for="fin1">WOR: <code>SLEEP_MODE=LIGHT</code> → <code>DEEP</code>, wake 프레임 100회 미수신 ≤ 5 % (초과 시 <code>preamble_wake_ms</code> 상향) <span class="pill cw">cw</span></label></li>
+<li><input type="checkbox" id="fin2"><label for="fin2">프로비저닝 전 과정(HELLO → 관리자 배정 → SET_ROOM → 화면 전환) 시연 가능 <span class="pill cw">cw</span> <span class="pill wj">wj</span></label></li>
+<li><input type="checkbox" id="fin3"><label for="fin3">갱신 지연 100회: 95회 이상 30 s, 전부 90 s. 히스토그램이 대시보드에</label></li>
+<li><input type="checkbox" id="fin4"><label for="fin4">노드 2대가 서로 다른 강의실로 동시에 독립 갱신 (타겟 필터 실증)</label></li>
+<li><input type="checkbox" id="fin5"><label for="fin5">배터리 구동 4시간 무교체 리허설 (전날)</label></li>
+<li><input type="checkbox" id="fin6"><label for="fin6">모뎀Pi 인터넷 30분 차단 → 재접속 → 결과 보고 정상 (§4.4)</label></li>
+<li><input type="checkbox" id="fin7"><label for="fin7">Pi 2대 <code>systemd</code> 서비스로 자동 기동, 전원만 꽂으면 뜬다. 두 Pi 연결은 핫스팟 또는 직결 이더넷 — 전시장 Wi-Fi에 의존하지 않는다</label></li>
+<li><input type="checkbox" id="fin8"><label for="fin8">학생 웹: QR로 진입 → 주간 시간표·빈 강의실 조회. 대시보드: 배정률·공강 차트 <span class="pill wj">wj</span> <span class="pill mh">mh</span></label></li>
+<li><input type="checkbox" id="fin9"><label for="fin9">참가신청서 · 작품보고서 · 판넬 제출 (학과 예선 → 본선)</label></li>
+<li><input type="checkbox" id="fin10"><label for="fin10">시연 스크립트 작성: "웹에서 휴강 등록 → 30초 안에 문 앞 화면 전환"을 심사위원 앞에서 재현. 실패 시 대체 경로(다른 노드, 재시도 설명)</label></li>
+<li><input type="checkbox" id="fin11"><label for="fin11">예비품: 배터리 여분, USB 케이블, 안테나, 노트북(메인Pi 대체)</label></li>
+</ul>
+
+<h3 id="s8g">8-G. 15주차 — 최종발표·결과보고</h3>
+<p class="progress" data-for="last"></p>
+<ul class="check" data-key="last">
+<li><input type="checkbox" id="last1"><label for="last1">전력 실측(INA219/PPK2): 딥슬립 대기 전류, 갱신 1회 전하량, 24 h 실사용 → v2 §1.4 목표 대비 표 <span class="pill cw">cw</span></label></li>
+<li><input type="checkbox" id="last2"><label for="last2">1주 소크(강의실 2곳): <code>last_seen_at</code> 공백, <code>sync_state</code>, 배터리 기울기, 실패 outbox 수</label></li>
+<li><input type="checkbox" id="last3"><label for="last3">3D 프린팅 케이스 조립</label></li>
+<li><input type="checkbox" id="last4"><label for="last4">결과보고서(서식 2-2): 목적·추진 내용(계획 대비 진도)·수행 결과·결과물 사진 4장 이상. 소스코드 링크</label></li>
+<li><input type="checkbox" id="last5"><label for="last5">동료 공헌도 평가서(서식 7), 만족도 조사(시스템 입력), 정산 서류 (12/8~12/21)</label></li>
+</ul>
+
+<!-- ===================== 9 ===================== -->
+<h2 id="s9"><span class="n">9</span>리스크 · 완충</h2>
+<div class="tw"><table>
+<tr><th>리스크</th><th>확률</th><th>대응</th></tr>
+<tr><td>부품 지연 (10월 중순 이후)</td><td>중</td><td>5~6주차를 S2·S4·S10 완성에. 7주차까지 안 오면 중간점검은 Pi↔Pi + fake 모뎀 + 렌더 PNG로 시연 — 모뎀Pi까지는 실기라 설득력 유지</td></tr>
+<tr><td>전시장 두 Pi 사이 Wi-Fi 불안정</td><td>중</td><td>핫스팟 또는 직결 이더넷. 오프라인 동작이 있어 끊겨도 진행 중 작업은 완료됨</td></tr>
+<tr><td>WS 재접속·중복 방지 버그</td><td>중</td><td><code>dispatched</code> 규칙 + JobStore 멱등 삽입. 4주차 통합에 "끊고 붙이기"를 완료 기준으로</td></tr>
+<tr><td>SF9로 건물 커버 안 됨</td><td>중</td><td>SF10·11 상향. <code>config.radio</code>로 메인이 내려주므로 펌웨어 재빌드 없음. 에어타임 2~4배</td></tr>
+<tr><td>WOR 웨이크 수신률 미달</td><td>중</td><td><code>preamble_wake_ms</code> 상향(역시 <code>config</code>). 최악 시 경진대회는 LIGHT 슬립, DEEP은 15주차</td></tr>
+<tr><td>cw 병목 (5~10주차)</td><td>중</td><td>S6를 4주차에 fake로 완료. dh가 S7 지원·S8 저장 계층·<code>nextChangeAt</code></td></tr>
+<tr><td>e-Paper 리프레시 20 s 초과</td><td>낮음</td><td>갱신 지연 근거 수정. 부분 갱신(흑백만) 검토</td></tr>
+<tr><td>스푸핑</td><td>낮음 (v2 미대응)</td><td>사설 동기워드·NET_ID만. v3에서 AES-128-CTR + CMAC 검토</td></tr>
+</table></div>
+
+<!-- ===================== 10 ===================== -->
+<h2 id="s10"><span class="n">10</span>문서 인덱스 — 원본은 여기</h2>
+<div class="tw"><table>
+<tr><th>문서</th><th>내용</th></tr>
+<tr><td><a href="specs/2026-09-09-lora-v2-wor-design.md"><code>docs/specs/2026-09-09-lora-v2-wor-design.md</code></a></td><td>v2 시스템 설계 — 하드웨어·무선 파라미터·공중 프레임·모뎀/노드 펌웨어·검증 계획. §8은 로드맵으로 대체</td></tr>
+<tr><td><a href="specs/2026-09-09-roadmap-design.md"><code>docs/specs/2026-09-09-roadmap-design.md</code></a></td><td>진행 로드맵 — 3계층 토폴로지, 계약 7개, S1~S11, 주차·마일스톤, 리스크</td></tr>
+<tr><td><a href="plans/2026-09-09-s1-lora-proto-codec.md"><code>docs/plans/2026-09-09-s1-lora-proto-codec.md</code></a></td><td>S1 구현 계획 — 11 Task, 전체 코드</td></tr>
+<tr><td><a href="../CLAUDE.md"><code>CLAUDE.md</code></a> + <code>firmware/ server/ modempi/ web/CLAUDE.md</code></td><td>협업 규율 (역할·계층 보호·브랜치·커밋·PR·금지사항)</td></tr>
+<tr><td><a href="specs/spec.template.md"><code>docs/specs/spec.template.md</code></a> · <a href="plans/plan.template.md"><code>docs/plans/plan.template.md</code></a></td><td>새 서브프로젝트 spec·plan 뼈대</td></tr>
+<tr><td>과제추진계획서(Woo팀), 2026-2 캡스톤 운영계획</td><td>일정·예산·서식의 근거 (리포 밖)</td></tr>
+</table></div>
+
+<footer>Woo-ESC-Capston · docs/overview.html · 2026-09-09 r1. 이 문서가 스펙과 다르면 스펙이 맞다 — 고쳐야 할 곳을 이슈로 남겨 주세요.</footer>
+</main>
+</div>
+<script>
+(function(){
+  var lists = document.querySelectorAll('ul.check');
+  function load(key){ try { return JSON.parse(localStorage.getItem('woo-ov:'+key) || '{}'); } catch(e){ return {}; } }
+  function save(key, obj){ try { localStorage.setItem('woo-ov:'+key, JSON.stringify(obj)); } catch(e){} }
+  function refresh(list){
+    var key = list.dataset.key, boxes = list.querySelectorAll('input[type=checkbox]'), n = 0;
+    boxes.forEach(function(b){ if (b.checked) n++; });
+    var p = document.querySelector('.progress[data-for="'+key+'"]');
+    if (p) p.textContent = n + ' / ' + boxes.length + (n === boxes.length && boxes.length ? ' ✔' : '');
+  }
+  lists.forEach(function(list){
+    var key = list.dataset.key, state = load(key);
+    list.querySelectorAll('input[type=checkbox]').forEach(function(b){
+      b.checked = !!state[b.id];
+      b.addEventListener('change', function(){ state[b.id] = b.checked; save(key, state); refresh(list); });
+    });
+    refresh(list);
+  });
+})();
+</script>
+</body>
+</html>
