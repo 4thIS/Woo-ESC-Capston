@@ -15,6 +15,13 @@ on:
   push:
     branches: [main]
 
+# dorny/paths-filter 는 pull_request 이벤트에서 변경 파일을 GitHub API로 조회한다.
+# 리포 기본 GITHUB_TOKEN 이 읽기 전용(contents 만)이라 pull-requests: read 가 없으면
+# "Resource not accessible by integration" 으로 changes job 이 실패한다.
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   # ===== 어떤 영역이 바뀌었는지 판별 =====
   changes:
