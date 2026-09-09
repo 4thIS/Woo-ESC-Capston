@@ -94,11 +94,14 @@ docs: ...               # 문서
 3. 템플릿 체크리스트를 모두 채운다.
 4. CI 통과 필수.
 5. 자기 영역만 수정 — 타 영역이 필요하면 코드로 침범하지 말고 이슈로 요청.
+6. **머지는 팀장(cw @ssenu)만 한다.** 영역 담당자의 승인(CODEOWNERS 리뷰)은 "머지해도 된다"는 신호이지 머지 자체가 아니다. 승인이 끝난 PR은 팀장에게 알리고 기다린다. 팀장 본인의 PR도 영역 담당자 승인을 받은 뒤 스스로 머지한다.
+   - 왜: `main`에 무엇이 언제 들어가는지를 한 사람이 알고 있어야 계약(lockstep) 순서와 릴리스 시점을 통제할 수 있다.
+   - 강제: GitHub 브랜치 보호에서 *Restrict who can push to matching branches*를 `ssenu`로 제한한다(PR 머지도 push 권한을 따른다).
 
 ## 절대 하지 말 것
 
 1. 비밀키·`.env`·인증서 커밋 금지 (pre-commit 훅이 차단)
-2. `main` 직접 push 금지 (Protected Branch)
+2. `main` 직접 push 금지 (Protected Branch). **PR 머지도 팀장(@ssenu) 외에는 금지** — 승인 버튼까지가 담당자의 역할이다.
 3. 계약(`lora_proto/`) 변경과 그 계약에 의존하는 코드를 같은 PR에 섞지 않음 — **계약 먼저 머지 후 코드**(lockstep)
 4. 계층 규율 경로를 기준 대조 없이 수정 금지
 5. `git push --force`, `git reset --hard` 금지
