@@ -104,6 +104,7 @@ docs: ...               # 문서
 | 문서 | 내용 |
 |------|------|
 | `docs/specs/2026-09-09-lora-v2-wor-design.md` | **v2 시스템 설계 스펙** — 하드웨어·공중 프로토콜·펌웨어·백엔드·구현 단계(P0~P8). 구현 전 반드시 정독 |
+| `docs/specs/2026-09-09-roadmap-design.md` | **진행 로드맵** — 서브프로젝트 S1~S9 분해, 영역 간 계약 5개, 주차별 산출물, 마일스톤 완료 기준 |
 | `docs/specs/`·`docs/plans/` | 설계서·작업지시서 (템플릿 포함) |
 | `firmware/CLAUDE.md` | 펌웨어 영역 규칙 |
 | `server/CLAUDE.md` | 백엔드 영역 규칙 |

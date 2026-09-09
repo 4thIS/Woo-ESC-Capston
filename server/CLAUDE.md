@@ -23,6 +23,7 @@ server/
 ## 계층 책임
 
 - `lora_service/`는 **무엇을 보낼지**만 안다. 언제·어떻게 쏠지는 모뎀 펌웨어의 책임이므로 여기서 타이밍·재시도 물리 계층을 흉내내지 않는다.
+- `lora_service/`가 외부에 노출하는 것은 **`api.py`와 `set_record_provider`뿐**이다. 웹 코드는 그 밖의 모듈(`worker`, `modem`, `codec`, `models`)을 import하지 않는다.
 - 웹 라우터(`api/`)는 `lora_service/api.py`의 동기 함수만 호출한다. outbox 테이블을 직접 INSERT하지 않는다 — 버전 증가와 삽입이 한 트랜잭션이어야 하기 때문이다.
 - 모든 상태 변경은 **멱등**이고 **버전이 붙는다**. 유실은 재전송이 아니라 재동기로 흡수한다(스펙 §8.3).
 - 공통 인프라 계층은 도메인을 import하지 않는다(의존 방향 단방향 유지).
@@ -44,6 +45,8 @@ server/
 - 이 영역은 `lora_proto/`의 **소비자**다. 프로토콜 상수를 재정의하지 않는다.
 - 새 응답 필드는 **additive**로 추가한다(기존 필드 불변) — 그래야 웹 배포 시점을 분리할 수 있다.
 - DB 마이그레이션은 그 컬럼을 쓰는 코드보다 **먼저** 머지한다(lockstep).
+- 테이블 소유: `outbox`·`terminal_status`·`room_versions`·`pending_devices`·`lora_log`는 cw, 나머지는 wj. 마이그레이션 파일명 prefix `lora_` / `web_`.
+- `pyproject.toml` 변경 PR은 제목을 `chore(server): deps`로 하고 wj·cw 모두 리뷰한다.
 
 ## 절대 하지 말 것
 

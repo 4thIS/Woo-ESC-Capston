@@ -9,6 +9,7 @@ e-Paper와 LoRa 통신을 활용한 저전력 강의실 시간표·예약 게시
 ## 문서
 
 - [v2 LoRa 송수신·절전 단말·게이트웨이 설계 스펙](docs/specs/2026-09-09-lora-v2-wor-design.md)
+- [진행 로드맵 · 서브프로젝트 분해 · 영역 간 계약](docs/specs/2026-09-09-roadmap-design.md)
 
 ## 이전 프로토타입 (v1)
 
