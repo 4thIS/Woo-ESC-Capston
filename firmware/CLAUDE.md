@@ -16,8 +16,8 @@
 ```
 firmware/
 ├── lib/lora_codec/   # 프레임 인코딩/디코딩 — 단말·모뎀 공용 (보호 계층)
-├── src/terminal/     # 단말 펌웨어: 상태머신·절전·수신·저장·렌더 (스펙 §5~7)
-├── src/modem/        # 게이트웨이 모뎀 펌웨어: USB 시리얼 JSON lines (스펙 §4)
+├── src/terminal/     # 노드 펌웨어(ESP노드): 상태머신·절전·수신·저장·렌더 (v2 §5~7)
+├── src/modem/        # 모뎀 펌웨어(모뎀Pi에 USB로 붙는 Heltec): 시리얼 JSON lines (v2 §4)
 ├── src/fonts/        # 폰트·이미지 리소스 (v1에서 이식)
 └── test/             # Unity: codec, determineLayout, nextChangeAt
 ```
@@ -35,7 +35,7 @@ firmware/
 
 | 경로 | 담당 |
 |------|------|
-| `lib/lora_codec/`, `src/modem/`, `src/terminal/` (무선·절전·스케줄링·저장) | cw @ssenu |
+| `lib/lora_codec/`, `src/modem/`, `src/terminal/` (무선·절전·스케줄링·저장) | cw @ssenu (모뎀 펌웨어는 dh가 지원) |
 | `src/terminal/render*`, `src/terminal/display*`, `src/fonts/` | dh @Hyeon02-kr |
 
 두 담당이 같은 영역을 쓰므로, **상태 판단 ↔ 렌더 사이의 인터페이스**(레이아웃 구조체·그리기 함수 시그니처)가 이 영역의 내부 계약이다. 바꾸려면 상대와 사전 협의한다.
@@ -53,12 +53,13 @@ firmware/
 ## 계약(Contract) 규칙
 
 - 이 영역은 `lora_proto/`의 **소비자**다. 상수·프레임 오프셋을 여기서 재정의하거나 로컬 상수로 복사하지 않는다 — 계약이 두 곳에 생겨 어긋난다.
-- 프레임 규격을 바꿔야 하면 `lora_proto/`를 PM이 먼저 고쳐 머지하고(lockstep), 그다음 이 영역이 따라간다.
+- 프레임 규격을 바꿔야 하면 `lora_proto/`를 PM이 먼저 고쳐 머지하고(lockstep), 그다음 이 영역과 `modempi/lora/`가 따라간다.
+- 모뎀 펌웨어의 상대는 `modempi/lora/modem.py`다. 시리얼 프로토콜(v2 §4.2·4.3)을 바꾸면 그쪽과 fake 모뎀을 같은 PR 흐름에서 갱신한다.
 
 ## 절대 하지 말 것
 
-- 다른 영역 디렉토리(`server/`, `web/`) 수정 금지 — 필요 시 이슈로 요청.
+- 다른 영역 디렉토리(`server/`, `modempi/`, `web/`) 수정 금지 — 필요 시 이슈로 요청.
 - `lora_proto/` 직접 수정 금지 (PM 전담).
 - `platformio.ini`의 보드·프레임워크·언어 표준 임의 변경 금지.
-- 프레임 규격 변경 시 서버 담당과 사전 협의 + PR에 BREAKING CHANGE 명시.
+- 프레임 규격 변경 시 모뎀Pi 파이프라인과 사전 협의 + PR에 BREAKING CHANGE 명시.
 - 계층 규율 경로(`lib/lora_codec/`)를 기준 대조 없이 수정 금지.

@@ -38,6 +38,7 @@ pnpm lint && pnpm exec vue-tsc --noEmit   → clean
 - [ ] 비밀키·`.env` 미포함
 - [ ] pre-commit 훅 통과
 - [ ] 계약(`lora_proto/` 프로토콜 정의, DB 마이그레이션, 서버 응답 스키마) 변경이 있다면: 계약 PR을 **먼저** 머지했는가(lockstep)
+- [ ] 리뷰 승인 후 **직접 머지하지 않고** 팀장(@ssenu)에게 알림 (머지는 팀장만)
 
 ## BREAKING CHANGE?
 

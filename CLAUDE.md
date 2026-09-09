@@ -7,17 +7,18 @@
 ## 프로젝트 개요
 
 - 목적: e-Paper와 LoRa 통신을 활용한 저전력 강의실 시간표·예약 게시 시스템 (캡스톤디자인). 단말은 딥슬립 상태로 대기하다 LoRa 웨이크로 갱신 프레임을 받아 7.5" 3색 e-Paper에 강의실 상태를 표시한다.
-- 스택: 단말·게이트웨이 펌웨어 = PlatformIO / C++ (ESP32-S3 + SX1262, RadioLib + GxEPD2) · 서버 = FastAPI / Python(uv) · 웹 = Vue 3 / TypeScript(pnpm) · 프로토콜 계약 = `lora_proto/` (C++ 헤더 + Python 미러)
+- 장비 명칭: **메인Pi**(웹서버·DB 원본, 전체 1대) · **모뎀Pi**(학교 건물당 1대, Heltec 모뎀 USB 연결, 메인Pi에 WebSocket 접속) · **ESP노드**(강의실 문마다, Heltec V3 + e-Paper). 이 세 이름만 쓴다.
+- 스택: 노드·모뎀 펌웨어 = PlatformIO / C++ (ESP32-S3 + SX1262, RadioLib + GxEPD2) · 메인Pi 서버 = FastAPI / Python(uv) · 모뎀Pi 서비스 = Python asyncio(uv) · 웹 = Vue 3 / TypeScript(pnpm) · 프로토콜 계약 = `lora_proto/` (C++ 헤더 + Python 미러)
 - 호스팅: https://github.com/4thIS/Woo-ESC-Capston
-- 배포: 미정 — 게이트웨이 호스트는 Raspberry Pi. 자동 배포 파이프라인은 P8(소크 테스트) 시점에 확정한다. 현재 CI는 검증까지만 수행한다.
+- 배포: 메인Pi·모뎀Pi 모두 Raspberry Pi(보유). 개발·데모는 노트북, 4주차 Pi↔Pi 통합부터 실기. 자동 배포 파이프라인은 S11 시점에 확정한다. 현재 CI는 검증까지만 수행한다.
 
 ## 역할 분담
 
 | 사람 | 계정 | 영역 | 책임 |
 |------|------|------|------|
-| cw | @ssenu (Owner) | 전 영역 총괄 + `lora_proto/` + `firmware/` 무선·스케줄링 | 설계(spec/plan)·계약·인프라·최종 승인 |
-| dh | @Hyeon02-kr | `firmware/src/terminal/render*`, `firmware/src/fonts/` | e-Paper 렌더링·화면 레이아웃 구현 |
-| wj | @leemonta9482 | `server/`, `web/` | 학생/관리자 웹 풀스택 구현 |
+| cw | @ssenu (Owner) | 전 영역 총괄 + `lora_proto/` + `firmware/` 무선·스케줄링 + `modempi/lora/` | 설계(spec/plan)·계약·인프라·최종 승인. LoRa 파이프라인(전처리→송신) |
+| dh | @Hyeon02-kr | `firmware/src/terminal/render*`, `firmware/src/fonts/` | e-Paper 렌더링·화면 레이아웃 구현. 모뎀 펌웨어 지원 |
+| wj | @leemonta9482 | `server/`, `web/`, `modempi/link/` | 메인Pi 서버·관리자/학생 웹 풀스택, 메인Pi↔모뎀Pi WebSocket 링크 |
 | mh | @jmh7706jmh-ops | `web/src/styles/`, `web/src/components/ui/`, `web/src/assets/` | 웹 퍼블리싱·디자인시스템 |
 
 ### 계층 규율 (고비용 계층 보호)
@@ -28,7 +29,8 @@
 |------|------|---------|
 | `lora_proto/` | 공중 프레임 규격·무선 파라미터의 **단일 진실원**. C++ 헤더와 Python 미러가 같은 상수를 공유하고 `test_vectors.json`으로 교차 검증된다 | PM(@ssenu) 전담. 상수 1개를 바꿔도 펌웨어·서버가 동시에 깨진다. 반드시 헤더·미러·벡터를 한 커밋에서 함께 갱신하고, 그 PR을 **단독으로 먼저** 머지한다(lockstep) |
 | `firmware/lib/lora_codec/` | 프레임 인코딩/디코딩. 단말·모뎀이 공용으로 링크 | 단말만 보고 고치지 말 것 — 모뎀 쪽 동작을 함께 확인하고 `pio test`의 벡터 테스트를 통과시킨다 |
-| `server/lora_service/` | outbox·버전 벡터·워커. 스펙 §8의 DB 계약과 웹이 쓰는 `api.py` 시그니처를 소유 | PM(@ssenu) 전담. 웹 세션은 이 시그니처를 **소비만** 한다. 시그니처를 바꾸면 웹 담당자와 사전 협의 후 BREAKING CHANGE 명시 |
+| `server/lora_service/` | outbox·버전 벡터·`api.py`·WS 허브(메인Pi ↔ 모뎀Pi 계약 ⑥의 제공 측) | wj가 구현하되 **PM(@ssenu)이 필수 리뷰**. 여기가 웹·모뎀Pi 양쪽 계약의 접점이다. 메시지·시그니처를 바꾸면 로드맵 스펙 §4.2 갱신 + BREAKING CHANGE 명시 |
+| `modempi/store.py` | 모뎀Pi 내부 계약 ⑦ — 링크(wj)와 파이프라인(cw)이 만나는 SQLite 스키마 | 양쪽 협의 + 양쪽 리뷰. 컬럼은 additive만 |
 | `web/src/styles/`, `web/src/components/ui/` | 디자인 토큰·디자인시스템 | 퍼블리셔(@jmh7706jmh-ops) 소유. 화면 담당이 여기를 직접 고치지 말고 이슈로 요청 — 안 그러면 화면마다 골격이 재발명된다 |
 
 ## 폴더 구조 요약
@@ -36,8 +38,9 @@
 ```
 Woo-ESC-Capston/
 ├── lora_proto/   ← 프로토콜 계약: 상수·프레임 규격·테스트 벡터 (Owner 전담)
-├── firmware/     ← 단말·게이트웨이 펌웨어 (PlatformIO, C++)
-├── server/       ← FastAPI 백엔드 + LoRa 서비스 계층
+├── firmware/     ← 노드·모뎀 펌웨어 (PlatformIO, C++)
+├── server/       ← 메인Pi: FastAPI 백엔드 + outbox·버전·WS 허브
+├── modempi/      ← 모뎀Pi: WS 링크(wj) + LoRa 파이프라인(cw)
 ├── web/          ← Vue 3 학생/관리자 웹
 └── docs/         ← 사람·AI 공용 문서 (specs/·plans/ 포함)
 ```
@@ -73,9 +76,11 @@ Woo-ESC-Capston/
 
 ```
 feat(firmware): ...     # 단말·모뎀 펌웨어 기능
-feat(server): ...       # 백엔드 기능
+feat(server): ...       # 메인Pi 백엔드 기능
+feat(modempi): ...      # 모뎀Pi 링크·파이프라인
 feat(web): ...          # 웹 기능
-feat(proto): ...        # 프로토콜 계약 변경 (펌웨어·서버 양쪽 영향)
+feat(proto): ...        # 프로토콜 계약 변경 (펌웨어·모뎀Pi 양쪽 영향)
+feat(backhaul): ...     # 메인Pi↔모뎀Pi WS 계약 변경 (server·modempi 양쪽 영향)
 fix(<area>): ...        # 버그
 style(web): ...         # 퍼블리싱·스타일
 chore(infra): ...       # 인프라·CI
@@ -89,11 +94,14 @@ docs: ...               # 문서
 3. 템플릿 체크리스트를 모두 채운다.
 4. CI 통과 필수.
 5. 자기 영역만 수정 — 타 영역이 필요하면 코드로 침범하지 말고 이슈로 요청.
+6. **머지는 팀장(cw @ssenu)만 한다.** 영역 담당자의 승인(CODEOWNERS 리뷰)은 "머지해도 된다"는 신호이지 머지 자체가 아니다. 승인이 끝난 PR은 팀장에게 알리고 기다린다. 팀장 본인의 PR도 영역 담당자 승인을 받은 뒤 스스로 머지한다.
+   - 왜: `main`에 무엇이 언제 들어가는지를 한 사람이 알고 있어야 계약(lockstep) 순서와 릴리스 시점을 통제할 수 있다.
+   - 강제: GitHub 브랜치 보호에서 *Restrict who can push to matching branches*를 `ssenu`로 제한한다(PR 머지도 push 권한을 따른다).
 
 ## 절대 하지 말 것
 
 1. 비밀키·`.env`·인증서 커밋 금지 (pre-commit 훅이 차단)
-2. `main` 직접 push 금지 (Protected Branch)
+2. `main` 직접 push 금지 (Protected Branch). **PR 머지도 팀장(@ssenu) 외에는 금지** — 승인 버튼까지가 담당자의 역할이다.
 3. 계약(`lora_proto/`) 변경과 그 계약에 의존하는 코드를 같은 PR에 섞지 않음 — **계약 먼저 머지 후 코드**(lockstep)
 4. 계층 규율 경로를 기준 대조 없이 수정 금지
 5. `git push --force`, `git reset --hard` 금지
@@ -104,7 +112,9 @@ docs: ...               # 문서
 | 문서 | 내용 |
 |------|------|
 | `docs/specs/2026-09-09-lora-v2-wor-design.md` | **v2 시스템 설계 스펙** — 하드웨어·공중 프로토콜·펌웨어·백엔드·구현 단계(P0~P8). 구현 전 반드시 정독 |
+| `docs/specs/2026-09-09-roadmap-design.md` | **진행 로드맵** — 메인Pi/모뎀Pi/ESP노드 토폴로지, 서브프로젝트 S1~S11, 영역 간 계약 7개(WS 백홀·JobStore 포함), 주차별 산출물, 마일스톤 완료 기준. **v2 §8을 대체** |
 | `docs/specs/`·`docs/plans/` | 설계서·작업지시서 (템플릿 포함) |
 | `firmware/CLAUDE.md` | 펌웨어 영역 규칙 |
-| `server/CLAUDE.md` | 백엔드 영역 규칙 |
+| `server/CLAUDE.md` | 메인Pi 서버 영역 규칙 |
+| `modempi/CLAUDE.md` | 모뎀Pi 영역 규칙 (링크/파이프라인 분할) |
 | `web/CLAUDE.md` | 웹 영역 규칙 |

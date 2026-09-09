@@ -20,6 +20,12 @@
 /server/                            @leemonta9482
 /server/lora_service/               @ssenu
 
+# ─── modempi: WS 링크는 wj, LoRa 파이프라인은 cw, store/main은 공용(둘 다) ──
+/modempi/                           @leemonta9482
+/modempi/lora/                      @ssenu
+/modempi/store.py                   @ssenu @leemonta9482
+/modempi/main.py                    @ssenu @leemonta9482
+
 # ─── web: 화면·API 소비는 wj, 디자인시스템은 mh ───────────
 /web/                               @leemonta9482
 /web/src/styles/                    @jmh7706jmh-ops
