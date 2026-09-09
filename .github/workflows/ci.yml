@@ -1,0 +1,121 @@
+# GitHub Actions — 경로 기반 다층 게이트
+# 원리: paths 필터로 바뀐 영역의 job만 실행한다. main 브랜치 보호에서 이 체크들을 "required"로 켠다.
+#
+# 계약(lora_proto/)이 바뀌면 firmware와 server 두 job이 함께 돈다.
+# 프로토콜 상수의 C++ 헤더 ↔ Python 미러 일치 검사와 test_vectors.json 라운드트립은
+# 각각 server의 pytest와 firmware의 native 유닛 테스트가 담당한다(스펙 §10.1).
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  # ===== 어떤 영역이 바뀌었는지 판별 =====
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      firmware: ${{ steps.filter.outputs.firmware }}
+      server: ${{ steps.filter.outputs.server }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            firmware:
+              - 'firmware/**'
+              - 'lora_proto/**'
+              - '.github/workflows/ci.yml'
+            server:
+              - 'server/**'
+              - 'lora_proto/**'
+              - '.github/workflows/ci.yml'
+            web:
+              - 'web/**'
+              - '.github/workflows/ci.yml'
+
+  # ===== firmware: PlatformIO (C++) =====
+  firmware:
+    needs: changes
+    if: ${{ needs.changes.outputs.firmware == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: setup
+        run: pip install --upgrade platformio
+      - name: lint
+        run: pio check -e terminal -e modem --fail-on-defect medium --fail-on-defect high
+      - name: format check
+        # 리포 루트의 .clang-format 설정을 따른다 (P1에서 추가).
+        run: |
+          files=$(git ls-files '*.cpp' '*.h' '*.hpp')
+          if [ -n "$files" ]; then clang-format --dry-run --Werror $files; fi
+      - name: test
+        run: pio test -e native
+
+  # ===== server: FastAPI (Python + uv) =====
+  server:
+    needs: changes
+    if: ${{ needs.changes.outputs.server == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: setup
+        run: |
+          pip install uv
+          uv sync --frozen
+      - name: lint
+        run: uv run ruff check .
+      - name: format check
+        run: uv run ruff format --check .
+      - name: test
+        run: uv run pytest -q
+    # DB가 필요해지면 서비스 컨테이너를 붙이고 DATABASE_URL을 주입한다:
+    # services:
+    #   postgres:
+    #     image: postgres:16-alpine
+    #     env: { POSTGRES_PASSWORD: ci_only }
+
+  # ===== web: Vue 3 (TypeScript + pnpm) =====
+  web:
+    needs: changes
+    if: ${{ needs.changes.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: setup
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+      - name: lint
+        run: pnpm lint
+      - name: format check
+        run: |
+          pnpm exec prettier --check .
+          pnpm exec vue-tsc --noEmit
+      - name: test
+        run: pnpm test
+      - name: build
+        run: pnpm build

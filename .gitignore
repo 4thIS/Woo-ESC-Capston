@@ -1,0 +1,63 @@
+# ─── 비밀정보 (pre-commit 훅과 이중으로 막는다) ───────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+secrets/
+
+# ─── firmware: PlatformIO / ESP32 ─────────────────────────
+.pio/
+.pioenvs/
+.piolibdeps/
+firmware/.pio/
+# platformio.ini 은 커밋한다. 아래 로컬 오버라이드만 제외.
+platformio-local.ini
+*.bin
+*.elf
+*.map
+# 단, 폰트·이미지 리소스로 커밋하는 바이너리는 예외
+!firmware/src/fonts/**
+
+# ─── server: Python / uv ──────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+# uv.lock 은 커밋한다 (CI가 --frozen 으로 설치)
+
+# ─── web: Node / pnpm / Vite ──────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+# pnpm-lock.yaml 은 커밋한다 (CI가 --frozen-lockfile 로 설치)
+
+# ─── 로그·임시 ────────────────────────────────────────────
+*.log
+npm-debug.log*
+pnpm-debug.log*
+*.tmp
+tmp/
+
+# ─── 에디터·OS ────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Claude Code 로컬 설정 ────────────────────────────────
+.claude/settings.local.json
