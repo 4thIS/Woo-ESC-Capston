@@ -210,6 +210,7 @@ HELLO       [mac 6B][fw u8][batt_mV u16 BE]   헤더 BLD=0x00 ROOM=0 UNIT=0 TXN=
 ### 3.5 TXN·중복·순서
 
 - 백엔드는 (room, unit)마다 TXN을 1~255 롤링. 단말은 마지막 TXN을 RTC/NVS에 보관, 같은 TXN 재수신 시 `DUP` ACK(멱등 보장).
+- **TXN은 공중 프레임마다 하나씩 소비한다.** FILE 세션(BEGIN + DATA×n + END)은 n+2개의 TXN을 쓴다. 단말의 DUP 판정은 프레임 단위이므로 FILE_DATA 재송(FILE_MISSING 이후)은 **새 TXN**으로 보낸다. (2026-09-10 확정 — §8.4 의 "job 당 txn" 표현은 이 규칙으로 읽는다)
 - 단말은 TYPE별 멱등 키: SLOT=(day,sH,sM), RESV=resvId, EXAM=examId.
 - 프레임 순서는 백엔드 워커가 (room, unit) FIFO로 보장(§8.4).
 
@@ -510,7 +511,7 @@ loop:
   job = SELECT … WHERE state='queued' AND (next_try_at IS NULL OR next_try_at<=now)
         ORDER BY priority, id LIMIT 1   -- 단, 같은 (bld,room,unit)에 'sending' 행이 있으면 건너뜀
   없으면 0.5 s 대기 후 반복
-  state='sending', txn = next_txn(bld,room,unit)
+  state='sending'   # TXN 은 아래 각 tx() 호출마다 next_txn() 으로 새로 받는다 (§3.5)
   if type=='FILE':
       frames = codec.build_file(kind, records, new_ver)     # BEGIN + DATA×n + END
       순차 tx: BEGIN wake=True, DATA/END wake=False, 각 ack_ms=3000
