@@ -12,6 +12,9 @@ from lora_proto import proto as P
 ROOT = Path(__file__).resolve().parents[1]
 _DEFINE = re.compile(r"^\s*#define\s+(\w+)\s+([0-9A-Fa-fx.]+)f?\b")
 _ENUM_ITEM = re.compile(r"(\w+)\s*=\s*(0x[0-9A-Fa-f]+|\d+)")
+# LP_/RP_ 로 시작하는 #define 은 모두 프로토콜 상수여야 한다 — _DEFINE 이 못 읽으면(값 형식이 특이하거나
+# 주석이 붙는 등) 조용히 빠지지 않도록 별도로 잡아낸다.
+_LP_RP_DEFINE = re.compile(r"^\s*#define\s+(LP_|RP_)\w+")
 
 # LP_<GROUP>_<NAME> 의 GROUP → proto.py 의 enum 클래스
 _GROUPS = {
@@ -63,10 +66,30 @@ def parse_defines(path: Path) -> dict[str, int | float]:
     return out
 
 
+def unparsed(path: Path) -> list[str]:
+    """LP_/RP_ #define 인데 parse_defines 의 _DEFINE 패턴에 걸리지 않은 원본 줄 (include guard 제외)."""
+    out: list[str] = []
+    text = path.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        if not _LP_RP_DEFINE.match(line):
+            continue
+        if _DEFINE.match(line):
+            continue
+        m = re.match(r"^\s*#define\s+(\w+)", line)
+        if m and m.group(1) in ("LORA_PROTO_PROTO_H", "LORA_PROTO_RADIO_PARAMS_H"):
+            continue
+        out.append(line)
+    return out
+
+
 def diff() -> list[str]:
     problems: list[str] = []
     h = parse_defines(ROOT / "proto.h")
     r = parse_defines(ROOT / "radio_params.h")
+
+    for path in (ROOT / "proto.h", ROOT / "radio_params.h"):
+        for line in unparsed(path):
+            problems.append(f"{path.name}: 파싱 못한 #define: {line.strip()}")
 
     for cname, pname in _SCALARS.items():
         if cname not in h:

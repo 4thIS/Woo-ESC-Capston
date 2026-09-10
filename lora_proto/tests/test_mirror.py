@@ -26,3 +26,24 @@ def test_parser_hex_ending_in_f_is_not_a_float_suffix(tmp_path):
 def test_diff_reports_python_only_scalar(monkeypatch):
     monkeypatch.setattr(check_mirror.P, "EXTRA_ONLY_IN_PY", 7, raising=False)
     assert any("EXTRA_ONLY_IN_PY" in p for p in check_mirror.diff())
+
+
+def test_unparsed_detects_define_the_regex_cannot_read(tmp_path):
+    h = tmp_path / "w.h"
+    h.write_text("#define LP_X (1<<3)\n#define LP_Y 5\n", encoding="utf-8")
+    lines = check_mirror.unparsed(h)
+    assert len(lines) == 1
+    assert "LP_X" in lines[0]
+
+
+def test_unparsed_excludes_include_guard(tmp_path):
+    h = tmp_path / "v.h"
+    h.write_text("#ifndef LORA_PROTO_PROTO_H\n#define LORA_PROTO_PROTO_H\n", encoding="utf-8")
+    assert check_mirror.unparsed(h) == []
+
+
+def test_diff_style_report_contains_unparsed_marker(tmp_path):
+    h = tmp_path / "w.h"
+    h.write_text("#define LP_X (1<<3)\n", encoding="utf-8")
+    lines = [f"{h.name}: 파싱 못한 #define: {line.strip()}" for line in check_mirror.unparsed(h)]
+    assert any("파싱 못한" in line for line in lines)

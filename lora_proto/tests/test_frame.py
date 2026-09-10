@@ -52,6 +52,27 @@ def test_bad_frames_raise(mutate):
         decode_frame(mutate(f))
 
 
+def test_decode_frame_len_over_max_payload_rejected():
+    # LEN=246 (> MAX_PAYLOAD=245) 을 헤더 바이트로 직접 조립 — encode_frame 을 거치지 않고
+    # decode_frame 자체의 LEN 상한 검사를 확인한다.
+    header = bytes(
+        [
+            (P.PROTO_VER << 4),  # ver, flags=0
+            P.NET_ID,
+            P.Type.TIME,
+            P.BLD_ALL,
+            *P.ROOM_ALL.to_bytes(2, "big"),
+            0,  # unit
+            1,  # txn
+            246,  # LEN > MAX_PAYLOAD
+        ]
+    )
+    body = header + bytes(246)
+    frame = body + bytes([crc8(body)])
+    with pytest.raises(FrameError):
+        decode_frame(frame)
+
+
 def test_ack_matching_uses_addr_and_txn_only():
     req = Header(type=P.Type.SLOT_SET, bld=ord("E"), room=301, unit=1, txn=7, flags=P.FLAG_ACK_REQ)
     ack = Header(type=P.Type.ACK, bld=ord("E"), room=301, unit=1, txn=7)

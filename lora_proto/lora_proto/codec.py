@@ -115,6 +115,8 @@ def decode_frame(buf: bytes, *, net_id: int = P.NET_ID) -> tuple[Header, bytes]:
     if buf[1] != net_id:
         raise FrameError(f"NET_ID {buf[1]:#x} != {net_id:#x}")
     ln = buf[8]
+    if ln > P.MAX_PAYLOAD:
+        raise FrameError(f"LEN={ln} > MAX_PAYLOAD={P.MAX_PAYLOAD}")
     if len(buf) != P.HEADER_LEN + ln + 1:
         raise FrameError(f"LEN={ln} 이지만 실제 길이 {len(buf)}")
     if crc8(buf[:-1]) != buf[-1]:
