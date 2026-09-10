@@ -3137,4 +3137,3 @@ PR 본문의 "어떻게 검증했는지"에 Step 4 명령과 결과(테스트 �
 **발견해 고친 것**: Task 9 `test_string_over_limit_rejected` 초안이 구조체 버퍼 밖(`subj[21]`)에 쓰고 있었음 → 디코더 한계 검사 + 인코더 범위 검사로 교체.
 
 **가정**: PlatformIO native 빌드에 호스트 C++ 툴체인(gcc/clang)이 필요하다. Windows 개발 PC라면 MSYS2 또는 VS Build Tools를 설치하고 `pio test -e native`가 뜨는지 Task 8 Step 2 에서 먼저 확인한다. CI(ubuntu)는 기본 제공.
-
