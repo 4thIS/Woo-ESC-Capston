@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 import sys
 from pathlib import Path
@@ -73,6 +74,16 @@ def diff() -> list[str]:
         elif h[cname] != getattr(P, pname):
             problems.append(f"{cname}={h[cname]} != proto.{pname}={getattr(P, pname)}")
 
+    # Reverse check: proto.py scalars not in _SCALARS
+    for name in vars(P):
+        if not name.isupper() or name in ("NET_ID", "RADIO"):
+            continue
+        val = getattr(P, name)
+        if inspect.isclass(val) or not isinstance(val, int) or isinstance(val, bool):
+            continue
+        if name not in _SCALARS.values():
+            problems.append(f"proto.py 상수 {name} 가 proto.h 에 없음 (매핑 _SCALARS 추가 필요)")
+
     for cname, val in h.items():
         if cname in _SCALARS:
             continue
@@ -84,9 +95,8 @@ def diff() -> list[str]:
             problems.append(f"proto.py {enum.__name__} 에 {name} 없음")
         elif enum[name] != val:
             problems.append(f"{cname}={val} != proto.{enum.__name__}.{name}={int(enum[name])}")
-    for enum in _GROUPS.values():
+    for group, enum in _GROUPS.items():
         for name in enum.__members__:
-            group = next(g for g, e in _GROUPS.items() if e is enum)
             if f"LP_{group}_{name}" not in h:
                 problems.append(f"proto.h 에 LP_{group}_{name} 없음 (proto.py 에만 있음)")
 

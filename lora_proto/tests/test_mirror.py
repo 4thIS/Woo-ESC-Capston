@@ -15,3 +15,14 @@ def test_parser_reads_enum_values(tmp_path):
     h = tmp_path / "y.h"
     h.write_text("enum { LP_T_A = 0x01, LP_T_B = 0x10, };\n", encoding="utf-8")
     assert check_mirror.parse_defines(h) == {"LP_T_A": 1, "LP_T_B": 16}
+
+
+def test_parser_hex_ending_in_f_is_not_a_float_suffix(tmp_path):
+    h = tmp_path / "z.h"
+    h.write_text("#define A 0xFF\n#define B 0x4B\n#define C 125.0f\n", encoding="utf-8")
+    assert check_mirror.parse_defines(h) == {"A": 0xFF, "B": 0x4B, "C": 125.0}
+
+
+def test_diff_reports_python_only_scalar(monkeypatch):
+    monkeypatch.setattr(check_mirror.P, "EXTRA_ONLY_IN_PY", 7, raising=False)
+    assert any("EXTRA_ONLY_IN_PY" in p for p in check_mirror.diff())
