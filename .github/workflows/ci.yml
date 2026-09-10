@@ -81,7 +81,7 @@ jobs:
         run: pip install --upgrade platformio
       - name: lint
         if: steps.manifest.outputs.ready == 'true'
-        run: pio check -e terminal -e modem --fail-on-defect medium --fail-on-defect high
+        run: pio check --fail-on-defect medium --fail-on-defect high
       - name: format check
         if: steps.manifest.outputs.ready == 'true'
         # 리포 루트의 .clang-format 설정을 따른다 (P1에서 추가).
