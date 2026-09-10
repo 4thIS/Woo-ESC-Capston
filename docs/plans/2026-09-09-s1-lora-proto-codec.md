@@ -8,7 +8,7 @@
 
 **Goal:** 공중 프레임 규격(v2 §3)을 Python과 C++ 두 벌로 구현하고, Python이 생성한 `test_vectors.json`을 C++ Unity 테스트가 바이트 단위로 재검증하며, 모뎀 시리얼 프로토콜(v2 §4.2·4.3)을 그대로 말하는 fake 모뎀을 만들어 이후 S2·S5·S6·S7·S8이 하드웨어 없이 개발할 수 있게 한다.
 
-**Architecture:** `lora_proto/`는 Python 패키지(상수 `proto.py` + codec `codec.py` + 벡터 생성기)이자 C 헤더(`proto.h`·`radio_params.h`)의 집이다. 상수는 C 헤더가 원본이고 `tools/check_mirror.py`가 헤더를 파싱해 `proto.py`와 diff한다(CI). C++ codec은 `firmware/lib/lora_codec/`에 하드웨어 의존 없이 두고 `[env:native]`에서 Unity로 벡터를 검증한다. fake 모뎀은 `modempi/lora/fake_modem.py`에 두며 실물 `modem.py`(S6)와 같은 `ModemLike` 인터페이스를 구현한다.
+**Architecture:** `lora_proto/`는 Python 패키지(상수 `proto.py` + codec `codec.py` + 벡터 생성기)이자 C 헤더(`proto.h`·`radio_params.h`)의 집이다. 상수는 C 헤더가 원본이고 `tools/check_mirror.py`가 헤더를 파싱해 `proto.py`와 diff한다(CI). C++ codec은 `firmware/lib/lora_codec/`에 하드웨어 의존 없이 두고 `[env:native]`에서 Unity로 벡터를 검증한다. fake 모뎀은 `modempi/lora/fake_modem.py`에 두며 실물 `modem.py`(S6)와 같은 `LineTransport` 인터페이스를 구현한다.
 
 **Tech Stack:** Python 3.12 + uv + pytest · PlatformIO `[env:native]` + Unity + ArduinoJson(벡터 파싱) · clang-format · ruff
 
@@ -63,7 +63,7 @@ modempi/
 │   ├── __init__.py
 │   └── lora/
 │       ├── __init__.py
-│       ├── modem_iface.py      # ModemLike Protocol + TxResult/RxEvent dataclass (S6 modem.py도 구현)
+│       ├── transport.py        # LineTransport Protocol (S6 modem.py도 구현)
 │       └── fake_modem.py       # v2 §4.2·4.3 JSON lines를 말하는 가짜 모뎀
 └── tests/
     ├── test_fake_modem_basic.py
@@ -3137,4 +3137,3 @@ PR 본문의 "어떻게 검증했는지"에 Step 4 명령과 결과(테스트 �
 **발견해 고친 것**: Task 9 `test_string_over_limit_rejected` 초안이 구조체 버퍼 밖(`subj[21]`)에 쓰고 있었음 → 디코더 한계 검사 + 인코더 범위 검사로 교체.
 
 **가정**: PlatformIO native 빌드에 호스트 C++ 툴체인(gcc/clang)이 필요하다. Windows 개발 PC라면 MSYS2 또는 VS Build Tools를 설치하고 `pio test -e native`가 뜨는지 Task 8 Step 2 에서 먼저 확인한다. CI(ubuntu)는 기본 제공.
-

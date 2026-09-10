@@ -37,7 +37,7 @@
 
 ```
 Woo-ESC-Capston/
-├── lora_proto/   ← 프로토콜 계약: 상수·프레임 규격·테스트 벡터 (Owner 전담)
+├── lora_proto/   ← 프로토콜 계약: C 헤더 원본 + Python 미러·codec + test_vectors.json (Owner 전담, README 의 lockstep 절차)
 ├── firmware/     ← 노드·모뎀 펌웨어 (PlatformIO, C++)
 ├── server/       ← 메인Pi: FastAPI 백엔드 + outbox·버전·WS 허브
 ├── modempi/      ← 모뎀Pi: WS 링크(wj) + LoRa 파이프라인(cw)

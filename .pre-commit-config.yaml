@@ -55,6 +55,7 @@ repos:
     hooks:
       - id: prettier
         name: prettier (web)
-        entry: bash -c 'cd web && pnpm exec prettier --write "$@"' --
+        # web/ 스캐폴드(package.json) 전에는 건너뛴다 — CLAUDE.md 같은 .md 만 있어도 훅이 걸리기 때문
+        entry: bash -c 'cd web && { [ -f package.json ] || exit 0; } && pnpm exec prettier --write "$@"' --
         language: system
         files: '^web/.*\.(ts|tsx|js|jsx|vue|json|css|scss|md)$'

@@ -210,6 +210,7 @@ HELLO       [mac 6B][fw u8][batt_mV u16 BE]   헤더 BLD=0x00 ROOM=0 UNIT=0 TXN=
 ### 3.5 TXN·중복·순서
 
 - 백엔드는 (room, unit)마다 TXN을 1~255 롤링. 단말은 마지막 TXN을 RTC/NVS에 보관, 같은 TXN 재수신 시 `DUP` ACK(멱등 보장).
+- **TXN은 공중 프레임마다 하나씩 소비한다.** FILE 세션(BEGIN + DATA×n + END)은 n+2개의 TXN을 쓴다. 단말의 DUP 판정은 프레임 단위이므로 FILE_DATA 재송(FILE_MISSING 이후)은 **새 TXN**으로 보낸다. (2026-09-10 확정 — §8.4 의 "job 당 txn" 표현은 이 규칙으로 읽는다)
 - 단말은 TYPE별 멱등 키: SLOT=(day,sH,sM), RESV=resvId, EXAM=examId.
 - 프레임 순서는 백엔드 워커가 (room, unit) FIFO로 보장(§8.4).
 
@@ -510,7 +511,7 @@ loop:
   job = SELECT … WHERE state='queued' AND (next_try_at IS NULL OR next_try_at<=now)
         ORDER BY priority, id LIMIT 1   -- 단, 같은 (bld,room,unit)에 'sending' 행이 있으면 건너뜀
   없으면 0.5 s 대기 후 반복
-  state='sending', txn = next_txn(bld,room,unit)
+  state='sending'   # TXN 은 아래 각 tx() 호출마다 next_txn() 으로 새로 받는다 (§3.5)
   if type=='FILE':
       frames = codec.build_file(kind, records, new_ver)     # BEGIN + DATA×n + END
       순차 tx: BEGIN wake=True, DATA/END wake=False, 각 ack_ms=3000
@@ -643,7 +644,7 @@ epaper-v2/
 | 렌더 중 프레임 도착 | 미수신. 백엔드 재시도로 회복(BUSY ACK는 렌더 직전 도착 시에만) |
 | 같은 호수 2유닛 | 백엔드가 유닛별 행으로 분해, 각자 TXN·ACK |
 | 시계 미동기 콜드 부팅 | 렌더 보류, 10 min마다 타이머 웨이크로 재확인, 다음 정각 TIME으로 복구. STATUS에 CLOCK_STALE |
-| 버전 롤오버(255→1) | 단말은 `(new - old) mod 256 == 1`로 연속 판정 |
+| 버전 롤오버(255→1) | 버전은 1~255 롤링(0=미정)이므로 단말은 `(new - old) mod 255 == 1`로 연속 판정 (mod 256이면 255→1이 GAP로 오판됨. 2026-09-10 정정) |
 | 슬롯 48개/예약 24개 초과 | STORE_FAIL ACK → 백엔드 failed + 대시보드 경고. 예약은 서버가 **오늘~7일 이내만** 전송해 개수 억제 |
 | 모뎀 USB 끊김 | outbox 적체, 재연결 후 순차 처리. TIME은 다음 정각에 |
 | 다른 LoRa 실험 간섭 | NET_ID·동기워드로 필터, CAD 백오프 |
