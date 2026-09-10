@@ -359,3 +359,363 @@ def decode_payload(type_: int, b: bytes) -> object:
     if dec is None:
         raise FrameError(f"TYPE {type_:#x} 디코더 없음")
     return dec(b)
+
+
+# ---------- RESV · EXAM · CMD · SET_ROOM ----------
+
+
+def _year(v: int) -> int:
+    if not 2000 <= v <= 2255:
+        raise FrameError(f"year={v} 는 2000..2255 밖 (wire 는 year-2000 u8)")
+    return v - 2000
+
+
+def _ymd(y: int, m: int, d: int) -> bytes:
+    return bytes([_year(y), _u8("month", m, 1, 12), _u8("day", d, 1, 31)])
+
+
+def _u16(name: str, v: int) -> bytes:
+    if not 0 <= v <= 0xFFFF:
+        raise FrameError(f"{name}={v} 는 u16 밖")
+    return v.to_bytes(2, "big")
+
+
+@dataclass(frozen=True)
+class ResvSet:
+    new_ver: int
+    resv_id: int
+    year: int
+    month: int
+    day: int
+    s_h: int
+    s_m: int
+    e_h: int
+    e_m: int
+    type: int
+    subject: str
+    professor: str
+
+
+@dataclass(frozen=True)
+class ResvDel:
+    new_ver: int
+    resv_id: int
+
+
+@dataclass(frozen=True)
+class ExamSet:
+    new_ver: int
+    exam_id: int
+    y1: int
+    m1: int
+    d1: int
+    y2: int
+    m2: int
+    d2: int
+
+
+@dataclass(frozen=True)
+class ExamDel:
+    new_ver: int
+    exam_id: int
+
+
+@dataclass(frozen=True)
+class Cmd:
+    cmd: int
+    args: bytes = b""
+
+
+@dataclass(frozen=True)
+class SetRoom:
+    new_ver: int
+    mac: bytes
+    bld: int
+    room: int
+    unit: int
+
+
+def _resv_body(r: ResvSet) -> bytes:
+    sh, sm = _hm(r.s_h, r.s_m, "s")
+    eh, em = _hm(r.e_h, r.e_m, "e")
+    return (
+        _u16("resv_id", r.resv_id)
+        + _ymd(r.year, r.month, r.day)
+        + bytes([sh, sm, eh, em, _u8("type", r.type, 1, 6)])
+        + _pack_str(r.subject, P.SUBJ_MAX, "subject")
+        + _pack_str(r.professor, P.PROF_MAX, "professor")
+    )
+
+
+def _resv_read(r: _Reader, new_ver: int) -> ResvSet:
+    rid = r.u16()
+    y = r.u8()
+    mo = r.u8()
+    d = r.u8()
+    sh = r.u8()
+    sm = r.u8()
+    eh = r.u8()
+    em = r.u8()
+    t = r.u8()
+    subj = r.s(P.SUBJ_MAX, "subject")
+    prof = r.s(P.PROF_MAX, "professor")
+    return ResvSet(
+        new_ver,
+        rid,
+        y + 2000,
+        _u8("month", mo, 1, 12),
+        _u8("day", d, 1, 31),
+        *_hm(sh, sm, "s"),
+        *_hm(eh, em, "e"),
+        _u8("type", t, 1, 6),
+        subj,
+        prof,
+    )
+
+
+def _exam_body(e: ExamSet) -> bytes:
+    return _u16("exam_id", e.exam_id) + _ymd(e.y1, e.m1, e.d1) + _ymd(e.y2, e.m2, e.d2)
+
+
+def _exam_read(r: _Reader, new_ver: int) -> ExamSet:
+    eid = r.u16()
+    y1 = r.u8()
+    m1 = r.u8()
+    d1 = r.u8()
+    y2 = r.u8()
+    m2 = r.u8()
+    d2 = r.u8()
+    return ExamSet(
+        new_ver,
+        eid,
+        y1 + 2000,
+        _u8("month", m1, 1, 12),
+        _u8("day", d1, 1, 31),
+        y2 + 2000,
+        _u8("month", m2, 1, 12),
+        _u8("day", d2, 1, 31),
+    )
+
+
+def _dec_resv_set(b: bytes) -> ResvSet:
+    r = _Reader(b, "RESV_SET")
+    v = _resv_read(r, r.u8())
+    r.done()
+    return v
+
+
+def _dec_resv_del(b: bytes) -> ResvDel:
+    r = _Reader(b, "RESV_DEL")
+    v = ResvDel(r.u8(), r.u16())
+    r.done()
+    return v
+
+
+def _dec_exam_set(b: bytes) -> ExamSet:
+    r = _Reader(b, "EXAM_SET")
+    v = _exam_read(r, r.u8())
+    r.done()
+    return v
+
+
+def _dec_exam_del(b: bytes) -> ExamDel:
+    r = _Reader(b, "EXAM_DEL")
+    v = ExamDel(r.u8(), r.u16())
+    r.done()
+    return v
+
+
+def _enc_cmd(c: Cmd) -> bytes:
+    if c.cmd not in P.Cmd.__members__.values():
+        raise FrameError(f"cmd={c.cmd:#x} 는 §3.3 CMD 목록에 없음")
+    return bytes([c.cmd]) + bytes(c.args)
+
+
+def _dec_cmd(b: bytes) -> Cmd:
+    r = _Reader(b, "CMD")
+    c = r.u8()
+    if c not in P.Cmd.__members__.values():
+        raise FrameError(f"cmd={c:#x} 는 §3.3 CMD 목록에 없음")
+    return Cmd(c, r.raw(len(b) - 1))
+
+
+def _enc_set_room(s: SetRoom) -> bytes:
+    if len(s.mac) != 6:
+        raise FrameError(f"mac 은 6 B, {len(s.mac)} B 받음")
+    return (
+        bytes([_u8("new_ver", s.new_ver)])
+        + bytes(s.mac)
+        + bytes([_u8("bld", s.bld)])
+        + _u16("room", s.room)
+        + bytes([_u8("unit", s.unit, 0, 2)])
+    )
+
+
+def _dec_set_room(b: bytes) -> SetRoom:
+    r = _Reader(b, "SET_ROOM")
+    nv = r.u8()
+    mac = r.raw(6)
+    bld = r.u8()
+    room = r.u16()
+    unit = r.u8()
+    r.done()
+    return SetRoom(nv, mac, bld, room, _u8("unit", unit, 0, 2))
+
+
+_register(
+    P.Type.RESV_SET,
+    ResvSet,
+    lambda p: bytes([_u8("new_ver", p.new_ver)]) + _resv_body(p),
+    _dec_resv_set,
+)
+_register(
+    P.Type.RESV_DEL,
+    ResvDel,
+    lambda p: bytes([_u8("new_ver", p.new_ver)]) + _u16("resv_id", p.resv_id),
+    _dec_resv_del,
+)
+_register(
+    P.Type.EXAM_SET,
+    ExamSet,
+    lambda p: bytes([_u8("new_ver", p.new_ver)]) + _exam_body(p),
+    _dec_exam_set,
+)
+_register(
+    P.Type.EXAM_DEL,
+    ExamDel,
+    lambda p: bytes([_u8("new_ver", p.new_ver)]) + _u16("exam_id", p.exam_id),
+    _dec_exam_del,
+)
+_register(P.Type.CMD, Cmd, _enc_cmd, _dec_cmd)
+_register(P.Type.SET_ROOM, SetRoom, _enc_set_room, _dec_set_room)
+
+
+# ---------- 업링크: ACK · STATUS · HELLO ----------
+
+
+@dataclass(frozen=True)
+class Ack:
+    status: int
+    detail: int
+    batt_mv: int
+    sched_ver: int
+    resv_ver: int
+    exam_ver: int
+    ident_ver: int
+    fw: int
+    layout: int
+
+
+@dataclass(frozen=True)
+class Status:
+    ack: Ack
+    rssi_last: int  # i8
+    snr_last_x4: int  # i8, SNR × 4
+    flags: int
+    uptime_h: int
+
+
+@dataclass(frozen=True)
+class Hello:
+    mac: bytes
+    fw: int
+    batt_mv: int
+
+
+def _i8(name: str, v: int) -> int:
+    if not -128 <= v <= 127:
+        raise FrameError(f"{name}={v} 는 i8 밖")
+    return v & 0xFF
+
+
+def _enc_ack(a: Ack) -> bytes:
+    return (
+        bytes(
+            [
+                _u8("status", a.status, 0, 8),
+                _u8("detail", a.detail),
+            ]
+        )
+        + _u16("batt_mv", a.batt_mv)
+        + bytes(
+            [
+                _u8("sched_ver", a.sched_ver),
+                _u8("resv_ver", a.resv_ver),
+                _u8("exam_ver", a.exam_ver),
+                _u8("ident_ver", a.ident_ver),
+                _u8("fw", a.fw),
+                _u8("layout", a.layout, 0, 8),
+            ]
+        )
+    )
+
+
+def _ack_read(r: _Reader) -> Ack:
+    st = r.u8()
+    det = r.u8()
+    batt = r.u16()
+    sv = r.u8()
+    rv = r.u8()
+    ev = r.u8()
+    iv = r.u8()
+    fw = r.u8()
+    lay = r.u8()
+    return Ack(_u8("status", st, 0, 8), det, batt, sv, rv, ev, iv, fw, _u8("layout", lay, 0, 8))
+
+
+def _dec_ack(b: bytes) -> Ack:
+    r = _Reader(b, "ACK")
+    v = _ack_read(r)
+    r.done()
+    return v
+
+
+def _enc_status(s: Status) -> bytes:
+    return (
+        _enc_ack(s.ack)
+        + bytes(
+            [
+                _i8("rssi_last", s.rssi_last),
+                _i8("snr_last_x4", s.snr_last_x4),
+                _u8("flags", s.flags),
+            ]
+        )
+        + _u16("uptime_h", s.uptime_h)
+    )
+
+
+def _dec_status(b: bytes) -> Status:
+    r = _Reader(b, "STATUS")
+    a = _ack_read(r)
+    rssi = r.u8()
+    snr = r.u8()
+    fl = r.u8()
+    up = r.u16()
+    r.done()
+    return Status(
+        a,
+        rssi - 256 if rssi > 127 else rssi,
+        snr - 256 if snr > 127 else snr,
+        fl,
+        up,
+    )
+
+
+def _enc_hello(h: Hello) -> bytes:
+    if len(h.mac) != 6:
+        raise FrameError(f"mac 은 6 B, {len(h.mac)} B 받음")
+    return bytes(h.mac) + bytes([_u8("fw", h.fw)]) + _u16("batt_mv", h.batt_mv)
+
+
+def _dec_hello(b: bytes) -> Hello:
+    r = _Reader(b, "HELLO")
+    mac = r.raw(6)
+    fw = r.u8()
+    batt = r.u16()
+    r.done()
+    return Hello(mac, fw, batt)
+
+
+_register(P.Type.ACK, Ack, _enc_ack, _dec_ack)
+_register(P.Type.STATUS, Status, _enc_status, _dec_status)
+_register(P.Type.HELLO, Hello, _enc_hello, _dec_hello)
