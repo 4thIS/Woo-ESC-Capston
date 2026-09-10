@@ -42,7 +42,7 @@ struct DayClear {
 };
 struct ResvRec {
   uint16_t resvId;
-  uint8_t y, m, d, sH, sM, eH, eM, type;
+  uint8_t y, m, d, sH, sM, eH, eM, type;  // y = year-2000 (wire)
   char subj[LP_SUBJ_MAX + 1];
   char prof[LP_PROF_MAX + 1];
 };
@@ -51,7 +51,7 @@ struct ResvDel {
 };
 struct ExamRec {
   uint16_t examId;
-  uint8_t y1, m1, d1, y2, m2, d2;
+  uint8_t y1, m1, d1, y2, m2, d2;  // y1, y2 = year-2000 (wire)
 };
 struct ExamDel {
   uint16_t examId;
@@ -136,6 +136,8 @@ bool decHello(const uint8_t* p, uint8_t n, Hello&);
 bool nextRecord(const uint8_t* body, uint16_t n, uint16_t& pos, uint8_t& recType, const uint8_t*& rec,
                 uint8_t& recLen);
 // 레코드 본문(NEW_VER 없음) 디코더 — SLOT_SET/RESV_SET/EXAM_SET 페이로드의 NEW_VER 뒤와 같은 형식
+// 문자열은 UTF-8 유효성 검사 없이 바이트 그대로 복사한다 (Python codec 은 검사함) — 노드는 opaque bytes 로
+// 취급
 bool decSlotBody(const uint8_t* p, uint8_t n, SlotRec&);
 bool decResvBody(const uint8_t* p, uint8_t n, ResvRec&);
 bool decExamBody(const uint8_t* p, uint8_t n, ExamRec&);

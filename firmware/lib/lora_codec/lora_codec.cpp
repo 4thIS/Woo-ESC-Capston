@@ -43,6 +43,7 @@ bool decodeFrame(const uint8_t* buf, size_t n, Header& h, const uint8_t*& payloa
   if ((buf[0] >> 4) != LP_PROTO_VER) return false;
   if (buf[1] != netId) return false;
   uint8_t len = buf[8];
+  if (len > LP_MAX_PAYLOAD) return false;
   if (n != (size_t)LP_HEADER_LEN + len + 1) return false;
   if (crc8(buf, n - 1) != buf[n - 1]) return false;
   h.ver = buf[0] >> 4;

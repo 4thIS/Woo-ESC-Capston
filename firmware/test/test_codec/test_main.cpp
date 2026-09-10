@@ -26,7 +26,7 @@ static std::vector<uint8_t> fromHex(const char* s) {
   return out;
 }
 
-static void loadVectors() {
+void test_load_vectors() {
   FILE* f = fopen(LC_VECTORS_PATH, "rb");
   TEST_ASSERT_NOT_NULL_MESSAGE(
       f, "test_vectors.json 열기 실패 — lora_proto/ 에서 uv run python -m tools.gen_vectors");
@@ -36,6 +36,15 @@ static void loadVectors() {
   while ((n = fread(buf, 1, sizeof buf, f)) > 0) s.append(buf, n);
   fclose(f);
   TEST_ASSERT_TRUE_MESSAGE(deserializeJson(g_doc, s) == DeserializationError::Ok, "JSON 파싱 실패");
+}
+
+// g_doc["vectors"] 를 이름으로 찾는다. 인덱스 고정 참조 대신 이걸 쓰면 벡터셋 순서가 바뀌어도 안전하다.
+static JsonObject findVector(const char* name) {
+  for (JsonObject v : g_doc["vectors"].as<JsonArray>()) {
+    if (strcmp(v["name"], name) == 0) return v;
+  }
+  TEST_FAIL_MESSAGE(name);
+  return JsonObject();
 }
 
 void setUp(void) {}
@@ -87,6 +96,7 @@ static void checkMac(const char* name, const char* hex, const uint8_t* mac) {
 
 // 각 벡터: 디코드 → JSON 필드 대조 → 재인코딩 → 원 페이로드 바이트와 대조
 void test_every_vector_payload_decodes_and_reencodes() {
+  if (g_doc["vectors"].isNull()) TEST_FAIL_MESSAGE("vectors not loaded");
   for (JsonObject v : g_doc["vectors"].as<JsonArray>()) {
     const char* name = v["name"];
     std::vector<uint8_t> frame = fromHex(v["frame_hex"]);
@@ -258,7 +268,8 @@ void test_file_records_iterate() {
   // + 30 B만 이 청크에 있고 나머지 10 B는 다음 청크(seq1, 본 벡터셋에 없음)에 있다 — 즉 청크 경계에서 잘린다.
   // nextRecord 는 이 절단을 형식 오류로 보고 false + pos=n 을 반환해야 한다(완전히 재조립된 body에서만
   // 호출하는 것이 정상 사용법이며, 청크 단위 파싱은 지원 대상이 아니다).
-  JsonObject v = g_doc["vectors"][13];
+  if (g_doc["vectors"].isNull()) TEST_FAIL_MESSAGE("vectors not loaded");
+  JsonObject v = findVector("file_data_seq0_full_200B");
   std::vector<uint8_t> body = fromHex(v["payload"]["data"]);
   uint16_t pos = 0;
   uint8_t rt;
@@ -289,6 +300,7 @@ void test_crc16_known() {
 }
 
 void test_every_vector_header_decodes_and_reencodes() {
+  if (g_doc["vectors"].isNull()) TEST_FAIL_MESSAGE("vectors not loaded");
   for (JsonObject v : g_doc["vectors"].as<JsonArray>()) {
     const char* name = v["name"];
     std::vector<uint8_t> frame = fromHex(v["frame_hex"]);
@@ -312,7 +324,8 @@ void test_every_vector_header_decodes_and_reencodes() {
 }
 
 void test_bad_frames_rejected() {
-  std::vector<uint8_t> f = fromHex(g_doc["vectors"][2]["frame_hex"]);  // slot_set_basic
+  if (g_doc["vectors"].isNull()) TEST_FAIL_MESSAGE("vectors not loaded");
+  std::vector<uint8_t> f = fromHex(findVector("slot_set_basic")["frame_hex"]);
   lc::Header h;
   const uint8_t* pl;
   std::vector<uint8_t> a = f;
@@ -330,6 +343,24 @@ void test_bad_frames_rejected() {
   TEST_ASSERT_FALSE(lc::decodeFrame(f.data(), 5, h, pl));  // 짧음
 }
 
+void test_len_over_max_payload_rejected() {
+  // 9-B 헤더 + LEN=246(LP_MAX_PAYLOAD=245 초과) + 246 B 페이로드 + 유효 CRC8
+  std::vector<uint8_t> f(9 + 246 + 1, 0);
+  f[0] = (uint8_t)(LP_PROTO_VER << 4);  // flags=0
+  f[1] = RP_NET_ID;
+  f[2] = LP_TYPE_TIME;
+  f[3] = 0;    // bld
+  f[4] = 0;    // room hi
+  f[5] = 0;    // room lo
+  f[6] = 0;    // unit
+  f[7] = 1;    // txn
+  f[8] = 246;  // LEN
+  f.back() = lc::crc8(f.data(), f.size() - 1);
+  lc::Header h;
+  const uint8_t* pl;
+  TEST_ASSERT_FALSE(lc::decodeFrame(f.data(), f.size(), h, pl));
+}
+
 void test_matches_ack() {
   lc::Header req{LP_PROTO_VER, LP_FLAG_ACK_REQ, RP_NET_ID, LP_TYPE_SLOT_SET, 'E', 301, 1, 7, 0};
   lc::Header ack{LP_PROTO_VER, 0, RP_NET_ID, LP_TYPE_ACK, 'E', 301, 1, 7, 0};
@@ -343,7 +374,7 @@ void test_matches_ack() {
 
 int main() {
   UNITY_BEGIN();
-  loadVectors();
+  RUN_TEST(test_load_vectors);
   RUN_TEST(test_crc8_known);
   RUN_TEST(test_crc16_known);
   RUN_TEST(test_every_vector_header_decodes_and_reencodes);
@@ -352,5 +383,6 @@ int main() {
   RUN_TEST(test_every_vector_payload_decodes_and_reencodes);
   RUN_TEST(test_string_over_limit_rejected);
   RUN_TEST(test_file_records_iterate);
+  RUN_TEST(test_len_over_max_payload_rejected);
   return UNITY_END();
 }
