@@ -1,0 +1,541 @@
+{
+  "proto_ver": 2,
+  "net_id": 75,
+  "vectors": [
+    {
+      "name": "time_broadcast",
+      "header": {
+        "type": 1,
+        "bld": 255,
+        "room": 65535,
+        "unit": 0,
+        "txn": 0,
+        "flags": 6
+      },
+      "payload": {
+        "epoch": 1757400000,
+        "flags": 1
+      },
+      "frame_hex": "26 4b 01 ff ff ff 00 00 05 68 bf cb c0 01 1d"
+    },
+    {
+      "name": "time_targeted_resync",
+      "header": {
+        "type": 1,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 0,
+        "flags": 4
+      },
+      "payload": {
+        "epoch": 1757403600,
+        "flags": 0
+      },
+      "frame_hex": "24 4b 01 45 01 2d 01 00 05 68 bf d9 d0 00 8e"
+    },
+    {
+      "name": "slot_set_basic",
+      "header": {
+        "type": 2,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 7,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 3,
+        "day": 3,
+        "s_h": 9,
+        "s_m": 0,
+        "e_h": 10,
+        "e_m": 50,
+        "type": 1,
+        "subject": "임베디드SW",
+        "professor": "정필성"
+      },
+      "frame_hex": "21 4b 02 45 01 2d 01 07 20 03 03 09 00 0a 32 01 0e ec 9e 84 eb b2 a0 eb 94 94 eb 93 9c 53 57 09 ec a0 95 ed 95 84 ec 84 b1 0a"
+    },
+    {
+      "name": "slot_set_max_strings_ver255",
+      "header": {
+        "type": 2,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 255,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 255,
+        "day": 7,
+        "s_h": 23,
+        "s_m": 59,
+        "e_h": 23,
+        "e_m": 59,
+        "type": 6,
+        "subject": "가가가가가가ab",
+        "professor": "가가가가"
+      },
+      "frame_hex": "21 4b 02 45 01 2d 01 ff 29 ff 07 17 3b 17 3b 06 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 7e"
+    },
+    {
+      "name": "slot_set_unit0_all_units",
+      "header": {
+        "type": 2,
+        "bld": 69,
+        "room": 301,
+        "unit": 0,
+        "txn": 1,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 1,
+        "day": 1,
+        "s_h": 9,
+        "s_m": 0,
+        "e_h": 10,
+        "e_m": 0,
+        "type": 1,
+        "subject": "s",
+        "professor": "p"
+      },
+      "frame_hex": "21 4b 02 45 01 2d 00 01 0b 01 01 09 00 0a 00 01 01 73 01 70 71"
+    },
+    {
+      "name": "slot_del",
+      "header": {
+        "type": 3,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 8,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 4,
+        "day": 3,
+        "s_h": 9,
+        "s_m": 0
+      },
+      "frame_hex": "21 4b 03 45 01 2d 01 08 04 04 03 09 00 71"
+    },
+    {
+      "name": "day_clear",
+      "header": {
+        "type": 4,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 9,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 5,
+        "day": 3
+      },
+      "frame_hex": "21 4b 04 45 01 2d 01 09 02 05 03 5d"
+    },
+    {
+      "name": "resv_set_rental",
+      "header": {
+        "type": 5,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 10,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 2,
+        "resv_id": 258,
+        "year": 2026,
+        "month": 11,
+        "day": 19,
+        "s_h": 13,
+        "s_m": 0,
+        "e_h": 15,
+        "e_m": 0,
+        "type": 6,
+        "subject": "경진대회",
+        "professor": "산학처"
+      },
+      "frame_hex": "21 4b 05 45 01 2d 01 0a 22 02 01 02 1a 0b 13 0d 00 0f 00 06 0c ea b2 bd ec a7 84 eb 8c 80 ed 9a 8c 09 ec 82 b0 ed 95 99 ec b2 98 e4"
+    },
+    {
+      "name": "resv_set_ascii",
+      "header": {
+        "type": 5,
+        "bld": 65,
+        "room": 1,
+        "unit": 2,
+        "txn": 11,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 1,
+        "resv_id": 1,
+        "year": 2026,
+        "month": 1,
+        "day": 1,
+        "s_h": 0,
+        "s_m": 0,
+        "e_h": 23,
+        "e_m": 59,
+        "type": 3,
+        "subject": "abc",
+        "professor": "xy"
+      },
+      "frame_hex": "21 4b 05 41 00 01 02 0b 12 01 00 01 1a 01 01 00 00 17 3b 03 03 61 62 63 02 78 79 23"
+    },
+    {
+      "name": "resv_del",
+      "header": {
+        "type": 6,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 12,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 3,
+        "resv_id": 258
+      },
+      "frame_hex": "21 4b 06 45 01 2d 01 0c 03 03 01 02 e6"
+    },
+    {
+      "name": "exam_set",
+      "header": {
+        "type": 7,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 13,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 4,
+        "exam_id": 7,
+        "y1": 2026,
+        "m1": 10,
+        "d1": 20,
+        "y2": 2026,
+        "m2": 10,
+        "d2": 24
+      },
+      "frame_hex": "21 4b 07 45 01 2d 01 0d 09 04 00 07 1a 0a 14 1a 0a 18 8c"
+    },
+    {
+      "name": "exam_del",
+      "header": {
+        "type": 8,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 14,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 5,
+        "exam_id": 7
+      },
+      "frame_hex": "21 4b 08 45 01 2d 01 0e 03 05 00 07 6f"
+    },
+    {
+      "name": "file_begin_schedule_3chunks",
+      "header": {
+        "type": 9,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 15,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 9,
+        "kind": 1,
+        "total_len": 504,
+        "n_chunks": 3
+      },
+      "frame_hex": "21 4b 09 45 01 2d 01 0f 05 09 01 01 f8 03 0a"
+    },
+    {
+      "name": "file_data_seq0_full_200B",
+      "header": {
+        "type": 10,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 16,
+        "flags": 1
+      },
+      "payload": {
+        "seq": 0,
+        "data": "02280109000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002280209000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002280309000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002280409000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002280509000a000114eab080eab080eab080eab080eab080eab08061620ceab0"
+      },
+      "frame_hex": "21 4b 0a 45 01 2d 01 10 c9 00 02 28 01 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 02 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 03 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 04 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 05 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 fe"
+    },
+    {
+      "name": "file_data_seq2_tail",
+      "header": {
+        "type": 10,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 18,
+        "flags": 1
+      },
+      "payload": {
+        "seq": 2,
+        "data": "b080eab08061620ceab080eab080eab080eab08002280409000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002280509000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab080"
+      },
+      "frame_hex": "21 4b 0a 45 01 2d 01 12 69 02 b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 04 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 05 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 a3"
+    },
+    {
+      "name": "file_end",
+      "header": {
+        "type": 11,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 19,
+        "flags": 1
+      },
+      "payload": {
+        "crc16": 61574
+      },
+      "frame_hex": "21 4b 0b 45 01 2d 01 13 02 f0 86 c8"
+    },
+    {
+      "name": "file_begin_empty_resv",
+      "header": {
+        "type": 9,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 20,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 1,
+        "kind": 2,
+        "total_len": 0,
+        "n_chunks": 0
+      },
+      "frame_hex": "21 4b 09 45 01 2d 01 14 05 01 02 00 00 00 a8"
+    },
+    {
+      "name": "cmd_reboot",
+      "header": {
+        "type": 12,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 21,
+        "flags": 1
+      },
+      "payload": {
+        "cmd": 2,
+        "args": ""
+      },
+      "frame_hex": "21 4b 0c 45 01 2d 01 15 01 02 f6"
+    },
+    {
+      "name": "cmd_test_render_layout7",
+      "header": {
+        "type": 12,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 22,
+        "flags": 1
+      },
+      "payload": {
+        "cmd": 1,
+        "args": "07"
+      },
+      "frame_hex": "21 4b 0c 45 01 2d 01 16 02 01 07 61"
+    },
+    {
+      "name": "cmd_set_param_status_hour",
+      "header": {
+        "type": 12,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 23,
+        "flags": 1
+      },
+      "payload": {
+        "cmd": 3,
+        "args": "0100000012"
+      },
+      "frame_hex": "21 4b 0c 45 01 2d 01 17 06 03 01 00 00 00 12 42"
+    },
+    {
+      "name": "set_room_provision",
+      "header": {
+        "type": 13,
+        "bld": 0,
+        "room": 0,
+        "unit": 0,
+        "txn": 24,
+        "flags": 1
+      },
+      "payload": {
+        "new_ver": 1,
+        "mac": "a0b1c2d3e4f5",
+        "bld": 69,
+        "room": 301,
+        "unit": 2
+      },
+      "frame_hex": "21 4b 0d 00 00 00 00 18 0b 01 a0 b1 c2 d3 e4 f5 45 01 2d 02 28"
+    },
+    {
+      "name": "ack_ok",
+      "header": {
+        "type": 16,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 7,
+        "flags": 0
+      },
+      "payload": {
+        "status": 0,
+        "detail": 0,
+        "batt_mv": 3987,
+        "sched_ver": 12,
+        "resv_ver": 3,
+        "exam_ver": 1,
+        "ident_ver": 1,
+        "fw": 20,
+        "layout": 1
+      },
+      "frame_hex": "20 4b 10 45 01 2d 01 07 0a 00 00 0f 93 0c 03 01 01 14 01 5b"
+    },
+    {
+      "name": "ack_gap",
+      "header": {
+        "type": 16,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 8,
+        "flags": 0
+      },
+      "payload": {
+        "status": 4,
+        "detail": 0,
+        "batt_mv": 3987,
+        "sched_ver": 11,
+        "resv_ver": 3,
+        "exam_ver": 1,
+        "ident_ver": 1,
+        "fw": 20,
+        "layout": 1
+      },
+      "frame_hex": "20 4b 10 45 01 2d 01 08 0a 04 00 0f 93 0b 03 01 01 14 01 51"
+    },
+    {
+      "name": "ack_file_missing_seq3",
+      "header": {
+        "type": 16,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 16,
+        "flags": 0
+      },
+      "payload": {
+        "status": 5,
+        "detail": 3,
+        "batt_mv": 3987,
+        "sched_ver": 12,
+        "resv_ver": 3,
+        "exam_ver": 1,
+        "ident_ver": 1,
+        "fw": 20,
+        "layout": 1
+      },
+      "frame_hex": "20 4b 10 45 01 2d 01 10 0a 05 03 0f 93 0c 03 01 01 14 01 40"
+    },
+    {
+      "name": "status_daily",
+      "header": {
+        "type": 17,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 0,
+        "flags": 0
+      },
+      "payload": {
+        "ack": {
+          "status": 0,
+          "detail": 0,
+          "batt_mv": 3987,
+          "sched_ver": 12,
+          "resv_ver": 3,
+          "exam_ver": 1,
+          "ident_ver": 1,
+          "fw": 20,
+          "layout": 1
+        },
+        "rssi_last": -97,
+        "snr_last_x4": -6,
+        "flags": 4,
+        "uptime_h": 300
+      },
+      "frame_hex": "20 4b 11 45 01 2d 01 00 0f 00 00 0f 93 0c 03 01 01 14 01 9f fa 04 01 2c 47"
+    },
+    {
+      "name": "status_clock_stale_positive_snr",
+      "header": {
+        "type": 17,
+        "bld": 69,
+        "room": 301,
+        "unit": 1,
+        "txn": 0,
+        "flags": 0
+      },
+      "payload": {
+        "ack": {
+          "status": 0,
+          "detail": 0,
+          "batt_mv": 3987,
+          "sched_ver": 12,
+          "resv_ver": 3,
+          "exam_ver": 1,
+          "ident_ver": 1,
+          "fw": 20,
+          "layout": 1
+        },
+        "rssi_last": -60,
+        "snr_last_x4": 38,
+        "flags": 1,
+        "uptime_h": 0
+      },
+      "frame_hex": "20 4b 11 45 01 2d 01 00 0f 00 00 0f 93 0c 03 01 01 14 01 c4 26 01 00 00 36"
+    },
+    {
+      "name": "hello_unprovisioned",
+      "header": {
+        "type": 18,
+        "bld": 0,
+        "room": 0,
+        "unit": 0,
+        "txn": 0,
+        "flags": 0
+      },
+      "payload": {
+        "mac": "a0b1c2d3e4f5",
+        "fw": 20,
+        "batt_mv": 4100
+      },
+      "frame_hex": "20 4b 12 00 00 00 00 00 09 a0 b1 c2 d3 e4 f5 14 10 04 cb"
+    }
+  ]
+}
