@@ -1,11 +1,14 @@
 """v2 §4.2·4.3 모뎀 시리얼 프로토콜을 그대로 말하는 가짜 모뎀 + 가상 ESP노드.
 
 워커·드라이버를 하드웨어 없이 검증하기 위한 것. 재시도·TXN 배정은 여기 없다(파이프라인 책임).
+
+TXN 은 프레임 단위(§3.5): FILE 세션의 BEGIN/DATA/END 는 각각 다른 TXN 이어야 하며, 같은 TXN 재수신은 DUP 이다.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import random
 from dataclasses import dataclass, field
@@ -122,6 +125,9 @@ class FakeModem:
 
     # ----- LineTransport -----
     async def write_line(self, line: str) -> None:
+        if len(line) > 1024:
+            self._emit({"op": "log", "level": "warn", "msg": "line too long"})
+            return
         try:
             msg = json.loads(line)
             op = msg["op"]
@@ -160,6 +166,8 @@ class FakeModem:
     async def close(self) -> None:
         if self._inflight and not self._inflight.done():
             self._inflight.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._inflight
 
     # ----- 내부 -----
     def _emit(self, msg: dict) -> None:
@@ -176,58 +184,68 @@ class FakeModem:
         self.stats["tx"] += 1
         raw = bytes.fromhex(str(msg.get("frame", "")).replace(" ", ""))
         try:
-            h, pb = C.decode_frame(raw, net_id=self.net_id)
-        except C.FrameError:
-            self._emit({"op": "tx_done", "id": id_, "status": "error", "reason": "bad_crc8"})
-            return
-        if self.latency_ms:
-            await asyncio.sleep(self.latency_ms / 1000)
-        tok = self._next_token()
-        if tok == "bad_crc8":
-            self._emit({"op": "tx_done", "id": id_, "status": "error", "reason": "bad_crc8"})
-            return
-        if tok == "cad_busy":
-            self.stats["cad_busy"] += 1
+            try:
+                h, pb = C.decode_frame(raw, net_id=self.net_id)
+            except C.FrameError:
+                self._emit({"op": "tx_done", "id": id_, "status": "error", "reason": "bad_crc8"})
+                return
+            if self.latency_ms:
+                await asyncio.sleep(self.latency_ms / 1000)
+            tok = self._next_token()
+            if tok == "bad_crc8":
+                self._emit({"op": "tx_done", "id": id_, "status": "error", "reason": "bad_crc8"})
+                return
+            if tok == "cad_busy":
+                self.stats["cad_busy"] += 1
+                self._emit(
+                    {
+                        "op": "tx_done",
+                        "id": id_,
+                        "status": "cad_busy",
+                        "tries": P.RADIO["RP_CAD_MAX_TRIES"],
+                    }
+                )
+                return
+            if ack_ms == 0:
+                self._emit({"op": "tx_done", "id": id_, "status": "sent"})
+                return
+            node = self._target(h, pb)
+            if tok == "no_ack" or node is None:
+                self.stats["no_ack"] += 1
+                self._emit({"op": "tx_done", "id": id_, "status": "no_ack"})
+                return
+            forced = P.AckStatus[tok[4:]] if tok.startswith("ack:") else None
+            ack = node.ack(forced) if forced is not None else self._apply(node, h, pb)
+            ack_frame = C.encode_frame(
+                C.Header(P.Type.ACK, h.bld, h.room, h.unit, h.txn), C.encode_payload(ack)
+            )
+            self.stats["acked"] += 1
             self._emit(
                 {
                     "op": "tx_done",
                     "id": id_,
-                    "status": "cad_busy",
-                    "tries": P.RADIO["RP_CAD_MAX_TRIES"],
+                    "status": "acked",
+                    "rssi": -90 - self._rng.randint(0, 15),
+                    "snr": round(self._rng.uniform(2.0, 9.0), 1),
+                    "ack": _hex(ack_frame),
+                    "air_ms": _air_ms(len(raw), wake),
                 }
             )
-            return
-        if ack_ms == 0:
-            self._emit({"op": "tx_done", "id": id_, "status": "sent"})
-            return
-        node = self._target(h, pb)
-        if tok == "no_ack" or node is None:
-            self.stats["no_ack"] += 1
-            self._emit({"op": "tx_done", "id": id_, "status": "no_ack"})
-            return
-        forced = P.AckStatus[tok[4:]] if tok.startswith("ack:") else None
-        ack = node.ack(forced) if forced is not None else self._apply(node, h, pb)
-        ack_frame = C.encode_frame(
-            C.Header(P.Type.ACK, h.bld, h.room, h.unit, h.txn), C.encode_payload(ack)
-        )
-        self.stats["acked"] += 1
-        self._emit(
-            {
-                "op": "tx_done",
-                "id": id_,
-                "status": "acked",
-                "rssi": -90 - self._rng.randint(0, 15),
-                "snr": round(self._rng.uniform(2.0, 9.0), 1),
-                "ack": _hex(ack_frame),
-                "air_ms": _air_ms(len(raw), wake),
-            }
-        )
-        if h.type == P.Type.CMD and C.decode_payload(h.type, pb).cmd == P.Cmd.REQUEST_STATUS:
-            st = C.encode_frame(
-                C.Header(P.Type.STATUS, node.bld, node.room, node.unit, 0),
-                C.encode_payload(node.status()),
+            if h.type == P.Type.CMD and C.decode_payload(h.type, pb).cmd == P.Cmd.REQUEST_STATUS:
+                st = C.encode_frame(
+                    C.Header(P.Type.STATUS, node.bld, node.room, node.unit, 0),
+                    C.encode_payload(node.status()),
+                )
+                self.inject_uplink(st)
+        except Exception as e:  # noqa: BLE001 - 워커가 죽지 않게 내부 오류를 tx_done error로 변환
+            self._emit(
+                {
+                    "op": "tx_done",
+                    "id": id_,
+                    "status": "error",
+                    "reason": f"internal: {type(e).__name__}",
+                }
             )
-            self.inject_uplink(st)
 
     def _target(self, h: C.Header, pb: bytes) -> NodeState | None:
         if h.type == P.Type.SET_ROOM and h.bld == P.BLD_UNPROVISIONED:
@@ -288,5 +306,7 @@ class FakeModem:
         if t == P.Type.CMD:
             if p.cmd == P.Cmd.TEST_RENDER and p.args:
                 node.layout = p.args[0]
+            return node.ack(P.AckStatus.OK)
+        if t == P.Type.TIME:  # 타겟(ack_ms>0) TIME 재동기 — v2 §8.5
             return node.ack(P.AckStatus.OK)
         return node.ack(P.AckStatus.UNSUPPORTED)
