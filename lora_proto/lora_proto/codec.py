@@ -719,3 +719,139 @@ def _dec_hello(b: bytes) -> Hello:
 _register(P.Type.ACK, Ack, _enc_ack, _dec_ack)
 _register(P.Type.STATUS, Status, _enc_status, _dec_status)
 _register(P.Type.HELLO, Hello, _enc_hello, _dec_hello)
+
+
+# ---------- FILE (§3.3) ----------
+
+
+@dataclass(frozen=True)
+class FileBegin:
+    new_ver: int
+    kind: int
+    total_len: int
+    n_chunks: int
+
+
+@dataclass(frozen=True)
+class FileData:
+    seq: int
+    data: bytes
+
+
+@dataclass(frozen=True)
+class FileEnd:
+    crc16: int
+
+
+_KIND_OF = {SlotSet: P.FileKind.SCHEDULE, ResvSet: P.FileKind.RESV, ExamSet: P.FileKind.EXAM}
+_REC_TYPE = {
+    P.FileKind.SCHEDULE: P.Type.SLOT_SET,
+    P.FileKind.RESV: P.Type.RESV_SET,
+    P.FileKind.EXAM: P.Type.EXAM_SET,
+}
+_REC_BODY = {SlotSet: _slot_body, ResvSet: _resv_body, ExamSet: _exam_body}
+_REC_READ = {
+    P.FileKind.SCHEDULE: _slot_read,
+    P.FileKind.RESV: _resv_read,
+    P.FileKind.EXAM: _exam_read,
+}
+
+
+def _kind_of_records(records: list) -> int | None:
+    kinds = {_KIND_OF.get(type(r)) for r in records}
+    if None in kinds:
+        raise FrameError("FILE 레코드는 SlotSet/ResvSet/ExamSet 만 가능")
+    if len(kinds) > 1:
+        raise FrameError(f"한 FILE 에 kind 가 섞임: {sorted(kinds)}")
+    return next(iter(kinds)) if kinds else None
+
+
+def encode_records(records: list) -> bytes:
+    """레코드 스트림: [recType][recLen][recPayload(NEW_VER 없음)] 반복. new_ver 필드는 무시."""
+    kind = _kind_of_records(records)
+    out = bytearray()
+    for r in records:
+        body = _REC_BODY[type(r)](r)
+        if len(body) > 255:
+            raise FrameError(f"레코드 {len(body)} B > 255")
+        out += bytes([_REC_TYPE[kind], len(body)]) + body
+    return bytes(out)
+
+
+def decode_records(kind: int, body: bytes) -> list:
+    if kind not in _REC_READ:
+        raise FrameError(f"kind={kind} 는 1..3 밖")
+    r = _Reader(body, "FILE body")
+    out = []
+    while r.i < len(body):
+        t = r.u8()
+        n = r.u8()
+        if t != _REC_TYPE[kind]:
+            raise FrameError(f"kind={kind} 파일에 recType {t:#x}")
+        sub = _Reader(r.raw(n), "FILE record")
+        out.append(_REC_READ[kind](sub, 0))
+        sub.done()
+    return out
+
+
+def build_file(kind: int, records: list, new_ver: int) -> list:
+    """FILE 세션 페이로드 목록: [FileBegin, FileData×n, FileEnd]. 프레임화는 호출자."""
+    rk = _kind_of_records(records)
+    if rk is not None and rk != kind:
+        raise FrameError(f"kind={kind} 와 레코드 kind={rk} 불일치")
+    body = encode_records(records)
+    if len(body) > 0xFFFF:
+        raise FrameError(f"FILE 본문 {len(body)} B > 65535")
+    chunks = [body[i : i + P.FILE_CHUNK_MAX] for i in range(0, len(body), P.FILE_CHUNK_MAX)]
+    if len(chunks) > 255:
+        raise FrameError(f"청크 {len(chunks)} 개 > 255")
+    return (
+        [FileBegin(_u8("new_ver", new_ver), _u8("kind", kind, 1, 3), len(body), len(chunks))]
+        + [FileData(i, c) for i, c in enumerate(chunks)]
+        + [FileEnd(crc16_ccitt(body))]
+    )
+
+
+def _enc_file_begin(f: FileBegin) -> bytes:
+    return (
+        bytes([_u8("new_ver", f.new_ver), _u8("kind", f.kind, 1, 3)])
+        + _u16("total_len", f.total_len)
+        + bytes([_u8("n_chunks", f.n_chunks)])
+    )
+
+
+def _dec_file_begin(b: bytes) -> FileBegin:
+    r = _Reader(b, "FILE_BEGIN")
+    nv = r.u8()
+    k = r.u8()
+    tl = r.u16()
+    n = r.u8()
+    r.done()
+    return FileBegin(nv, _u8("kind", k, 1, 3), tl, n)
+
+
+def _enc_file_data(f: FileData) -> bytes:
+    if len(f.data) > P.FILE_CHUNK_MAX:
+        raise FrameError(f"FILE_DATA {len(f.data)} B > {P.FILE_CHUNK_MAX}")
+    return bytes([_u8("seq", f.seq)]) + bytes(f.data)
+
+
+def _dec_file_data(b: bytes) -> FileData:
+    r = _Reader(b, "FILE_DATA")
+    seq = r.u8()
+    data = r.raw(len(b) - 1)
+    if len(data) > P.FILE_CHUNK_MAX:
+        raise FrameError(f"FILE_DATA {len(data)} B > {P.FILE_CHUNK_MAX}")
+    return FileData(seq, data)
+
+
+def _dec_file_end(b: bytes) -> FileEnd:
+    r = _Reader(b, "FILE_END")
+    v = FileEnd(r.u16())
+    r.done()
+    return v
+
+
+_register(P.Type.FILE_BEGIN, FileBegin, _enc_file_begin, _dec_file_begin)
+_register(P.Type.FILE_DATA, FileData, _enc_file_data, _dec_file_data)
+_register(P.Type.FILE_END, FileEnd, lambda p: _u16("crc16", p.crc16), _dec_file_end)
