@@ -10,56 +10,13 @@ from pathlib import Path
 
 from lora_proto import codec as C
 from lora_proto import proto as P
+from lora_proto.jsonio import CLASSES as _CLASSES  # noqa: F401
+from lora_proto.jsonio import from_json, to_json  # noqa: F401
+
+# _CLASSES/from_json/to_json 은 lora_proto.jsonio 로 승격됨 (2026-09-14). 여기서는 재-export 만 한다.
+
 
 OUT = Path(__file__).resolve().parents[1] / "test_vectors.json"
-_CLASSES = {
-    P.Type.TIME: C.Time,
-    P.Type.SLOT_SET: C.SlotSet,
-    P.Type.SLOT_DEL: C.SlotDel,
-    P.Type.DAY_CLEAR: C.DayClear,
-    P.Type.RESV_SET: C.ResvSet,
-    P.Type.RESV_DEL: C.ResvDel,
-    P.Type.EXAM_SET: C.ExamSet,
-    P.Type.EXAM_DEL: C.ExamDel,
-    P.Type.FILE_BEGIN: C.FileBegin,
-    P.Type.FILE_DATA: C.FileData,
-    P.Type.FILE_END: C.FileEnd,
-    P.Type.CMD: C.Cmd,
-    P.Type.SET_ROOM: C.SetRoom,
-    P.Type.ACK: C.Ack,
-    P.Type.STATUS: C.Status,
-    P.Type.HELLO: C.Hello,
-}
-
-
-def to_json(obj: object) -> dict:
-    """dataclass → JSON dict. bytes 는 hex 문자열, 중첩 dataclass 는 재귀."""
-    out = {}
-    for f in dataclasses.fields(obj):
-        v = getattr(obj, f.name)
-        if isinstance(v, bytes):
-            out[f.name] = v.hex()
-        elif dataclasses.is_dataclass(v):
-            out[f.name] = to_json(v)
-        elif isinstance(v, str):
-            out[f.name] = v
-        else:
-            out[f.name] = int(v)
-    return out
-
-
-def from_json(type_: int, d: dict) -> object:
-    cls = _CLASSES[type_]
-    kw = {}
-    for f in dataclasses.fields(cls):
-        v = d[f.name]
-        if f.name == "ack":
-            kw[f.name] = from_json(P.Type.ACK, v)
-        elif f.name in ("mac", "args", "data"):
-            kw[f.name] = bytes.fromhex(v)
-        else:
-            kw[f.name] = v
-    return cls(**kw)
 
 
 def _hex(b: bytes) -> str:

@@ -132,12 +132,28 @@ typedef struct {
 | 모뎀Pi → 메인 | `uplink` | `kind`(`STATUS`\|`HELLO`), `bld`, `room`, `unit`, `mac`, 나머지 v2 §3.3 STATUS/HELLO 필드, `rssi`, `snr` | HELLO는 `bld=0, room=0` |
 | 양방향 | `ping` / `pong` | — | 30 s. 2회 무응답이면 끊고 재접속 |
 
+**메시지 인코딩 규칙 (2026-09-14 확정, S2에서)**
+
+| 대상 | 규칙 |
+|---|---|
+| `job.payload` 키 | `lora_proto.codec` dataclass 필드명과 동일. **단 `new_ver`는 제외** — job 최상위 `new_ver`가 진실원이다. 모뎀Pi는 codec 객체를 만들 때 `job.new_ver`를 주입한다 |
+| `payload`의 bytes 필드 (`SET_ROOM.mac`, `CMD.args`) | **소문자 hex 문자열**, 구분자 없음 (`"a0b1c2d3e4f5"`). `lora_proto.jsonio.to_json/from_json`이 유일한 변환기 — 메인Pi·모뎀Pi 모두 그것만 쓴다 |
+| `SET_ROOM.payload.bld` | **정수(ASCII 코드, 예 `69`)**. job 최상위 `bld`는 **문자 1자(`"E"`)** — 둘은 표현이 다르다 |
+| `type="FILE"`의 `payload` | `{"kind": 1\|2\|3, "records": [레코드 dict…]}`. 각 레코드에 **`new_ver` 키 없음**(파일 본문 레코드는 NEW_VER 바이트가 없다 — v2 §3.3). 모뎀Pi는 `build_file(kind, records, job.new_ver)`로 조립 |
+| `job_id` | **정수**. 계약 ⑦ `jobs.job_id`는 TEXT이므로 모뎀Pi가 문자열로 echo해도 메인은 `int()`로 받는다 |
+| `uplink.mac` | 소문자 hex 12자, 구분자 없음. STATUS는 `mac` 없음(`null`) |
+| `uplink`의 주소 | STATUS는 `bld`가 **문자 1자**, HELLO는 `bld=0, room=0, unit=0`(정수) |
+| `uplink`의 ACK 필드 | codec `Ack` 필드명 그대로 평탄화(`status, detail, batt_mv, sched_ver, resv_ver, exam_ver, ident_ver, fw, layout`). STATUS는 `rssi_last, snr_last_x4, flags, uptime_h` 추가. `rssi`/`snr`은 **모뎀이 측정한 링크 값**으로 별도 필드 |
+
 **작업 상태 (메인Pi `outbox.state`)**: `queued → dispatched → acked | failed | cancelled`. 규칙:
 - 메인은 연결된 모뎀Pi에 `queued`만 보낸다. `dispatched`는 모뎀Pi 로컬 큐에 있으므로 재전송하지 않는다 → 중복 송신 없음.
 - 모뎀Pi가 끊겼다 재접속하면 `hello.pending_results`로 미보고 결과 수를 알리고 곧바로 `job_result`를 몰아 보낸다.
 - 모뎀Pi가 **24 h 이상** 끊겨 있으면 메인은 그 모뎀Pi의 `dispatched`를 `failed(last_error="modem_offline")`로 돌리고 대시보드에 노출한다.
 - `GAP` 결과 → 메인이 `RecordProvider`로 레코드를 읽어 FILE `job` 생성(v2 §8.3 규칙 유지). 원본은 메인 하나.
 - 프로비저닝: 미설정 노드 HELLO → `uplink` → 메인 `pending_devices(modem_id, mac)` → 관리자가 강의실 배정 → 그 모뎀Pi로 `SET_ROOM` job + `config.nodes` 갱신.
+- 링크는 같은 `job_id`의 중복 삽입을 **무시**한다(멱등). 메인은 같은 연결에서 이미 보낸 `job_id`를 다시 보내지 않으며, 재접속하면 그 집합을 비우고 `queued`만 다시 보낸다.
+- `job_accepted`가 이미 `cancelled`인 행에 오면 메인은 그 자리에서 `cancel`을 되돌려 보낸다(취소 경합).
+- `GAP` 재동기는 **pending 작업이 있어도 억제하지 않는다**(GAP은 노드가 관측한 불연속). 단 FILE 작업의 결과가 GAP이어도 재동기를 다시 걸지 않는다 — FILE은 전체 교체라 v2 §3.3 보강대로 노드가 항상 OK를 낸다.
 
 ### 4.3 계약 ⑦ — 모뎀Pi 내부 `JobStore` (링크 ↔ 파이프라인)
 
@@ -187,6 +203,7 @@ CREATE INDEX ix_jobs_upload ON jobs(uploaded, finished_at);
 | `outbox`, `room_versions`, `terminal_status`, `pending_devices`, `lora_log`, `api.py`, `RecordProvider` | 메인Pi `server/lora_service/` (wj 구현, cw 리뷰). `outbox.state`에 `dispatched` 추가, `modem_id` 컬럼 추가 |
 | 신규 | 메인Pi WS 허브 `server/lora_service/hub.py`(wj), 모뎀Pi 레지스트리 `modems` 테이블(`modem_id, school, building, token_hash, net_id, last_seen_at`) |
 | §8.8 운영 | 메인Pi: FastAPI 프로세스 안에 허브. 모뎀Pi: `systemd` 서비스 1개(`modempi` 프로세스 안에 링크·파이프라인 asyncio 태스크) |
+| `lora_log` | 프레임 로그가 아니라 **메인Pi↔모뎀Pi WS 메시지 로그**(`at, modem_id, dir, t, body`)로 재정의. 프레임 hex 로그는 모뎀Pi 쪽(S6)에 있다 (2026-09-14, S2) |
 
 ## 5. 서브프로젝트 분해
 
