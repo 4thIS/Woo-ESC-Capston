@@ -74,3 +74,11 @@ def db(app, topo, hub):
     api.set_hub(hub)
     api.set_record_provider(lambda bld, room, kind: [])
     return app.state.Session
+
+
+@pytest.fixture
+def live(client, topo):
+    """실제 Hub + FakeTopo. lifespan(client) 이 configure/set_hub 를 끝낸 뒤 topology 만 바꾼다."""
+    api.set_topology(topo)
+    api.set_record_provider(lambda bld, room, kind: [])
+    return client.app.state.Session
