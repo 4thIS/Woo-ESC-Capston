@@ -2,6 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.db import Base
+from app.lora_service import api
+from app.lora_service.api import RoomInfo
 from app.main import create_app
 
 
@@ -16,3 +18,59 @@ def app(tmp_path):
 def client(app):
     with TestClient(app) as c:
         yield c
+
+
+class FakeTopo:
+    def __init__(self, rooms: dict[tuple[str, int], RoomInfo]):
+        self.rooms = rooms
+
+    def room(self, bld, room):
+        return self.rooms.get((bld, room))
+
+    def nodes(self, modem_id):
+        return [
+            (b, r, u)
+            for (b, r), i in self.rooms.items()
+            if i.modem_id == modem_id
+            for u in range(1, i.units + 1)
+        ]
+
+    def net_id(self, modem_id):
+        return 0x4B
+
+
+class SpyHub:
+    def __init__(self):
+        self.notified, self.configs, self.cancels, self.time_calls = [], [], [], 0
+
+    def notify(self, modem_id):
+        self.notified.append(modem_id)
+
+    def config_changed(self, modem_id):
+        self.configs.append(modem_id)
+
+    def time_now(self):
+        self.time_calls += 1
+        return 0
+
+    def cancel(self, modem_id, job_id):
+        self.cancels.append((modem_id, job_id))
+
+
+@pytest.fixture
+def topo():
+    return FakeTopo({("E", 301): RoomInfo("m1", 2, 0x4B), ("E", 302): RoomInfo("m1", 1, 0x4B)})
+
+
+@pytest.fixture
+def hub():
+    return SpyHub()
+
+
+@pytest.fixture
+def db(app, topo, hub):
+    api.configure(app.state.Session)
+    api.set_topology(topo)
+    api.set_hub(hub)
+    api.set_record_provider(lambda bld, room, kind: [])
+    return app.state.Session
