@@ -1,7 +1,7 @@
 # S2 — 메인Pi 서버: 통신 뼈대 + 최소 도메인 — 설계 (spec)
 
 - 생성일시: 2026-09-14
-- 수정일시: 2026-09-14
+- 수정일시: 2026-09-14 (r2 — 구현 중 확정: 버전 비교 규칙, 예약 창, 인코딩 규칙, 연결 리셋, 학교 간 bld)
 - 상위 문서: `2026-09-09-roadmap-design.md` §3(책임 분할)·§4.2(계약 ⑥ WS 백홀)·§4.5(v2 §8 개정)·§7.1(지연 예산). `api.py` 시그니처·테이블·버전 규칙 원본은 `2026-09-09-lora-v2-wor-design.md` §8.2·8.3·8.6·8.7. 모뎀Pi 쪽 상대는 `2026-09-10-s6-modempi-lora-pipeline-design.md`(§5 "server 영향").
 - 담당: wj @leemonta9482. 영역 `server/`. `server/app/lora_service/`는 cw @ssenu 필수 리뷰.
 
@@ -77,14 +77,14 @@ v2 §8.2를 로드맵 §4.5로 개정한 것.
 | `hello` | `modems.modem_id` 존재 + `sha256(token) == token_hash`. 아니면 close(4001). 같은 `modem_id`가 이미 연결돼 있으면 **이전 연결을 닫고 교체**. `last_seen_at/connected/agent_ver/modem_fw` 갱신 → `config` 송신 → 그 모뎀의 `queued` 전부를 `job`으로 송신 |
 | `config` 내용 | `net_id` = 건물의 학교, `radio` = `proto.RADIO`에서 `{sf,bw,cr,tx_dbm,preamble_wake_ms}`, `nodes` = 그 건물 `rooms` × `units` → `[{bld,room,unit}]`, `qr_base_url` = 설정값(빈 문자열 가능), `status_hour_utc` = 설정값(기본 18 = KST 03:00) |
 | `job` 송신 | outbox 행 → `{t:"job", job_id, bld, room, unit, type, payload, priority, new_ver}`. `payload` 키 = codec 필드명에서 `new_ver` 제외(`new_ver`는 job 필드). `bytes` 필드(`mac`, `args`)는 **hex 문자열**. FILE은 `{"kind": 1\|2\|3, "records": [레코드 dict…]}`. 송신했다고 상태를 바꾸지 않는다 |
-| `job_accepted` | `queued → dispatched`, `dispatched_at`. 이미 `dispatched` 이상이면 무시(멱등) |
+| `job_accepted` | `queued → dispatched`, `dispatched_at`. 이미 `dispatched` 이상이면 무시(멱등). `cancelled` 행이면 `cancel`을 되돌려 보낸다(취소 경합). `job_id`는 정수 — 문자열로 와도 `int()`로 받는다(계약 ⑦ `jobs.job_id` TEXT). 다른 모뎀이 보고한 `job_id`는 무시 |
 | `job_result` | `api.on_job_result()`에 위임. `dispatched → acked\|failed` + 결과 필드 + `finished_at`. `terminal_status` 갱신. 이미 끝난 행이면 로그만(모뎀Pi 재전송) |
-| `uplink` | `api.on_uplink()`에 위임. STATUS → `terminal_status` + 버전 비교, HELLO → `pending_devices` upsert |
+| `uplink` | `api.on_uplink()`에 위임. STATUS → `terminal_status` + 버전 비교, HELLO → `pending_devices` upsert. `mac`은 구분자 없는 소문자 hex 12자(예 `"aabbccddeeff"`). ACK 필드는 codec `Ack` 필드명 그대로 평탄화(`status, detail, batt_mv, sched_ver, resv_ver, exam_ver, ident_ver, fw, layout`), STATUS는 `rssi_last, snr_last_x4, flags, uptime_h` 추가 |
 | `cancel` | `api.cancel()`이 `queued → cancelled`. 행이 `dispatched`면 DB는 그대로 두고 모뎀에 `cancel` 송신 — 모뎀Pi가 아직 `received`면 `job_result(failed, cancelled)`로 돌아온다 |
 | `time_now` | `POST /api/lora/time` → 연결된 모든 모뎀에 송신. outbox 행 없음(TIME 결과는 메인이 안 봄) |
 | `ping`/`pong` | 서버가 30 s마다 `ping`. `pong` 2회 연속 없음 → close |
 | 끊김 | `connected=false`. 연결 레지스트리는 프로세스 메모리(`modem_id → WebSocket`). 재기동 시 모뎀Pi 재접속으로 복구되므로 영속화하지 않는다 |
-| 안전망 태스크 (5 s) | 연결된 모뎀의 `queued`를 flush(notify 유실 대비). `last_seen_at`이 24 h 이전인 모뎀의 `dispatched`를 `failed(last_error="modem_offline")` |
+| 안전망 태스크 (5 s) | 연결된 모뎀의 `queued`를 flush(notify 유실 대비). 같은 연결에서 이미 보낸 `job_id`는 다시 보내지 않는다(연결별 송신 집합; 재접속 시 초기화). `last_seen_at`이 24 h 이전인 모뎀의 `dispatched`를 `failed(last_error="modem_offline")`. 서버 기동 시 모든 `modems.connected`를 false로 리셋한다(비정상 종료 대비) |
 
 ### 2.5 디스패치 — notify + hello flush + 안전망
 
@@ -96,8 +96,8 @@ v2 §8.2를 로드맵 §4.5로 개정한 것.
 - 모뎀Pi 토큰: `POST /api/lora/modems` 응답에 평문 토큰을 **1회** 돌려주고 DB에는 sha256만. 재발급은 같은 엔드포인트 `POST …/{modem_id}/token`.
 - 검증은 Pydantic에서 한 번(실패 시 422, FastAPI 표준), `api.py`에서 codec dataclass(`C.SlotSet(...)` 등)를 **실제로 만들어** 한 번 더(실패 시 400). 모뎀Pi에서 `bad_payload`로 죽을 작업을 서버에서 막는다.
 - 문자열 길이는 **UTF-8 바이트** 기준(`proto.SUBJ_MAX=20`, `PROF_MAX=12`). 화면 표시 한계와 같다(v2 §5.1).
-- 예약은 `date`가 오늘~7일 이내인 것만 outbox로 보낸다(v2 §12 슬롯 24개 억제). 그 밖은 저장만.
-- `on_job_result`의 버전 비교: ACK의 `sched_ver/resv_ver/exam_ver`가 `room_versions`와 다르거나 `ack_status=GAP`이면 `terminal_status.sync_state='resync'` + 해당 kind FILE 큐잉. 같은 (bld,room,unit,kind)에 `queued|dispatched` FILE이 있으면 큐잉하지 않는다.
+- 예약은 `date`가 오늘~7일 이내인 것만 outbox로 보낸다(v2 §12 슬롯 24개 억제). 그 밖은 저장만(`outbox_ids: []`, 버전 증가 없음). 창 밖 예약이 창 안으로 들어오는 시점의 승격은 후속 spec(04:00 일일 작업)에서 다룬다 — FILE 재동기가 창 안 레코드를 실어 나르므로 그때까지는 재동기로 흡수된다.
+- `on_job_result`의 버전 비교: ACK의 `sched_ver/resv_ver/exam_ver`가 `room_versions`와 다르거나 `ack_status=GAP`이면 `terminal_status.sync_state='resync'` + 해당 kind FILE 큐잉. 단 **그 kind의 `queued|dispatched` 작업이 같은 (bld,room,unit)에 아직 남아 있으면 stale로 보지 않는다**(연속 편집이 파이프라인에 있는 동안 버전이 앞서 가는 것은 정상 — 마지막 작업의 ACK가 맞춘다). `GAP`은 그 프레임의 kind만 stale로 본다. 같은 (bld,room,unit,kind)에 `queued|dispatched` FILE이 있으면 큐잉하지 않는다.
 - FILE 작업은 삽입 시점에 `RecordProvider(bld, room, kind)`로 레코드를 읽어 `payload.records`에 **통째로** 넣는다(로드맵 §4.2). 모뎀Pi는 사본을 갖지 않는다.
 - `unit=0` 요청은 `rooms.units`만큼 행으로 분해하고 같은 `NEW_VER`를 준다. 분해된 행 각각이 독립적으로 `acked|failed`.
 - 도메인 의존 방향: `domain → lora_service.api` 단방향. `lora_service`는 `domain`을 import하지 않는다(레코드는 `RecordProvider` 콜백). `hub → api` 단방향, `api → hub`는 주입된 `notify`만.
@@ -184,6 +184,7 @@ server/
 ## 5. 영역별 영향
 
 - server: 이 문서 전부(신규).
+- 로드맵 §4.2(cw 소유): 이 spec §2.4의 인코딩 규칙(`payload` bytes→hex, FILE `records` 에 `new_ver` 없음, `uplink.mac` hex 12자, `job_id` 정수, 링크는 `job_id`로 중복 삽입 무시)을 로드맵 표에 반영해 달라고 PR에서 요청한다.
 - modempi (S5 링크, wj): `server/tests/fake_hub.py`를 재사용. `job.payload` 키 = codec 필드명 확인. `cancel`이 `dispatched` 행에 와도 처리(§2.4).
 - modempi (S6 파이프라인, cw): 영향 없음. S6 §5가 요구한 "04:00 실패 재큐잉을 메인Pi 규칙으로"는 후속 spec.
 - web: 이번엔 소비하지 않음. `web/` 스캐폴드는 별도(wj-01).
