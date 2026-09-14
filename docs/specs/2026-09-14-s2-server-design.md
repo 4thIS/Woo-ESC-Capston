@@ -220,3 +220,4 @@ server/
 - `cancel`이 `dispatched` 행에 왔을 때 DB를 `cancelled`로 먼저 바꿀지, 모뎀Pi `job_result`를 기다릴지. 이 spec은 "기다린다"(§2.4)로 두었다. S5 spec에서 모뎀Pi 쪽 처리를 정할 때 다시 본다.
 - `reservations.id`를 u16 resvId로 직접 쓰면 65535개 이후 재사용 문제 — 캡스톤 규모에서는 무시. 초과 시 별도 `resv_id` 컬럼으로 롤링(additive).
 - 실패 작업 재큐잉 규칙(04:00) — 후속 spec. 이번엔 `failed`를 대시보드에 노출만.
+- **학교 간 `bld` 충돌**: `buildings.bld`는 학교 안에서만 UNIQUE인데 `outbox`·`room_versions`·`terminal_status`·`Topology.room(bld, room)`은 학교를 모른다. 두 학교가 같은 글자를 쓰면 조회가 모호하다. 이번 범위(학교 1)에서는 **`bld` 글자를 학교 간에도 겹치지 않게 쓴다**는 운영 규칙으로 두고, 다중 학교 배치 전에 `lora_service` 키에 `net_id`(학교)를 additive로 넣을지 PM이 결정한다.
