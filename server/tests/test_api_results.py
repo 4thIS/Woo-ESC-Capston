@@ -186,6 +186,26 @@ def test_reset_connections_clears_stale_connected_flag(db):
     assert m.connected is False
 
 
+def test_resync_file_does_not_bump_and_units_converge(db):
+    ids = api.enqueue_slot_set(
+        "E", 301, 1, (9, 0), (10, 0), 1, "a", "b"
+    )  # units 1,2 → schedule ver 1
+    _dispatch(db, ids)
+    api.on_job_result("m1", {"job_id": ids[0], **_ack(sched_ver=1)})  # unit 1 in sync
+    api.on_job_result(
+        "m1", {"job_id": ids[1], **_ack(ack_status=int(P.AckStatus.GAP), sched_ver=1)}
+    )  # unit 2 GAP
+    with db() as s:
+        files = s.scalars(select(Outbox).where(Outbox.type == "FILE")).all()
+        assert [(f.unit, f.new_ver) for f in files] == [(2, 1)]  # 현재 버전 그대로, bump 없음
+        assert s.get(RoomVersion, ("E", 301, "schedule")).ver == 1
+    _dispatch(db, [files[0].id])
+    api.on_job_result("m1", {"job_id": files[0].id, **_ack(sched_ver=1)})  # unit 2 now at 1
+    with db() as s:
+        assert len(s.scalars(select(Outbox).where(Outbox.type == "FILE")).all()) == 1  # 핑퐁 없음
+        assert s.get(TerminalStatus, ("E", 301, 2)).sync_state == "synced"
+
+
 def test_sweep_offline_fails_dispatched_after_24h(db):
     api.register_modem("m1")
     ids = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")

@@ -93,6 +93,12 @@ def test_full_sync_reads_records_and_dedupes(db):
     p = json.loads(r.payload)
     assert r.type == "FILE" and r.priority == 5 and r.new_ver == 1
     assert p["kind"] == 1 and p["records"][0]["subject"] == "a" and "new_ver" not in p["records"][0]
+    with db() as s, s.begin():
+        s.get(Outbox, ids[0]).state = "acked"
+    later = api.enqueue_full_sync("E", 302, kinds=("schedule",))
+    assert (
+        _rows(db)[-1].id == later[0] and _rows(db)[-1].new_ver == 1
+    )  # 재동기는 bump 없이 현재 버전
 
 
 def test_full_sync_dedupes_per_unit(db):
@@ -104,8 +110,8 @@ def test_full_sync_dedupes_per_unit(db):
     assert len(again) == 2 and again[1] == ids[1] and again[0] != ids[0]
     with db() as s:
         new = s.get(Outbox, again[0])
-        assert new.unit == 1 and new.state == "queued" and new.new_ver == 2
-        assert s.get(RoomVersion, ("E", 301, "schedule")).ver == 2
+        assert new.unit == 1 and new.state == "queued" and new.new_ver == 1  # 재동기는 bump 없음
+        assert s.get(RoomVersion, ("E", 301, "schedule")).ver == 1
 
 
 def test_provision_uses_ident_version(db):

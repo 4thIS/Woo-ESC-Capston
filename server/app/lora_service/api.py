@@ -305,11 +305,22 @@ FILE_KIND = {"schedule": 1, "resv": 2, "exam": 3}
 _KIND_OF_FILE_NUM = {v: k for k, v in FILE_KIND.items()}
 
 
+def _current_ver(s: Session, bld: str, room: int, kind: str) -> int:
+    """재동기 FILE 이 실을 버전. 콘텐츠 변경(`_bump_ver`)과 달리 여기서는 올리지 않는다 —
+    방의 유닛이 여러 개면 유닛마다 도는 FILE 이 매번 bump 하면 유닛 간 버전 핑퐁이 생긴다.
+    행이 아직 없으면(콘텐츠가 한 번도 안 바뀜) 최초값 1로 만들어 쓴다."""
+    rv = s.get(RoomVersion, (bld, room, kind))
+    if rv is None:
+        rv = RoomVersion(bld=bld, room=room, kind=kind, ver=1)
+        s.add(rv)
+    return rv.ver
+
+
 def _enqueue_file(
     s: Session, info: RoomInfo, bld: str, room: int, unit: int, kind: str
 ) -> list[int]:
     """kind 전체 재동기 FILE. 유닛별로 (bld,room,unit,kind) 에 queued|dispatched FILE 이 있으면 그 id,
-    없는 유닛만 새로 만든다 (v2 §8.3). 새로 만드는 유닛이 하나라도 있으면 버전은 한 번만 올리고 공유한다."""
+    없는 유닛만 새로 만든다 (v2 §8.3). 재동기는 방의 현재 버전을 그대로 싣는다 — bump 하지 않는다."""
     units = [unit] if unit else list(range(1, info.units + 1))
     open_rows = s.scalars(
         select(Outbox).where(
@@ -326,7 +337,7 @@ def _enqueue_file(
     missing = [u for u in units if u not in existing_by_unit]
     new_by_unit: dict[int, int] = {}
     if missing:
-        new_ver = _bump_ver(s, bld, room, kind)
+        new_ver = _current_ver(s, bld, room, kind)
         records = _records(bld, room, kind)
         C.build_file(FILE_KIND[kind], records, new_ver)  # 크기·kind 검증
         payload = json.dumps(
