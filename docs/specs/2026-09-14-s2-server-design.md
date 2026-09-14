@@ -94,7 +94,7 @@ v2 §8.2를 로드맵 §4.5로 개정한 것.
 
 - 사용자 인증 없음(비목표). 모든 `/api/*`는 열려 있다. 인증 spec이 오면 라우터 `dependencies=[...]` 한 줄로 붙인다.
 - 모뎀Pi 토큰: `POST /api/lora/modems` 응답에 평문 토큰을 **1회** 돌려주고 DB에는 sha256만. 재발급은 같은 엔드포인트 `POST …/{modem_id}/token`.
-- 검증은 Pydantic에서 한 번, `api.py`에서 codec dataclass(`C.SlotSet(...)` 등)를 **실제로 만들어** 한 번 더. 두 번째가 실패하면 400 — 모뎀Pi에서 `bad_payload`로 죽을 작업을 서버에서 막는다.
+- 검증은 Pydantic에서 한 번(실패 시 422, FastAPI 표준), `api.py`에서 codec dataclass(`C.SlotSet(...)` 등)를 **실제로 만들어** 한 번 더(실패 시 400). 모뎀Pi에서 `bad_payload`로 죽을 작업을 서버에서 막는다.
 - 문자열 길이는 **UTF-8 바이트** 기준(`proto.SUBJ_MAX=20`, `PROF_MAX=12`). 화면 표시 한계와 같다(v2 §5.1).
 - 예약은 `date`가 오늘~7일 이내인 것만 outbox로 보낸다(v2 §12 슬롯 24개 억제). 그 밖은 저장만.
 - `on_job_result`의 버전 비교: ACK의 `sched_ver/resv_ver/exam_ver`가 `room_versions`와 다르거나 `ack_status=GAP`이면 `terminal_status.sync_state='resync'` + 해당 kind FILE 큐잉. 같은 (bld,room,unit,kind)에 `queued|dispatched` FILE이 있으면 큐잉하지 않는다.
