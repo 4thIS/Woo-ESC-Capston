@@ -49,6 +49,7 @@ class FakeHub:
     async def wait_for(self, t: str, timeout: float = 2.0) -> dict:
         async with asyncio.timeout(timeout):
             while True:
+                # received 가 진실원이고, _event 는 재확인을 깨우는 용도일 뿐이다.
                 for m in self.received:
                     if m.get("t") == t:
                         return m
@@ -56,10 +57,17 @@ class FakeHub:
                 await self._event.wait()
 
     async def _handle(self, conn: ServerConnection) -> None:
-        hello = json.loads(await conn.recv())
+        try:
+            hello = json.loads(await conn.recv())
+        except (websockets.ConnectionClosed, json.JSONDecodeError, TypeError):
+            return
         self.received.append(hello)
         self._event.set()
-        if hello.get("t") != "hello" or hello.get("token") != self.token:
+        if (
+            not isinstance(hello, dict)
+            or hello.get("t") != "hello"
+            or hello.get("token") != self.token
+        ):
             await conn.close(4001)
             return
         self._conn = conn

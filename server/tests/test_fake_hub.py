@@ -82,3 +82,32 @@ async def test_fake_hub_rejects_bad_token():
                 await asyncio.wait_for(ws.recv(), 2)
     finally:
         await hub.stop()
+
+
+@pytest.mark.anyio
+async def test_fake_hub_tolerates_garbage_first_frame():
+    hub = FakeHub(token="secret")
+    await hub.start()
+    try:
+        async with websockets.connect(hub.url) as ws:
+            await ws.send("not json")
+            with pytest.raises(websockets.ConnectionClosed):
+                await asyncio.wait_for(ws.recv(), 2)
+        async with websockets.connect(hub.url) as ws:
+            pass  # 아무것도 안 보내고 끊음 — 서버가 조용히 넘어간다
+        async with websockets.connect(hub.url) as ws:  # 이후 정상 접속 여전히 됨
+            await ws.send(
+                json.dumps(
+                    {
+                        "t": "hello",
+                        "modem_id": "m1",
+                        "token": "secret",
+                        "agent_ver": "0",
+                        "modem_fw": "0",
+                        "pending_results": 0,
+                    }
+                )
+            )
+            assert json.loads(await ws.recv())["t"] == "config"
+    finally:
+        await hub.stop()
