@@ -26,3 +26,8 @@ def test_lora_migration_creates_tables(tmp_path):
         "pending_devices",
         "lora_log",
     } <= names
+
+
+def test_web_migration_creates_tables(tmp_path):
+    names = _upgrade(tmp_path / "w.db")
+    assert {"schools", "buildings", "rooms", "slots", "reservations", "exam_periods"} <= names

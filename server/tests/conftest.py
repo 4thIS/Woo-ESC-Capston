@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+import app.domain.models
 from app.db import Base
 from app.lora_service import api
 from app.lora_service.api import RoomInfo

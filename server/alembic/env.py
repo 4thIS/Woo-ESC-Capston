@@ -4,7 +4,8 @@ import os
 
 from sqlalchemy import engine_from_config, pool
 
-import app.lora_service.models  # noqa: F401  (Task 7 에서 app.domain.models 추가)
+import app.domain.models
+import app.lora_service.models  # noqa: F401
 from alembic import context
 from app.db import Base
 
