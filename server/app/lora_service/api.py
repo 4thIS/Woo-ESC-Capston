@@ -7,17 +7,20 @@ lora_service 는 domain 을 import 하지 않는다. 방·모뎀 조회는 Topol
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
+import secrets
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Protocol
 
 from lora_proto import codec as C
+from lora_proto import proto as P
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import utcnow
-from app.lora_service.models import Outbox, RoomVersion
+from app.lora_service.models import Modem, Outbox, PendingDevice, RoomVersion, TerminalStatus
 
 
 @dataclass(frozen=True)
@@ -391,3 +394,204 @@ def cancel(outbox_id: int) -> bool:
             return False
     _hub.cancel(*to_cancel)
     return True
+
+
+_ACK_FIELDS = (
+    "ack_status",
+    "ack_detail",
+    "attempts",
+    "txn",
+    "rssi",
+    "snr",
+    "sched_ver",
+    "resv_ver",
+    "exam_ver",
+    "ident_ver",
+    "batt_mv",
+    "layout",
+    "fw",
+    "last_error",
+)
+_TS_FIELDS = (
+    "sched_ver",
+    "resv_ver",
+    "exam_ver",
+    "ident_ver",
+    "batt_mv",
+    "layout",
+    "fw",
+    "rssi",
+    "snr",
+)
+
+
+def _status_row(s: Session, bld: str, room: int, unit: int, modem_id: str) -> TerminalStatus:
+    ts = s.get(TerminalStatus, (bld, room, unit))
+    if ts is None:
+        ts = TerminalStatus(bld=bld, room=room, unit=unit)
+        s.add(ts)
+    ts.modem_id = modem_id
+    ts.last_seen_at = utcnow()
+    return ts
+
+
+def _check_versions(
+    s: Session, ts: TerminalStatus, bld: str, room: int, unit: int, msg: dict, *, gap: bool
+) -> None:
+    """ACK/STATUS 의 버전이 room_versions 와 다르거나 GAP 이면 resync + FILE 큐잉 (v2 §8.3)."""
+    info = _topology.room(bld, room)
+    stale = []
+    for kind, key in (("schedule", "sched_ver"), ("resv", "resv_ver"), ("exam", "exam_ver")):
+        rv = s.get(RoomVersion, (bld, room, kind))
+        if rv is not None and (gap or msg.get(key) != rv.ver):
+            stale.append(kind)
+    if not stale:
+        ts.sync_state = "synced"
+        return
+    ts.sync_state = "resync"
+    if info is not None:
+        for kind in stale:
+            _enqueue_file(s, info, bld, room, unit, kind)
+        if info.modem_id:
+            _hub.notify(info.modem_id)
+
+
+def on_job_result(modem_id: str, msg: dict) -> None:
+    with _Session() as s, s.begin():
+        row = s.get(Outbox, msg["job_id"])
+        if row is None or row.state in ("acked", "failed", "cancelled"):
+            return  # 늦게 온·중복 보고
+        row.state = "acked" if msg.get("state") == "acked" else "failed"
+        for k in _ACK_FIELDS:
+            if k in msg:
+                setattr(row, k, msg[k])
+        row.finished_at = utcnow()
+        if row.state != "acked":
+            return
+        ts = _status_row(s, row.bld, row.room, row.unit, modem_id)
+        ts.last_ack_at = ts.last_seen_at
+        for k in _TS_FIELDS:
+            if k in msg:
+                setattr(ts, k, msg[k])
+        if row.type == "SET_ROOM":
+            pd = s.get(PendingDevice, json.loads(row.payload)["mac"])
+            if pd is not None:
+                s.delete(pd)
+        _check_versions(
+            s, ts, row.bld, row.room, row.unit, msg, gap=msg.get("ack_status") == P.AckStatus.GAP
+        )
+
+
+def on_uplink(modem_id: str, msg: dict) -> None:
+    with _Session() as s, s.begin():
+        if msg["kind"] == "HELLO":
+            pd = s.get(PendingDevice, msg["mac"])
+            if pd is None:
+                pd = PendingDevice(mac=msg["mac"], first_seen_at=utcnow())
+                s.add(pd)
+            pd.modem_id, pd.fw, pd.batt_mv, pd.rssi = (
+                modem_id,
+                msg["fw"],
+                msg["batt_mv"],
+                msg["rssi"],
+            )
+            pd.last_seen_at = utcnow()
+            return
+        ts = _status_row(s, msg["bld"], msg["room"], msg["unit"], modem_id)
+        ts.last_status_at = ts.last_seen_at
+        for k in _TS_FIELDS:
+            if k in msg:
+                setattr(ts, k, msg[k])
+        ts.uptime_h = msg.get("uptime_h")
+        flags = msg.get("flags", 0)
+        ts.clock_stale = bool(flags & P.StatusFlag.CLOCK_STALE)
+        ts.low_batt = bool(flags & P.StatusFlag.LOW_BATT)
+        _check_versions(s, ts, msg["bld"], msg["room"], msg["unit"], msg, gap=False)
+
+
+# ---------- 모뎀 레지스트리 ----------
+
+
+def _hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def register_modem(modem_id: str) -> str:
+    token = secrets.token_urlsafe(32)
+    with _Session() as s, s.begin():
+        if s.get(Modem, modem_id) is not None:
+            raise ValueError(f"modem {modem_id} 이미 있음")
+        s.add(Modem(modem_id=modem_id, token_hash=_hash(token)))
+    return token
+
+
+def rotate_token(modem_id: str) -> str:
+    token = secrets.token_urlsafe(32)
+    with _Session() as s, s.begin():
+        m = s.get(Modem, modem_id)
+        if m is None:
+            raise NotFound(modem_id)
+        m.token_hash = _hash(token)
+    return token
+
+
+def verify_token(modem_id: str, token: str) -> bool:
+    with _Session() as s:
+        m = s.get(Modem, modem_id)
+        return m is not None and secrets.compare_digest(m.token_hash, _hash(token))
+
+
+def touch_modem(
+    modem_id: str, *, connected: bool, agent_ver: str | None = None, modem_fw: str | None = None
+) -> None:
+    with _Session() as s, s.begin():
+        m = s.get(Modem, modem_id)
+        if m is None:
+            return
+        m.connected = connected
+        m.last_seen_at = utcnow()
+        if agent_ver is not None:
+            m.agent_ver = agent_ver
+        if modem_fw is not None:
+            m.modem_fw = modem_fw
+
+
+def get_modems() -> list[Modem]:
+    with _Session() as s:
+        return list(s.scalars(select(Modem).order_by(Modem.modem_id)))
+
+
+def get_status(bld: str | None = None, room: int | None = None) -> list[TerminalStatus]:
+    q = select(TerminalStatus).order_by(
+        TerminalStatus.bld, TerminalStatus.room, TerminalStatus.unit
+    )
+    if bld:
+        q = q.where(TerminalStatus.bld == bld)
+    if room is not None:
+        q = q.where(TerminalStatus.room == room)
+    with _Session() as s:
+        return list(s.scalars(q))
+
+
+def get_pending_devices() -> list[PendingDevice]:
+    with _Session() as s:
+        return list(s.scalars(select(PendingDevice).order_by(PendingDevice.last_seen_at.desc())))
+
+
+def sweep_offline(now: dt.datetime | None = None) -> int:
+    """24 h 이상 안 붙은 모뎀의 dispatched → failed(modem_offline) (로드맵 §4.2)."""
+    now = now or utcnow()
+    cutoff = now - dt.timedelta(hours=24)
+    n = 0
+    with _Session() as s, s.begin():
+        dead = s.scalars(
+            select(Modem).where(Modem.connected.is_(False), Modem.last_seen_at < cutoff)
+        ).all()
+        for m in dead:
+            rows = s.scalars(
+                select(Outbox).where(Outbox.modem_id == m.modem_id, Outbox.state == "dispatched")
+            ).all()
+            for r in rows:
+                r.state, r.last_error, r.finished_at = "failed", "modem_offline", now
+                n += 1
+    return n
