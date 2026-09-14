@@ -76,7 +76,7 @@ v2 §8.2를 로드맵 §4.5로 개정한 것.
 | 접속 | `WS /ws/modem`. 첫 메시지는 10 s 안에 `hello`. 아니면 close |
 | `hello` | `modems.modem_id` 존재 + `sha256(token) == token_hash`. 아니면 close(4001). 같은 `modem_id`가 이미 연결돼 있으면 **이전 연결을 닫고 교체**. `last_seen_at/connected/agent_ver/modem_fw` 갱신 → `config` 송신 → 그 모뎀의 `queued` 전부를 `job`으로 송신 |
 | `config` 내용 | `net_id` = 건물의 학교, `radio` = `proto.RADIO`에서 `{sf,bw,cr,tx_dbm,preamble_wake_ms}`, `nodes` = 그 건물 `rooms` × `units` → `[{bld,room,unit}]`, `qr_base_url` = 설정값(빈 문자열 가능), `status_hour_utc` = 설정값(기본 18 = KST 03:00) |
-| `job` 송신 | outbox 행 → `{t:"job", job_id, bld, room, unit, type, payload, priority, new_ver}`. `payload` 키 = codec 필드명. FILE은 `payload.records` 포함. 송신했다고 상태를 바꾸지 않는다 |
+| `job` 송신 | outbox 행 → `{t:"job", job_id, bld, room, unit, type, payload, priority, new_ver}`. `payload` 키 = codec 필드명에서 `new_ver` 제외(`new_ver`는 job 필드). `bytes` 필드(`mac`, `args`)는 **hex 문자열**. FILE은 `{"kind": 1\|2\|3, "records": [레코드 dict…]}`. 송신했다고 상태를 바꾸지 않는다 |
 | `job_accepted` | `queued → dispatched`, `dispatched_at`. 이미 `dispatched` 이상이면 무시(멱등) |
 | `job_result` | `api.on_job_result()`에 위임. `dispatched → acked\|failed` + 결과 필드 + `finished_at`. `terminal_status` 갱신. 이미 끝난 행이면 로그만(모뎀Pi 재전송) |
 | `uplink` | `api.on_uplink()`에 위임. STATUS → `terminal_status` + 버전 비교, HELLO → `pending_devices` upsert |
@@ -136,11 +136,12 @@ server/
 |---|---|
 | `enqueue_slot_set(bld, room, day, start, end, type_, subject, professor, unit=0) -> list[int]` | v2 그대로. 반환 = outbox ids |
 | `enqueue_slot_del`, `enqueue_day_clear`, `enqueue_resv_set`, `enqueue_resv_del`, `enqueue_exam_set`, `enqueue_exam_del`, `enqueue_full_sync`, `enqueue_cmd` | v2 §8.6 시그니처 그대로 |
-| `provision(mac, bld, room, unit) -> int` | SET_ROOM 행 삽입 + `config` 재송 notify. `pending_devices` 행은 그 SET_ROOM이 `acked`로 돌아올 때 `on_job_result`가 삭제한다(v2 §7) |
+| `provision(mac, bld, room, unit) -> int` | `room_versions[ident]` +1 → SET_ROOM 행 삽입(outbox 주소 = 배정할 방; BLD=0x00 헤더는 모뎀Pi 전처리 몫). `config.nodes`는 rooms에서 나오므로 재송 없음. `pending_devices` 행은 그 SET_ROOM이 `acked`로 돌아올 때 `on_job_result`가 삭제한다(v2 §7) |
 | `request_time_broadcast() -> int` | 연결 모뎀에 `time_now`. 반환 = 송신한 모뎀 수 |
 | `get_status(bld=None, room=None)`, `get_pending_devices()`, `get_outbox(state=None, bld=None, room=None, limit=100)`, `cancel(outbox_id) -> bool` | v2 그대로 |
 | `set_record_provider(fn)` | v2 §8.7. `fn(bld, room, kind) -> list[codec dataclass]` |
-| **`set_notify(fn)`** | 추가. 허브가 `fn(modem_id)`를 주입 |
+| **`set_topology(t)`** | 추가. 같은 원리(lora_service는 domain을 import하지 않음). `t.room(bld, room) -> RoomInfo(modem_id, units, net_id) \| None`, `t.nodes(modem_id) -> [(bld, room, unit)]`, `t.net_id(modem_id)`. domain이 구현해 기동 시 주입 |
+| **`set_hub(port)`** | 추가. 허브가 주입하는 단일 포트: `notify(modem_id)`, `config_changed(modem_id)`, `time_now() -> int`, `cancel(modem_id, job_id)`. §2.5의 `set_notify`는 이 포트에 흡수 |
 | **`on_job_result(modem_id, msg: dict)`** | 추가. 허브가 부름. §2.4 `job_result` 규칙 |
 | **`on_uplink(modem_id, msg: dict)`** | 추가. 허브가 부름. §2.4 `uplink` 규칙 |
 | **`register_modem(modem_id) -> str`**, **`rotate_token(modem_id) -> str`** | 추가. 평문 토큰 반환(1회) |
