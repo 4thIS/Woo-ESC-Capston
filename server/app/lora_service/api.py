@@ -6,12 +6,14 @@ lora_service 는 domain 을 import 하지 않는다. 방·모뎀 조회는 Topol
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Protocol
 
 from lora_proto import codec as C
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import utcnow
@@ -214,3 +216,169 @@ def enqueue_slot_set(
         "SLOT_SET",
         lambda v: C.SlotSet(v, day, start[0], start[1], end[0], end[1], type_, subject, professor),
     )
+
+
+def enqueue_slot_del(
+    bld: str, room: int, day: int, start: tuple[int, int], unit: int = 0
+) -> list[int]:
+    return _enqueue(bld, room, unit, "SLOT_DEL", lambda v: C.SlotDel(v, day, start[0], start[1]))
+
+
+def enqueue_day_clear(bld: str, room: int, day: int, unit: int = 0) -> list[int]:
+    return _enqueue(bld, room, unit, "DAY_CLEAR", lambda v: C.DayClear(v, day))
+
+
+def enqueue_resv_set(
+    bld: str,
+    room: int,
+    resv_id: int,
+    date: dt.date,
+    start: tuple[int, int],
+    end: tuple[int, int],
+    type_: int,
+    subject: str,
+    professor: str,
+    unit: int = 0,
+) -> list[int]:
+    return _enqueue(
+        bld,
+        room,
+        unit,
+        "RESV_SET",
+        lambda v: C.ResvSet(
+            v,
+            resv_id,
+            date.year,
+            date.month,
+            date.day,
+            start[0],
+            start[1],
+            end[0],
+            end[1],
+            type_,
+            subject,
+            professor,
+        ),
+    )
+
+
+def enqueue_resv_del(bld: str, room: int, resv_id: int, unit: int = 0) -> list[int]:
+    return _enqueue(bld, room, unit, "RESV_DEL", lambda v: C.ResvDel(v, resv_id))
+
+
+def enqueue_exam_set(
+    bld: str, room: int, exam_id: int, date_start: dt.date, date_end: dt.date, unit: int = 0
+) -> list[int]:
+    return _enqueue(
+        bld,
+        room,
+        unit,
+        "EXAM_SET",
+        lambda v: C.ExamSet(
+            v,
+            exam_id,
+            date_start.year,
+            date_start.month,
+            date_start.day,
+            date_end.year,
+            date_end.month,
+            date_end.day,
+        ),
+    )
+
+
+def enqueue_exam_del(bld: str, room: int, exam_id: int, unit: int = 0) -> list[int]:
+    return _enqueue(bld, room, unit, "EXAM_DEL", lambda v: C.ExamDel(v, exam_id))
+
+
+def enqueue_cmd(bld: str, room: int, cmd: int, args: bytes = b"", unit: int = 0) -> list[int]:
+    return _enqueue(bld, room, unit, "CMD", lambda v: C.Cmd(cmd, args))
+
+
+FILE_KIND = {"schedule": 1, "resv": 2, "exam": 3}
+
+
+def _enqueue_file(
+    s: Session, info: RoomInfo, bld: str, room: int, unit: int, kind: str
+) -> list[int]:
+    """kind 전체 재동기 FILE. 같은 (bld,room,unit,kind) 에 queued|dispatched FILE 이 있으면 그 id (v2 §8.3)."""
+    units = [unit] if unit else list(range(1, info.units + 1))
+    open_rows = s.scalars(
+        select(Outbox).where(
+            Outbox.bld == bld,
+            Outbox.room == room,
+            Outbox.unit.in_(units),
+            Outbox.type == "FILE",
+            Outbox.state.in_(("queued", "dispatched")),
+        )
+    ).all()
+    existing = [r.id for r in open_rows if json.loads(r.payload)["kind"] == FILE_KIND[kind]]
+    if existing:
+        return existing
+    new_ver = _bump_ver(s, bld, room, kind)
+    records = _records(bld, room, kind)
+    C.build_file(FILE_KIND[kind], records, new_ver)  # 크기·kind 검증
+    payload = json.dumps(
+        {"kind": FILE_KIND[kind], "records": [json.loads(_to_json(r)) for r in records]},
+        ensure_ascii=False,
+    )
+    return _insert(s, info, bld, room, unit, "FILE", payload, new_ver)
+
+
+def enqueue_full_sync(
+    bld: str, room: int, kinds: tuple[str, ...] = ("schedule", "resv", "exam"), unit: int = 0
+) -> list[int]:
+    info = _room(bld, room)
+    ids: list[int] = []
+    with _Session() as s, s.begin():
+        for kind in kinds:
+            ids += _enqueue_file(s, info, bld, room, unit, kind)
+    if info.modem_id:
+        _hub.notify(info.modem_id)
+    return ids
+
+
+def provision(mac: str, bld: str, room: int, unit: int) -> int:
+    if unit not in (1, 2):
+        raise ValueError("unit 은 1 또는 2")
+    return _enqueue(
+        bld,
+        room,
+        unit,
+        "SET_ROOM",
+        lambda v: C.SetRoom(v, bytes.fromhex(mac), ord(bld), room, unit),
+    )[0]
+
+
+def request_time_broadcast() -> int:
+    return _hub.time_now()
+
+
+def get_outbox(
+    state: str | None = None, bld: str | None = None, room: int | None = None, limit: int = 100
+) -> list[Outbox]:
+    q = select(Outbox).order_by(Outbox.id.desc()).limit(limit)
+    if state:
+        q = q.where(Outbox.state == state)
+    if bld:
+        q = q.where(Outbox.bld == bld)
+    if room is not None:
+        q = q.where(Outbox.room == room)
+    with _Session() as s:
+        return list(reversed(s.scalars(q).all()))
+
+
+def cancel(outbox_id: int) -> bool:
+    """queued → cancelled. dispatched 는 모뎀Pi 에 cancel 을 보내고 job_result 를 기다린다 (spec §2.4)."""
+    with _Session() as s, s.begin():
+        row = s.get(Outbox, outbox_id)
+        if row is None:
+            return False
+        if row.state == "queued":
+            row.state = "cancelled"
+            row.finished_at = utcnow()
+            return True
+        if row.state == "dispatched" and row.modem_id:
+            _hub.cancel(row.modem_id, row.id)
+            return True
+        return False
