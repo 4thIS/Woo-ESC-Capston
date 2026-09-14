@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 from lora_proto import proto as P
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -106,3 +107,87 @@ class CmdIn(BaseModel):
 
 class Enqueued(BaseModel):
     outbox_ids: list[int]
+
+
+class ModemIn(BaseModel):
+    modem_id: str = Field(min_length=1, max_length=32, pattern=r"^[a-z0-9-]+$")
+
+
+class ModemOut(Out):
+    modem_id: str
+    agent_ver: str | None
+    modem_fw: str | None
+    last_seen_at: dt.datetime | None
+    connected: bool
+
+
+class TokenOut(BaseModel):
+    modem_id: str
+    token: str
+
+
+class OutboxOut(Out):
+    id: int
+    modem_id: str | None
+    bld: str
+    room: int
+    unit: int
+    type: str
+    payload: dict
+    priority: int
+    new_ver: int | None
+    state: str
+    attempts: int
+    ack_status: int | None
+    ack_detail: int | None
+    rssi: int | None
+    snr: float | None
+    last_error: str | None
+    created_at: dt.datetime
+    dispatched_at: dt.datetime | None
+    finished_at: dt.datetime | None
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _payload(cls, v):
+        return json.loads(v) if isinstance(v, str) else v
+
+
+class StatusOut(Out):
+    bld: str
+    room: int
+    unit: int
+    modem_id: str | None
+    mac: str | None
+    fw: int | None
+    batt_mv: int | None
+    rssi: int | None
+    snr: float | None
+    sched_ver: int | None
+    resv_ver: int | None
+    exam_ver: int | None
+    ident_ver: int | None
+    layout: int | None
+    clock_stale: bool
+    low_batt: bool
+    uptime_h: int | None
+    last_seen_at: dt.datetime | None
+    last_ack_at: dt.datetime | None
+    last_status_at: dt.datetime | None
+    sync_state: str
+
+
+class PendingOut(Out):
+    mac: str
+    modem_id: str | None
+    fw: int | None
+    batt_mv: int | None
+    rssi: int | None
+    first_seen_at: dt.datetime
+    last_seen_at: dt.datetime
+
+
+class ProvisionIn(BaseModel):
+    bld: str = Field(min_length=1, max_length=1)
+    room: int = Field(ge=1, le=9999)
+    unit: int = Field(ge=1, le=2)
