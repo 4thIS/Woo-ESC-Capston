@@ -173,6 +173,9 @@ FILE_END    [crc16 u16 BE  (CCITT-FALSE, 파일 전체)]
              파일 본문 = 레코드 반복: [recType u8][recLen u8][recPayload]
              recType = SLOT_SET/RESV_SET/EXAM_SET 와 동일 페이로드(단, NEW_VER 바이트 없음)
              단말은 FILE_END 검증 후 해당 kind를 **전부 비우고** 레코드를 순서대로 적용
+             **FILE은 전체 교체이므로 버전 연속성 판정 대상이 아니다.** 단말은 FILE_END 검증 성공 시 자기 버전을 NEW_VER로
+             **무조건** 설정하고 OK를 ACK한다. NEW_VER가 이전 값과 같거나 작아도 GAP을 반환하지 않는다.
+             (2026-09-14 확정 — 재동기 FILE은 버전을 올리지 않고 현재 버전을 싣기 때문)
 
 CMD         [cmd u8][args…]
              0x01 TEST_RENDER   [layout u8]           지정 레이아웃 즉시 렌더(설치 확인용)
@@ -201,7 +204,7 @@ HELLO       [mac 6B][fw u8][batt_mV u16 BE]   헤더 BLD=0x00 ROOM=0 UNIT=0 TXN=
 | 0x01 BAD_CRC | 앱 CRC 불일치 | 재전송 |
 | 0x02 BAD_PAYLOAD | 파싱 실패/길이 오류 | failed + 로그(코덱 버그 의심) |
 | 0x03 STORE_FAIL | 파일시스템 기록 실패 | 재전송 1회 후 failed |
-| 0x04 GAP | 적용은 했으나 `NEW_VER != 이전 ver + 1` (중간 패치 유실) | acked + **해당 kind FILE 재동기 큐잉** |
+| 0x04 GAP | 적용은 했으나 `(NEW_VER - 이전 ver) mod 255 != 1` (중간 패치 유실). **FILE 세션에는 적용하지 않는다**(§3.3) | acked + **해당 kind FILE 재동기 큐잉** (pending 작업이 있어도 억제하지 않음) |
 | 0x05 FILE_MISSING | detail = 첫 누락 seq | 해당 seq부터 FILE_DATA 재송 |
 | 0x06 UNSUPPORTED | 모르는 TYPE/CMD | failed |
 | 0x07 BUSY | 렌더 중 등으로 지금 처리 불가 | 5 s 후 재전송 |
