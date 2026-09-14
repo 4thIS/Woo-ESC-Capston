@@ -301,7 +301,8 @@ FILE_KIND = {"schedule": 1, "resv": 2, "exam": 3}
 def _enqueue_file(
     s: Session, info: RoomInfo, bld: str, room: int, unit: int, kind: str
 ) -> list[int]:
-    """kind 전체 재동기 FILE. 같은 (bld,room,unit,kind) 에 queued|dispatched FILE 이 있으면 그 id (v2 §8.3)."""
+    """kind 전체 재동기 FILE. 유닛별로 (bld,room,unit,kind) 에 queued|dispatched FILE 이 있으면 그 id,
+    없는 유닛만 새로 만든다 (v2 §8.3). 새로 만드는 유닛이 하나라도 있으면 버전은 한 번만 올리고 공유한다."""
     units = [unit] if unit else list(range(1, info.units + 1))
     open_rows = s.scalars(
         select(Outbox).where(
@@ -312,17 +313,22 @@ def _enqueue_file(
             Outbox.state.in_(("queued", "dispatched")),
         )
     ).all()
-    existing = [r.id for r in open_rows if json.loads(r.payload)["kind"] == FILE_KIND[kind]]
-    if existing:
-        return existing
-    new_ver = _bump_ver(s, bld, room, kind)
-    records = _records(bld, room, kind)
-    C.build_file(FILE_KIND[kind], records, new_ver)  # 크기·kind 검증
-    payload = json.dumps(
-        {"kind": FILE_KIND[kind], "records": [json.loads(_to_json(r)) for r in records]},
-        ensure_ascii=False,
-    )
-    return _insert(s, info, bld, room, unit, "FILE", payload, new_ver)
+    existing_by_unit = {
+        r.unit: r.id for r in open_rows if json.loads(r.payload)["kind"] == FILE_KIND[kind]
+    }
+    missing = [u for u in units if u not in existing_by_unit]
+    new_by_unit: dict[int, int] = {}
+    if missing:
+        new_ver = _bump_ver(s, bld, room, kind)
+        records = _records(bld, room, kind)
+        C.build_file(FILE_KIND[kind], records, new_ver)  # 크기·kind 검증
+        payload = json.dumps(
+            {"kind": FILE_KIND[kind], "records": [json.loads(_to_json(r)) for r in records]},
+            ensure_ascii=False,
+        )
+        for u in missing:
+            new_by_unit[u] = _insert(s, info, bld, room, u, "FILE", payload, new_ver)[0]
+    return [existing_by_unit.get(u, new_by_unit.get(u)) for u in units]
 
 
 def enqueue_full_sync(
@@ -369,7 +375,8 @@ def get_outbox(
 
 
 def cancel(outbox_id: int) -> bool:
-    """queued → cancelled. dispatched 는 모뎀Pi 에 cancel 을 보내고 job_result 를 기다린다 (spec §2.4)."""
+    """queued → cancelled. dispatched 는 커밋 후 모뎀Pi 에 cancel 을 보내고 job_result 를 기다린다 (spec §2.4)."""
+    to_cancel: tuple[str, int] | None = None
     with _Session() as s, s.begin():
         row = s.get(Outbox, outbox_id)
         if row is None:
@@ -379,6 +386,8 @@ def cancel(outbox_id: int) -> bool:
             row.finished_at = utcnow()
             return True
         if row.state == "dispatched" and row.modem_id:
-            _hub.cancel(row.modem_id, row.id)
-            return True
-        return False
+            to_cancel = (row.modem_id, row.id)
+        else:
+            return False
+    _hub.cancel(*to_cancel)
+    return True

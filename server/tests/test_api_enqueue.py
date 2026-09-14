@@ -95,6 +95,19 @@ def test_full_sync_reads_records_and_dedupes(db):
     assert p["kind"] == 1 and p["records"][0]["subject"] == "a" and "new_ver" not in p["records"][0]
 
 
+def test_full_sync_dedupes_per_unit(db):
+    ids = api.enqueue_full_sync("E", 301, kinds=("schedule",))  # units 1,2
+    assert len(ids) == 2
+    with db() as s, s.begin():
+        s.get(Outbox, ids[0]).state = "acked"  # unit 1 끝남, unit 2 는 아직 queued
+    again = api.enqueue_full_sync("E", 301, kinds=("schedule",))
+    assert len(again) == 2 and again[1] == ids[1] and again[0] != ids[0]
+    with db() as s:
+        new = s.get(Outbox, again[0])
+        assert new.unit == 1 and new.state == "queued" and new.new_ver == 2
+        assert s.get(RoomVersion, ("E", 301, "schedule")).ver == 2
+
+
 def test_provision_uses_ident_version(db):
     oid = api.provision("aabbccddeeff", "E", 302, 1)
     r = _rows(db)[0]
