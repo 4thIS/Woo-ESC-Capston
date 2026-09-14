@@ -1,11 +1,14 @@
 import datetime as dt
+import json
 
 from lora_proto import codec as C
+from sqlalchemy import select
 
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
 from app.domain.topology import DomainTopology, record_provider
+from app.lora_service import api
 from app.lora_service.api import RoomInfo
-from app.lora_service.models import Modem
+from app.lora_service.models import Modem, Outbox
 
 
 def _seed(Session):
@@ -92,3 +95,166 @@ def test_record_provider_mirrors_codec_and_limits_resv_to_7_days(app):
     assert resv[0] == C.ResvSet(0, 7, 2026, 9, 16, 13, 0, 15, 0, 6, "대여", "")
     assert rp("E", 301, "exam") == [C.ExamSet(0, 3, 2026, 10, 19, 2026, 10, 23)]
     assert rp("E", 999, "schedule") == []
+
+
+def _setup(client):
+    sch = client.post("/api/schools", json={"name": "명지", "net_id": 75}).json()
+    b = client.post(
+        "/api/buildings", json={"school_id": sch["id"], "name": "공학관", "bld": "E"}
+    ).json()
+    r = client.post("/api/rooms", json={"building_id": b["id"], "room": 301, "units": 2}).json()
+    return sch, b, r
+
+
+def test_crud_and_slot_put_creates_outbox_rows(client, app):
+    _sch, _b, r = _setup(client)
+    assert client.get("/api/rooms").json()[0]["room"] == 301
+    res = client.put(
+        f"/api/rooms/{r['id']}/slots",
+        json={
+            "day": 1,
+            "s_h": 9,
+            "s_m": 0,
+            "e_h": 10,
+            "e_m": 50,
+            "type": 1,
+            "subject": "자료구조",
+            "professor": "김",
+        },
+    )
+    assert res.status_code == 200 and len(res.json()["outbox_ids"]) == 2
+    assert client.get(f"/api/rooms/{r['id']}/slots").json()[0]["subject"] == "자료구조"
+    # 같은 멱등키 → 갱신(행 1개 유지), 버전 2
+    client.put(
+        f"/api/rooms/{r['id']}/slots",
+        json={
+            "day": 1,
+            "s_h": 9,
+            "s_m": 0,
+            "e_h": 10,
+            "e_m": 50,
+            "type": 3,
+            "subject": "휴강",
+            "professor": "김",
+        },
+    )
+    assert len(client.get(f"/api/rooms/{r['id']}/slots").json()) == 1
+    with app.state.Session() as s:
+        rows = s.scalars(select(Outbox).order_by(Outbox.id)).all()
+        assert [x.new_ver for x in rows] == [1, 1, 2, 2]
+        p = json.loads(rows[2].payload)
+        assert p["type"] == 3 and p["subject"] == "휴강"
+
+
+def test_slot_delete_day_clear_resv_exam_sync_cmd(client, app):
+    _sch, _b, r = _setup(client)
+    rid = r["id"]
+    client.put(
+        f"/api/rooms/{rid}/slots",
+        json={
+            "day": 2,
+            "s_h": 9,
+            "s_m": 0,
+            "e_h": 10,
+            "e_m": 0,
+            "type": 1,
+            "subject": "a",
+            "professor": "b",
+        },
+    )
+    assert client.delete(f"/api/rooms/{rid}/slots/2/9/0").status_code == 200
+    assert client.get(f"/api/rooms/{rid}/slots").json() == []
+    assert client.delete(f"/api/rooms/{rid}/slots?day=3").json()["outbox_ids"]
+    res = client.post(
+        f"/api/rooms/{rid}/reservations",
+        json={
+            "id": 7,
+            "date": "2026-09-16",
+            "s_h": 13,
+            "s_m": 0,
+            "e_h": 15,
+            "e_m": 0,
+            "type": 6,
+            "subject": "대여",
+            "professor": "",
+        },
+    )
+    assert res.status_code == 200
+    assert client.delete(f"/api/rooms/{rid}/reservations/7").status_code == 200
+    assert (
+        client.post(
+            f"/api/rooms/{rid}/exams",
+            json={"id": 3, "date_start": "2026-10-19", "date_end": "2026-10-23"},
+        ).status_code
+        == 200
+    )
+    assert client.delete(f"/api/rooms/{rid}/exams/3").status_code == 200
+    assert client.post(f"/api/rooms/{rid}/sync", json={"kinds": ["schedule"]}).json()["outbox_ids"]
+    assert client.post(f"/api/rooms/{rid}/cmd", json={"cmd": 4, "args_hex": ""}).status_code == 200
+    with app.state.Session() as s:
+        types = [x.type for x in s.scalars(select(Outbox).order_by(Outbox.id))]
+    assert (
+        types
+        == ["SLOT_SET"] * 2
+        + ["SLOT_DEL"] * 2
+        + ["DAY_CLEAR"] * 2
+        + ["RESV_SET"] * 2
+        + ["RESV_DEL"] * 2
+        + ["EXAM_SET"] * 2
+        + ["EXAM_DEL"] * 2
+        + ["FILE"] * 2
+        + ["CMD"] * 2
+    )
+
+
+def test_validation_errors(client):
+    _sch, _b, r = _setup(client)
+    bad = client.put(
+        f"/api/rooms/{r['id']}/slots",
+        json={
+            "day": 1,
+            "s_h": 9,
+            "s_m": 0,
+            "e_h": 10,
+            "e_m": 0,
+            "type": 1,
+            "subject": "가" * 7,
+            "professor": "",
+        },
+    )  # 21 B
+    assert bad.status_code == 422 and "20 B" in str(
+        bad.json()
+    )  # Pydantic 검증 = 422 (FastAPI 표준)
+    assert (
+        client.put(
+            "/api/rooms/999/slots",
+            json={
+                "day": 1,
+                "s_h": 9,
+                "s_m": 0,
+                "e_h": 10,
+                "e_m": 0,
+                "type": 1,
+                "subject": "a",
+                "professor": "",
+            },
+        ).status_code
+        == 404
+    )
+    assert (
+        client.post("/api/rooms", json={"building_id": 1, "room": 302, "units": 3}).status_code
+        == 422
+    )
+
+
+def test_room_change_resends_config(client, app):
+    api.register_modem("m1")  # buildings.modem_id FK
+    sent = []
+    app.state.hub.config_changed = lambda mid: sent.append(mid)
+    sch = client.post("/api/schools", json={"name": "명지", "net_id": 75}).json()
+    b = client.post(
+        "/api/buildings",
+        json={"school_id": sch["id"], "name": "공학관", "bld": "E", "modem_id": "m1"},
+    ).json()
+    client.post("/api/rooms", json={"building_id": b["id"], "room": 301, "units": 2})
+    assert sent == ["m1"]

@@ -6,9 +6,12 @@ import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import replace
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app.db import make_engine, make_session_factory
+from app.domain.router import router as domain_router
+from app.domain.topology import DomainTopology, record_provider
 from app.lora_service import api
 from app.lora_service.hub import Hub
 from app.lora_service.router import router as lora_router
@@ -27,6 +30,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
     async def lifespan(_app: FastAPI):
         api.configure(Session)
         api.set_hub(hub)
+        api.set_topology(DomainTopology(Session))
+        api.set_record_provider(record_provider(Session))
         hub.start(asyncio.get_running_loop())
         sweeper = asyncio.ensure_future(hub.sweep_loop(SWEEP_INTERVAL_S))
         try:
@@ -41,6 +46,15 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app.state.Session = Session
     app.state.hub = hub
     app.include_router(lora_router)
+    app.include_router(domain_router)
+
+    @app.exception_handler(api.NotFound)
+    async def _nf(_r: Request, e: api.NotFound):
+        return JSONResponse({"detail": str(e)}, status_code=404)
+
+    @app.exception_handler(ValueError)
+    async def _bad(_r: Request, e: ValueError):
+        return JSONResponse({"detail": str(e)}, status_code=400)
 
     @app.get("/api/health")
     def health() -> dict:
