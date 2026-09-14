@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
 
+import sqlalchemy.exc
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +21,7 @@ from app.lora_service.hub import Hub
 from app.lora_service.router import router as lora_router
 from app.settings import Settings
 
+log = logging.getLogger("main")
 SWEEP_INTERVAL_S = 5.0
 
 
@@ -31,6 +34,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         api.configure(Session)
+        api.reset_connections()
         api.set_hub(hub)
         api.set_topology(DomainTopology(Session))
         api.set_record_provider(record_provider(Session))
@@ -62,6 +66,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.exception_handler(ValueError)
     async def _bad(_r: Request, e: ValueError):
         return JSONResponse({"detail": str(e)}, status_code=400)
+
+    @app.exception_handler(sqlalchemy.exc.IntegrityError)
+    async def _conflict(_r: Request, e: sqlalchemy.exc.IntegrityError):
+        log.warning("IntegrityError: %s", e)
+        return JSONResponse({"detail": "constraint violation"}, status_code=409)
 
     @app.get("/api/health")
     def health() -> dict:

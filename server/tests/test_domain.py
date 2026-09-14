@@ -207,6 +207,20 @@ def test_slot_delete_day_clear_resv_exam_sync_cmd(client, app):
     )
 
 
+def test_sync_rejects_bogus_kind(client):
+    _sch, _b, r = _setup(client)
+    assert client.post(f"/api/rooms/{r['id']}/sync", json={"kinds": ["bogus"]}).status_code == 422
+
+
+def test_create_building_with_ghost_modem_returns_409(client):
+    sch = client.post("/api/schools", json={"name": "명지", "net_id": 75}).json()
+    res = client.post(
+        "/api/buildings",
+        json={"school_id": sch["id"], "name": "공학관", "bld": "E", "modem_id": "ghost"},
+    )
+    assert res.status_code == 409
+
+
 def test_validation_errors(client):
     _sch, _b, r = _setup(client)
     bad = client.put(
@@ -245,6 +259,48 @@ def test_validation_errors(client):
         client.post("/api/rooms", json={"building_id": 1, "room": 302, "units": 3}).status_code
         == 422
     )
+
+
+def test_resv_outside_horizon_stored_but_not_enqueued(client, app):
+    _sch, _b, r = _setup(client)
+    rid = r["id"]
+    today = dt.datetime.now(dt.UTC).date()
+    far = (today + dt.timedelta(days=60)).isoformat()
+    res = client.post(
+        f"/api/rooms/{rid}/reservations",
+        json={
+            "id": 9,
+            "date": far,
+            "s_h": 13,
+            "s_m": 0,
+            "e_h": 15,
+            "e_m": 0,
+            "type": 6,
+            "subject": "먼예약",
+            "professor": "",
+        },
+    )
+    assert res.status_code == 200 and res.json()["outbox_ids"] == []
+    assert [x["id"] for x in client.get(f"/api/rooms/{rid}/reservations").json()] == [9]
+    with app.state.Session() as s:
+        assert s.scalars(select(Outbox).where(Outbox.type == "RESV_SET")).all() == []
+
+    tomorrow = (today + dt.timedelta(days=1)).isoformat()
+    res2 = client.post(
+        f"/api/rooms/{rid}/reservations",
+        json={
+            "id": 10,
+            "date": tomorrow,
+            "s_h": 13,
+            "s_m": 0,
+            "e_h": 15,
+            "e_m": 0,
+            "type": 6,
+            "subject": "내일",
+            "professor": "",
+        },
+    )
+    assert res2.status_code == 200 and len(res2.json()["outbox_ids"]) == 2  # units=2
 
 
 def test_room_change_resends_config_after_commit(client, app):

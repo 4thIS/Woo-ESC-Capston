@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import logging
 import secrets
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -21,6 +22,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import utcnow
 from app.lora_service.models import Modem, Outbox, PendingDevice, RoomVersion, TerminalStatus
+
+log = logging.getLogger("lora_api")
 
 
 @dataclass(frozen=True)
@@ -299,6 +302,7 @@ def enqueue_cmd(bld: str, room: int, cmd: int, args: bytes = b"", unit: int = 0)
 
 
 FILE_KIND = {"schedule": 1, "resv": 2, "exam": 3}
+_KIND_OF_FILE_NUM = {v: k for k, v in FILE_KIND.items()}
 
 
 def _enqueue_file(
@@ -435,15 +439,44 @@ def _status_row(s: Session, bld: str, room: int, unit: int, modem_id: str) -> Te
     return ts
 
 
+def _outbox_kind_pending(s: Session, bld: str, room: int, unit: int, kind: str) -> bool:
+    """그 (bld,room,unit) 에 이 kind 를 이미 실어나를 queued|dispatched outbox 가 있는가.
+    있으면 그 결과를 기다린다 — 파이프라인 편집 중 스푸리어스 FILE 재동기 방지 (F5)."""
+    rows = s.scalars(
+        select(Outbox).where(
+            Outbox.bld == bld,
+            Outbox.room == room,
+            Outbox.unit == unit,
+            Outbox.state.in_(("queued", "dispatched")),
+        )
+    ).all()
+    return any(
+        KIND_OF.get(r.type) == kind
+        or (r.type == "FILE" and json.loads(r.payload)["kind"] == FILE_KIND[kind])
+        for r in rows
+    )
+
+
 def _check_versions(
-    s: Session, ts: TerminalStatus, bld: str, room: int, unit: int, msg: dict, *, gap: bool
+    s: Session,
+    ts: TerminalStatus,
+    bld: str,
+    room: int,
+    unit: int,
+    msg: dict,
+    *,
+    gap_kind: str | None,
 ) -> None:
-    """ACK/STATUS 의 버전이 room_versions 와 다르거나 GAP 이면 resync + FILE 큐잉 (v2 §8.3)."""
+    """ACK/STATUS 의 버전이 room_versions 와 다르거나(그 kind 가 GAP 이면) resync + FILE 큐잉 (v2 §8.3).
+    이미 그 kind 의 outbox 가 in-flight 면 결과를 기다리고 다시 큐잉하지 않는다."""
     info = _topology.room(bld, room)
     stale = []
     for kind, key in (("schedule", "sched_ver"), ("resv", "resv_ver"), ("exam", "exam_ver")):
         rv = s.get(RoomVersion, (bld, room, kind))
-        if rv is not None and (gap or msg.get(key) != rv.ver):
+        if rv is None:
+            continue
+        mismatched = kind == gap_kind or msg.get(key) != rv.ver
+        if mismatched and not _outbox_kind_pending(s, bld, room, unit, kind):
             stale.append(kind)
     if not stale:
         ts.sync_state = "synced"
@@ -458,9 +491,12 @@ def _check_versions(
 
 def on_job_result(modem_id: str, msg: dict) -> None:
     with _Session() as s, s.begin():
-        row = s.get(Outbox, msg["job_id"])
+        row = s.get(Outbox, int(msg["job_id"]))  # 계약 ⑦: 모뎀Pi가 TEXT 로 echo 할 수 있음
         if row is None or row.state in ("acked", "failed", "cancelled"):
             return  # 늦게 온·중복 보고
+        if row.modem_id and row.modem_id != modem_id:
+            log.warning("modem %s: job %s 는 %s 소유, 무시", modem_id, row.id, row.modem_id)
+            return
         row.state = "acked" if msg.get("state") == "acked" else "failed"
         for k in _ACK_FIELDS:
             if k in msg:
@@ -477,9 +513,13 @@ def on_job_result(modem_id: str, msg: dict) -> None:
             pd = s.get(PendingDevice, json.loads(row.payload)["mac"])
             if pd is not None:
                 s.delete(pd)
-        _check_versions(
-            s, ts, row.bld, row.room, row.unit, msg, gap=msg.get("ack_status") == P.AckStatus.GAP
-        )
+        gap_kind = None
+        if msg.get("ack_status") == P.AckStatus.GAP:
+            if row.type == "FILE":
+                gap_kind = _KIND_OF_FILE_NUM.get(json.loads(row.payload)["kind"])
+            else:
+                gap_kind = KIND_OF.get(row.type)
+        _check_versions(s, ts, row.bld, row.room, row.unit, msg, gap_kind=gap_kind)
 
 
 def on_uplink(modem_id: str, msg: dict) -> None:
@@ -506,7 +546,7 @@ def on_uplink(modem_id: str, msg: dict) -> None:
         flags = msg.get("flags", 0)
         ts.clock_stale = bool(flags & P.StatusFlag.CLOCK_STALE)
         ts.low_batt = bool(flags & P.StatusFlag.LOW_BATT)
-        _check_versions(s, ts, msg["bld"], msg["room"], msg["unit"], msg, gap=False)
+        _check_versions(s, ts, msg["bld"], msg["room"], msg["unit"], msg, gap_kind=None)
 
 
 # ---------- 모뎀 레지스트리 ----------
@@ -554,6 +594,17 @@ def touch_modem(
             m.agent_ver = agent_ver
         if modem_fw is not None:
             m.modem_fw = modem_fw
+
+
+def reset_connections() -> int:
+    """기동 시 호출. 이전 프로세스가 죽으며 남긴 connected=True 를 정리한다(로드맵 §4.2)."""
+    with _Session() as s, s.begin():
+        stale = s.scalars(select(Modem).where(Modem.connected.is_(True))).all()
+        now = utcnow()
+        for m in stale:
+            m.connected = False
+            m.last_seen_at = now
+        return len(stale)
 
 
 def get_modems() -> list[Modem]:

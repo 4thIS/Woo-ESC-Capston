@@ -28,6 +28,14 @@ def _json_default(o):
     raise TypeError(type(o).__name__)
 
 
+def _log_task_exc(task: asyncio.Task) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.error("spawned task 실패", exc_info=exc)
+
+
 class Hub:
     def __init__(self, session_factory: sessionmaker, settings: Settings):
         self._Session = session_factory
@@ -35,6 +43,7 @@ class Hub:
         self._loop: asyncio.AbstractEventLoop | None = None
         self.connected: dict[str, WebSocket] = {}
         self._missed: dict[str, int] = {}
+        self._sent: dict[str, set[int]] = {}
 
     # ---- 수명 ----
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -54,7 +63,11 @@ class Hub:
         if self._loop is None:
             coro.close()
             return
-        self._loop.call_soon_threadsafe(lambda: asyncio.ensure_future(coro))
+
+        def _start():
+            asyncio.ensure_future(coro).add_done_callback(_log_task_exc)
+
+        self._loop.call_soon_threadsafe(_start)
 
     def notify(self, modem_id: str) -> None:
         self._spawn(self.flush(modem_id))
@@ -140,9 +153,13 @@ class Hub:
                 .where(Outbox.modem_id == modem_id, Outbox.state == "queued")
                 .order_by(Outbox.priority, Outbox.id)
             ).all()
+        sent = self._sent.setdefault(modem_id, set())
         for row in rows:
+            if row.id in sent:
+                continue
             if not await self._send(modem_id, self.job_msg(row)):
                 return
+            sent.add(row.id)
 
     # ---- 수신 ----
     def _on_message(self, modem_id: str, msg: dict) -> dict | None:
@@ -150,9 +167,16 @@ class Hub:
         t = msg.get("t")
         if t == "job_accepted":
             with self._Session() as s, s.begin():
-                row = s.get(Outbox, msg["job_id"])
-                if row is not None and row.state == "queued":
+                row = s.get(Outbox, int(msg["job_id"]))  # 계약 ⑦: TEXT 로 echo 될 수 있음
+                if row is None:
+                    return None
+                if row.modem_id and row.modem_id != modem_id:
+                    log.warning("modem %s: job %s 는 %s 소유, 무시", modem_id, row.id, row.modem_id)
+                    return None
+                if row.state == "queued":
                     row.state, row.dispatched_at = "dispatched", utcnow()
+                elif row.state == "cancelled":  # M1: 취소 경합 — 이미 취소됐다고 알려준다
+                    return {"t": "cancel", "job_id": row.id}
         elif t == "job_result":
             api.on_job_result(modem_id, msg)
         elif t == "uplink":
@@ -183,8 +207,14 @@ class Hub:
         except (TimeoutError, WebSocketDisconnect, ValueError):
             await ws.close(code=4000)
             return
-        modem_id = hello.get("modem_id", "")
-        if hello.get("t") != "hello" or not api.verify_token(modem_id, hello.get("token", "")):
+        if not isinstance(hello, dict) or hello.get("t") != "hello":
+            await ws.close(code=4001)
+            return
+        modem_id, token = hello.get("modem_id"), hello.get("token")
+        if not isinstance(modem_id, str) or not isinstance(token, str):
+            await ws.close(code=4001)
+            return
+        if not api.verify_token(modem_id, token):
             await ws.close(code=4001)
             return
         old = self.connected.pop(modem_id, None)
@@ -194,6 +224,7 @@ class Hub:
             except (RuntimeError, WebSocketDisconnect):
                 pass
         self.connected[modem_id] = ws
+        self._sent[modem_id] = set()
         pinger = asyncio.ensure_future(self._pinger(modem_id, ws))
         try:
             api.touch_modem(
@@ -229,6 +260,7 @@ class Hub:
             pinger.cancel()
             if self.connected.get(modem_id) is ws:
                 del self.connected[modem_id]
+                self._sent.pop(modem_id, None)
                 api.touch_modem(modem_id, connected=False)
 
     # ---- 안전망 ----

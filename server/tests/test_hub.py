@@ -39,6 +39,13 @@ def _barrier(ws):
     assert ws.receive_json()["t"] == "pong"
 
 
+def test_non_dict_hello_closes_without_crashing(client, modem):
+    with client.websocket_connect("/ws/modem") as ws:
+        ws.send_json([1, 2])
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+
+
 def test_bad_token_closes(client, modem):
     with client.websocket_connect("/ws/modem") as ws:
         _hello(ws, "wrong")
@@ -77,6 +84,59 @@ def test_hello_sends_config_then_queued_jobs(client, live, modem):
             assert {s.get(Outbox, i).state for i in ids} == {"dispatched"}
             assert s.get(Outbox, ids[0]).dispatched_at is not None
     assert _wait_disconnected()  # 끊김 반영
+
+
+def test_job_id_as_string_is_coerced(client, live, modem):
+    ids = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")
+    with client.websocket_connect("/ws/modem") as ws:
+        _hello(ws, modem)
+        ws.receive_json()  # config
+        ws.receive_json()  # job
+        ws.send_json({"t": "job_accepted", "job_id": str(ids[0])})
+        _barrier(ws)
+        with live() as s:
+            assert s.get(Outbox, ids[0]).state == "dispatched"
+        ws.send_json(
+            {
+                "t": "job_result",
+                "job_id": str(ids[0]),
+                "state": "acked",
+                "ack_status": 0,
+                "ack_detail": 0,
+                "attempts": 1,
+                "txn": 1,
+                "rssi": -80,
+                "snr": 7.0,
+                "sched_ver": 1,
+                "resv_ver": 0,
+                "exam_ver": 0,
+                "ident_ver": 1,
+                "batt_mv": 4000,
+                "layout": 1,
+                "fw": 20,
+                "last_error": None,
+                "finished_at": 1_800_000_000,
+            }
+        )
+        _barrier(ws)
+        with live() as s:
+            assert s.get(Outbox, ids[0]).state == "acked"
+
+
+def test_flush_does_not_resend_already_sent_job(client, live, modem):
+    ids = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")
+    with client.websocket_connect("/ws/modem") as ws:
+        _hello(ws, modem)
+        ws.receive_json()  # config
+        assert ws.receive_json()["job_id"] == ids[0]
+        api._hub.notify("m1")  # 재알림 — 아직 job_accepted 도 안 왔다
+        _barrier(ws)  # 바로 pong 이 온다 = job 재송신 없음
+    assert _wait_disconnected()
+    with client.websocket_connect("/ws/modem") as ws:
+        _hello(ws, modem, pending=1)
+        ws.receive_json()  # config
+        assert ws.receive_json()["job_id"] == ids[0]  # 새 연결 = 새 집합, 다시 온다
+        _barrier(ws)
 
 
 def test_enqueue_while_connected_pushes_immediately(client, live, modem):
@@ -167,6 +227,17 @@ def test_cancel_and_time_now_are_sent(client, live, modem):
         assert ws.receive_json() == {"t": "cancel", "job_id": ids[0]}
         assert api.request_time_broadcast() == 1
         assert ws.receive_json() == {"t": "time_now", "request_status": False}
+
+
+def test_job_accepted_after_cancel_replies_cancel(client, live, modem):
+    ids = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")
+    with client.websocket_connect("/ws/modem") as ws:
+        _hello(ws, modem)
+        ws.receive_json()  # config
+        ws.receive_json()  # job
+        assert api.cancel(ids[0]) is True  # queued → cancelled (아직 job_accepted 안 옴)
+        ws.send_json({"t": "job_accepted", "job_id": ids[0]})
+        assert ws.receive_json() == {"t": "cancel", "job_id": ids[0]}
 
 
 def test_second_connection_replaces_first(client, modem):

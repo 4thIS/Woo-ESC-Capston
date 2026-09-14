@@ -83,6 +83,30 @@ def test_job_result_failed_and_finished_rows_ignored(db):
         assert s.get(TerminalStatus, ("E", 302, 1)) is None
 
 
+def test_job_result_pipelined_edits_no_spurious_resync(db):
+    ids1 = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")  # sched ver=1
+    ids2 = api.enqueue_slot_set("E", 302, 1, (11, 0), (12, 0), 1, "c", "d")  # sched ver=2
+    _dispatch(db, ids1 + ids2)
+    api.on_job_result("m1", {"job_id": ids1[0], **_ack(sched_ver=1)})
+    with db() as s:
+        assert s.scalars(select(Outbox).where(Outbox.type == "FILE")).all() == []
+        assert s.get(TerminalStatus, ("E", 302, 1)).sync_state != "resync"
+    api.on_job_result("m1", {"job_id": ids2[0], **_ack(sched_ver=2)})
+    with db() as s:
+        assert s.scalars(select(Outbox).where(Outbox.type == "FILE")).all() == []
+        assert s.get(TerminalStatus, ("E", 302, 1)).sync_state == "synced"
+
+
+def test_job_result_ignores_report_from_non_owning_modem(db):
+    ids = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")  # info.modem_id == "m1"
+    _dispatch(db, ids)
+    api.on_job_result("m2", {"job_id": ids[0], **_ack()})
+    with db() as s:
+        r = s.get(Outbox, ids[0])
+        assert r.state == "dispatched" and r.ack_status is None
+        assert s.get(TerminalStatus, ("E", 302, 1)) is None
+
+
 def test_set_room_acked_deletes_pending_device(db):
     api.on_uplink(
         "m1",
@@ -152,6 +176,14 @@ def test_modem_token_roundtrip(db):
     api.touch_modem("m1", connected=True, agent_ver="0.1", modem_fw="gw-2.0.0")
     m = api.get_modems()[0]
     assert m.connected and m.agent_ver == "0.1" and m.last_seen_at is not None
+
+
+def test_reset_connections_clears_stale_connected_flag(db):
+    api.register_modem("m1")
+    api.touch_modem("m1", connected=True)
+    assert api.reset_connections() == 1
+    m = api.get_modems()[0]
+    assert m.connected is False
 
 
 def test_sweep_offline_fails_dispatched_after_24h(db):

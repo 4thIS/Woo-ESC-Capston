@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from typing import Literal
 
 from lora_proto import proto as P
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -97,7 +98,7 @@ class ExamOut(ExamIn, Out):
 
 
 class SyncIn(BaseModel):
-    kinds: list[str] = ["schedule", "resv", "exam"]
+    kinds: list[Literal["schedule", "resv", "exam"]] = ["schedule", "resv", "exam"]
 
 
 class CmdIn(BaseModel):

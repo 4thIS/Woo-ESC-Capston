@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import schemas as S
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
+from app.domain.topology import RESV_HORIZON_DAYS
 from app.lora_service import api
 
 router = APIRouter(prefix="/api")
@@ -225,17 +228,20 @@ def put_resv(id: int, body: S.ResvIn, s: Session = _DB):
         setattr(obj, k, v)
     obj.room_id = id
     s.add(obj)
-    ids = api.enqueue_resv_set(
-        bld,
-        room,
-        body.id,
-        body.date,
-        (body.s_h, body.s_m),
-        (body.e_h, body.e_m),
-        body.type,
-        body.subject,
-        body.professor,
-    )
+    today = dt.datetime.now(dt.UTC).date()  # app 전역 naive UTC 관행 (app.db.utcnow)
+    ids = []
+    if today <= body.date <= today + dt.timedelta(days=RESV_HORIZON_DAYS):
+        ids = api.enqueue_resv_set(
+            bld,
+            room,
+            body.id,
+            body.date,
+            (body.s_h, body.s_m),
+            (body.e_h, body.e_m),
+            body.type,
+            body.subject,
+            body.professor,
+        )
     s.flush()
     return {"outbox_ids": ids}
 
