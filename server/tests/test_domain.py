@@ -247,14 +247,18 @@ def test_validation_errors(client):
     )
 
 
-def test_room_change_resends_config(client, app):
+def test_room_change_resends_config_after_commit(client, app):
     api.register_modem("m1")  # buildings.modem_id FK
-    sent = []
-    app.state.hub.config_changed = lambda mid: sent.append(mid)
+    seen = []
+    app.state.hub.config_changed = lambda mid: seen.append((mid, sorted(api._topology.nodes(mid))))
     sch = client.post("/api/schools", json={"name": "명지", "net_id": 75}).json()
     b = client.post(
         "/api/buildings",
         json={"school_id": sch["id"], "name": "공학관", "bld": "E", "modem_id": "m1"},
     ).json()
-    client.post("/api/rooms", json={"building_id": b["id"], "room": 301, "units": 2})
-    assert sent == ["m1"]
+    r = client.post("/api/rooms", json={"building_id": b["id"], "room": 301, "units": 2}).json()
+    assert seen[-1] == ("m1", [("E", 301, 1), ("E", 301, 2)])  # 커밋 뒤에 불렸다
+    client.patch(f"/api/rooms/{r['id']}", json={"building_id": b["id"], "room": 301, "units": 1})
+    assert seen[-1] == ("m1", [("E", 301, 1)])
+    client.delete(f"/api/rooms/{r['id']}")
+    assert seen[-1] == ("m1", [])

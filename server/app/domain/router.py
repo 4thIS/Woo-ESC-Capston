@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -82,25 +82,27 @@ def create_building(body: S.BuildingIn, s: Session = _DB):
 
 
 @router.patch("/buildings/{id}", response_model=S.BuildingOut)
-def update_building(id: int, body: S.BuildingIn, s: Session = _DB):
+def update_building(id: int, body: S.BuildingIn, bg: BackgroundTasks, s: Session = _DB):
     obj = _get(s, Building, id)
     before = obj.modem_id
     for k, v in body.model_dump().items():
         setattr(obj, k, v)
-    s.flush()
+    # FastAPI 는 background task 를 이 의존성의 teardown(커밋) *전에* 실행한다 — 그래서 여기서 직접
+    # commit 해 둔다. teardown 의 with s.begin() 은 이후 남은 트랜잭션이 없으면 조용히 끝난다.
+    s.commit()
     for mid in {before, obj.modem_id} - {None}:
-        api.config_changed(mid)
+        bg.add_task(api.config_changed, mid)
     return obj
 
 
 @router.delete("/buildings/{id}")
-def delete_building(id: int, s: Session = _DB):
+def delete_building(id: int, bg: BackgroundTasks, s: Session = _DB):
     obj = _get(s, Building, id)
     mid = obj.modem_id
     s.delete(obj)
-    s.flush()
+    s.commit()
     if mid:
-        api.config_changed(mid)
+        bg.add_task(api.config_changed, mid)
     return {"ok": True}
 
 
@@ -110,35 +112,39 @@ def list_rooms(s: Session = _DB):
 
 
 @router.post("/rooms", response_model=S.RoomOut)
-def create_room(body: S.RoomIn, s: Session = _DB):
+def create_room(body: S.RoomIn, bg: BackgroundTasks, s: Session = _DB):
     _get(s, Building, body.building_id)
     obj = Room(**body.model_dump())
     s.add(obj)
     s.flush()
-    if mid := _modem_of(s, obj.building_id):
-        api.config_changed(mid)
+    mid = _modem_of(s, obj.building_id)  # 커밋 전에 조회 — 커밋 뒤엔 이 세션을 더 못 쓴다
+    s.commit()  # background task 가 커밋된 상태를 보도록 (아래 ponytail 참고)
+    if mid:
+        bg.add_task(api.config_changed, mid)
     return obj
 
 
 @router.patch("/rooms/{id}", response_model=S.RoomOut)
-def update_room(id: int, body: S.RoomIn, s: Session = _DB):
+def update_room(id: int, body: S.RoomIn, bg: BackgroundTasks, s: Session = _DB):
     obj = _get(s, Room, id)
     for k, v in body.model_dump().items():
         setattr(obj, k, v)
     s.flush()
-    if mid := _modem_of(s, obj.building_id):
-        api.config_changed(mid)
+    mid = _modem_of(s, obj.building_id)
+    s.commit()
+    if mid:
+        bg.add_task(api.config_changed, mid)
     return obj
 
 
 @router.delete("/rooms/{id}")
-def delete_room(id: int, s: Session = _DB):
+def delete_room(id: int, bg: BackgroundTasks, s: Session = _DB):
     obj = _get(s, Room, id)
     mid = _modem_of(s, obj.building_id)
     s.delete(obj)
-    s.flush()
+    s.commit()
     if mid:
-        api.config_changed(mid)
+        bg.add_task(api.config_changed, mid)
     return {"ok": True}
 
 
@@ -157,6 +163,7 @@ def list_slots(id: int, s: Session = _DB):
 # enqueue_* 를 도메인 write(flush/execute) 보다 먼저 부른다 — SQLite WAL 은 쓰기 락이 하나뿐이라, 도메인
 # 세션이 먼저 쓰고 커밋 전에 outbox 세션이 쓰려 하면 서로 끝나기를 기다리며 busy_timeout 까지 막힌다
 # (도메인 커밋은 이 요청이 끝난 뒤라 절대 안 풀린다). outbox 를 먼저 커밋시키고 도메인은 뒤따르게 한다.
+# 이 순서라 enqueue 뒤 도메인 write 가 실패하면(예: IntegrityError → 500) outbox 행은 이미 커밋된 채 남는다.
 @router.put("/rooms/{id}/slots", response_model=S.Enqueued)
 def put_slot(id: int, body: S.SlotIn, s: Session = _DB):
     bld, room = _addr(s, id)
