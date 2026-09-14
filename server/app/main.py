@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.db import make_engine, make_session_factory
 from app.domain.router import router as domain_router
@@ -47,6 +49,11 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app.state.hub = hub
     app.include_router(lora_router)
     app.include_router(domain_router)
+    app.mount(
+        "/static",
+        StaticFiles(directory=Path(__file__).resolve().parents[1] / "static"),
+        name="static",
+    )
 
     @app.exception_handler(api.NotFound)
     async def _nf(_r: Request, e: api.NotFound):
