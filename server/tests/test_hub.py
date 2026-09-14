@@ -179,3 +179,29 @@ def test_second_connection_replaces_first(client, modem):
             with pytest.raises(WebSocketDisconnect):
                 a.receive_json()
             _barrier(b)
+
+
+def test_malformed_known_message_keeps_connection(client, live, modem):
+    with client.websocket_connect("/ws/modem") as ws:
+        _hello(ws, modem)
+        ws.receive_json()  # config
+        ws.send_json({"t": "job_result"})  # job_id 없음
+        ws.send_json({"t": "uplink", "kind": "HELLO"})  # mac 없음
+        ws.send_json([1, 2, 3])  # dict 아님
+        _barrier(ws)  # 여전히 pong 이 온다
+
+
+def test_replacement_survives_stale_old_socket(client, live, modem):
+    with client.websocket_connect("/ws/modem") as a:
+        _hello(a, modem)
+        a.receive_json()
+        with client.websocket_connect("/ws/modem") as b:
+            _hello(b, modem)
+            b.receive_json()
+            _barrier(b)
+        assert _wait_disconnected()
+    # a 가 닫힌 뒤 세 번째 접속도 정상
+    with client.websocket_connect("/ws/modem") as c:
+        _hello(c, modem)
+        assert c.receive_json()["t"] == "config"
+        _barrier(c)

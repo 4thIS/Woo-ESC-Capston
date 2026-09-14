@@ -41,8 +41,12 @@ class Hub:
         self._loop = loop
 
     async def stop(self) -> None:
-        for ws in list(self.connected.values()):
-            await ws.close()
+        for mid, ws in list(self.connected.items()):
+            try:
+                await ws.close()
+            except (RuntimeError, WebSocketDisconnect):
+                pass
+            api.touch_modem(mid, connected=False)
         self.connected.clear()
 
     # ---- HubPort (api 가 부른다. 웹 스레드 또는 루프 스레드 어디서든) ----
@@ -185,31 +189,40 @@ class Hub:
             return
         old = self.connected.pop(modem_id, None)
         if old is not None:
-            await old.close(code=1000)
+            try:
+                await old.close(code=1000)
+            except (RuntimeError, WebSocketDisconnect):
+                pass
         self.connected[modem_id] = ws
-        api.touch_modem(
-            modem_id,
-            connected=True,
-            agent_ver=hello.get("agent_ver"),
-            modem_fw=hello.get("modem_fw"),
-        )
-        self._log(modem_id, "rx", {**hello, "token": "***"})
-        await self.send_config(modem_id)
-        await self.flush(modem_id)
         pinger = asyncio.ensure_future(self._pinger(modem_id, ws))
         try:
+            api.touch_modem(
+                modem_id,
+                connected=True,
+                agent_ver=hello.get("agent_ver"),
+                modem_fw=hello.get("modem_fw"),
+            )
+            self._log(modem_id, "rx", {**hello, "token": "***"})
+            await self.send_config(modem_id)
+            await self.flush(modem_id)
             while True:
                 try:
                     msg = await ws.receive_json()
                 except ValueError:
                     log.warning("modem %s: JSON 아님, 무시", modem_id)
                     continue
+                if not isinstance(msg, dict):
+                    log.warning("modem %s: dict 아님, 무시: %r", modem_id, msg)
+                    continue
                 self._log(modem_id, "rx", msg)
                 if msg.get("t") == "pong":
                     self._missed[modem_id] = 0
-                reply = self._on_message(modem_id, msg)
-                if reply:
-                    await self._send(modem_id, reply)
+                try:
+                    reply = self._on_message(modem_id, msg)
+                    if reply:
+                        await self._send(modem_id, reply)
+                except Exception:
+                    log.exception("modem %s: %s 처리 실패", modem_id, msg.get("t"))
         except WebSocketDisconnect:
             pass
         finally:
