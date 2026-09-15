@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>메인Pi — 통신 확인</title>
+<h1>메인Pi 통신 확인</h1>
+<p><a href="/docs">Swagger /docs</a></p>
+
+<h2>모뎀Pi</h2>
+<table id="modems" border="1"><tr><th>modem_id</th><th>connected</th><th>last_seen_at</th><th>agent</th></tr></table>
+
+<h2>시간표 저장 → outbox</h2>
+<form id="slot">
+  room_id <input name="room_id" value="1" size="3">
+  day <input name="day" value="1" size="1">
+  start <input name="s_h" value="9" size="2">:<input name="s_m" value="0" size="2">
+  end <input name="e_h" value="10" size="2">:<input name="e_m" value="50" size="2">
+  type <input name="type" value="1" size="1">
+  subject <input name="subject" value="자료구조">
+  professor <input name="professor" value="김교수">
+  <button>PUT /api/rooms/{id}/slots</button>
+  <span id="slot_out"></span>
+</form>
+
+<h2>outbox (2 s 갱신)</h2>
+<table id="outbox" border="1"><tr><th>id</th><th>modem</th><th>addr</th><th>type</th><th>ver</th><th>state</th><th>attempts</th><th>ack</th><th>created</th><th>finished</th></tr></table>
+
+<script>
+const num = v => Number(v);
+async function refresh() {
+  const modems = await (await fetch('/api/lora/modems')).json();
+  document.querySelector('#modems').innerHTML = '<tr><th>modem_id</th><th>connected</th><th>last_seen_at</th><th>agent</th></tr>' +
+    modems.map(m => `<tr><td>${m.modem_id}</td><td>${m.connected}</td><td>${m.last_seen_at ?? ''}</td><td>${m.agent_ver ?? ''}</td></tr>`).join('');
+  const rows = await (await fetch('/api/lora/outbox?limit=50')).json();
+  document.querySelector('#outbox').innerHTML = '<tr><th>id</th><th>modem</th><th>addr</th><th>type</th><th>ver</th><th>state</th><th>attempts</th><th>ack</th><th>created</th><th>finished</th></tr>' +
+    rows.reverse().map(r => `<tr><td>${r.id}</td><td>${r.modem_id ?? ''}</td><td>${r.bld}${r.room}-${r.unit}</td><td>${r.type}</td><td>${r.new_ver ?? ''}</td><td>${r.state}</td><td>${r.attempts}</td><td>${r.ack_status ?? ''}${r.last_error ? ' ' + r.last_error : ''}</td><td>${r.created_at}</td><td>${r.finished_at ?? ''}</td></tr>`).join('');
+}
+document.querySelector('#slot').onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const body = {day: num(f.day), s_h: num(f.s_h), s_m: num(f.s_m), e_h: num(f.e_h), e_m: num(f.e_m), type: num(f.type), subject: f.subject, professor: f.professor};
+  const r = await fetch(`/api/rooms/${f.room_id}/slots`, {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
+  document.querySelector('#slot_out').textContent = r.status + ' ' + await r.text();
+  refresh();
+};
+refresh(); setInterval(refresh, 2000);
+</script>
