@@ -17,7 +17,7 @@ from typing import Protocol
 
 from lora_proto import codec as C
 from lora_proto import proto as P
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import utcnow
@@ -85,6 +85,10 @@ def configure(session_factory: sessionmaker) -> None:
 def set_topology(t: Topology) -> None:
     global _topology
     _topology = t
+
+
+def get_topology() -> Topology:
+    return _topology
 
 
 def set_record_provider(fn: RecordProvider) -> None:
@@ -302,7 +306,6 @@ def enqueue_cmd(bld: str, room: int, cmd: int, args: bytes = b"", unit: int = 0)
 
 
 FILE_KIND = {"schedule": 1, "resv": 2, "exam": 3}
-_KIND_OF_FILE_NUM = {v: k for k, v in FILE_KIND.items()}
 
 
 def _current_ver(s: Session, bld: str, room: int, kind: str) -> int:
@@ -392,6 +395,19 @@ def get_outbox(
         return list(reversed(s.scalars(q).all()))
 
 
+def reassign_queued(bld: str, rooms: list[int], modem_id: str | None) -> int:
+    """건물에 모뎀이 없을 때 쌓인 queued job 을, 모뎀이 배정된 뒤 그 모뎀으로 재지정한다 (v2 §8.3)."""
+    with _Session() as s, s.begin():
+        n = s.execute(
+            update(Outbox)
+            .where(Outbox.bld == bld, Outbox.room.in_(rooms), Outbox.state == "queued")
+            .values(modem_id=modem_id)
+        ).rowcount
+    if modem_id is not None:
+        _hub.notify(modem_id)
+    return n
+
+
 def cancel(outbox_id: int) -> bool:
     """queued → cancelled. dispatched 는 커밋 후 모뎀Pi 에 cancel 을 보내고 job_result 를 기다린다 (spec §2.4)."""
     to_cancel: tuple[str, int] | None = None
@@ -477,30 +493,44 @@ def _check_versions(
     msg: dict,
     *,
     gap_kind: str | None,
-) -> None:
-    """ACK/STATUS 의 버전이 room_versions 와 다르거나(그 kind 가 GAP 이면) resync + FILE 큐잉 (v2 §8.3).
-    이미 그 kind 의 outbox 가 in-flight 면 결과를 기다리고 다시 큐잉하지 않는다."""
-    info = _topology.room(bld, room)
+) -> list[str]:
+    """ACK/STATUS 의 버전이 room_versions 와 다르거나(그 kind 가 GAP 이면) stale kind 목록을 낸다 (v2 §8.3).
+    이미 그 kind 의 outbox 가 in-flight 면 결과를 기다리고 다시 큐잉하지 않는다.
+    FILE 큐잉은 여기서 하지 않는다 — 별도 트랜잭션(`_queue_resync`)의 몫이다(I2: ACK 커밋을 지킨다)."""
     stale = []
     for kind, key in (("schedule", "sched_ver"), ("resv", "resv_ver"), ("exam", "exam_ver")):
         rv = s.get(RoomVersion, (bld, room, kind))
         if rv is None:
             continue
-        mismatched = kind == gap_kind or msg.get(key) != rv.ver
-        if mismatched and not _outbox_kind_pending(s, bld, room, unit, kind):
+        if kind == gap_kind:
+            stale.append(kind)  # GAP 은 노드가 관측한 불연속 — 억제하지 않는다
+        elif msg.get(key) != rv.ver and not _outbox_kind_pending(s, bld, room, unit, kind):
             stale.append(kind)
+    ts.sync_state = "resync" if stale else "synced"
+    return stale
+
+
+def _queue_resync(bld: str, room: int, unit: int, stale: list[str]) -> None:
+    """stale kind 들의 FILE 재동기 큐잉, ACK/STATUS 커밋과 별도 트랜잭션 (v2 §8.3).
+    실패해도 ACK/STATUS 는 이미 커밋된 채 남는다 — 하루 STATUS 가 다시 stale 을 발견해 재시도한다."""
     if not stale:
-        ts.sync_state = "synced"
         return
-    ts.sync_state = "resync"
-    if info is not None:
-        for kind in stale:
-            _enqueue_file(s, info, bld, room, unit, kind)
+    try:
+        info = _topology.room(bld, room)
+        if info is None:
+            return
+        with _Session() as s, s.begin():
+            for kind in stale:
+                _enqueue_file(s, info, bld, room, unit, kind)
         if info.modem_id:
             _hub.notify(info.modem_id)
+    except Exception:
+        log.exception("resync 큐잉 실패: %s%d#%d %s", bld, room, unit, stale)
 
 
 def on_job_result(modem_id: str, msg: dict) -> None:
+    stale: list[str] = []
+    bld = room = unit = None
     with _Session() as s, s.begin():
         row = s.get(Outbox, int(msg["job_id"]))  # 계약 ⑦: 모뎀Pi가 TEXT 로 echo 할 수 있음
         if row is None or row.state in ("acked", "failed", "cancelled"):
@@ -521,19 +551,24 @@ def on_job_result(modem_id: str, msg: dict) -> None:
             if k in msg:
                 setattr(ts, k, msg[k])
         if row.type == "SET_ROOM":
-            pd = s.get(PendingDevice, json.loads(row.payload)["mac"])
+            payload = json.loads(row.payload)
+            ts.mac = payload["mac"]
+            pd = s.get(PendingDevice, payload["mac"])
             if pd is not None:
                 s.delete(pd)
         gap_kind = None
-        if msg.get("ack_status") == P.AckStatus.GAP:
-            if row.type == "FILE":
-                gap_kind = _KIND_OF_FILE_NUM.get(json.loads(row.payload)["kind"])
-            else:
-                gap_kind = KIND_OF.get(row.type)
-        _check_versions(s, ts, row.bld, row.room, row.unit, msg, gap_kind=gap_kind)
+        # FILE 은 전체 교체 — GAP 을 재동기 트리거로 쓰지 않는다 (v2 §3.3 보강 예정)
+        if msg.get("ack_status") == P.AckStatus.GAP and row.type != "FILE":
+            gap_kind = KIND_OF.get(row.type)
+        bld, room, unit = row.bld, row.room, row.unit
+        stale = _check_versions(s, ts, bld, room, unit, msg, gap_kind=gap_kind)
+    if bld is not None:
+        _queue_resync(bld, room, unit, stale)
 
 
 def on_uplink(modem_id: str, msg: dict) -> None:
+    stale: list[str] = []
+    bld = room = unit = None
     with _Session() as s, s.begin():
         if msg["kind"] == "HELLO":
             pd = s.get(PendingDevice, msg["mac"])
@@ -557,7 +592,10 @@ def on_uplink(modem_id: str, msg: dict) -> None:
         flags = msg.get("flags", 0)
         ts.clock_stale = bool(flags & P.StatusFlag.CLOCK_STALE)
         ts.low_batt = bool(flags & P.StatusFlag.LOW_BATT)
-        _check_versions(s, ts, msg["bld"], msg["room"], msg["unit"], msg, gap_kind=None)
+        bld, room, unit = msg["bld"], msg["room"], msg["unit"]
+        stale = _check_versions(s, ts, bld, room, unit, msg, gap_kind=None)
+    if bld is not None:
+        _queue_resync(bld, room, unit, stale)
 
 
 # ---------- 모뎀 레지스트리 ----------

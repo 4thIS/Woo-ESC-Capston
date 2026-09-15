@@ -1,6 +1,7 @@
 import datetime as dt
 import json
 
+import pytest
 from lora_proto import codec as C
 from sqlalchemy import select
 
@@ -83,6 +84,25 @@ def test_topology_resolves_room_nodes_net_id(app):
     assert t.room("E", 999) is None and t.room("Z", 301) is None
     assert sorted(t.nodes("mjc-eng")) == [("E", 301, 1), ("E", 301, 2), ("E", 302, 1)]
     assert t.nodes("nope") == [] and t.net_id("mjc-eng") == 0x4B and t.net_id("nope") is None
+
+
+def test_room_raises_when_bld_ambiguous_across_schools(app):
+    """PR #5 M-f — 같은 bld 코드 건물이 두 학교에 있으면 운영 규칙 위반으로 명시적 예외."""
+    with app.state.Session() as s, s.begin():
+        sch1 = School(name="A", net_id=1)
+        sch2 = School(name="B", net_id=2)
+        s.add_all([sch1, sch2])
+        s.flush()
+        b1 = Building(school_id=sch1.id, name="공학관", bld="E")
+        b2 = Building(school_id=sch2.id, name="이과관", bld="E")
+        s.add_all([b1, b2])
+        s.flush()
+        s.add_all(
+            [Room(building_id=b1.id, room=301, units=1), Room(building_id=b2.id, room=301, units=1)]
+        )
+    t = DomainTopology(app.state.Session)
+    with pytest.raises(LookupError, match="여러 학교"):
+        t.room("E", 301)
 
 
 def test_record_provider_mirrors_codec_and_limits_resv_to_7_days(app):
@@ -301,6 +321,38 @@ def test_resv_outside_horizon_stored_but_not_enqueued(client, app):
         },
     )
     assert res2.status_code == 200 and len(res2.json()["outbox_ids"]) == 2  # units=2
+
+
+def test_building_gets_modem_reassigns_queued_jobs(client, app):
+    """PR #5 I1 — 모뎀 없는 건물에 쌓인 outbox 는 모뎀 배정 PATCH 뒤 그 모뎀으로 재지정된다."""
+    sch = client.post("/api/schools", json={"name": "명지", "net_id": 75}).json()
+    b = client.post(
+        "/api/buildings", json={"school_id": sch["id"], "name": "공학관", "bld": "E"}
+    ).json()
+    r = client.post("/api/rooms", json={"building_id": b["id"], "room": 301, "units": 1}).json()
+    res = client.put(
+        f"/api/rooms/{r['id']}/slots",
+        json={
+            "day": 1,
+            "s_h": 9,
+            "s_m": 0,
+            "e_h": 10,
+            "e_m": 0,
+            "type": 1,
+            "subject": "a",
+            "professor": "b",
+        },
+    )
+    oid = res.json()["outbox_ids"][0]
+    with app.state.Session() as s:
+        assert s.get(Outbox, oid).modem_id is None
+    api.register_modem("m1")
+    client.patch(
+        f"/api/buildings/{b['id']}",
+        json={"school_id": sch["id"], "name": "공학관", "bld": "E", "modem_id": "m1"},
+    )
+    with app.state.Session() as s:
+        assert s.get(Outbox, oid).modem_id == "m1"
 
 
 def test_room_change_resends_config_after_commit(client, app):

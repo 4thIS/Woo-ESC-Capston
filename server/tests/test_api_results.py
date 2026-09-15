@@ -1,5 +1,6 @@
 import datetime as dt
 import hashlib
+import json
 
 from lora_proto import proto as P
 from sqlalchemy import select
@@ -60,6 +61,19 @@ def test_job_result_gap_queues_one_file_only(db):
         assert s.get(TerminalStatus, ("E", 302, 1)).sync_state == "resync"
 
 
+def test_job_result_gap_not_suppressed_by_pending_check(db):
+    """PR #5 C1 — GAP 은 노드가 관측한 불연속이므로 다른 job 이 in-flight 여도 억제되면 안 된다."""
+    ids1 = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")  # sched ver=1
+    ids2 = api.enqueue_slot_set("E", 302, 1, (11, 0), (12, 0), 1, "c", "d")  # sched ver=2
+    _dispatch(db, ids1 + ids2)
+    api.on_job_result(
+        "m1", {"job_id": ids1[0], **_ack(ack_status=int(P.AckStatus.GAP), sched_ver=1)}
+    )  # job2 는 여전히 dispatched
+    with db() as s:
+        files = s.scalars(select(Outbox).where(Outbox.type == "FILE")).all()
+        assert len(files) == 1 and json.loads(files[0].payload)["kind"] == 1
+
+
 def test_job_result_version_mismatch_queues_file(db):
     ids = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")  # schedule ver=1
     _dispatch(db, ids)
@@ -70,6 +84,21 @@ def test_job_result_version_mismatch_queues_file(db):
             .one()
             .payload.startswith('{"kind": 1')
         )
+
+
+def test_job_result_file_gap_does_not_retrigger_resync(db):
+    """PR #5 C2 — FILE 은 전체 교체본이라 GAP 을 재동기 트리거로 쓰면 안 된다."""
+    ids = api.enqueue_full_sync("E", 302, kinds=("schedule",))
+    _dispatch(db, ids)
+    with db() as s:
+        cur_ver = s.get(RoomVersion, ("E", 302, "schedule")).ver
+    api.on_job_result(
+        "m1", {"job_id": ids[0], **_ack(ack_status=int(P.AckStatus.GAP), sched_ver=cur_ver)}
+    )
+    with db() as s:
+        files = s.scalars(select(Outbox).where(Outbox.type == "FILE")).all()
+        assert len(files) == 1
+        assert s.get(TerminalStatus, ("E", 302, 1)).sync_state == "synced"
 
 
 def test_job_result_failed_and_finished_rows_ignored(db):
@@ -129,6 +158,7 @@ def test_set_room_acked_deletes_pending_device(db):
     api.on_job_result("m1", {"job_id": oid, **_ack(ident_ver=1)})
     with db() as s:
         assert s.get(PendingDevice, "aabbccddeeff") is None
+        assert s.get(TerminalStatus, ("E", 302, 1)).mac == "aabbccddeeff"  # M-g
 
 
 def test_uplink_status_updates_terminal_and_flags(db):
@@ -163,6 +193,11 @@ def test_uplink_status_updates_terminal_and_flags(db):
         assert (
             ts.last_status_at is not None and ts.sync_state == "synced"
         )  # 버전 행 없음 = 비교 생략
+
+
+def test_get_topology_returns_configured_topology(db, topo):
+    """PR #5 M-a — hub 가 api._topology 를 직접 읽지 않고 접근자를 쓴다."""
+    assert api.get_topology() is topo
 
 
 def test_modem_token_roundtrip(db):
@@ -204,6 +239,32 @@ def test_resync_file_does_not_bump_and_units_converge(db):
     with db() as s:
         assert len(s.scalars(select(Outbox).where(Outbox.type == "FILE")).all()) == 1  # 핑퐁 없음
         assert s.get(TerminalStatus, ("E", 301, 2)).sync_state == "synced"
+
+
+def test_job_result_ack_survives_resync_enqueue_failure(db):
+    """PR #5 I2 — 재동기 큐잉이 실패해도 이미 커밋된 ACK/STATUS 는 롤백되지 않는다."""
+    ids = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")  # sched ver=1
+    _dispatch(db, ids)
+    api.set_record_provider(
+        lambda *a: (_ for _ in ()).throw(RuntimeError("provider down"))
+    )  # enqueue_full_sync 가 재동기 FILE 을 만들 때만 쓰인다 (여기선 스케줄이 이미 있어 미사용 경로도 방어)
+    api.on_job_result("m1", {"job_id": ids[0], **_ack(sched_ver=99)})  # 버전 불일치 → resync 시도
+    with db() as s:
+        r = s.get(Outbox, ids[0])
+        assert r.state == "acked"
+        assert s.get(TerminalStatus, ("E", 302, 1)).sync_state == "resync"
+        assert s.scalars(select(Outbox).where(Outbox.type == "FILE")).all() == []
+
+
+def test_reassign_queued_moves_orphaned_jobs_to_new_modem(db, hub):
+    """PR #5 I1 — 모뎀이 아직 없는 건물에 쌓인 queued job 을 모뎀 배정 뒤 재지정한다."""
+    ids = api.enqueue_slot_set("E", 303, 1, (9, 0), (10, 0), 1, "a", "b")  # topo modem_id=None
+    with db() as s:
+        assert s.get(Outbox, ids[0]).modem_id is None
+    assert api.reassign_queued("E", [303], "m1") == 1
+    with db() as s:
+        assert s.get(Outbox, ids[0]).modem_id == "m1"
+    assert hub.notified == ["m1"]
 
 
 def test_sweep_offline_fails_dispatched_after_24h(db):

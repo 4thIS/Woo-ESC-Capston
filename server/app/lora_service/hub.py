@@ -86,9 +86,10 @@ class Hub:
     # ---- 메시지 ----
     def config_msg(self, modem_id: str) -> dict:
         r = P.RADIO
+        topo = api.get_topology()
         return {
             "t": "config",
-            "net_id": api._topology.net_id(modem_id),
+            "net_id": topo.net_id(modem_id),
             "radio": {
                 "sf": r["RP_SF"],
                 "bw": r["RP_BW_KHZ"],
@@ -96,9 +97,7 @@ class Hub:
                 "tx_dbm": r["RP_TX_POWER_DBM"],
                 "preamble_wake_ms": r["RP_PREAMBLE_WAKE_MS"],
             },
-            "nodes": [
-                {"bld": b, "room": rm, "unit": u} for b, rm, u in api._topology.nodes(modem_id)
-            ],
+            "nodes": [{"bld": b, "room": rm, "unit": u} for b, rm, u in topo.nodes(modem_id)],
             "qr_base_url": self._settings.qr_base_url,
             "status_hour_utc": self._settings.status_hour_utc,
         }
@@ -163,11 +162,13 @@ class Hub:
 
     # ---- 수신 ----
     def _on_message(self, modem_id: str, msg: dict) -> dict | None:
-        """수신 1건 처리. 답장할 게 있으면 dict. ponytail: 동기 DB 호출을 루프에서 직접 — SQLite ms 단위."""
+        """수신 1건 처리. 답장할 게 있으면 dict. 참고: 동기 DB 호출을 루프에서 직접 — SQLite ms 단위."""
         t = msg.get("t")
         if t == "job_accepted":
+            job_id = int(msg["job_id"])  # 계약 ⑦: TEXT 로 echo 될 수 있음
+            self._sent.get(modem_id, set()).discard(job_id)
             with self._Session() as s, s.begin():
-                row = s.get(Outbox, int(msg["job_id"]))  # 계약 ⑦: TEXT 로 echo 될 수 있음
+                row = s.get(Outbox, job_id)
                 if row is None:
                     return None
                 if row.modem_id and row.modem_id != modem_id:
@@ -217,6 +218,13 @@ class Hub:
         if not api.verify_token(modem_id, token):
             await ws.close(code=4001)
             return
+        log.info(
+            "modem %s: hello agent=%s fw=%s pending_results=%s",
+            modem_id,
+            hello.get("agent_ver"),
+            hello.get("modem_fw"),
+            hello.get("pending_results"),
+        )
         old = self.connected.pop(modem_id, None)
         if old is not None:
             try:

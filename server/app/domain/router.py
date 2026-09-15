@@ -21,7 +21,7 @@ def get_db(request: Request):
         yield s
 
 
-_DB = Depends(get_db)  # ponytail: B008 회피용 모듈 싱글턴 (ruff 권고)
+_DB = Depends(get_db)  # 참고: B008 회피용 모듈 싱글턴 (ruff 권고)
 
 
 def _get(s: Session, model, id_: int):
@@ -77,7 +77,7 @@ def list_buildings(s: Session = _DB):
 
 @router.post("/buildings", response_model=S.BuildingOut)
 def create_building(body: S.BuildingIn, s: Session = _DB):
-    # ponytail: 갓 만든 건물엔 아직 방이 없어 재전송할 config 가 없다 — 모뎀은 최초 연결 때 config 를 받는다.
+    # 참고: 갓 만든 건물엔 아직 방이 없어 재전송할 config 가 없다 — 모뎀은 최초 연결 때 config 를 받는다.
     obj = Building(**body.model_dump())
     s.add(obj)
     s.flush()
@@ -88,11 +88,16 @@ def create_building(body: S.BuildingIn, s: Session = _DB):
 def update_building(id: int, body: S.BuildingIn, bg: BackgroundTasks, s: Session = _DB):
     obj = _get(s, Building, id)
     before = obj.modem_id
+    bld = obj.bld
+    rooms = list(s.scalars(select(Room.room).where(Room.building_id == obj.id)))
     for k, v in body.model_dump().items():
         setattr(obj, k, v)
     # FastAPI 는 background task 를 이 의존성의 teardown(커밋) *전에* 실행한다 — 그래서 여기서 직접
     # commit 해 둔다. teardown 의 with s.begin() 은 이후 남은 트랜잭션이 없으면 조용히 끝난다.
     s.commit()
+    if obj.modem_id != before:
+        # 커밋 뒤에 부른다 — outbox 재지정 트랜잭션이 방금 끝난 도메인 쓰기 락과 경합하지 않도록.
+        api.reassign_queued(bld, rooms, obj.modem_id)
     for mid in {before, obj.modem_id} - {None}:
         bg.add_task(api.config_changed, mid)
     return obj
@@ -162,7 +167,7 @@ def list_slots(id: int, s: Session = _DB):
     ).all()
 
 
-# ponytail: 도메인·outbox 두 세션. 한 트랜잭션으로 묶으려면 api.enqueue_* 에 Session 을 넘기는 시그니처 추가.
+# 참고: 도메인·outbox 두 세션. 한 트랜잭션으로 묶으려면 api.enqueue_* 에 Session 을 넘기는 시그니처 추가.
 # enqueue_* 를 도메인 write(flush/execute) 보다 먼저 부른다 — SQLite WAL 은 쓰기 락이 하나뿐이라, 도메인
 # 세션이 먼저 쓰고 커밋 전에 outbox 세션이 쓰려 하면 서로 끝나기를 기다리며 busy_timeout 까지 막힌다
 # (도메인 커밋은 이 요청이 끝난 뒤라 절대 안 풀린다). outbox 를 먼저 커밋시키고 도메인은 뒤따르게 한다.

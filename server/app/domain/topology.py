@@ -30,11 +30,13 @@ class DomainTopology:
 
     def room(self, bld: str, room: int) -> RoomInfo | None:
         with self._Session() as s:
-            hit = s.execute(_room_q(bld, room)).first()
-            if hit is None:
-                return None
-            r, b, sch = hit
-            return RoomInfo(b.modem_id, r.units, sch.net_id)
+            hits = s.execute(_room_q(bld, room)).all()
+        if not hits:
+            return None
+        if len(hits) > 1:
+            raise LookupError(f"bld {bld!r} 가 여러 학교에 있음 — 운영 규칙 위반")
+        r, b, sch = hits[0]
+        return RoomInfo(b.modem_id, r.units, sch.net_id)
 
     def nodes(self, modem_id: str) -> list[tuple[str, int, int]]:
         with self._Session() as s:
@@ -54,8 +56,12 @@ class DomainTopology:
             )
 
 
+def _utc_today() -> dt.date:
+    return dt.datetime.now(dt.UTC).date()
+
+
 def record_provider(
-    session_factory: sessionmaker, today: Callable[[], dt.date] = dt.date.today
+    session_factory: sessionmaker, today: Callable[[], dt.date] = _utc_today
 ) -> Callable[[str, int, str], list]:
     def _room_id(s: Session, bld: str, room: int) -> int | None:
         hit = s.execute(_room_q(bld, room)).first()

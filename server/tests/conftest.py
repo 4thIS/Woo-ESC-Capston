@@ -65,7 +65,13 @@ class SpyHub:
 
 @pytest.fixture
 def topo():
-    return FakeTopo({("E", 301): RoomInfo("m1", 2, 0x4B), ("E", 302): RoomInfo("m1", 1, 0x4B)})
+    return FakeTopo(
+        {
+            ("E", 301): RoomInfo("m1", 2, 0x4B),
+            ("E", 302): RoomInfo("m1", 1, 0x4B),
+            ("E", 303): RoomInfo(None, 1, 0x4B),
+        }
+    )
 
 
 @pytest.fixture

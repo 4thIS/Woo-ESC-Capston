@@ -39,6 +39,16 @@ def _barrier(ws):
     assert ws.receive_json()["t"] == "pong"
 
 
+def test_hello_logs_agent_fw_pending_results(client, live, modem, caplog):
+    """PR #5 M-b."""
+    with caplog.at_level("INFO", logger="hub"), client.websocket_connect("/ws/modem") as ws:
+        _hello(ws, modem, pending=3)
+        ws.receive_json()  # config
+        _barrier(ws)
+    msg = next(r.getMessage() for r in caplog.records if "hello agent=" in r.getMessage())
+    assert "m1" in msg and "0.1" in msg and "gw-2.0.0" in msg and "3" in msg
+
+
 def test_non_dict_hello_closes_without_crashing(client, modem):
     with client.websocket_connect("/ws/modem") as ws:
         ws.send_json([1, 2])
@@ -137,6 +147,19 @@ def test_flush_does_not_resend_already_sent_job(client, live, modem):
         ws.receive_json()  # config
         assert ws.receive_json()["job_id"] == ids[0]  # 새 연결 = 새 집합, 다시 온다
         _barrier(ws)
+
+
+def test_job_accepted_discards_sent_marker(client, live, modem):
+    """PR #5 M-c — _sent 가 커넥션 수명 내내 자라지 않도록 job_accepted 에서 지운다."""
+    ids = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")
+    with client.websocket_connect("/ws/modem") as ws:
+        _hello(ws, modem)
+        ws.receive_json()  # config
+        assert ws.receive_json()["job_id"] == ids[0]
+        assert ids[0] in client.app.state.hub._sent["m1"]
+        ws.send_json({"t": "job_accepted", "job_id": ids[0]})
+        _barrier(ws)
+        assert ids[0] not in client.app.state.hub._sent["m1"]
 
 
 def test_enqueue_while_connected_pushes_immediately(client, live, modem):
