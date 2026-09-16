@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy import select
 
 from app.domain import csv_import as CI
 from app.domain.models import Building, Room, School, Slot
@@ -149,3 +150,130 @@ def test_parse_node_slot_cap_counts_surviving_higher_source(app, seeded):
     assert _parse(app, HEADER + lines(47))[1] == []
     _rows, errors = _parse(app, HEADER + lines(48))
     assert errors == [CI.RowError(0, "301: 슬롯 49 개 > 48 (노드 상한)")]
+
+
+def _slots(app, rid):
+    with app.state.Session() as s:
+        return [
+            (x.day, x.s_h, x.s_m, x.subject, x.source)
+            for x in s.scalars(select(Slot).where(Slot.room_id == rid).order_by(Slot.day, Slot.s_h))
+        ]
+
+
+def test_apply_replaces_portal_keeps_higher_source(app, seeded):
+    r1, r2 = seeded
+    with app.state.Session() as s, s.begin():
+        s.add(
+            Slot(
+                room_id=r1,
+                day=3,
+                s_h=9,
+                s_m=0,
+                e_h=10,
+                e_m=0,
+                type=1,
+                subject="옛포털",
+                professor="",
+                source=1,
+            )
+        )
+        s.add(
+            Slot(
+                room_id=r1,
+                day=4,
+                s_h=9,
+                s_m=0,
+                e_h=10,
+                e_m=0,
+                type=1,
+                subject="유지될포털",
+                professor="",
+                source=1,
+            )
+        )
+        s.add(
+            Slot(
+                room_id=r2,
+                day=1,
+                s_h=9,
+                s_m=0,
+                e_h=10,
+                e_m=0,
+                type=1,
+                subject="302포털",
+                professor="",
+                source=1,
+            )
+        )
+    text = (
+        HEADER
+        + (
+            "명지,E,301,월,09:00,10:00,수업,포털월,\n"  # 수동(source 2) 과 겹침 → skipped
+            "명지,E,301,화,09:00,10:00,수업,포털화,\n"  # 긴급(source 3) 과 겹침 → skipped
+            "명지,E,301,목,09:00,10:00,수업,갱신됨,\n"  # 기존 포털 갱신
+            "명지,E,301,금,09:00,10:00,수업,새로,\n"  # 삽입
+        )
+    )  # 수 09:00 옛포털 → 삭제. 302 는 파일에 없음 → 불변
+    with app.state.Session() as s, s.begin():
+        rows, errors = CI.parse(text, s)
+        assert errors == []
+        summary = CI.apply(rows, s)
+    assert (summary.rooms, summary.added, summary.updated, summary.deleted) == (1, 1, 1, 1)
+    assert summary.skipped == [
+        {"row": 2, "reason": "수동 슬롯 있음 (source=2)"},
+        {"row": 3, "reason": "긴급 슬롯 있음 (source=3)"},
+    ]
+    assert summary.changed == [("E", 301)]
+    assert _slots(app, r1) == [
+        (1, 9, 0, "수동", 2),
+        (2, 9, 0, "휴강", 3),
+        (4, 9, 0, "갱신됨", 1),
+        (5, 9, 0, "새로", 1),
+    ]
+    assert _slots(app, r2) == [(1, 9, 0, "302포털", 1)]
+
+
+def test_apply_same_file_twice_counts_updated_and_still_changed(app, seeded):
+    _r1, r2 = seeded
+    text = HEADER + "명지,E,302,월,09:00,10:00,수업,a,\n"
+    for expect in ((1, 0), (0, 1)):  # (added, updated)
+        with app.state.Session() as s, s.begin():
+            rows, _ = CI.parse(text, s)
+            sm = CI.apply(rows, s)
+        assert (sm.added, sm.updated, sm.deleted) == (*expect, 0) and sm.changed == [("E", 302)]
+    assert _slots(app, r2) == [(1, 9, 0, "a", 1)]
+
+
+def test_apply_no_change_room_not_in_changed(app, seeded):
+    # 302 의 유일한 행이 수동 슬롯과 겹쳐 skipped → 변경 0 → changed 에 없음, rooms 0
+    _r1, r2 = seeded
+    with app.state.Session() as s, s.begin():
+        s.add(
+            Slot(
+                room_id=r2,
+                day=1,
+                s_h=9,
+                s_m=0,
+                e_h=10,
+                e_m=0,
+                type=1,
+                subject="수동302",
+                professor="",
+                source=2,
+            )
+        )
+    text = HEADER + "명지,E,302,월,09:00,10:00,수업,a,\n"
+    with app.state.Session() as s, s.begin():
+        rows, _ = CI.parse(text, s)
+        sm = CI.apply(rows, s)
+    assert sm.rooms == 0 and sm.changed == [] and len(sm.skipped) == 1
+
+
+def test_apply_dry_run_writes_nothing(app, seeded):
+    r1, _r2 = seeded
+    text = HEADER + "명지,E,301,금,09:00,10:00,수업,새로,\n"
+    with app.state.Session() as s, s.begin():
+        rows, _ = CI.parse(text, s)
+        sm = CI.apply(rows, s, dry_run=True)
+    assert sm.added == 1 and sm.changed == [("E", 301)]
+    assert _slots(app, r1) == [(1, 9, 0, "수동", 2), (2, 9, 0, "휴강", 3)]

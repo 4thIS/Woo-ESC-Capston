@@ -6,7 +6,7 @@ import csv
 import io
 import re
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from lora_proto import proto as P
 from sqlalchemy import select
@@ -167,3 +167,68 @@ def parse(text: str, s: Session) -> tuple[list[Row], list[RowError]]:
             room_no = next(r.room for r in rows if r.room_id == rid)
             errors.append(RowError(0, f"{room_no}: 슬롯 {total} 개 > {NODE_SLOT_MAX} (노드 상한)"))
     return rows, errors
+
+
+SOURCE_NAME = {1: "포털", 2: "수동", 3: "긴급"}
+
+
+@dataclass
+class Summary:
+    rooms: int = 0
+    added: int = 0
+    updated: int = 0
+    deleted: int = 0
+    skipped: list[dict] = field(default_factory=list)
+    changed: list[tuple[str, int]] = field(default_factory=list)  # FILE 대상 (bld, room)
+
+
+def apply(rows: list[Row], s: Session, dry_run: bool = False) -> Summary:
+    """방마다 source=1 슬롯을 파일 내용으로 교체 (S2b §2.3). 커밋은 호출 측. dry_run 이면 세지만 쓰지 않는다."""
+    sm = Summary()
+    by_room: dict[int, list[Row]] = defaultdict(list)
+    for r in rows:
+        by_room[r.room_id].append(r)
+    for rid, rs in by_room.items():
+        existing = {
+            (x.day, x.s_h, x.s_m): x for x in s.scalars(select(Slot).where(Slot.room_id == rid))
+        }
+        file_keys = {(r.day, r.s_h, r.s_m) for r in rs}
+        changed = False
+        for key, x in existing.items():
+            if x.source == 1 and key not in file_keys:
+                sm.deleted += 1
+                changed = True
+                if not dry_run:
+                    s.delete(x)
+        for r in rs:
+            x = existing.get((r.day, r.s_h, r.s_m))
+            if x is not None and x.source >= 2:
+                sm.skipped.append(
+                    {
+                        "row": r.row,
+                        "reason": f"{SOURCE_NAME[x.source]} 슬롯 있음 (source={x.source})",
+                    }
+                )
+                continue
+            changed = True
+            if x is None:
+                sm.added += 1
+                x = Slot(room_id=rid, day=r.day, s_h=r.s_h, s_m=r.s_m, source=1)
+                if not dry_run:
+                    s.add(x)
+            else:
+                sm.updated += 1
+            if not dry_run:
+                x.e_h, x.e_m, x.type, x.subject, x.professor = (
+                    r.e_h,
+                    r.e_m,
+                    r.type,
+                    r.subject,
+                    r.professor,
+                )
+        if changed:
+            sm.rooms += 1
+            sm.changed.append((rs[0].bld, rs[0].room))
+    if not dry_run:
+        s.flush()
+    return sm
