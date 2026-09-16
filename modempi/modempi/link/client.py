@@ -138,12 +138,25 @@ class LinkClient:
             self.backoff = 1.0
             self._last_rx = self._clock()
             self.connected.set()
-            up = asyncio.create_task(self.uploader.run(ws, self._stop))
+            tasks = [
+                asyncio.create_task(self.uploader.run(ws, self._stop)),
+                asyncio.create_task(self._watchdog(ws)),
+            ]
             try:
                 await self._recv_loop(ws)
             finally:
-                up.cancel()
-                await asyncio.gather(up, return_exceptions=True)
+                for t in tasks:
+                    t.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _watchdog(self, ws: ClientConnection) -> None:
+        """서버가 30 s 마다 ping 을 보낸다. silence_timeout 동안 아무 메시지도 없으면 죽은 연결 (S5 §2.2)."""
+        while True:
+            await self._sleep(1.0)
+            if self._clock() - self._last_rx > self.silence_timeout:
+                log.warning("modem %s: %.0f s 무응답 — 재접속", self.modem_id, self.silence_timeout)
+                await ws.close(code=1001)
+                return
 
     async def _recv_loop(self, ws: ClientConnection) -> None:
         async for raw in ws:
