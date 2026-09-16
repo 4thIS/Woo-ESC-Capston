@@ -12,10 +12,11 @@ import json
 import logging
 import secrets
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Protocol
 
 from lora_proto import codec as C
+from lora_proto import jsonio
 from lora_proto import proto as P
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session, sessionmaker
@@ -148,13 +149,8 @@ def _bump_ver(s: Session, bld: str, room: int, kind: str) -> int:
 
 
 def _to_json(obj: object) -> str:
-    """codec dataclass → job.payload. new_ver 제외, bytes 는 hex (spec §2.4)."""
-    d = {
-        k: (v.hex() if isinstance(v, bytes) else v)
-        for k, v in asdict(obj).items()
-        if k != "new_ver"
-    }
-    return json.dumps(d, ensure_ascii=False)
+    """codec dataclass → job.payload. 변환 규칙은 lora_proto.jsonio 하나뿐(로드맵 §4.2) — new_ver 만 뺀다."""
+    return json.dumps(jsonio.to_json(obj, drop=("new_ver",)), ensure_ascii=False)
 
 
 def _insert(
@@ -344,7 +340,10 @@ def _enqueue_file(
         records = _records(bld, room, kind)
         C.build_file(FILE_KIND[kind], records, new_ver)  # 크기·kind 검증
         payload = json.dumps(
-            {"kind": FILE_KIND[kind], "records": [json.loads(_to_json(r)) for r in records]},
+            {
+                "kind": FILE_KIND[kind],
+                "records": [jsonio.to_json(r, drop=("new_ver",)) for r in records],
+            },
             ensure_ascii=False,
         )
         for u in missing:
