@@ -36,7 +36,7 @@ firmware/
 | 경로 | 담당 |
 |------|------|
 | `lib/lora_codec/`, `src/modem/`, `src/terminal/` (무선·절전·스케줄링·저장) | cw @ssenu (모뎀 펌웨어는 dh가 지원) |
-| `src/terminal/render*`, `src/terminal/display*`, `src/fonts/` | dh @Hyeon02-kr |
+| `src/terminal/render*`, `src/terminal/display*`, `src/fonts/`, `lib/host_gfx/`, `lib/fixture_parse/`, `lib/adafruit_gfx_vendor/`(벤더, 무수정), `tools/`(렌더 프리뷰) | dh @Hyeon02-kr |
 
 두 담당이 같은 영역을 쓰므로, **상태 판단 ↔ 렌더 사이의 인터페이스**(레이아웃 구조체·그리기 함수 시그니처)가 이 영역의 내부 계약이다. 바꾸려면 상대와 사전 협의한다.
 

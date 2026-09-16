@@ -88,7 +88,7 @@ Heltec V3에 올라가는 두 펌웨어는 각각 **모뎀 펌웨어**(모뎀Pi�
 | ② 모뎀 시리얼 프로토콜 (JSON lines) | 모뎀 펌웨어 ↔ `modem.py` / fake 모뎀 | ◎ v2 §4.2·4.3 | S1 |
 | ③ `lora_service/api.py` 시그니처 + `RecordProvider` | 메인Pi 웹 도메인 ↔ 메인Pi LoRa 계층 | ◎ v2 §8.6·8.7 (호출 측·구현 측 모두 wj, cw 리뷰) | S2 |
 | ④ `RenderModel` | 노드 상태 판단(cw) → 렌더(dh) | ○ §4.1 | S3 |
-| ⑤ CSV 포맷 + 웹 REST 윤곽 | 관리자·학생 웹 ↔ 메인Pi | ○ | S2 |
+| ⑤ CSV 포맷 + 웹 REST 윤곽 | 관리자·학생 웹 ↔ 메인Pi | ◎ CSV = `2026-09-16-s2b-csv-import-design.md` §2.1 (PR #21) / REST = FastAPI OpenAPI | S2·S2b |
 | **⑥ 메인Pi ↔ 모뎀Pi 백홀 (WebSocket)** | 메인Pi WS 허브(wj) ↔ 모뎀Pi 링크(wj) | ○ §4.2 | S2·S5 |
 | **⑦ 모뎀Pi 내부 `JobStore`** | 링크(wj) ↔ LoRa 파이프라인(cw) | ○ §4.3 | S5·S6 |
 

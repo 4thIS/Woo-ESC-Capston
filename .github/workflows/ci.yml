@@ -129,6 +129,10 @@ jobs:
       - name: test
         if: steps.manifest.outputs.ready == 'true'
         run: pio test -e native
+      - name: build render_preview (native_preview)
+        if: steps.manifest.outputs.ready == 'true'
+        # render_preview.cpp 는 main() 을 가져 pio test 에 안 들어간다 — 컴파일 검증은 이 스텝만 (PR #23)
+        run: pio run -e native_preview
 
   # ===== server: FastAPI (Python + uv) =====
   server:
