@@ -40,7 +40,10 @@ repos:
       - id: clang-format
         files: '^firmware/.*\.(c|cc|cpp|h|hpp)$'
         # 벤더링한 서드파티 코드는 업스트림 원본 그대로 유지한다(diff 추적 목적, S3 plan Task 1 참조).
-        exclude: '^firmware/lib/adafruit_gfx_vendor/'
+        # 특정 디렉터리 하나가 아니라 모든 lib/*/vendor/ 및 lib/*_vendor/ 패턴을 일반적으로 제외한다 —
+        # adafruit_gfx_vendor 하나만 제외했다가 host_gfx/vendor/stb_image_write.h가 재포맷된 사고가
+        # 있었음(S3 plan Task 3).
+        exclude: '^firmware/lib/([^/]*_vendor|[^/]+/vendor)/'
 
   # ── server · modempi: ruff (Python) ──────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit
