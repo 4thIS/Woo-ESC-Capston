@@ -1,7 +1,7 @@
 # 진행 로드맵 · 3계층 토폴로지 · 서브프로젝트 분해 · 영역 간 계약 — 설계 (spec)
 
 - 생성일시: 2026-09-09
-- 수정일시: 2026-09-16 (r5 — 계약 ⑦ 확정: `JobStore` Protocol 채택·동기 store·`next_txn`·`set_meta`·`split`. r4 — QR 제거·`battPct` 제거·`today[24]`(S3 spec). r3 — 웹 역할 재정의: mh = 시안·디자인 스펙(`docs/design/`), wj = `web/` 코드 전체. r2 2026-09-09 — 3계층 토폴로지 반영, 모뎀Pi 내부를 링크/파이프라인으로 분할)
+- 수정일시: 2026-09-16 (r5 — 계약 ⑦ 확정; RenderModel `dateStr`·`newTag` 추가: `JobStore` Protocol 채택·동기 store·`next_txn`·`set_meta`·`split`. r4 — QR 제거·`battPct` 제거·`today[24]`(S3 spec). r3 — 웹 역할 재정의: mh = 시안·디자인 스펙(`docs/design/`), wj = `web/` 코드 전체. r2 2026-09-09 — 3계층 토폴로지 반영, 모뎀Pi 내부를 링크/파이프라인으로 분할)
 - 상위 문서: `docs/specs/2026-09-09-lora-v2-wor-design.md` (v2 시스템 설계). 공중 프로토콜(§2·§3)·모뎀 펌웨어(§4)·ESP노드 펌웨어(§5~7)는 그 문서가 원본이다. **v2 §8(백엔드 LoRa 서비스)은 이 문서 §4로 대체한다** — 워커·modem.py·codec이 모뎀Pi로 이동했다.
 - 근거 문서: 과제추진계획서(Woo팀), 2026-2 캡스톤디자인 운영계획
 
@@ -101,14 +101,16 @@ typedef struct {
   uint8_t  layout;              // v2 §5.3 표의 1~8
   char     bld; uint16_t room; uint8_t unit;
   char     nowStr[6];           // "HH:MM" — 렌더가 시계를 직접 읽지 않음
+  char     dateStr[6];          // "MM.DD" (2026-09-16 추가, mh 화면 스펙 미결 1)
   uint8_t  weekday;             // 1=월..7=일
   struct { char subj[21]; char prof[13];
            uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } prev, cur, next;
                                 // flags bit0 = 존재함, bit1 = 변경 배지(휴강·보강·변경)
   uint8_t  nToday;
   struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // 주간 18 + 야간 6 (S3 spec §2.1). 렌더는 표시 상한 N 개만 그린다
+  char     newTag[9];           // "NEW-1A7F" — layout 8 전용, MAC 하위 2 B (2026-09-16 추가, mh 화면 스펙 미결 2)
   uint16_t battMv;              // battPct 는 제거 (2026-09-16 — 방전 곡선 없이 % 환산은 임의값)
-} RenderModel;                  // ≈ 550 B, 매 웨이크 재계산
+} RenderModel;                  // ≈ 565 B, 매 웨이크 재계산. prev 는 화면 스펙(mh #12)에서 미사용 — cw-11 에서 제거 여부 판단
 ```
 
 - 문자열 길이는 v2 §5.1 저장 버퍼와 동일. `today[24]`는 명지전문대 교시표(09:00~22:55) 기준 — S3 spec §2.1.

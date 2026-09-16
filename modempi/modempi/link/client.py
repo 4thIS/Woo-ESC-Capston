@@ -38,7 +38,6 @@ class LinkClient:
         modem_id: str,
         token: str,
         agent_ver: str = "0.0.0",
-        modem_fw: str = "unknown",
         clock=time.time,
         sleep=asyncio.sleep,
         upload_interval: float = 1.0,
@@ -48,7 +47,7 @@ class LinkClient:
     ):
         self.store = store
         self.url, self.modem_id, self._token = url, modem_id, token
-        self.agent_ver, self.modem_fw = agent_ver, modem_fw
+        self.agent_ver = agent_ver
         self._clock, self._sleep = clock, sleep
         self.upload_interval, self.silence_timeout = upload_interval, silence_timeout
         self.config_timeout, self.backoff_max = config_timeout, backoff_max
@@ -111,7 +110,7 @@ class LinkClient:
             "modem_id": self.modem_id,
             "token": self._token,
             "agent_ver": self.agent_ver,
-            "modem_fw": self.modem_fw,
+            "modem_fw": self.store.get_meta("modem_fw") or "unknown",
             "pending_results": len(self.store.pending_results()),
         }
 
