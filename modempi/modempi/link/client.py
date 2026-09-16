@@ -14,6 +14,7 @@ from lora_proto import proto as P
 from websockets.asyncio.client import ClientConnection
 
 from modempi.link.store_port import JobStore
+from modempi.link.uploader import Uploader
 
 log = logging.getLogger("link")
 
@@ -58,6 +59,7 @@ class LinkClient:
         self._stop = asyncio.Event()
         self._ws: ClientConnection | None = None
         self._last_rx = 0.0
+        self.uploader = Uploader(store, interval=upload_interval, sleep=sleep)
 
     # ---- 수명 ----
     async def run(self) -> None:
@@ -136,7 +138,12 @@ class LinkClient:
             self.backoff = 1.0
             self._last_rx = self._clock()
             self.connected.set()
-            await self._recv_loop(ws)
+            up = asyncio.create_task(self.uploader.run(ws, self._stop))
+            try:
+                await self._recv_loop(ws)
+            finally:
+                up.cancel()
+                await asyncio.gather(up, return_exceptions=True)
 
     async def _recv_loop(self, ws: ClientConnection) -> None:
         async for raw in ws:
