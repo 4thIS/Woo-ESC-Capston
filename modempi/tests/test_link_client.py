@@ -1,8 +1,8 @@
 import asyncio
 import json
-import socket
 
 import pytest
+import websockets
 from lora_proto import proto as P
 
 from modempi.link.client import LinkClient
@@ -123,20 +123,17 @@ async def test_non_json_first_frame_is_protocol_error_and_run_survives(store):
         await hub.stop()
 
 
-async def test_stop_during_backoff_exits_promptly(store):
-    # 리스너 없는 포트: bind 후 바로 닫아 확보한 임시 포트를 쓴다.
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    c = LinkClient(
-        store, url=f"ws://127.0.0.1:{port}/ws/modem", modem_id="m1", token="x", backoff_max=30
-    )
+async def test_stop_during_backoff_exits_promptly(store, monkeypatch):
+    # 실제 접속 거부 대신 monkeypatch — Windows 루프백 ECONNREFUSED 의 ~2 s 지연을 피한다.
+    # 이 테스트가 검증하려는 건 connect 실패 사유가 아니라, 백오프 대기 중 stop() 이
+    # 즉시 먹히는지다.
+    def _refuse(*a, **k):
+        raise ConnectionRefusedError
+
+    monkeypatch.setattr(websockets, "connect", _refuse)
+    c = LinkClient(store, url="ws://127.0.0.1:9/ws/modem", modem_id="m1", token="x", backoff_max=30)
     task = asyncio.create_task(c.run())
 
-    # 첫 연결 실패 → 백오프 대기 진입까지의 시간은 OS마다 다르다(윈도우 루프백
-    # ECONNREFUSED 는 관찰상 ~1.8s 지연). 고정 sleep 대신 상태 전이를 폴링해
-    # "백오프 대기 중" 시점을 잡는다 — 이 테스트가 검증하려는 건 그 이후 stop() 이
-    # 즉시 먹히는지이지, 첫 connect() 실패까지 걸리는 OS 지연이 아니다.
     async def _entered_backoff() -> None:
         while c.state != "DISCONNECTED" or c.attempts < 1:
             await asyncio.sleep(0.01)

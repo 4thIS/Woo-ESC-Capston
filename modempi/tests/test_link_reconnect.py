@@ -1,7 +1,7 @@
 import asyncio
-import socket
 
 import pytest
+import websockets
 
 from modempi.link.client import LinkClient
 
@@ -14,12 +14,6 @@ async def _wait(pred, timeout=3.0):
     async with asyncio.timeout(timeout):
         while not pred():
             await asyncio.sleep(0.02)
-
-
-def _closed_ephemeral_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 async def test_reconnect_after_hub_restart_reports_pending(store, clock):
@@ -61,19 +55,21 @@ async def test_reconnect_after_hub_restart_reports_pending(store, clock):
         await hub2.stop()
 
 
-async def test_backoff_sequence_with_jitter(store, clock):
-    port = _closed_ephemeral_port()  # 아무도 안 듣는 포트
+async def test_backoff_sequence_with_jitter(store, clock, monkeypatch):
+    def _refuse(*a, **k):
+        raise ConnectionRefusedError
+
+    monkeypatch.setattr(websockets, "connect", _refuse)
     c = LinkClient(
         store,
-        url=f"ws://127.0.0.1:{port}/ws/modem",
+        url="ws://127.0.0.1:9/ws/modem",
         modem_id="m1",
         token="x",
         clock=clock,
         sleep=clock.sleep,
     )
     task = asyncio.create_task(c.run())
-    # Windows 루프백 ECONNREFUSED 는 시도당 ~2 s 걸린다(OS 지연, fake sleep 과 무관) — 7회분 여유를 둔다.
-    await _wait(lambda: len(clock.sleeps) >= 7, timeout=25.0)
+    await _wait(lambda: len(clock.sleeps) >= 7)
     await c.stop()
     await asyncio.wait_for(task, 3)
     base = [1, 2, 4, 8, 16, 30, 30]
@@ -106,8 +102,9 @@ async def test_silence_watchdog_reconnects(store, fake_hub, clock):
     task = asyncio.create_task(c.run())
     await asyncio.wait_for(c.connected.wait(), 3)
     first = c.attempts
-    clock.now += 61  # 서버가 61 s 동안 아무 말도 안 했다
-    await _wait(lambda: c.attempts > first)  # watchdog 이 닫고 재접속
+    rx0 = clock.now
+    await _wait(lambda: c.attempts > first)  # watchdog 이 silence_timeout 지나서 닫고 재접속
+    assert clock.now - rx0 > 60  # 60 s 임계 미만에서 잘못 발동하면(예: > 1.0) 여기서 걸린다
     await asyncio.wait_for(c.connected.wait(), 3)
     assert len([m for m in fake_hub.received if m["t"] == "hello"]) >= 2
     await c.stop()
