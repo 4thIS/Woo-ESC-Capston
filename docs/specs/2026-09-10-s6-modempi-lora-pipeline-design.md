@@ -1,7 +1,7 @@
 # S6 — 모뎀Pi LoRa 파이프라인 설계 (spec)
 
 - 생성일시: 2026-09-10
-- 수정일시: 2026-09-10
+- 수정일시: 2026-09-16 (r2 — 계약 ⑦ 확정 반영: 동기 store, `split` 부모 `uploaded=1`, `set_meta/get_meta`로 `modem_fw` 전달, TXN 프레임 단위 확정. r1 2026-09-10)
 - 상위 문서: `2026-09-09-roadmap-design.md` §3(책임 분할)·§4.3(계약 ⑦ JobStore)·§4.4(오프라인)·§4.5(v2 §8 개정). 워커 알고리즘 원본은 `2026-09-09-lora-v2-wor-design.md` §8.4 (이 문서로 이관), 모뎀 시리얼 프로토콜은 v2 §4.2·4.3, 프레임 규격은 v2 §3.
 - 담당: cw @ssenu. 영역 `modempi/lora/`. 상대: `modempi/link/`(wj, S5)와는 `modempi/store.py`로만 만난다.
 
@@ -37,6 +37,8 @@ S1이 만드는 것에 의존한다: `lora_proto.codec`(프레임·페이로드�
   );
   ```
   인터페이스: `next_txn(bld, room, unit) -> int` (1..255 롤링, 0 건너뜀, 즉시 커밋). `store.py` 공용 파일이므로 PR에 양쪽 리뷰.
+  추가(2026-09-16): `meta(key TEXT PRIMARY KEY, value TEXT)` 테이블 + `set_meta/get_meta`. 파이프라인이 모뎀 `ready.fw`를 `meta["modem_fw"]`에 쓰고, 링크가 `hello.modem_fw`로 올린다.
+  **store는 동기(`sqlite3`)** — S5 spec §9 결정을 따른다. 파이프라인도 루프에서 직접 호출한다(ms 단위, 단일 연결). 링크 측 공식 시그니처는 `modempi/link/store_port.py`의 `JobStore` Protocol.
 - 계약 ① 프레임 규격·② 모뎀 시리얼 — **소비자**. `lora_proto.codec`과 `LineTransport`만 쓴다.
 - 계약 ⑥(WS)은 모른다.
 
@@ -115,10 +117,10 @@ loop:
   job = store.pick_next()     # state='received', priority ASC, received_at ASC, next_try_at<=now,
                               # 같은 (bld,room,unit) 에 'sending' 없음
   없으면 0.5 s 대기
-  units = preprocess(job)     # split 이면 sub-row 들이 다음 pick 에 잡힘, continue
+  units = preprocess(job)     # split 이면 부모를 state='split', uploaded=1 로 닫고 sub-row 들이 다음 pick 에 잡힘, continue
   store.update(job, state='sending')
   if FILE 세션:
-      txn = store.next_txn(addr)          # 세션 전체가 같은 TXN? → 아니다. v2 §3.5: TXN 은 프레임마다. BEGIN/DATA/END 각각 next_txn
+      # TXN 은 프레임마다 (v2 §3.5 확정 2026-09-10): BEGIN/DATA/END 각각 next_txn(). FILE_MISSING 재송도 새 TXN
       for u in units: res = client.tx(frame(u, next_txn), wake=u.wake, ack_ms=3000)
           acked 이고 ACK.status==FILE_MISSING(seq) → 그 seq 부터 DATA 재송(최대 2회) 후 END 재송
           no_ack 2회 연속 → 세션 실패 → 아래 재시도 정책

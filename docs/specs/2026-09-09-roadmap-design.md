@@ -1,7 +1,7 @@
 # 진행 로드맵 · 3계층 토폴로지 · 서브프로젝트 분해 · 영역 간 계약 — 설계 (spec)
 
 - 생성일시: 2026-09-09
-- 수정일시: 2026-09-16 (r4 — QR 제거·`battPct` 제거·`today[24]`(S3 spec). r3 — 웹 역할 재정의: mh = 시안·디자인 스펙(`docs/design/`), wj = `web/` 코드 전체. r2 2026-09-09 — 3계층 토폴로지 반영, 모뎀Pi 내부를 링크/파이프라인으로 분할)
+- 수정일시: 2026-09-16 (r5 — 계약 ⑦ 확정: `JobStore` Protocol 채택·동기 store·`next_txn`·`set_meta`·`split`. r4 — QR 제거·`battPct` 제거·`today[24]`(S3 spec). r3 — 웹 역할 재정의: mh = 시안·디자인 스펙(`docs/design/`), wj = `web/` 코드 전체. r2 2026-09-09 — 3계층 토폴로지 반영, 모뎀Pi 내부를 링크/파이프라인으로 분할)
 - 상위 문서: `docs/specs/2026-09-09-lora-v2-wor-design.md` (v2 시스템 설계). 공중 프로토콜(§2·§3)·모뎀 펌웨어(§4)·ESP노드 펌웨어(§5~7)는 그 문서가 원본이다. **v2 §8(백엔드 LoRa 서비스)은 이 문서 §4로 대체한다** — 워커·modem.py·codec이 모뎀Pi로 이동했다.
 - 근거 문서: 과제추진계획서(Woo팀), 2026-2 캡스톤디자인 운영계획
 
@@ -182,9 +182,19 @@ CREATE INDEX ix_jobs_upload ON jobs(uploaded, finished_at);
 
 | 누가 | 하는 일 | 인터페이스 (`modempi/store.py`, 공용) |
 |---|---|---|
-| 링크(wj) | `job` 수신 → `received` 행 삽입 후 `job_accepted` 송신. `cancel` → `received`면 `cancelled`. 주기적으로 `finished_at IS NOT NULL AND uploaded=0` 행을 `job_result`로 올리고 `uploaded=1`. `config` 수신 → `config` 테이블 갱신 + 파이프라인에 이벤트 | `put_job(...)`, `cancel_job(id)`, `pending_results()`, `mark_uploaded(ids)`, `set_config(dict)` |
+| 링크(wj) | `job` 수신 → `received` 행 삽입(같은 `job_id`면 무시) 후 `job_accepted` 송신. `cancel` → `received`면 `cancelled`. 주기적으로 `finished_at IS NOT NULL AND uploaded=0` 행을 `job_result`로 올리고 `uploaded=1`. `config` 수신 → `config` 테이블 갱신 + 파이프라인에 이벤트 | `put_job(...)`, `cancel_job(id)`, `pending_results()`, `mark_uploaded(ids)`, `set_config(dict)` |
 | 파이프라인(cw) | `received`를 v2 §8.4 순서(priority, received_at, 같은 노드에 `sending` 있으면 건너뜀)로 집어 `sending` → 전처리·송신·재시도 → `acked`/`failed` + 결과 필드 + `finished_at`. 유닛 분해는 sub-row 삽입(`parent_id`). TIME은 파이프라인이 스스로 `TIME` 행을 만든다(매시 `:00:05`, `config.status_hour_utc`에 REQUEST_STATUS) | `pick_next()`, `update(id, **fields)`, `add_subjobs(parent, [...])`, `get_config()`, `on_config_changed(cb)` |
 | 링크(wj) | `uplink`: 파이프라인이 `uplinks` 테이블에 넣은 STATUS/HELLO 행을 올리고 `uploaded=1` | `put_uplink(dict)` / `pending_uplinks()` / `mark_uplinks_uploaded(ids)` |
+
+**계약 ⑦ 확정 사항 (2026-09-16, S5 PR #17 · S6 spec 반영)**
+
+- **공식 시그니처는 `modempi/link/store_port.py`의 `JobStore` Protocol**(링크 측 7함수 + `JobRow`/`UplinkRow`)이다. `modempi/store.py`(cw-08)는 그 Protocol을 그대로 구현하고, 파이프라인 측 함수를 더한다.
+- **store는 동기(`sqlite3`)** — 이벤트 루프에서 직접 호출. 연결 1개 공유, ms 단위. `aiosqlite` 안 쓴다.
+- `put_job(..., uploaded=0)` — TIME 행(`time_now`, 매시 스케줄)은 `uploaded=1`로 넣어 메인에 보고하지 않는다.
+- `cancel_job`은 `state='cancelled'` + `finished_at`을 세운다 → 링크가 `job_result(state="failed", last_error="cancelled")`로 보고.
+- 유닛 분해: 파이프라인이 `unit=0` 행을 `state='split', uploaded=1`로 닫고 유닛별 sub-row(`parent_id`)를 만든다. `pending_results`는 `split` 행을 돌려주지 않는다(`uploaded=1`이므로 자연히 제외).
+- 파이프라인 측 추가: `next_txn(bld, room, unit) -> int` (테이블 `node_txn`, 1..255 롤링·0 건너뜀·즉시 커밋), `set_meta(key, value)` / `get_meta(key) -> str | None` (테이블 `meta`; 파이프라인이 모뎀 `ready.fw`를 `meta["modem_fw"]`에 쓰고 링크가 hello에서 읽는다).
+- `state` 값: `received | sending | acked | failed | cancelled | split`. 컬럼·테이블 추가는 additive만, `SCHEMA_VERSION` +1.
 
 이 분할의 효과: **wj는 fake 허브(pytest 안의 WS 서버)로, cw는 fake 모뎀 + `put_job()`으로** 각자 하드웨어·상대방 없이 테스트한다. 4주차 통합은 Pi 2대에 실제로 올려 `job → 로컬 큐 → fake 모뎀 → job_result`가 도는지 확인한다.
 
