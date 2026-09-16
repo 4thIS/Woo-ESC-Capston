@@ -89,14 +89,18 @@ typedef struct {
   uint8_t  layout;              // v2 §5.3 표의 1~8
   char     bld; uint16_t room; uint8_t unit;
   char     nowStr[6];           // "HH:MM"
+  char     dateStr[6];          // "MM.DD" (2026-09-16 추가, mh 화면 스펙 미결 1)
   uint8_t  weekday;             // 1=월..7=일
   struct { char subj[21]; char prof[13];
            uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } prev, cur, next;
   uint8_t  nToday;
   struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // §2.1
+  char     newTag[9];           // "NEW-1A7F" — layout 8 전용, MAC 하위 2 B (2026-09-16 추가, mh 화면 스펙 미결 2)
   uint16_t battMv;
 } RenderModel;
 ```
+
+`dateStr`·`newTag`는 로드맵 §4.1에 PR #20으로 추가된 필드다(mh 화면 스펙 미결 1·2 해소). `newTag`는 layout 8(미등록 단말) 전용이라 다른 레이아웃의 픽스처에는 없어도 되며, 없으면 파서가 빈 문자열로 채운다.
 
 `qrUrl`·`battPct` 없음 — 2026-09-16 팀 결정(QR 미사용, PR #15)으로 로드맵 r4에서 제거. 이 spec 최초 작성 시점의 초안에는 있었으나 로드맵 §4.1이 원본이라 그쪽을 따른다.
 
@@ -116,7 +120,7 @@ void renderLayout(Adafruit_GFX& gfx, const RenderModel& model);
 {
   "name": "layout1_class_basic",
   "layout": 1, "bld": "E", "room": 301, "unit": 1,
-  "now_str": "09:30", "weekday": 3,
+  "now_str": "09:30", "date_str": "09.16", "weekday": 3,
   "prev": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
   "cur":  {"subj": "자료구조", "prof": "김교수", "s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "type": 1, "flags": 1},
   "next": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
@@ -124,6 +128,7 @@ void renderLayout(Adafruit_GFX& gfx, const RenderModel& model);
   "today": [
     {"s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "subj": "자료구조", "type": 1}
   ],
+  "new_tag": "NEW-1A7F",
   "batt_mv": 3900
 }
 ```
