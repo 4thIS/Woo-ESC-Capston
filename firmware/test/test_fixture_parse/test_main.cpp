@@ -40,7 +40,7 @@ void test_parses_nested_slot_snake_case_to_camel() {
   writeFixture("t2.json", SAMPLE);
   RenderModel m{};
   char name[64];
-  parseFixtureFile("t2.json", m, name, sizeof(name));
+  TEST_ASSERT_TRUE(parseFixtureFile("t2.json", m, name, sizeof(name)));
   TEST_ASSERT_EQUAL_STRING("자료구조", m.cur.subj);
   TEST_ASSERT_EQUAL(9, m.cur.sH);
   TEST_ASSERT_EQUAL(50, m.cur.eM);
@@ -51,7 +51,7 @@ void test_parses_today_array() {
   writeFixture("t3.json", SAMPLE);
   RenderModel m{};
   char name[64];
-  parseFixtureFile("t3.json", m, name, sizeof(name));
+  TEST_ASSERT_TRUE(parseFixtureFile("t3.json", m, name, sizeof(name)));
   TEST_ASSERT_EQUAL(1, m.nToday);
   TEST_ASSERT_EQUAL(9, m.today[0].sH);
   TEST_ASSERT_EQUAL_STRING("자료구조", m.today[0].subj);
@@ -77,6 +77,17 @@ void test_n_today_clamped_to_actual_array_length() {
   remove("t5.json");
 }
 
+// 최상위가 객체가 아닌 JSON(배열·스칼라)은 deserializeJson 이 성공으로 처리한다.
+// 가드가 없으면 모든 필드 접근이 `| 0`/`| ""` 기본값으로 채워져 전부 0 인 RenderModel 이
+// true 와 함께 반환된다 — 망가진 픽스처가 조용히 통과한다. 실패로 떨어져야 한다.
+void test_non_object_json_returns_false() {
+  writeFixture("t6.json", "[]");
+  RenderModel m{};
+  char name[64];
+  TEST_ASSERT_FALSE(parseFixtureFile("t6.json", m, name, sizeof(name)));
+  remove("t6.json");
+}
+
 void test_missing_file_returns_false() {
   RenderModel m{};
   char name[64];
@@ -89,6 +100,7 @@ int main() {
   RUN_TEST(test_parses_nested_slot_snake_case_to_camel);
   RUN_TEST(test_parses_today_array);
   RUN_TEST(test_n_today_clamped_to_actual_array_length);
+  RUN_TEST(test_non_object_json_returns_false);
   RUN_TEST(test_missing_file_returns_false);
   return UNITY_END();
 }

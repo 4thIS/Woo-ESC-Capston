@@ -47,6 +47,10 @@ bool parseFixtureFile(const char* path, RenderModel& out, char* nameOut, size_t 
 
   JsonDocument doc;
   if (deserializeJson(doc, buf) != DeserializationError::Ok) return false;
+  // `{}` 가 아닌 `[]`·`42`·`"str"` 도 유효한 JSON 이라 deserializeJson 은 성공을 돌려준다.
+  // 그 뒤의 필드 접근은 전부 `| 0`/`| ""` 기본값으로 떨어지므로, 가드가 없으면 전부 0 인
+  // RenderModel 이 true 와 함께 나간다 — 망가진 픽스처가 "에러 없음"으로 조용히 통과한다.
+  if (!doc.is<JsonObjectConst>()) return false;
 
   copyStr(nameOut, nameCap, doc["name"] | "");
   out.layout = doc["layout"] | 0;

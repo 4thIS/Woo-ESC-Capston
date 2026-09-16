@@ -20,7 +20,7 @@ v1(`esp32_e-paper_syllabus`, 상위 폴더에서 실물 확인)은 실제 GxEPD2
 - `RenderModel.today[12]` → **`today[24]`** 로 변경 제안 (근거: §2.1).
 - 픽스처 JSON 형식을 S1의 관례(JSON은 snake_case, C++ 구조체는 camelCase, `lora_proto/test_vectors.json` 패턴)를 그대로 따라 확정한다.
 - 레이아웃 1~8은 새로 정의하지 않고 v2 §5.3 표를 참조하며, `today[]` 패널이 v1에 없는 신규 UI임을 명시한다.
-- `firmware/tools/host_gfx.{h,cpp}` (호스트 프레임버퍼) + `render_preview.cpp`(네이티브 실행파일) + `render_preview.py`(오케스트레이션)를 설계한다.
+- `firmware/lib/host_gfx/host_gfx.{h,cpp}` (호스트 프레임버퍼) + `firmware/tools/render_preview.cpp`(네이티브 실행파일) + `render_preview.py`(오케스트레이션)를 설계한다. (초안은 `host_gfx`도 `tools/`에 뒀으나 링크 제약으로 `lib/`로 옮겼다 — §4.1 각주)
 
 ### 비목표 (이번엔 안 함 / 후속)
 - 8개 레이아웃의 실제 픽셀 배치 확정 (→ dh-04, v1 이식 + `today[]` 신규 설계)
@@ -66,14 +66,21 @@ struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // 09:0
 ```
 firmware/
 ├── src/terminal/
-│   ├── render.h / render.cpp        # renderLayout() 등 — Adafruit_GFX& 인자 (실기·호스트 공용, dh)
+│   ├── render.h / render.cpp        # renderLayout() 등 — Adafruit_GFX& 인자 (실기·호스트 공용, dh-04)
 │   └── render_model.h               # RenderModel 구조체 (cw·dh 공용 내부 계약)
+├── lib/
+│   ├── host_gfx/                    # Adafruit_GFX 파생, drawPixel()만 구현하는 800×480×3색 프레임버퍼
+│   │   ├── host_gfx.h / host_gfx.cpp
+│   │   └── vendor/stb_image_write.h # PNG 인코더, 단일 헤더 (§9)
+│   └── fixture_parse/               # 픽스처 JSON → RenderModel 파싱 (ArduinoJson)
+│       └── fixture_parse.h / fixture_parse.cpp
 ├── tools/
-│   ├── host_gfx.h / host_gfx.cpp    # Adafruit_GFX 파생, drawPixel()만 구현하는 800×480×3색 프레임버퍼
-│   ├── render_preview.cpp           # argv[1]=픽스처 JSON 경로 → RenderModel 파싱(ArduinoJson) → renderLayout() → PNG 저장
+│   ├── render_preview.cpp           # argv[1]=픽스처 JSON 경로, argv[2]=출력 PNG 경로 → 파싱 → renderLayout() → PNG 저장
 │   └── render_preview.py            # 위 실행파일을 firmware/test/fixtures/render/*.json 전체에 일괄 호출
 └── test/fixtures/render/*.json      # 픽스처 (로드맵 §6.3에 경로 명시됨)
 ```
+
+> **경로 정정 (Task 3 실행 중 확인)**: 이 문서 최초 작성 시점의 초안은 `host_gfx`·`fixture_parse`를 `firmware/tools/`에 두려 했으나, `.cpp`가 있는 코드는 `firmware/lib/` 밑에 있어야 `pio test`의 LDF가 컴파일·링크 대상으로 잡는다(`tools/`는 헤더 전용일 때만 `-I` 플래그로 충분). 구현 중 `tools/host_gfx.cpp`가 undefined reference로 링크 실패하는 것을 실제로 재현해 확인하고 `lib/`로 옮겼다. `render_preview.cpp`는 `main()`을 가져 `pio test`가 링크하면 안 되므로 `tools/`에 그대로 둔다. 상세는 `docs/plans/2026-09-16-s3-render.md`의 "파일 구조" 절 각주 참조.
 
 ### 4.2 `RenderModel` 전체 정의 (로드맵 §4.1 확정 + §2.1 변경분)
 
@@ -126,7 +133,7 @@ void renderLayout(Adafruit_GFX& gfx, const RenderModel& model);
 ## 5. 영역별 영향
 
 - firmware: 이 문서 전부(dh 작성).
-- **cw 확인 필요 (작성자 아님)**: `firmware/platformio.ini`는 S1에서 cw가 만든 파일이다. `render_preview.cpp`를 `[env:native]`에서 `pio run -e native`(일반 프로그램 빌드 경로, `pio test -e native`와는 별개)로 돌리려면 `src_filter` 설정 추가가 필요하다. 새 env를 만드는 건 아니라 firmware/CLAUDE.md의 "env 늘리기 전 PM 협의" 규칙 대상은 아니지만, 공용 파일이라 PR에서 cw 확인을 받는다(§9).
+- **cw 승인 필요 (작성자 아님)**: `firmware/platformio.ini`는 S1에서 cw가 만든 파일이다. `render_preview.cpp`를 `pio run`(일반 프로그램 빌드 경로, `pio test -e native`와는 별개)으로 빌드하기 위해, Task 6에서 **`[env:native_preview]`라는 새 env를 실제로 추가했다**(`[env:native]`를 `extends`로 물려받고 `build_src_filter`만 다르게 준다). 이 문서 최초 작성 시점의 초안은 "`[env:native]`에 `src_filter`만 추가하면 되므로 새 env가 아니다"라고 적었으나, 구현 결과 그 전제가 틀렸다 — `src_dir`이 `[platformio]` 섹션 전용이라 `[env:native]` 하나로는 `pio test` 링크와 `main()` 보유 소스 빌드를 동시에 만족시킬 수 없었다(plan Task 6의 실측 근거 참조). 따라서 **firmware/CLAUDE.md의 "env 늘리기 전 PM 협의" 규칙 대상이 맞다.** 사전 협의를 거치지 못했으므로 이 PR에서 cw의 명시적 승인을 받는 것으로 갈음한다 — **cw 승인 없이는 머지하지 않는다**(§9).
 - **cw에게 이슈로 전달**: `determineLayout`(v2 §5.3, cw 소유)의 "분 < 50 → 수업중 / 분 ≥ 50 → 쉬는시간" 판정은 주간(매시 :00~:50 정렬)에는 맞지만, §2.1의 야간 교시(18:00-18:45, 18:50-19:35 — 45분 수업 + 5분 휴식, 시각 정렬이 다름)에는 맞지 않는다. 렌더 계층이 아니라 상태 판단 로직이라 여기서 고치지 않고 이슈로 남긴다.
 - 그 외 영역(server/modempi/web): 영향 없음.
 
