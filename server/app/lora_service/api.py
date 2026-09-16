@@ -364,6 +364,27 @@ def enqueue_full_sync(
     return ids
 
 
+def enqueue_file_replace(bld: str, room: int, kind: str, unit: int = 0) -> list[int]:
+    """콘텐츠 변경 FILE (S2b §2.4): kind 버전 +1, 현재 RecordProvider 레코드로 FILE 을 새로 만들어
+    유닛별 삽입. 재동기 FILE(enqueue_full_sync — bump 없음·queued 재사용)과 달리 기존 queued FILE 을
+    재사용하지 않는다 — 임포트 직후 옛 내용의 FILE 이 나가고 새 내용이 영영 안 가는 것을 막는다.
+    호출 측은 레코드가 커밋된 뒤에 부른다(RecordProvider 는 자기 세션으로 읽는다)."""
+    info = _room(bld, room)
+    file_kind = FILE_KIND[kind]
+    with _Session() as s, s.begin():
+        new_ver = _bump_ver(s, bld, room, kind)
+        records = _records(bld, room, kind)
+        C.build_file(file_kind, records, new_ver)  # 크기·kind 검증 — 실패면 롤백(버전도)
+        payload = json.dumps(
+            {"kind": file_kind, "records": [jsonio.to_json(r, drop=("new_ver",)) for r in records]},
+            ensure_ascii=False,
+        )
+        ids = _insert(s, info, bld, room, unit, "FILE", payload, new_ver)
+    if info.modem_id:
+        _hub.notify(info.modem_id)
+    return ids
+
+
 def provision(mac: str, bld: str, room: int, unit: int) -> int:
     if unit not in (1, 2):
         raise ValueError("unit 은 1 또는 2")

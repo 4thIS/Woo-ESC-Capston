@@ -72,6 +72,7 @@ class _Span(BaseModel):
 
 class SlotIn(_Span):
     day: int = Field(ge=1, le=7)
+    source: int = Field(2, ge=1, le=3)  # 1=포털 2=수동 3=긴급 (S2b §2.2)
 
 
 class SlotOut(SlotIn, Out):
@@ -108,6 +109,29 @@ class CmdIn(BaseModel):
 
 class Enqueued(BaseModel):
     outbox_ids: list[int]
+
+
+class ImportSkipped(BaseModel):
+    row: int
+    reason: str
+
+
+class ImportSummary(BaseModel):
+    rooms: int
+    added: int
+    updated: int
+    deleted: int
+    skipped: list[ImportSkipped]
+    outbox_ids: list[int]
+
+
+class ImportRowError(BaseModel):
+    row: int
+    error: str
+
+
+class ImportErrors(BaseModel):
+    errors: list[ImportRowError]
 
 
 class ModemIn(BaseModel):

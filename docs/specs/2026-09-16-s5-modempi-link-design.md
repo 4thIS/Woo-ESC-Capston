@@ -49,7 +49,7 @@
 
 | `t` (모뎀Pi → 메인) | 언제 | 내용 |
 |---|---|---|
-| `hello` | 접속 직후 1회 | `modem_id`, `token`, `agent_ver`(패키지 버전), `modem_fw`(config에 파이프라인이 넣어둔 값, 없으면 `"unknown"`), `pending_results` = `len(store.pending_results())` |
+| `hello` | 접속 직후 1회 | `modem_id`, `token`, `agent_ver`(패키지 버전), `modem_fw`(`store.get_meta("modem_fw")` — 파이프라인이 모뎀 `ready.fw`를 기록, 없으면 `"unknown"`), `pending_results` = `len(store.pending_results())` |
 | `job_accepted` | `job` 수신 직후 (저장 성공·중복 무관) | `job_id: int` |
 | `job_result` | 업로더가 `pending_results()`에서 집어서 | `job_id:int, state, ack_status, ack_detail, attempts, txn, rssi, snr, sched_ver, resv_ver, exam_ver, ident_ver, batt_mv, layout, fw, last_error, finished_at(epoch int)`. `node_vers` JSON을 풀어 4개 `*_ver`로. `cancelled` 행은 `state="failed", last_error="cancelled"` |
 | `uplink` | 업로더가 `pending_uplinks()`에서 집어서 | 파이프라인이 넣은 dict 그대로(`kind, bld, room, unit, mac, ACK 필드 평탄화, rssi, snr, flags, uptime_h`) |
@@ -86,7 +86,7 @@
 ```
 modempi/modempi/link/
 ├── __init__.py
-├── store_port.py   # JobStore Protocol + JobRow/UplinkRow (계약 ⑦ 링크 측 7함수)
+├── store_port.py   # JobStore Protocol + JobRow/UplinkRow (계약 ⑦ 링크 측 7함수 + get_meta)
 ├── client.py       # LinkClient — 상태머신·hello·수신 루프·재접속·watchdog
 ├── uploader.py     # Uploader — 1 s 폴링 → job_result / uplink 송신 → mark_*
 └── run.py          # env 읽어 LinkClient.run() 기동. main.py(공용)가 이걸 태스크로 띄운다 (cw-08 뒤 연결)

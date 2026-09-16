@@ -5,5 +5,6 @@
   (반드시 `--workers 1`, 즉 기본값 그대로 단일 워커로 — WS 연결 레지스트리와 `lora_service/api.py`의 상태가 프로세스 메모리에 있어 워커가 여러 개면 모뎀Pi 연결·outbox 디스패치가 워커마다 따로 놀아 깨진다)
 - 확인: http://localhost:8000/static/index.html · http://localhost:8000/docs
 - 모뎀Pi 등록: `POST /api/lora/modems {"modem_id": "mjc-eng"}` → 응답의 `token`을 모뎀Pi 설정에 넣는다(평문은 이때 한 번만 보인다).
+- 시간표 CSV: `POST /api/import/slots` 본문에 CSV 텍스트(`text/csv`, UTF-8). 규격·출처 규칙은 `../docs/specs/2026-09-16-s2b-csv-import-design.md` §2. `?dry_run=true`로 미리보기.
 - env: `SERVER_DB`(기본 `main.db`), `STATUS_HOUR_UTC`(기본 18)
 - 테스트: `uv run pytest -q`

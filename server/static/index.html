@@ -20,6 +20,14 @@
   <span id="slot_out"></span>
 </form>
 
+<h2>시간표 CSV 임포트</h2>
+<form id="csv">
+  <input type="file" name="file" accept=".csv,text/csv">
+  <button name="mode" value="dry">미리보기</button>
+  <button name="mode" value="apply">적용</button>
+</form>
+<pre id="csv_out"></pre>
+
 <h2>outbox (2 s 갱신)</h2>
 <table id="outbox" border="1"><tr><th>id</th><th>modem</th><th>addr</th><th>type</th><th>ver</th><th>state</th><th>attempts</th><th>ack</th><th>created</th><th>finished</th></tr></table>
 
@@ -39,6 +47,15 @@ document.querySelector('#slot').onsubmit = async e => {
   const body = {day: num(f.day), s_h: num(f.s_h), s_m: num(f.s_m), e_h: num(f.e_h), e_m: num(f.e_m), type: num(f.type), subject: f.subject, professor: f.professor};
   const r = await fetch(`/api/rooms/${f.room_id}/slots`, {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
   document.querySelector('#slot_out').textContent = r.status + ' ' + await r.text();
+  refresh();
+};
+document.querySelector('#csv').onsubmit = async e => {
+  e.preventDefault();
+  const file = e.target.file.files[0];
+  if (!file) return;
+  const dry = e.submitter.value === 'dry';
+  const r = await fetch(`/api/import/slots?dry_run=${dry}`, {method: 'POST', headers: {'content-type': 'text/csv'}, body: file});
+  document.querySelector('#csv_out').textContent = r.status + ' ' + JSON.stringify(await r.json(), null, 1);
   refresh();
 };
 refresh(); setInterval(refresh, 2000);

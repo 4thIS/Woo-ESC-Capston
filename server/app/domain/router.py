@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
+from dataclasses import asdict
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import schemas as S
+from app.domain import csv_import
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
 from app.domain.topology import RESV_HORIZON_DAYS
 from app.lora_service import api
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger(__name__)
 
 
 def get_db(request: Request):
@@ -180,6 +185,8 @@ def put_slot(id: int, body: S.SlotIn, s: Session = _DB):
             Slot.room_id == id, Slot.day == body.day, Slot.s_h == body.s_h, Slot.s_m == body.s_m
         )
     )
+    if obj is not None and obj.source > body.source:
+        raise HTTPException(409, f"source {obj.source} 슬롯은 source ≥ {obj.source} 로만 수정")
     if obj is None:
         obj = Slot(room_id=id)
         s.add(obj)
@@ -296,3 +303,44 @@ def sync_room(id: int, body: S.SyncIn, s: Session = _DB):
 def cmd_room(id: int, body: S.CmdIn, s: Session = _DB):
     bld, room = _addr(s, id)
     return {"outbox_ids": api.enqueue_cmd(bld, room, body.cmd, bytes.fromhex(body.args_hex))}
+
+
+IMPORT_MAX_BYTES = 1024 * 1024
+
+
+@router.post(
+    "/import/slots",
+    response_model=S.ImportSummary,
+    responses={400: {"model": S.ImportErrors}, 413: {}, 500: {}},
+)
+def import_slots(
+    raw: bytes = Body(..., media_type="text/csv"), dry_run: bool = False, s: Session = _DB
+):
+    """시간표 CSV (S2b §4). 본문 = CSV 텍스트(text/csv). 전체 검증 → 적용 → commit → 방마다 콘텐츠 FILE.
+    동기 함수 — DB 작업은 threadpool 에서 돌아 같은 프로세스의 asyncio WS 허브를 막지 않는다."""
+    if len(raw) > IMPORT_MAX_BYTES:
+        raise HTTPException(413, f"{IMPORT_MAX_BYTES} B 초과")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise HTTPException(400, "UTF-8 로 저장하세요 (엑셀: CSV UTF-8)") from e
+    rows, errors = csv_import.parse(text, s)
+    if errors:
+        return JSONResponse(status_code=400, content={"errors": [asdict(e) for e in errors]})
+    sm = csv_import.apply(rows, s, dry_run=dry_run)
+    out = {k: v for k, v in asdict(sm).items() if k != "changed"}
+    if dry_run:
+        return out | {"outbox_ids": []}
+    s.commit()  # RecordProvider 가 커밋된 슬롯을 읽어야 FILE 내용이 새 것이다 (S2b §3)
+    ids: list[int] = []
+    for bld, room in sm.changed:
+        try:
+            ids += api.enqueue_file_replace(bld, room, "schedule")
+        except Exception as e:  # DB 는 이미 반영됨 — 관리자가 sync 로 복구
+            log.exception("FILE 큐잉 실패 %s%s — DB 는 반영됨", bld, room)
+            raise HTTPException(
+                500,
+                f"FILE 큐잉 실패 ({bld}{room}: {e}). DB 는 반영됨 — "
+                "POST /api/rooms/{id}/sync 로 재전송",
+            ) from e
+    return out | {"outbox_ids": ids}

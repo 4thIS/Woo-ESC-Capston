@@ -55,6 +55,14 @@ async def test_hello_then_config_stored(store, fake_hub):
     assert c.state == "DISCONNECTED"
 
 
+async def test_hello_reads_modem_fw_from_meta(store, fake_hub):
+    store.set_meta("modem_fw", "1.2.3")  # 파이프라인이 모뎀 ready.fw 를 기록 (계약 ⑦)
+    c, task = await _run(store, fake_hub)
+    hello = await fake_hub.wait_for("hello")
+    assert hello["modem_fw"] == "1.2.3"
+    await _stop(c, task)
+
+
 async def test_job_stored_and_accepted_dup_ignored(store, fake_hub):
     fake_hub.jobs = [JOB, JOB]  # 같은 job_id 두 번 (서버 안전망 재송 흉내)
     c, task = await _run(store, fake_hub)

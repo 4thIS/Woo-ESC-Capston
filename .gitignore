@@ -19,6 +19,8 @@ platformio-local.ini
 *.map
 # 단, 폰트·이미지 리소스로 커밋하는 바이너리는 예외
 !firmware/src/fonts/**
+# render_preview.py 가 픽스처마다 뽑는 PNG — 산출물이라 커밋하지 않는다.
+firmware/test/fixtures/render/_out/
 
 # ─── server: Python / uv ──────────────────────────────────
 __pycache__/

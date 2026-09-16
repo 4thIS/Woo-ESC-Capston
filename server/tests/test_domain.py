@@ -370,3 +370,34 @@ def test_room_change_resends_config_after_commit(client, app):
     assert seen[-1] == ("m1", [("E", 301, 1)])
     client.delete(f"/api/rooms/{r['id']}")
     assert seen[-1] == ("m1", [])
+
+
+def test_put_slot_source_default_and_409_on_downgrade(client):
+    _sch, _b, r = _setup(client)
+    body = {
+        "day": 2,
+        "s_h": 9,
+        "s_m": 0,
+        "e_h": 10,
+        "e_m": 0,
+        "type": 1,
+        "subject": "a",
+        "professor": "",
+    }
+    assert client.put(f"/api/rooms/{r['id']}/slots", json=body).status_code == 200
+    assert client.get(f"/api/rooms/{r['id']}/slots").json()[0]["source"] == 2
+    # 긴급으로 올리기 (2 → 3) 허용
+    assert (
+        client.put(f"/api/rooms/{r['id']}/slots", json={**body, "type": 3, "source": 3}).status_code
+        == 200
+    )
+    assert client.get(f"/api/rooms/{r['id']}/slots").json()[0]["source"] == 3
+    # 수동(기본 2)·포털(1)로 덮기 → 409
+    assert client.put(f"/api/rooms/{r['id']}/slots", json=body).status_code == 409
+    assert client.put(f"/api/rooms/{r['id']}/slots", json={**body, "source": 1}).status_code == 409
+    assert client.get(f"/api/rooms/{r['id']}/slots").json()[0]["type"] == 3  # 그대로
+    # 삭제는 출처 무시
+    assert client.delete(f"/api/rooms/{r['id']}/slots/2/9/0").status_code == 200
+    assert client.get(f"/api/rooms/{r['id']}/slots").json() == []
+    # 범위 밖 source
+    assert client.put(f"/api/rooms/{r['id']}/slots", json={**body, "source": 4}).status_code == 422
