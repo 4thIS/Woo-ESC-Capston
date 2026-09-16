@@ -28,9 +28,10 @@ class MemoryStore:
         self.jobs: dict[str, dict] = {}
         self.uplinks: list[dict] = []
         self.config: dict | None = None
+        self.meta: dict[str, str] = {}
         self._next_uplink = 1
 
-    # ---- 링크가 쓰는 7 함수 ----
+    # ---- 링크가 쓰는 7 함수 + get_meta ----
     def put_job(
         self, *, job_id, bld, room, unit, type, payload, priority, new_ver, uploaded=0
     ) -> bool:
@@ -91,7 +92,13 @@ class MemoryStore:
             if u["id"] in ids:
                 u["uploaded"] = 1
 
+    def get_meta(self, key: str) -> str | None:
+        return self.meta.get(key)
+
     # ---- 파이프라인 흉내 (테스트 전용) ----
+    def set_meta(self, key: str, value: str) -> None:
+        self.meta[key] = value
+
     def finish(self, job_id: str, **fields) -> None:
         j = self.jobs[job_id]
         j.update(fields)
