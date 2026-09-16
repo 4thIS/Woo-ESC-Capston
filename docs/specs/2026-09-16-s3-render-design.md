@@ -141,7 +141,7 @@ void renderLayout(Adafruit_GFX& gfx, const RenderModel& model);
 
 - 기존 렌더 코드가 이 리포에 없으므로(v1은 별도 레포) 회귀 대상 없음.
 - `RenderModel.today[24]` 변경은 이 spec에서 제안하는 초안이며, 로드맵 일정상 4주차 `cw-11`에서 cw와 함께 최종 동결한다. 그 전까지 dh-03·dh-04(3주차)는 이 spec을 기준으로 먼저 진행해도 무방하다(로드맵 §6.4).
-- `platformio.ini` 변경은 이 spec에 설계만 남기고, 실제 PR에서 cw 리뷰를 받은 뒤 반영한다.
+- `platformio.ini` 변경(`[env:native_preview]` 신설)은 Task 6에서 이미 실제로 반영됐다 — cw 리뷰는 PR 머지 전 필수(§5).
 
 ## 7. 역할 분담
 
@@ -161,7 +161,7 @@ void renderLayout(Adafruit_GFX& gfx, const RenderModel& model);
 
 ## 9. 열린 결정 (plan 단계에서 확정)
 
-- `platformio.ini`의 `[env:native]` `src_filter` 정확한 구성 — cw 확인 후 확정.
+- ~~`platformio.ini`의 `[env:native]` `src_filter` 정확한 구성~~ — 해결됨(Task 6): `[env:native]`의 `src_filter`가 아니라 별도 `[env:native_preview]` 신설(`extends = env:native`, `build_src_filter = +<../tools/render_preview.cpp>`)로 처리했다. 새 env 신설이라 cw 승인이 머지 전제조건이다(§5).
 - PNG 저장 라이브러리 — 헤더 온리 `stb_image_write.h`를 제안(단일 파일, 별도 의존성 관리 불필요). 실제 도입 시 라이선스 재확인 필요.
 - `today[]` 패널의 실제 화면 배치(위치·폰트 크기)는 v1에 대응 코드가 없어 dh-04에서 신규 설계.
 - **v1(`esp32_e-paper_syllabus`) 조사 결과** (상위 폴더 실물 확인): `GxEPD2_3C<GxEPD2_750c_Z08, HEIGHT/2>` 사용, `firstPage()/nextPage()` 페이지 드로잉(페이지 높이 = 전체의 절반 — ESP32 RAM 제약, ESP32-S3는 전체 버퍼도 가능). `renderLayout()`은 prev/cur/next/nextNext 4슬롯만 그리며 `today[]` 목록 렌더는 없음.
