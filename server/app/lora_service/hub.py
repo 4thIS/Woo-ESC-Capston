@@ -98,7 +98,6 @@ class Hub:
                 "preamble_wake_ms": r["RP_PREAMBLE_WAKE_MS"],
             },
             "nodes": [{"bld": b, "room": rm, "unit": u} for b, rm, u in topo.nodes(modem_id)],
-            "qr_base_url": self._settings.qr_base_url,
             "status_hour_utc": self._settings.status_hour_utc,
         }
 

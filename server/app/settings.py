@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class Settings:
     db_path: str = field(default_factory=lambda: os.environ.get("SERVER_DB", "main.db"))
-    qr_base_url: str = field(default_factory=lambda: os.environ.get("QR_BASE_URL", ""))
     status_hour_utc: int = field(
         default_factory=lambda: int(os.environ.get("STATUS_HOUR_UTC", "18"))
     )  # KST 03:00 (v2 §8.4)
