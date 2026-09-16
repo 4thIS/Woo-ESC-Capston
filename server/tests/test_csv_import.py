@@ -1,9 +1,11 @@
+import json
+
 import pytest
 from sqlalchemy import select
 
 from app.domain import csv_import as CI
 from app.domain.models import Building, Room, School, Slot
-from app.lora_service.models import Modem
+from app.lora_service.models import Modem, Outbox, RoomVersion
 
 HEADER = "school,building,room,day,start,end,type,subject,professor\n"
 
@@ -277,3 +279,89 @@ def test_apply_dry_run_writes_nothing(app, seeded):
         sm = CI.apply(rows, s, dry_run=True)
     assert sm.added == 1 and sm.changed == [("E", 301)]
     assert _slots(app, r1) == [(1, 9, 0, "수동", 2), (2, 9, 0, "휴강", 3)]
+
+
+def _post(client, text, **params):
+    return client.post(
+        "/api/import/slots",
+        params=params,
+        content=text.encode("utf-8"),
+        headers={"content-type": "text/csv; charset=utf-8"},
+    )
+
+
+def _outbox(app):
+    with app.state.Session() as s:
+        return s.scalars(select(Outbox).order_by(Outbox.id)).all()
+
+
+def test_import_400_leaves_db_and_outbox_untouched(client, app, seeded):
+    r1, _ = seeded
+    text = HEADER + "명지,E,301,금,09:00,10:00,수업,새로,\n명지,E,301,토,25:00,10:00,수업,x,\n"
+    res = _post(client, text)
+    assert res.status_code == 400
+    assert res.json() == {"errors": [{"row": 3, "error": "start: '25:00' 은 HH:MM"}]}
+    assert len(_slots(app, r1)) == 2 and _outbox(app) == []
+
+
+def test_import_200_creates_file_per_unit_and_bumps_ver(client, app, seeded):
+    _r1, _r2 = seeded
+    text = (
+        HEADER
+        + (
+            "명지,E,301,월,09:00,10:00,수업,포털월,\n"  # 수동과 겹침 → skipped
+            "명지,E,301,금,09:00,10:00,수업,새로,\n"
+            "명지,E,302,월,09:00,10:00,수업,302,\n"
+        )
+    )
+    res = _post(client, text)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert (body["rooms"], body["added"], body["updated"], body["deleted"]) == (2, 2, 0, 0)
+    assert body["skipped"] == [{"row": 2, "reason": "수동 슬롯 있음 (source=2)"}]
+    rows = _outbox(app)
+    assert [x.id for x in rows] == body["outbox_ids"] and len(rows) == 3  # 301 유닛 2 + 302 유닛 1
+    assert all(x.type == "FILE" and x.new_ver == 1 for x in rows)
+    recs = json.loads(rows[0].payload)["records"]
+    assert [r["subject"] for r in recs] == ["수동", "휴강", "새로"]  # 커밋된 DB 를 읽음
+    with app.state.Session() as s:
+        assert s.get(RoomVersion, ("E", 301, "schedule")).ver == 1
+    # 재업로드: updated, ver 2, FILE 다시
+    res = _post(client, text)
+    assert res.json()["updated"] == 2 and res.json()["rooms"] == 2
+    assert _outbox(app)[-1].new_ver == 2
+
+
+def test_import_dry_run_changes_nothing(client, app, seeded):
+    r1, _ = seeded
+    res = _post(client, HEADER + "명지,E,301,금,09:00,10:00,수업,새로,\n", dry_run="true")
+    assert res.status_code == 200 and res.json()["added"] == 1 and res.json()["outbox_ids"] == []
+    assert len(_slots(app, r1)) == 2 and _outbox(app) == []
+
+
+def test_import_rejects_non_utf8_and_too_large(client, seeded):
+    res = client.post(
+        "/api/import/slots",
+        content=(HEADER + "명지,E,301,월,09:00,10:00,1,a,\n").encode("cp949"),
+        headers={"content-type": "text/csv"},
+    )
+    assert res.status_code == 400 and "UTF-8" in res.json()["detail"]
+    res = client.post(
+        "/api/import/slots", content=b"x" * (1024 * 1024 + 1), headers={"content-type": "text/csv"}
+    )
+    assert res.status_code == 413
+
+
+def test_import_enqueue_failure_after_commit_returns_500_with_hint(
+    client, app, seeded, monkeypatch
+):
+    from app.lora_service import api
+
+    def boom(*a, **k):
+        raise RuntimeError("hub down")
+
+    monkeypatch.setattr(api, "enqueue_file_replace", boom)
+    r1, _ = seeded
+    res = _post(client, HEADER + "명지,E,301,금,09:00,10:00,수업,새로,\n")
+    assert res.status_code == 500 and "sync" in res.json()["detail"]
+    assert len(_slots(app, r1)) == 3  # DB 는 반영됨

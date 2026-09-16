@@ -111,6 +111,29 @@ class Enqueued(BaseModel):
     outbox_ids: list[int]
 
 
+class ImportSkipped(BaseModel):
+    row: int
+    reason: str
+
+
+class ImportSummary(BaseModel):
+    rooms: int
+    added: int
+    updated: int
+    deleted: int
+    skipped: list[ImportSkipped]
+    outbox_ids: list[int]
+
+
+class ImportRowError(BaseModel):
+    row: int
+    error: str
+
+
+class ImportErrors(BaseModel):
+    errors: list[ImportRowError]
+
+
 class ModemIn(BaseModel):
     modem_id: str = Field(min_length=1, max_length=32, pattern=r"^[a-z0-9-]+$")
 
