@@ -5,6 +5,7 @@ description = "모뎀Pi 서비스 — WS 링크(wj) + LoRa 파이프라인(cw)"
 requires-python = ">=3.12"
 dependencies = [
   "lora-proto",
+  "websockets>=13",
 ]
 
 [tool.uv.sources]
