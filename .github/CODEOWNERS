@@ -26,14 +26,14 @@
 /modempi/store.py                   @ssenu @leemonta9482
 /modempi/main.py                    @ssenu @leemonta9482
 
-# ─── web: 화면·API 소비는 wj, 디자인시스템은 mh ───────────
+# ─── web: 코드 전체는 wj. 토큰·디자인시스템 코드는 mh가 디자인 일치 검수(리뷰어) ──
 /web/                               @leemonta9482
-/web/src/styles/                    @jmh7706jmh-ops
-/web/src/components/ui/             @jmh7706jmh-ops
-/web/src/assets/                    @jmh7706jmh-ops
+/web/src/styles/                    @leemonta9482 @jmh7706jmh-ops
+/web/src/components/ui/             @leemonta9482 @jmh7706jmh-ops
 
 # ─── 문서 ─────────────────────────────────────────────────
 /docs/                              @ssenu
+/docs/design/                       @jmh7706jmh-ops
 
 # ─── 참고: 혼자 진행하는 프로젝트라면 ──────────────────────
 # 위 경로별 규칙을 지우고 아래 한 줄로 축약한다.
