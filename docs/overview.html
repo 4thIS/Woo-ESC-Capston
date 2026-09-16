@@ -153,7 +153,7 @@
   <!-- 사용자 -->
   <rect x="20" y="40" width="130" height="54" rx="5" class="box"/>
   <text x="85" y="62" text-anchor="middle" font-size="13" font-weight="600">관리자 · 학생</text>
-  <text x="85" y="80" text-anchor="middle" class="mono">브라우저 / QR</text>
+  <text x="85" y="80" text-anchor="middle" class="mono">브라우저</text>
   <path d="M150 67 H210" class="arrow"/>
   <text x="180" y="60" text-anchor="middle" class="mono">HTTPS</text>
 
@@ -322,7 +322,7 @@
 <tr><td>①</td><td>공중 프레임 규격 (헤더 9 B + 페이로드 ≤245 B + CRC8, TYPE 16종)</td><td>모뎀·노드 펌웨어 ↔ 모뎀Pi 파이프라인</td><td>◎ v2 §3</td><td><code>lora_proto/proto.h</code> + <code>proto.py</code> + <code>test_vectors.json</code></td></tr>
 <tr><td>②</td><td>모뎀 시리얼 프로토콜 (115200, JSON lines: <code>tx/cfg/ping/stats/reset</code> ↔ <code>ready/tx_done/rx/pong/stats/log</code>)</td><td>모뎀 펌웨어 ↔ <code>modem.py</code> / fake 모뎀</td><td>◎ v2 §4.2·4.3</td><td>S1</td></tr>
 <tr><td>③</td><td><code>lora_service/api.py</code> 시그니처 + <code>RecordProvider</code> 콜백</td><td>메인Pi 웹 도메인 ↔ LoRa 계층</td><td>◎ v2 §8.6·8.7</td><td>S2</td></tr>
-<tr><td>④</td><td><code>RenderModel</code> 구조체 (layout, 이전·현재·다음 3슬롯, 오늘 목록 12, QR URL, 배터리)</td><td>노드 상태 판단(cw) → 렌더(dh)</td><td>○ 로드맵 §4.1 확정</td><td>S3</td></tr>
+<tr><td>④</td><td><code>RenderModel</code> 구조체 (layout, 이전·현재·다음 3슬롯, 오늘 목록 24, 배터리 mV)</td><td>노드 상태 판단(cw) → 렌더(dh)</td><td>○ 로드맵 §4.1 확정</td><td>S3</td></tr>
 <tr><td>⑤</td><td>CSV 포맷 + 웹 REST 윤곽 (FastAPI 자동 OpenAPI가 mock 소스)</td><td>관리자·학생 웹 ↔ 메인Pi</td><td>○</td><td>S2</td></tr>
 <tr><td>⑥</td><td>메인Pi ↔ 모뎀Pi WebSocket (<code>hello/config/job/job_accepted/cancel/time_now/job_result/uplink/ping</code>)</td><td>허브(wj) ↔ 링크(wj)</td><td>○ 로드맵 §4.2 확정</td><td>S2·S5</td></tr>
 <tr><td>⑦</td><td>모뎀Pi 내부 <code>JobStore</code> (SQLite <code>jobs</code>·<code>uplinks</code>·<code>config</code> + 얇은 인터페이스)</td><td>링크(wj) ↔ 파이프라인(cw)</td><td>○ 로드맵 §4.3 확정</td><td>S5·S6</td></tr>
@@ -354,7 +354,7 @@
 <tr><td>S7</td><td>모뎀 펌웨어 + P0 SF 실측</td><td><span class="pill cw">cw</span> (dh 지원)</td><td><span class="tag hw">✓</span></td><td>◎ §4·§10.3</td><td>S1, HW</td><td>—</td></tr>
 <tr><td>S8</td><td>노드 펌웨어 깨어있는 모드 (수신·저장·상태판단·ACK) + S3 결합</td><td><span class="pill cw">cw</span> <span class="pill dh">dh</span></td><td><span class="tag hw">✓</span></td><td>◎ §5·§6</td><td>S1, S3, S7</td><td>—</td></tr>
 <tr><td>S9</td><td>노드 절전(WOR)·프로비저닝·STATUS</td><td><span class="pill cw">cw</span></td><td><span class="tag hw">✓</span></td><td>◎ §6.7·§7</td><td>S8</td><td>—</td></tr>
-<tr><td>S10</td><td>학생 웹 + QR + 분석 대시보드 (빈 강의실, 주간 시간표, 배정률·공강 차트, 갱신 지연 히스토그램)</td><td><span class="pill wj">wj</span> <span class="pill mh">mh</span></td><td><span class="tag no">✗</span></td><td>○</td><td>S2, S4</td><td>—</td></tr>
+<tr><td>S10</td><td>학생 웹(별도 도메인 직접 진입) + 분석 대시보드 (빈 강의실, 주간 시간표, 배정률·공강 차트, 갱신 지연 히스토그램)</td><td><span class="pill wj">wj</span> <span class="pill mh">mh</span></td><td><span class="tag no">✗</span></td><td>○</td><td>S2, S4</td><td>—</td></tr>
 <tr><td>S11</td><td>Pi 2대 이식 · 2대 소크 · 케이스 · 전력 실측</td><td><span class="pill cw">cw</span></td><td><span class="tag hw">✓</span></td><td>◎ §10.4·10.5</td><td>S9</td><td>—</td></tr>
 </table></div>
 
@@ -386,7 +386,7 @@ S3 렌더 ───┼──▶ S8 노드(awake) ◀── S7 모뎀펌웨어 �
 <tr class="ms"><td>4</td><td>S6 파이프라인 + fake 테스트, <strong>계약 7개 동결</strong>, <strong>Pi↔Pi 통합</strong>, 부품 발주 확인</td><td>레이아웃 8개 PNG 리뷰 완료</td><td>S5 링크, <code>api.py</code>, <strong>Pi↔Pi 통합</strong></td><td>관리자 화면 ↔ 실제 API</td></tr>
 <tr><td>5~7</td><td>P0 SF 실측 → S7 모뎀 펌웨어 → S8 노드 awake</td><td>실제 패널 렌더, S7 지원, S8 저장·<code>nextChangeAt</code></td><td>관리자 웹 ↔ 실기</td><td>관리자 웹 완성</td></tr>
 <tr class="ms"><td>7~8</td><td colspan="4"><strong>첫 E2E 루프 — 중간점검 시연</strong> (메인Pi → 모뎀Pi → 노드 1대, 깨어있는 모드) + 중간보고서</td></tr>
-<tr><td>8~10</td><td>S9 WOR·프로비저닝</td><td>화면 폴리싱·QR</td><td>S10 학생웹 API·대시보드 집계</td><td>S10 화면</td></tr>
+<tr><td>8~10</td><td>S9 WOR·프로비저닝</td><td>화면 폴리싱·변경 배지</td><td>S10 학생웹 API·대시보드 집계</td><td>S10 화면</td></tr>
 <tr><td>11</td><td>S11 Pi 이식, 2대 소크, 판넬·작품보고서</td><td colspan="3">판넬·보고서 분담</td></tr>
 <tr class="ms"><td>12 (11/19~20)</td><td colspan="4"><strong>경진대회</strong></td></tr>
 <tr><td>13~15</td><td>전력 실측, 케이스</td><td colspan="3">결과보고서, 최종발표 (15주차)</td></tr>
@@ -490,7 +490,7 @@ S3 렌더 ───┼──▶ S8 노드(awake) ◀── S7 모뎀펌웨어 �
 <li><input type="checkbox" id="fin5"><label for="fin5">배터리 구동 4시간 무교체 리허설 (전날)</label></li>
 <li><input type="checkbox" id="fin6"><label for="fin6">모뎀Pi 인터넷 30분 차단 → 재접속 → 결과 보고 정상 (§4.4)</label></li>
 <li><input type="checkbox" id="fin7"><label for="fin7">Pi 2대 <code>systemd</code> 서비스로 자동 기동, 전원만 꽂으면 뜬다. 두 Pi 연결은 핫스팟 또는 직결 이더넷 — 전시장 Wi-Fi에 의존하지 않는다</label></li>
-<li><input type="checkbox" id="fin8"><label for="fin8">학생 웹: QR로 진입 → 주간 시간표·빈 강의실 조회. 대시보드: 배정률·공강 차트 <span class="pill wj">wj</span> <span class="pill mh">mh</span></label></li>
+<li><input type="checkbox" id="fin8"><label for="fin8">학생 웹: 별도 도메인으로 진입 → 주간 시간표·빈 강의실 조회. 대시보드: 배정률·공강 차트 <span class="pill wj">wj</span> <span class="pill mh">mh</span></label></li>
 <li><input type="checkbox" id="fin9"><label for="fin9">참가신청서 · 작품보고서 · 판넬 제출 (학과 예선 → 본선)</label></li>
 <li><input type="checkbox" id="fin10"><label for="fin10">시연 스크립트 작성: "웹에서 휴강 등록 → 30초 안에 문 앞 화면 전환"을 심사위원 앞에서 재현. 실패 시 대체 경로(다른 노드, 재시도 설명)</label></li>
 <li><input type="checkbox" id="fin11"><label for="fin11">예비품: 배터리 여분, USB 케이블, 안테나, 노트북(메인Pi 대체)</label></li>
