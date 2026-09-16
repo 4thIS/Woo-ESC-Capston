@@ -13,7 +13,8 @@ docs/design/
 ├── screens/
 │   ├── admin-schedule.md   ← 화면 1장 = 문서 1개 (→ web/src/views/)
 │   ├── admin-nodes.md
-│   └── student-week.md
+│   ├── student-week.md
+│   └── terminal-epaper.md  ← 단말 e-Paper 화면 (→ firmware/src/terminal/, 소비자는 dh)
 └── assets/            ← 시안에서 뽑은 아이콘·이미지 원본 (wj가 web/src/assets/ 로 복사)
 ```
 
@@ -24,6 +25,8 @@ docs/design/
 1. mh: 시안 → 스펙 문서 PR (`docs(design): …`). CODEOWNERS로 mh가 소유. wj가 리뷰(구현 가능한지·서버 필드와 맞는지).
 2. 머지 후 wj: 코드 PR (`feat(web): …` / `style(web): …`). `src/styles/`·`src/components/ui/`는 mh가 CODEOWNERS 리뷰어로 **디자인 일치**를 검수한다.
 3. 바꾸고 싶으면 1부터 다시. 스펙 변경은 additive를 우선한다(기존 토큰 이름·컴포넌트 props는 유지, 새 것 추가).
+
+단말 e-Paper 화면(`screens/terminal-epaper.md`)은 같은 절차를 **dh**와 돈다 — mh가 스펙 PR, dh가 리뷰(렌더 가능한지·자산이 있는지), 머지 후 dh가 `firmware/src/terminal/` 구현.
 
 ## 템플릿
 
