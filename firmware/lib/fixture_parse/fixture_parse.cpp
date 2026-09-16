@@ -59,7 +59,6 @@ bool parseFixtureFile(const char* path, RenderModel& out, char* nameOut, size_t 
   readSlot(doc["prev"], out.prev);
   readSlot(doc["cur"], out.cur);
   readSlot(doc["next"], out.next);
-  out.nToday = doc["n_today"] | 0;
   JsonArrayConst today = doc["today"];
   size_t i = 0;
   for (JsonObjectConst t : today) {
@@ -72,6 +71,11 @@ bool parseFixtureFile(const char* path, RenderModel& out, char* nameOut, size_t 
     out.today[i].type = t["type"] | 0;
     ++i;
   }
+  // n_today 를 그대로 믿으면 today[] 항목 수보다 큰 값일 때 소비자가 미초기화 슬롯(또는
+  // 배열 범위 밖)을 읽는다. 실제로 채운 개수(i, 이미 24 상한 적용됨)와 선언값 중 작은 쪽을 쓴다.
+  long declared = doc["n_today"] | 0L;
+  if (declared < 0) declared = 0;
+  out.nToday = (uint8_t)((size_t)declared < i ? (size_t)declared : i);
   out.battMv = doc["batt_mv"] | 0;
   return true;
 }

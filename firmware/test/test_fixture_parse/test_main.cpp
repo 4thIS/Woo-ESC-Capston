@@ -58,6 +58,25 @@ void test_parses_today_array() {
   remove("t3.json");
 }
 
+// n_today 가 실제 today[] 길이보다 크면 소비자가 미초기화 슬롯을 읽는다.
+// 파서는 실제로 채운 개수로 보정해야 한다.
+const char* OVERSTATED_N_TODAY = R"({
+  "name": "overstated", "layout": 1, "bld": "E", "room": 301, "unit": 1,
+  "now_str": "09:30", "weekday": 3,
+  "n_today": 5,
+  "today": [ {"s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "subj": "자료구조", "type": 1} ],
+  "batt_mv": 3900
+})";
+
+void test_n_today_clamped_to_actual_array_length() {
+  writeFixture("t5.json", OVERSTATED_N_TODAY);
+  RenderModel m{};
+  char name[64];
+  TEST_ASSERT_TRUE(parseFixtureFile("t5.json", m, name, sizeof(name)));
+  TEST_ASSERT_EQUAL(1, m.nToday);
+  remove("t5.json");
+}
+
 void test_missing_file_returns_false() {
   RenderModel m{};
   char name[64];
@@ -69,6 +88,7 @@ int main() {
   RUN_TEST(test_parses_all_top_level_fields);
   RUN_TEST(test_parses_nested_slot_snake_case_to_camel);
   RUN_TEST(test_parses_today_array);
+  RUN_TEST(test_n_today_clamped_to_actual_array_length);
   RUN_TEST(test_missing_file_returns_false);
   return UNITY_END();
 }
