@@ -1,10 +1,22 @@
+import asyncio
+import importlib.util
 import json
+import pathlib
 
 import pytest
 from lora_proto import codec as C
 from lora_proto import proto as P
 
 from modempi.lora.fake_modem import FakeModem
+
+# server/tests/fake_hub.py 를 파일 경로로 import — modempi/tests 도 `tests` 패키지라 이름이 겹친다.
+_FAKE_HUB = pathlib.Path(__file__).resolve().parents[2] / "server" / "tests" / "fake_hub.py"
+_spec = importlib.util.spec_from_file_location("server_fake_hub", _FAKE_HUB)
+_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+FakeHub = _mod.FakeHub
+
+from .fake_store import MemoryStore
 
 E = ord("E")
 
@@ -38,3 +50,37 @@ async def modem():
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+class FakeClock:
+    """주입용 시계. sleep 은 시간을 앞당기고 실제로는 한 틱만 양보한다."""
+
+    def __init__(self, start: float = 1_800_000_000.0):
+        self.now = start
+        self.sleeps: list[float] = []
+
+    def __call__(self) -> float:
+        return self.now
+
+    async def sleep(self, s: float) -> None:
+        self.sleeps.append(s)
+        self.now += s
+        await asyncio.sleep(0.005)
+
+
+@pytest.fixture
+def store():
+    return MemoryStore()
+
+
+@pytest.fixture
+async def fake_hub():
+    hub = FakeHub(token="secret")
+    await hub.start()
+    yield hub
+    await hub.stop()
+
+
+@pytest.fixture
+def clock():
+    return FakeClock()

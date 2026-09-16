@@ -31,8 +31,8 @@ class FakeHub:
         self._event = asyncio.Event()
         self.url = ""
 
-    async def start(self) -> int:
-        self._server = await serve(self._handle, "127.0.0.1", 0)
+    async def start(self, port: int = 0) -> int:
+        self._server = await serve(self._handle, "127.0.0.1", port)
         port = self._server.sockets[0].getsockname()[1]
         self.url = f"ws://127.0.0.1:{port}/ws/modem"
         return port
