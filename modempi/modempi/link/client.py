@@ -86,7 +86,13 @@ class LinkClient:
                 self._ws = None
             if self._stop.is_set():
                 break
-            await self._sleep(self.backoff * random.uniform(0.8, 1.2))
+            delay = self.backoff * random.uniform(0.8, 1.2)
+            sleeper = asyncio.ensure_future(self._sleep(delay))
+            stopper = asyncio.ensure_future(self._stop.wait())
+            await asyncio.wait({sleeper, stopper}, return_when=asyncio.FIRST_COMPLETED)
+            for t in (sleeper, stopper):
+                t.cancel()
+            await asyncio.gather(sleeper, stopper, return_exceptions=True)
             self.backoff = min(self.backoff * 2, self.backoff_max)
 
     async def stop(self) -> None:
@@ -108,6 +114,8 @@ class LinkClient:
     async def _session(self) -> None:
         async with websockets.connect(self.url) as ws:
             self._ws = ws
+            if self._stop.is_set():
+                return
             hello = self._hello()
             log.info(
                 "modem %s: hello (pending_results=%s)", self.modem_id, hello["pending_results"]
@@ -119,6 +127,8 @@ class LinkClient:
                 if e.rcvd is not None and e.rcvd.code == 4001:
                     raise AuthError from e
                 raise
+            except (TimeoutError, ValueError) as e:
+                raise ProtocolError(f"config 없음: {e!r}") from e
             if not isinstance(first, dict) or first.get("t") != "config":
                 raise ProtocolError(f"config 대신 {first!r}")
             self._on_message(first)
