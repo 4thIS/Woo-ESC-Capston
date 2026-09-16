@@ -46,7 +46,7 @@ v1(`esp32_e-paper_syllabus`, 상위 폴더에서 실물 확인)은 실제 GxEPD2
 
 **주간 0.5 단위는 9개(0.5+1.0을 50분 블록으로 병합)로 줄일 수 없다.** 0.5교시(예: 5.0=13:25-13:50)와 다음 0.5교시(5.5=14:00-14:25) 사이에 10분 휴식이 끼어 있어도, 실제 개설 과목은 이 경계와 무관하게 독립적으로 시작·종료한다 — 예: 1학년 통합전공교과 "딥러닝" 101반은 화요일 **13:25~14:50**(5.0·5.5·6.0에 걸침, 중간 10분 휴식 포함), 수요일 **10:25~11:50**(2.0·2.5·3.0에 걸침)로 개설되어 있다. 병합하면 이런 과목의 시작·종료 시각을 `today[]`에 표현할 수 없으므로 18개 전부를 독립 슬롯으로 유지한다.
 
-한 강의실이 하루에 가질 수 있는 서로 다른 시작 시각(=최악의 경우 서로 다른 과목이 들어갈 수 있는 슬롯 수)의 최댓값이 24이므로, `today[]`는 이 수를 손실 없이 담아야 한다. `RenderModel`은 로드맵 §4.1에 "≈ 600 B, **매 웨이크 재계산**"이라 명시된 임시 구조체로 `rtc_state_t`(RTC slow memory 8 KB 제한)에 영속 저장되지 않으므로, 24로 늘려도(약 +312 B) ESP32-S3 SRAM(512 KB)에 실질적 제약이 없다.
+한 강의실이 하루에 가질 수 있는 서로 다른 시작 시각(=최악의 경우 서로 다른 과목이 들어갈 수 있는 슬롯 수)의 최댓값이 24이므로, `today[]`는 이 수를 손실 없이 담아야 한다. `RenderModel`은 로드맵 §4.1에 "≈ 550 B, **매 웨이크 재계산**"이라 명시된 임시 구조체로(2026-09-16 QR·battPct 제거 후 갱신된 값) `rtc_state_t`(RTC slow memory 8 KB 제한)에 영속 저장되지 않으므로, 24로 늘려도(약 +312 B) ESP32-S3 SRAM(512 KB)에 실질적 제약이 없다.
 
 ```c
 struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // 09:00~22:55, 주간 18 + 야간 6
@@ -75,7 +75,7 @@ firmware/
 └── test/fixtures/render/*.json      # 픽스처 (로드맵 §6.3에 경로 명시됨)
 ```
 
-### 4.2 `RenderModel` 전체 정의 (로드맵 §4.1 + §2.1 변경분)
+### 4.2 `RenderModel` 전체 정의 (로드맵 §4.1 확정 + §2.1 변경분)
 
 ```c
 typedef struct {
@@ -87,10 +87,11 @@ typedef struct {
            uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } prev, cur, next;
   uint8_t  nToday;
   struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // §2.1
-  char     qrUrl[48];
-  uint16_t battMv; uint8_t battPct;
+  uint16_t battMv;
 } RenderModel;
 ```
+
+`qrUrl`·`battPct` 없음 — 2026-09-16 팀 결정(QR 미사용, PR #15)으로 로드맵 r4에서 제거. 이 spec 최초 작성 시점의 초안에는 있었으나 로드맵 §4.1이 원본이라 그쪽을 따른다.
 
 ### 4.3 그리기 인터페이스
 
@@ -116,7 +117,7 @@ void renderLayout(Adafruit_GFX& gfx, const RenderModel& model);
   "today": [
     {"s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "subj": "자료구조", "type": 1}
   ],
-  "qr_url": "https://roomsign.example/E301", "batt_mv": 3900, "batt_pct": 82
+  "batt_mv": 3900
 }
 ```
 

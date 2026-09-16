@@ -1,6 +1,7 @@
 #pragma once
-// spec §4.2 — cw(상태판단) → dh(렌더)로 넘기는 유일한 데이터. 렌더는 이 구조체 밖의 것을 읽지 않는다.
+// 로드맵 §4.1(확정) — cw(상태판단) → dh(렌더)로 넘기는 유일한 데이터. 렌더는 이 구조체 밖의 것을 읽지 않는다.
 // today[24] 산정 근거: docs/specs/2026-09-16-s3-render-design.md §2.1
+// qrUrl·battPct 없음: 2026-09-16 팀 결정(QR 미사용, PR #15) — 로드맵 r4 §4.1 그대로.
 #include <cstdint>
 
 struct RenderSlot {
@@ -27,7 +28,5 @@ struct RenderModel {
   RenderSlot prev, cur, next;
   uint8_t nToday;
   TodaySlot today[24];
-  char qrUrl[48];
   uint16_t battMv;
-  uint8_t battPct;
 };

@@ -28,7 +28,6 @@ void test_fields_are_assignable() {
   m.nToday = 1;
   m.today[0] = {9, 0, 9, 50, "", 1};
   m.battMv = 3900;
-  m.battPct = 82;
   TEST_ASSERT_EQUAL(1, m.layout);
   TEST_ASSERT_EQUAL_STRING("자료구조", m.cur.subj);
   TEST_ASSERT_EQUAL(24, sizeof(m.today) / sizeof(m.today[0]));
