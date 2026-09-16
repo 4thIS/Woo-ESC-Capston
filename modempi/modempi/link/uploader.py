@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 
+import websockets
 from websockets.asyncio.client import ClientConnection
 
 from modempi.link.store_port import JobRow, JobStore
@@ -21,7 +22,10 @@ _VER_KEYS = (
 
 
 def build_job_result(row: JobRow) -> dict:
-    vers = json.loads(row.node_vers) if row.node_vers else {}
+    try:
+        vers = json.loads(row.node_vers) if row.node_vers else {}
+    except ValueError:
+        vers = {}  # node_vers 손상 — 버전 없이 보고 (M1)
     state, last_error = row.state, row.last_error
     if state == "cancelled":  # 계약 ⑥: 취소된 작업은 failed/cancelled 로 보고 (S2 §2.4)
         state, last_error = "failed", "cancelled"
@@ -55,7 +59,12 @@ class Uploader:
             await self._sleep(self.interval)
             if stop.is_set():
                 return
-            await self.flush_once(ws)
+            try:
+                await self.flush_once(ws)
+            except websockets.exceptions.ConnectionClosed:
+                raise  # 세션 종료 → 재접속·재송
+            except Exception:
+                log.exception("업로드 실패 — 다음 tick 에 재시도")
 
     async def flush_once(self, ws: ClientConnection) -> int:
         """job_result 먼저, uplink 다음. write 완료 즉시 mark — 실패하면 mark 안 하고 재접속 후 재송."""
@@ -71,7 +80,7 @@ class Uploader:
             self.store.mark_uploaded([row.job_id])
             n += 1
         for up in self.store.pending_uplinks(self.batch):
-            await ws.send(json.dumps({"t": "uplink", **up.body}, ensure_ascii=False))
+            await ws.send(json.dumps({**up.body, "t": "uplink"}, ensure_ascii=False))
             self.store.mark_uplinks_uploaded([up.id])
             n += 1
         return n

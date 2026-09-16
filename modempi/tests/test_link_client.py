@@ -123,6 +123,29 @@ async def test_non_json_first_frame_is_protocol_error_and_run_survives(store):
         await hub.stop()
 
 
+async def test_session_exception_outside_known_types_survives_and_reconnects(
+    store, fake_hub, clock, monkeypatch
+):
+    orig_set_config = store.set_config
+    calls = {"n": 0}
+
+    def flaky(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return orig_set_config(*a, **kw)
+
+    monkeypatch.setattr(store, "set_config", flaky)
+    c = LinkClient(store, url=fake_hub.url, modem_id="m1", token="secret", sleep=clock.sleep)
+    task = asyncio.create_task(c.run())
+    await asyncio.sleep(0.3)
+    assert not task.done()
+    assert c.attempts >= 2
+    await asyncio.wait_for(c.connected.wait(), 3)
+    assert c.state == "CONNECTED"
+    await _stop(c, task)
+
+
 async def test_stop_during_backoff_exits_promptly(store, monkeypatch):
     # 실제 접속 거부 대신 monkeypatch — Windows 루프백 ECONNREFUSED 의 ~2 s 지연을 피한다.
     # 이 테스트가 검증하려는 건 connect 실패 사유가 아니라, 백오프 대기 중 stop() 이

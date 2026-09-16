@@ -13,7 +13,7 @@
 - 패키지 매니저: **uv** (다른 매니저 사용 금지 — `uv add`로 추가하고 `uv.lock`을 커밋한다)
 - 테스트: pytest
 - 린트·포맷: ruff
-- 주요 의존: `websockets`(링크), `pyserial-asyncio`(모뎀), `aiosqlite`(JobStore), `lora_proto`(codec 상수)
+- 주요 의존: `websockets`(링크), `pyserial-asyncio`(모뎀), `sqlite3`(JobStore — 동기, S5 spec §9), `lora_proto`(codec 상수)
 
 ## 폴더 규칙 · 소유권 분할
 

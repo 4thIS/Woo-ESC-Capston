@@ -82,6 +82,8 @@ class LinkClient:
                 TimeoutError,
             ) as e:
                 log.warning("modem %s: 연결 종료 %s", self.modem_id, e)
+            except Exception:
+                log.exception("modem %s: 세션 예외 — 재접속", self.modem_id)
             finally:
                 self.state = "DISCONNECTED"
                 self.connected.clear()

@@ -186,7 +186,7 @@ class LinkClient:
 
 ## 9. 열린 결정 (plan 단계에서 확정)
 
-- **store 동기/비동기**: 파이프라인(cw)이 `aiosqlite`를 쓰면 `JobStore`가 `async def`가 된다. 링크는 어느 쪽이든 수용(동기면 `asyncio.to_thread`). cw-08 PR에서 확정하고 §4.2를 맞춘다.
+- **store 동기/비동기 — 결정(2026-09-16): 동기.** 링크는 store 함수를 이벤트 루프에서 직접 부른다(서버 `hub.py`와 같은 전례, 연결 1개 공유, ms 단위 SQLite). `aiosqlite` 안 씀. cw-08이 다르게 가려면 이 spec §4.2와 링크 호출부(`_hello`, `_on_message`, `Uploader.flush_once`)를 함께 바꾼다.
 - `put_job`의 `uploaded` 인자 vs `put_job` 뒤 `mark_uploaded` 호출 — 전자가 원자적이라 제안. cw-08과 협의.
 - `pending_results`가 `cancelled` 행을 포함하려면 `cancel_job`이 `finished_at`을 세워야 한다 — cw-08 확인.
 - 재접속 직후 몰아 보내기 상한(100건/1 s)이 충분한지 — 4주차 "끊고 붙이기"에서 확인.

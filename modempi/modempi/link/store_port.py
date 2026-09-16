@@ -1,4 +1,7 @@
-"""계약 ⑦ JobStore 중 링크가 쓰는 인터페이스 (S5 spec §4.2). 실물은 modempi/store.py (cw-08)."""
+"""계약 ⑦ JobStore 중 링크가 쓰는 인터페이스 (S5 spec §4.2). 실물은 modempi/store.py (cw-08).
+
+동기 함수 — 루프에서 직접 호출한다 (S5 spec §9).
+"""
 
 from __future__ import annotations
 
