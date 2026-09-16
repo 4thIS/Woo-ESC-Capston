@@ -360,5 +360,7 @@ def test_import_enqueue_failure_after_commit_returns_500_with_hint(
     monkeypatch.setattr(api, "enqueue_file_replace", boom)
     r1, _ = seeded
     res = _post(client, HEADER + "명지,E,301,금,09:00,10:00,수업,새로,\n")
-    assert res.status_code == 500 and "sync" in res.json()["detail"]
+    assert res.status_code == 500
+    assert "sync" in res.json()["detail"]
+    assert "E301" in res.json()["detail"]
     assert len(_slots(app, r1)) == 3  # DB 는 반영됨

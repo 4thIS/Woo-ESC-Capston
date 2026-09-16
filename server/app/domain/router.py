@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from dataclasses import asdict
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request
@@ -17,6 +18,7 @@ from app.domain.topology import RESV_HORIZON_DAYS
 from app.lora_service import api
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger(__name__)
 
 
 def get_db(request: Request):
@@ -326,15 +328,19 @@ def import_slots(
     if errors:
         return JSONResponse(status_code=400, content={"errors": [asdict(e) for e in errors]})
     sm = csv_import.apply(rows, s, dry_run=dry_run)
+    out = {k: v for k, v in asdict(sm).items() if k != "changed"}
     if dry_run:
-        return {k: v for k, v in asdict(sm).items() if k != "changed"} | {"outbox_ids": []}
+        return out | {"outbox_ids": []}
     s.commit()  # RecordProvider 가 커밋된 슬롯을 읽어야 FILE 내용이 새 것이다 (S2b §3)
     ids: list[int] = []
-    try:
-        for bld, room in sm.changed:
+    for bld, room in sm.changed:
+        try:
             ids += api.enqueue_file_replace(bld, room, "schedule")
-    except Exception as e:  # DB 는 이미 반영됨 — 관리자가 sync 로 복구
-        raise HTTPException(
-            500, f"FILE 큐잉 실패 ({e}). DB 는 반영됨 — POST /api/rooms/{{id}}/sync 로 재전송"
-        ) from e
-    return {k: v for k, v in asdict(sm).items() if k != "changed"} | {"outbox_ids": ids}
+        except Exception as e:  # DB 는 이미 반영됨 — 관리자가 sync 로 복구
+            log.exception("FILE 큐잉 실패 %s%s — DB 는 반영됨", bld, room)
+            raise HTTPException(
+                500,
+                f"FILE 큐잉 실패 ({bld}{room}: {e}). DB 는 반영됨 — "
+                "POST /api/rooms/{id}/sync 로 재전송",
+            ) from e
+    return out | {"outbox_ids": ids}
