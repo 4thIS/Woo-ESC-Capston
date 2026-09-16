@@ -114,6 +114,33 @@ def test_full_sync_dedupes_per_unit(db):
         assert s.get(RoomVersion, ("E", 301, "schedule")).ver == 1
 
 
+def test_file_replace_bumps_ver_and_never_reuses_queued(db, hub):
+    api.set_record_provider(
+        lambda bld, room, kind: (
+            [C.SlotSet(0, 1, 9, 0, 10, 0, 1, "a", "b")] if kind == "schedule" else []
+        )
+    )
+    stale = api.enqueue_full_sync("E", 301, kinds=("schedule",))  # 재동기 FILE, ver 1, 유닛 2개
+    ids = api.enqueue_file_replace("E", 301, "schedule")
+    assert len(ids) == 2 and not set(ids) & set(stale)  # 재사용 안 함
+    rows = {r.id: r for r in _rows(db)}
+    assert all(rows[i].type == "FILE" and rows[i].new_ver == 2 for i in ids)
+    assert {rows[i].unit for i in ids} == {1, 2}
+    assert json.loads(rows[ids[0]].payload)["records"][0]["subject"] == "a"
+    with db() as s:
+        assert s.get(RoomVersion, ("E", 301, "schedule")).ver == 2
+    again = api.enqueue_file_replace("E", 301, "schedule")
+    assert not set(again) & set(ids) and _rows(db)[-1].new_ver == 3
+    assert hub.notified[-1] == "m1"
+
+
+def test_file_replace_unknown_room_and_bad_kind(db):
+    with pytest.raises(LookupError):
+        api.enqueue_file_replace("E", 999, "schedule")
+    with pytest.raises(KeyError):
+        api.enqueue_file_replace("E", 301, "bogus")
+
+
 def test_provision_uses_ident_version(db):
     oid = api.provision("aabbccddeeff", "E", 302, 1)
     r = _rows(db)[0]
