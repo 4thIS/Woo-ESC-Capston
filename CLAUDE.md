@@ -17,7 +17,7 @@
 | 사람 | 계정 | 영역 | 책임 |
 |------|------|------|------|
 | cw | @ssenu (Owner) | 전 영역 총괄 + `lora_proto/` + `firmware/` 무선·스케줄링 + `modempi/lora/` | 설계(spec/plan)·계약·인프라·최종 승인. LoRa 파이프라인(전처리→송신) |
-| dh | @Hyeon02-kr | `firmware/src/terminal/render*`, `firmware/src/fonts/` | e-Paper 렌더링·화면 레이아웃 구현. 모뎀 펌웨어 지원 |
+| dh | @Hyeon02-kr | `firmware/src/terminal/render*`, `firmware/src/fonts/`, `firmware/lib/host_gfx/`·`lib/fixture_parse/`·`lib/adafruit_gfx_vendor/`, `firmware/tools/` | e-Paper 렌더링·화면 레이아웃 구현, 호스트 렌더 프리뷰 인프라. 모뎀 펌웨어 지원 |
 | wj | @leemonta9482 | `server/`, `web/` **전체**, `modempi/link/` | 메인Pi 서버·관리자/학생 웹 풀스택(디자인 스펙을 Vue 코드로 구현), 메인Pi↔모뎀Pi WebSocket 링크 |
 | mh | @jmh7706jmh-ops | `docs/design/` | 웹 디자인 — 시안 제작 → **디자인 스펙 문서**(토큰·컴포넌트·화면) 작성, 구현물 디자인 QA(리뷰). 코드는 쓰지 않는다 |
 

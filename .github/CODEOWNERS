@@ -15,6 +15,10 @@
 /firmware/src/terminal/render*      @Hyeon02-kr
 /firmware/src/terminal/display*     @Hyeon02-kr
 /firmware/src/fonts/                @Hyeon02-kr
+/firmware/lib/host_gfx/             @Hyeon02-kr
+/firmware/lib/fixture_parse/        @Hyeon02-kr
+/firmware/lib/adafruit_gfx_vendor/  @Hyeon02-kr
+/firmware/tools/                    @Hyeon02-kr
 
 # ─── server: 웹 풀스택은 wj, LoRa 서비스 계층은 PM ────────
 /server/                            @leemonta9482
