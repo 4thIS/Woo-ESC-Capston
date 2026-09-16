@@ -128,7 +128,7 @@
 <tr><td><span class="pill cw">cw</span> 박찬우</td><td><code>@ssenu</code></td><td><code>cw</code></td><td><code>lora_proto/</code> · <code>firmware/</code>(무선·절전·스케줄링) · <code>modempi/lora/</code></td><td><strong>팀장(PM)</strong>. spec·plan 설계, 계약·인프라, <strong>PR 머지</strong>. LoRa 파이프라인(전처리→송신), 노드 펌웨어</td></tr>
 <tr><td><span class="pill dh">dh</span> 김도현</td><td><code>@Hyeon02-kr</code></td><td><code>dh</code></td><td><code>firmware/src/terminal/render*</code> · <code>firmware/src/fonts/</code></td><td>e-Paper 렌더링·화면 레이아웃. 모뎀 펌웨어 지원, 노드 저장 계층</td></tr>
 <tr><td><span class="pill wj">wj</span> 이우진</td><td><code>@leemonta9482</code></td><td><code>wj</code></td><td><code>server/</code> · <code>web/</code> · <code>modempi/link/</code></td><td>메인Pi 서버(FastAPI)·관리자/학생 웹(Vue) 풀스택, 메인Pi↔모뎀Pi WebSocket 링크</td></tr>
-<tr><td><span class="pill mh">mh</span> 전민홍</td><td><code>@jmh7706jmh-ops</code></td><td><code>mh</code></td><td><code>web/src/styles/</code> · <code>web/src/components/ui/</code> · <code>web/src/assets/</code></td><td>웹 퍼블리싱·디자인시스템</td></tr>
+<tr><td><span class="pill mh">mh</span> 전민홍</td><td><code>@jmh7706jmh-ops</code></td><td><code>mh</code></td><td><code>docs/design/</code></td><td>웹 디자인 — 시안 → 디자인 스펙(토큰·컴포넌트·화면) 문서화, 구현물 QA. 코드는 wj가 씀</td></tr>
 </table></div>
 
 <h3>확정된 제약</h3>
@@ -292,7 +292,7 @@
 │   └── test/                  ← Unity, [env:native]
 ├── server/                    ← 메인Pi FastAPI (wj). lora_service/ 는 cw 필수 리뷰
 ├── modempi/                   ← 모뎀Pi 서비스.  link/ (wj) · lora/ (cw) · store.py·main.py (공용)
-├── web/                       ← Vue 3 (wj). styles/ · components/ui/ · assets/ 는 mh
+├── web/                       ← Vue 3 (wj 전체). styles/·components/ui/ 는 docs/design/ (mh) 스펙의 구현
 ├── docs/specs/ · docs/plans/  ← 설계서 · 작업지시서 (템플릿 포함)
 └── .github/                   ← CODEOWNERS · CI(경로 기반 5 job) · PR 템플릿</code></pre>
 

@@ -18,8 +18,8 @@
 |------|------|------|------|
 | cw | @ssenu (Owner) | 전 영역 총괄 + `lora_proto/` + `firmware/` 무선·스케줄링 + `modempi/lora/` | 설계(spec/plan)·계약·인프라·최종 승인. LoRa 파이프라인(전처리→송신) |
 | dh | @Hyeon02-kr | `firmware/src/terminal/render*`, `firmware/src/fonts/` | e-Paper 렌더링·화면 레이아웃 구현. 모뎀 펌웨어 지원 |
-| wj | @leemonta9482 | `server/`, `web/`, `modempi/link/` | 메인Pi 서버·관리자/학생 웹 풀스택, 메인Pi↔모뎀Pi WebSocket 링크 |
-| mh | @jmh7706jmh-ops | `web/src/styles/`, `web/src/components/ui/`, `web/src/assets/` | 웹 퍼블리싱·디자인시스템 |
+| wj | @leemonta9482 | `server/`, `web/` **전체**, `modempi/link/` | 메인Pi 서버·관리자/학생 웹 풀스택(디자인 스펙을 Vue 코드로 구현), 메인Pi↔모뎀Pi WebSocket 링크 |
+| mh | @jmh7706jmh-ops | `docs/design/` | 웹 디자인 — 시안 제작 → **디자인 스펙 문서**(토큰·컴포넌트·화면) 작성, 구현물 디자인 QA(리뷰). 코드는 쓰지 않는다 |
 
 ### 계층 규율 (고비용 계층 보호)
 
@@ -31,7 +31,7 @@
 | `firmware/lib/lora_codec/` | 프레임 인코딩/디코딩. 단말·모뎀이 공용으로 링크 | 단말만 보고 고치지 말 것 — 모뎀 쪽 동작을 함께 확인하고 `pio test`의 벡터 테스트를 통과시킨다 |
 | `server/lora_service/` | outbox·버전 벡터·`api.py`·WS 허브(메인Pi ↔ 모뎀Pi 계약 ⑥의 제공 측) | wj가 구현하되 **PM(@ssenu)이 필수 리뷰**. 여기가 웹·모뎀Pi 양쪽 계약의 접점이다. 메시지·시그니처를 바꾸면 로드맵 스펙 §4.2 갱신 + BREAKING CHANGE 명시 |
 | `modempi/store.py` | 모뎀Pi 내부 계약 ⑦ — 링크(wj)와 파이프라인(cw)이 만나는 SQLite 스키마 | 양쪽 협의 + 양쪽 리뷰. 컬럼은 additive만 |
-| `web/src/styles/`, `web/src/components/ui/` | 디자인 토큰·디자인시스템 | 퍼블리셔(@jmh7706jmh-ops) 소유. 화면 담당이 여기를 직접 고치지 말고 이슈로 요청 — 안 그러면 화면마다 골격이 재발명된다 |
+| `docs/design/` ↔ `web/src/styles/`, `web/src/components/ui/` | 디자인 스펙(문서, mh) ↔ 디자인 토큰·디자인시스템(코드, wj) | **스펙이 원본, 코드는 구현.** 토큰 값·컴포넌트 variant를 바꾸려면 mh가 `docs/design/` PR을 먼저 머지하고 wj가 코드 PR로 따라간다(lockstep). 화면(`views/`)에서 토큰을 우회한 하드코딩 색·간격 금지. mh는 이 두 코드 경로의 CODEOWNERS 리뷰어로 디자인 일치를 검수한다 |
 
 ## 폴더 구조 요약
 
@@ -41,8 +41,8 @@ Woo-ESC-Capston/
 ├── firmware/     ← 노드·모뎀 펌웨어 (PlatformIO, C++)
 ├── server/       ← 메인Pi: FastAPI 백엔드 + outbox·버전·WS 허브
 ├── modempi/      ← 모뎀Pi: WS 링크(wj) + LoRa 파이프라인(cw)
-├── web/          ← Vue 3 학생/관리자 웹
-└── docs/         ← 사람·AI 공용 문서 (specs/·plans/ 포함)
+├── web/          ← Vue 3 학생/관리자 웹 (wj 전체)
+└── docs/         ← 사람·AI 공용 문서 (specs/·plans/·design/ 포함. design/ 은 mh의 디자인 스펙)
 ```
 
 ## 브랜치 전략
@@ -118,3 +118,4 @@ docs: ...               # 문서
 | `server/CLAUDE.md` | 메인Pi 서버 영역 규칙 |
 | `modempi/CLAUDE.md` | 모뎀Pi 영역 규칙 (링크/파이프라인 분할) |
 | `web/CLAUDE.md` | 웹 영역 규칙 |
+| `docs/design/README.md` | 디자인 스펙 작성 규칙·템플릿 (mh → wj 계약) |

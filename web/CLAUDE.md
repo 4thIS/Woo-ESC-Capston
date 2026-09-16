@@ -14,28 +14,30 @@
 
 ```
 web/
-├── src/styles/          # 디자인 토큰 — 색·타이포·간격 (보호 계층, 퍼블리셔 소유)
-├── src/components/ui/   # 디자인시스템 컴포넌트 (보호 계층, 퍼블리셔 소유)
-├── src/assets/          # 이미지·아이콘·폰트 (퍼블리셔 소유)
-├── src/views/           # 화면 — 학생용·관리자용
+├── src/styles/          # 디자인 토큰 — docs/design/tokens.md 를 CSS 변수로 옮긴 것 (보호 계층)
+├── src/components/ui/   # 디자인시스템 컴포넌트 — docs/design/components.md 의 구현 (보호 계층)
+├── src/assets/          # 이미지·아이콘·폰트 — mh가 시안에서 뽑아 준 파일
+├── src/views/           # 화면 — docs/design/screens/*.md 의 구현
+├── src/router/          # 라우트
 └── src/api/             # 서버 계약 소비 계층 (fetch 래퍼·타입)
 ```
 
 ## 계층 책임
 
 - 서버 응답 타입은 `src/api/`에 한 번만 선언한다. 화면마다 응답을 재해석하지 않는다.
-- `src/views/`는 `src/components/ui/`를 **조합**한다. 화면 안에서 새 버튼·입력을 직접 스타일링하기 시작하면 디자인시스템이 무너진다 — 필요한 컴포넌트가 없으면 퍼블리셔에게 이슈로 요청한다.
-- `src/styles/`의 토큰을 우회한 하드코딩 색상·간격 금지.
+- `src/views/`는 `src/components/ui/`를 **조합**한다. 화면 안에서 새 버튼·입력을 직접 스타일링하지 않는다 — 스펙에 없는 컴포넌트가 필요하면 `docs/design/`에 이슈로 요청하고 mh가 스펙을 올린 뒤 구현한다.
+- `src/styles/`의 토큰을 우회한 하드코딩 색상·간격 금지. 토큰 값은 `docs/design/tokens.md`가 원본이다.
 - 공통 인프라 계층은 도메인을 import하지 않는다(의존 방향 단방향 유지).
 
-## 영역 내 소유권 분할
+## 역할 분담 — 디자인 스펙(문서) ↔ 코드
 
-| 경로 | 담당 |
+| 산출물 | 담당 |
 |------|------|
-| `src/views/`, `src/api/`, 라우팅·상태관리 | wj @leemonta9482 |
-| `src/styles/`, `src/components/ui/`, `src/assets/` | mh @jmh7706jmh-ops |
+| 시안(Figma 등) + `docs/design/` 디자인 스펙(토큰·컴포넌트·화면) | mh @jmh7706jmh-ops |
+| `web/` 코드 전체 (`styles/`·`components/ui/`·`views/`·`api/`·라우팅·상태) | wj @leemonta9482 |
+| 구현물 디자인 QA | mh — `src/styles/`·`src/components/ui/` PR의 CODEOWNERS 리뷰어 |
 
-이 둘 사이의 내부 계약은 **컴포넌트 props 시그니처**다. 바꾸려면 상대와 사전 협의한다.
+이 둘 사이의 내부 계약은 **디자인 스펙 문서**다(형식은 `docs/design/README.md`). 스펙 → 코드 순서(lockstep): 토큰·컴포넌트를 바꾸려면 mh가 스펙 PR을 먼저 머지하고, wj가 코드 PR로 따라간다. wj가 스펙 없이 UI를 먼저 만들지 않고, mh가 스펙 없이 코드 리뷰에서 디자인을 바꾸지 않는다.
 
 ## 커밋 scope
 
@@ -55,6 +57,6 @@ web/
 ## 절대 하지 말 것
 
 - 다른 영역 디렉토리(`firmware/`, `server/`, `modempi/`) 수정 금지 — 필요 시 이슈로 요청.
-- 화면 담당이 `src/styles/`·`src/components/ui/`를 직접 수정 금지 — 퍼블리셔에게 이슈로 요청.
+- `docs/design/`에 없는 토큰 값·컴포넌트 variant를 코드에서 먼저 만들지 않는다 — 스펙부터(mh).
 - 패키지 매니저·Node 버전 설정 임의 변경 금지.
 - 서버 응답 스키마가 불편하다고 프론트에서 변환·보정 금지 — 서버를 고친다.
