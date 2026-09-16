@@ -45,6 +45,27 @@ void test_save_png_writes_valid_signature() {
   remove("test_host_gfx_out.png");
 }
 
+// savePNG 가 프레임버퍼를 RGB 로 바꿀 때 쓰는 매핑. PNG 시그니처 검사만으로는
+// "색이 맞게 나갔는가"를 전혀 판정하지 못해 따로 어서션한다.
+void test_hcolor_to_rgb_maps_three_colors() {
+  uint8_t r = 0, g = 0, b = 0;
+
+  hcolorToRGB(HColor::BLACK, r, g, b);
+  TEST_ASSERT_EQUAL_UINT8(0, r);
+  TEST_ASSERT_EQUAL_UINT8(0, g);
+  TEST_ASSERT_EQUAL_UINT8(0, b);
+
+  hcolorToRGB(HColor::RED, r, g, b);
+  TEST_ASSERT_EQUAL_UINT8(200, r);
+  TEST_ASSERT_EQUAL_UINT8(16, g);
+  TEST_ASSERT_EQUAL_UINT8(46, b);
+
+  hcolorToRGB(HColor::WHITE, r, g, b);
+  TEST_ASSERT_EQUAL_UINT8(255, r);
+  TEST_ASSERT_EQUAL_UINT8(255, g);
+  TEST_ASSERT_EQUAL_UINT8(255, b);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_default_size_is_800x480_white);
@@ -52,5 +73,6 @@ int main() {
   RUN_TEST(test_out_of_bounds_draw_is_ignored_not_crash);
   RUN_TEST(test_fill_rect_via_adafruit_gfx_sets_region);
   RUN_TEST(test_save_png_writes_valid_signature);
+  RUN_TEST(test_hcolor_to_rgb_maps_three_colors);
   return UNITY_END();
 }

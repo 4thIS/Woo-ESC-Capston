@@ -26,23 +26,27 @@ HColor HostGfx::pixelAt(int16_t x, int16_t y) const {
   return buf_[(size_t)y * w_ + x];
 }
 
+void hcolorToRGB(HColor c, uint8_t& r, uint8_t& g, uint8_t& b) {
+  switch (c) {
+    case HColor::BLACK:
+      r = g = b = 0;
+      break;
+    case HColor::RED:
+      r = 200;
+      g = 16;
+      b = 46;
+      break;
+    default:
+      r = g = b = 255;
+      break;  // WHITE
+  }
+}
+
 bool HostGfx::savePNG(const char* path) const {
   std::vector<uint8_t> rgb((size_t)w_ * h_ * 3);
   for (size_t i = 0; i < buf_.size(); ++i) {
     uint8_t r, g, b;
-    switch (buf_[i]) {
-      case HColor::BLACK:
-        r = g = b = 0;
-        break;
-      case HColor::RED:
-        r = 200;
-        g = 16;
-        b = 46;
-        break;
-      default:
-        r = g = b = 255;
-        break;  // WHITE
-    }
+    hcolorToRGB(buf_[i], r, g, b);
     rgb[i * 3 + 0] = r;
     rgb[i * 3 + 1] = g;
     rgb[i * 3 + 2] = b;
