@@ -2,7 +2,6 @@
 // spec §4.2 — cw(상태판단) → dh(렌더)로 넘기는 유일한 데이터. 렌더는 이 구조체 밖의 것을 읽지 않는다.
 // today[24] 산정 근거: docs/specs/2026-09-16-s3-render-design.md §2.1
 #include <cstdint>
-#include <cstring>
 
 struct RenderSlot {
   char subj[21];

@@ -1,5 +1,7 @@
 #include <unity.h>
 
+#include <cstring>
+
 #include "render_model.h"
 
 void test_today_capacity_is_24() {
@@ -13,10 +15,10 @@ void test_fields_are_assignable() {
   m.bld = 'E';
   m.room = 301;
   m.unit = 1;
-  strcpy(m.nowStr, "09:30");
+  std::strcpy(m.nowStr, "09:30");
   m.weekday = 3;
-  strcpy(m.cur.subj, "자료구조");
-  strcpy(m.cur.prof, "김교수");
+  std::strcpy(m.cur.subj, "자료구조");
+  std::strcpy(m.cur.prof, "김교수");
   m.cur.sH = 9;
   m.cur.sM = 0;
   m.cur.eH = 9;
