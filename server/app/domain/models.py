@@ -52,6 +52,9 @@ class Slot(Base):
     type: Mapped[int]
     subject: Mapped[str] = mapped_column(String)
     professor: Mapped[str] = mapped_column(String)
+    source: Mapped[int] = mapped_column(
+        default=2, server_default="2"
+    )  # 1=포털 2=수동 3=긴급 (S2b §2.2)
     __table_args__ = (UniqueConstraint("room_id", "day", "s_h", "s_m"),)  # 노드 멱등키와 동일
 
 

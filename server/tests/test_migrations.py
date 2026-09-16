@@ -31,3 +31,11 @@ def test_lora_migration_creates_tables(tmp_path):
 def test_web_migration_creates_tables(tmp_path):
     names = _upgrade(tmp_path / "w.db")
     assert {"schools", "buildings", "rooms", "slots", "reservations", "exam_periods"} <= names
+
+
+def test_slot_source_column(tmp_path):
+    db = tmp_path / "s.db"
+    _upgrade(db)
+    cols = {c["name"]: c for c in inspect(create_engine(f"sqlite:///{db}")).get_columns("slots")}
+    assert cols["source"]["nullable"] is False
+    assert str(cols["source"]["default"]).strip("'") == "2"

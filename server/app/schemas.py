@@ -72,6 +72,7 @@ class _Span(BaseModel):
 
 class SlotIn(_Span):
     day: int = Field(ge=1, le=7)
+    source: int = Field(2, ge=1, le=3)  # 1=포털 2=수동 3=긴급 (S2b §2.2)
 
 
 class SlotOut(SlotIn, Out):

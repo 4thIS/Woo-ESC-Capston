@@ -180,6 +180,8 @@ def put_slot(id: int, body: S.SlotIn, s: Session = _DB):
             Slot.room_id == id, Slot.day == body.day, Slot.s_h == body.s_h, Slot.s_m == body.s_m
         )
     )
+    if obj is not None and obj.source > body.source:
+        raise HTTPException(409, f"source {obj.source} 슬롯은 source ≥ {obj.source} 로만 수정")
     if obj is None:
         obj = Slot(room_id=id)
         s.add(obj)
