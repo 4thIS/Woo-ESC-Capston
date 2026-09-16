@@ -63,8 +63,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
     async def _nf(_r: Request, e: api.NotFound):
         return JSONResponse({"detail": str(e)}, status_code=404)
 
-    @app.exception_handler(ValueError)
-    async def _bad(_r: Request, e: ValueError):
+    @app.exception_handler(api.ValidationError)
+    async def _bad(_r: Request, e: api.ValidationError):
         return JSONResponse({"detail": str(e)}, status_code=400)
 
     @app.exception_handler(sqlalchemy.exc.IntegrityError)
