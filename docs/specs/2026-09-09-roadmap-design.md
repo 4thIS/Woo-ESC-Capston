@@ -1,7 +1,7 @@
 # 진행 로드맵 · 3계층 토폴로지 · 서브프로젝트 분해 · 영역 간 계약 — 설계 (spec)
 
 - 생성일시: 2026-09-09
-- 수정일시: 2026-09-16 (r3 — 웹 역할 재정의: mh = 시안·디자인 스펙(`docs/design/`), wj = `web/` 코드 전체. r2 2026-09-09 — 3계층 토폴로지 반영, 모뎀Pi 내부를 링크/파이프라인으로 분할)
+- 수정일시: 2026-09-16 (r4 — QR 제거·`battPct` 제거·`today[24]`(S3 spec). r3 — 웹 역할 재정의: mh = 시안·디자인 스펙(`docs/design/`), wj = `web/` 코드 전체. r2 2026-09-09 — 3계층 토폴로지 반영, 모뎀Pi 내부를 링크/파이프라인으로 분할)
 - 상위 문서: `docs/specs/2026-09-09-lora-v2-wor-design.md` (v2 시스템 설계). 공중 프로토콜(§2·§3)·모뎀 펌웨어(§4)·ESP노드 펌웨어(§5~7)는 그 문서가 원본이다. **v2 §8(백엔드 LoRa 서비스)은 이 문서 §4로 대체한다** — 워커·modem.py·codec이 모뎀Pi로 이동했다.
 - 근거 문서: 과제추진계획서(Woo팀), 2026-2 캡스톤디자인 운영계획
 
@@ -106,14 +106,13 @@ typedef struct {
            uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } prev, cur, next;
                                 // flags bit0 = 존재함, bit1 = 변경 배지(휴강·보강·변경)
   uint8_t  nToday;
-  struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[12];
-  char     qrUrl[48];           // 학생웹 진입 URL. 비어 있으면 QR 생략
-  uint16_t battMv; uint8_t battPct;
-} RenderModel;                  // ≈ 600 B, 매 웨이크 재계산
+  struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // 주간 18 + 야간 6 (S3 spec §2.1). 렌더는 표시 상한 N 개만 그린다
+  uint16_t battMv;              // battPct 는 제거 (2026-09-16 — 방전 곡선 없이 % 환산은 임의값)
+} RenderModel;                  // ≈ 550 B, 매 웨이크 재계산
 ```
 
-- 문자열 길이는 v2 §5.1 저장 버퍼와 동일. `today[12]`는 09:00~21:00 가정(§10).
-- QR URL은 메인Pi 주소이므로 펌웨어 상수가 아니라 **메인Pi → 모뎀Pi `config` → TIME 페이로드 확장 또는 별도 CMD**로 배포. 수단은 S8 spec.
+- 문자열 길이는 v2 §5.1 저장 버퍼와 동일. `today[24]`는 명지전문대 교시표(09:00~22:55) 기준 — S3 spec §2.1.
+- **QR 코드는 쓰지 않는다** (2026-09-16 팀 결정). 학생 웹은 별도 도메인으로 직접 진입한다. 화면·RenderModel·`config` 어디에도 QR/URL 필드를 두지 않는다.
 - 픽스처: `firmware/test/fixtures/render/*.json`. Python 프리뷰와 C++ Unity 테스트가 같은 파일을 읽는다.
 
 ### 4.2 계약 ⑥ — 메인Pi ↔ 모뎀Pi 백홀 (WebSocket, JSON 메시지)
@@ -123,7 +122,7 @@ typedef struct {
 | 방향 | `t` | 필드 | 비고 |
 |---|---|---|---|
 | 모뎀Pi → 메인 | `hello` | `modem_id`(예 `"mjc-eng"`), `token`, `agent_ver`, `modem_fw`, `pending_results: int` | 토큰 불일치면 메인이 연결을 닫는다 |
-| 메인 → 모뎀Pi | `config` | `net_id`, `radio: {sf, bw, cr, tx_dbm, preamble_wake_ms}`, `nodes: [{bld, room, unit}]`, `qr_base_url`, `status_hour_utc` | hello 직후 1회 + 변경 시 |
+| 메인 → 모뎀Pi | `config` | `net_id`, `radio: {sf, bw, cr, tx_dbm, preamble_wake_ms}`, `nodes: [{bld, room, unit}]`, `status_hour_utc` (`qr_base_url`은 2026-09-16 삭제 — QR 미사용) | hello 직후 1회 + 변경 시 |
 | 메인 → 모뎀Pi | `job` | `job_id`, `bld`, `room`, `unit`(0 = 호수 전체), `type`, `payload`(JSON, codec 입력), `priority`, `new_ver` | FILE은 `payload.records[]`에 **레코드 전체 포함** |
 | 모뎀Pi → 메인 | `job_accepted` | `job_id` | 로컬 큐에 기록 완료. 메인은 이때 `dispatched` |
 | 메인 → 모뎀Pi | `cancel` | `job_id` | 아직 `received` 상태면 취소 |
@@ -220,7 +219,7 @@ CREATE INDEX ix_jobs_upload ON jobs(uploaded, finished_at);
 | S7 | 모뎀 펌웨어 + P0 SF 실측 | cw (dh 지원) | ✓ | ◎ §4·§10.3 | S1, HW |
 | S8 | 노드 펌웨어 깨어있는 모드 + S3 결합 | cw + dh | ✓ | ◎ §5·§6 | S1, S3, S7 |
 | S9 | 노드 절전(WOR)·프로비저닝·STATUS | cw | ✓ | ◎ §6.7·§7 | S8 |
-| S10 | 학생 웹 + QR + 분석 대시보드 | wj (mh: 디자인 스펙 선행) | ✗ | ○ | S2, S4 |
+| S10 | 학생 웹(별도 도메인 직접 진입) + 분석 대시보드 | wj (mh: 디자인 스펙 선행) | ✗ | ○ | S2, S4 |
 | S11 | Pi 2대 이식·2대 소크·케이스·전력 실측 | cw | ✓ | ◎ §10.4·10.5 | S9 |
 
 ```
@@ -258,7 +257,7 @@ GxEPD2와 같은 `drawPixel/print` 인터페이스의 호스트용 프레임버�
 | 4 | S6 파이프라인 + fake 모뎀 테스트 ✔, **계약 7개 동결**, **Pi↔Pi 통합** | 레이아웃 8개 PNG 리뷰 완료 | S5 링크 ✔, `api.py`, **Pi↔Pi 통합**, 토큰·`components/ui` 구현 | 관리자 화면 구현 디자인 QA |
 | 5~7 | P0 SF 실측 → S7 모뎀 펌웨어 → S8 노드 awake | 실제 패널 렌더, S7 지원, S8 저장·`nextChangeAt` | 관리자 웹 구현·실기 연결 | 관리자 웹 완성 시안·스펙(로그인·노드 배정·모니터) + QA |
 | **7~8** | **첫 E2E — 중간점검** (메인Pi → 모뎀Pi → 노드 1대) | | | |
-| 8~10 | S9 WOR·프로비저닝 | 화면 폴리싱·QR | S10 학생웹 API·대시보드 집계·화면 구현 | S10 화면 시안·스펙 + QA |
+| 8~10 | S9 WOR·프로비저닝 | 화면 폴리싱·변경 배지 | S10 학생웹 API·대시보드 집계·화면 구현 | S10 화면 시안·스펙 + QA |
 | 11 | S11 Pi 이식, 2대 소크, 판넬·보고서 | | | |
 | **12** | **경진대회** | | | |
 | 13~15 | 전력 실측, 케이스, 최종발표 | | | |
@@ -305,9 +304,7 @@ GxEPD2와 같은 `drawPixel/print` 인터페이스의 호스트용 프레임버�
 
 ## 10. 열린 결정
 
-- **하루 최대 교시**: `today[12]` 가정. S3 spec.
 - **7.5" 3색 리프레시 시간**: 15~20 s 가정. v1 실측값이 있으면 §7.1 교체.
-- **QR URL 배포 수단**: TIME 페이로드 확장 vs 별도 CMD — S8 spec.
 - **CSV 컬럼 규격·REST 엔드포인트·WS 인증 토큰 발급 방식** — S2 spec.
 - **모뎀Pi 인터넷 연결 수단**(교내 Wi-Fi 인증 vs 유선) — 설치 시점 확인. 전시는 핫스팟.
 - **부품 발주 확정일** — 확정 즉시 §6.4의 5주차 기점 갱신.
