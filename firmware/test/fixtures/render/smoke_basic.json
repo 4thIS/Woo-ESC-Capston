@@ -1,0 +1,11 @@
+{
+  "name": "layout1_class_basic",
+  "layout": 1, "bld": "E", "room": 301, "unit": 1,
+  "now_str": "09:30", "weekday": 3,
+  "prev": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "cur":  {"subj": "자료구조", "prof": "김교수", "s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "type": 1, "flags": 1},
+  "next": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "n_today": 1,
+  "today": [ {"s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "subj": "자료구조", "type": 1} ],
+  "batt_mv": 3900
+}
