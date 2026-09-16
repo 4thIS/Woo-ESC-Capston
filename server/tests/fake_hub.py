@@ -15,7 +15,6 @@ DEFAULT_CONFIG = {
     "net_id": 0x4B,
     "radio": {"sf": 9, "bw": 125.0, "cr": 5, "tx_dbm": 14, "preamble_wake_ms": 3000},
     "nodes": [{"bld": "E", "room": 302, "unit": 1}],
-    "qr_base_url": "",
     "status_hour_utc": 18,
 }
 

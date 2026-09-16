@@ -81,7 +81,7 @@ def test_hello_sends_config_then_queued_jobs(client, live, modem):
             {"bld": "E", "room": 301, "unit": 2},
             {"bld": "E", "room": 302, "unit": 1},
         ]
-        assert cfg["status_hour_utc"] == 18 and "qr_base_url" in cfg
+        assert cfg["status_hour_utc"] == 18 and "qr_base_url" not in cfg  # QR 폐기 (#16)
         jobs = [ws.receive_json(), ws.receive_json()]
         assert [j["t"] for j in jobs] == ["job", "job"]
         assert [j["job_id"] for j in jobs] == ids

@@ -1,7 +1,7 @@
 # S2 — 메인Pi 서버: 통신 뼈대 + 최소 도메인 — 설계 (spec)
 
 - 생성일시: 2026-09-14
-- 수정일시: 2026-09-14 (r2 — 구현 중 확정: 버전 비교 규칙, 예약 창, 인코딩 규칙, 연결 리셋, 학교 간 bld)
+- 수정일시: 2026-09-16 (r3 — QR 폐기(#16): `config.qr_base_url`·`QR_BASE_URL` 삭제. r2 2026-09-14 — 구현 중 확정: 버전 비교 규칙, 예약 창, 인코딩 규칙, 연결 리셋, 학교 간 bld)
 - 상위 문서: `2026-09-09-roadmap-design.md` §3(책임 분할)·§4.2(계약 ⑥ WS 백홀)·§4.5(v2 §8 개정)·§7.1(지연 예산). `api.py` 시그니처·테이블·버전 규칙 원본은 `2026-09-09-lora-v2-wor-design.md` §8.2·8.3·8.6·8.7. 모뎀Pi 쪽 상대는 `2026-09-10-s6-modempi-lora-pipeline-design.md`(§5 "server 영향").
 - 담당: wj @leemonta9482. 영역 `server/`. `server/app/lora_service/`는 cw @ssenu 필수 리뷰.
 
@@ -75,7 +75,7 @@ v2 §8.2를 로드맵 §4.5로 개정한 것.
 |---|---|
 | 접속 | `WS /ws/modem`. 첫 메시지는 10 s 안에 `hello`. 아니면 close |
 | `hello` | `modems.modem_id` 존재 + `sha256(token) == token_hash`. 아니면 close(4001). 같은 `modem_id`가 이미 연결돼 있으면 **이전 연결을 닫고 교체**. `last_seen_at/connected/agent_ver/modem_fw` 갱신 → `config` 송신 → 그 모뎀의 `queued` 전부를 `job`으로 송신 |
-| `config` 내용 | `net_id` = 건물의 학교, `radio` = `proto.RADIO`에서 `{sf,bw,cr,tx_dbm,preamble_wake_ms}`, `nodes` = 그 건물 `rooms` × `units` → `[{bld,room,unit}]`, `qr_base_url` = 설정값(빈 문자열 가능), `status_hour_utc` = 설정값(기본 18 = KST 03:00) |
+| `config` 내용 | `net_id` = 건물의 학교, `radio` = `proto.RADIO`에서 `{sf,bw,cr,tx_dbm,preamble_wake_ms}`, `nodes` = 그 건물 `rooms` × `units` → `[{bld,room,unit}]`, `status_hour_utc` = 설정값(기본 18 = KST 03:00) |
 | `job` 송신 | outbox 행 → `{t:"job", job_id, bld, room, unit, type, payload, priority, new_ver}`. `payload` 키 = codec 필드명에서 `new_ver` 제외(`new_ver`는 job 필드). `bytes` 필드(`mac`, `args`)는 **hex 문자열**. FILE은 `{"kind": 1\|2\|3, "records": [레코드 dict…]}`. 송신했다고 상태를 바꾸지 않는다 |
 | `job_accepted` | `queued → dispatched`, `dispatched_at`. 이미 `dispatched` 이상이면 무시(멱등). `cancelled` 행이면 `cancel`을 되돌려 보낸다(취소 경합). `job_id`는 정수 — 문자열로 와도 `int()`로 받는다(계약 ⑦ `jobs.job_id` TEXT). 다른 모뎀이 보고한 `job_id`는 무시 |
 | `job_result` | `api.on_job_result()`에 위임. `dispatched → acked\|failed` + 결과 필드 + `finished_at`. `terminal_status` 갱신. 이미 끝난 행이면 로그만(모뎀Pi 재전송) |
@@ -113,7 +113,7 @@ server/
 ├── app/
 │   ├── main.py             # 앱 생성, lifespan(허브·안전망 태스크), /static, set_record_provider·set_notify 1회
 │   ├── db.py               # engine·Session·get_db
-│   ├── settings.py         # SERVER_DB, QR_BASE_URL, STATUS_HOUR_UTC (env)
+│   ├── settings.py         # SERVER_DB, STATUS_HOUR_UTC (env)
 │   ├── domain/
 │   │   ├── models.py       # §2.2
 │   │   ├── records.py      # RecordProvider 구현
