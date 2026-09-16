@@ -66,3 +66,45 @@ def test_outbox_cancel_status_pending_provision_time(client):
     assert client.get("/api/lora/outbox?state=queued").json()[-1]["type"] == "SET_ROOM"
     assert client.get("/api/lora/status").json() == []
     assert client.post("/api/lora/time").json() == {"modems": 0}
+
+
+def test_validation_error_is_400_but_plain_valueerror_is_500(app):
+    """#8: 검증 실패(api.ValidationError)만 400. 내부 버그성 ValueError 는 500 으로 드러난다."""
+    from fastapi.testclient import TestClient
+
+    @app.get("/_boom")
+    def boom():
+        raise ValueError("internal bug")
+
+    @app.get("/_bad")
+    def bad():
+        raise api.ValidationError("bad input")
+
+    with TestClient(app, raise_server_exceptions=False) as c:
+        assert c.get("/_boom").status_code == 500
+        r = c.get("/_bad")
+        assert r.status_code == 400 and r.json()["detail"] == "bad input"
+
+
+def test_frame_error_and_unit_check_are_validation_errors(client, db):
+    import pytest
+
+    with pytest.raises(api.ValidationError):
+        api.provision("aabbccddeeff", "E", 301, 3)  # unit 범위
+    with pytest.raises(api.ValidationError):
+        api.enqueue_slot_set("E", 301, 1, (9, 0), (10, 0), 1, "x" * 100, "p")  # FrameError 래핑
+    assert client.post("/api/lora/modems", json={"modem_id": "m1"}).status_code == 200
+    assert client.post("/api/lora/modems", json={"modem_id": "m1"}).status_code == 400  # 중복
+
+
+def test_cmd_args_hex_rejected_by_schema(client):
+    client.post("/api/lora/modems", json={"modem_id": "m1"})
+    r = _room(client)
+    assert (
+        client.post(f"/api/rooms/{r['id']}/cmd", json={"cmd": 4, "args_hex": "zz"}).status_code
+        == 422
+    )
+    assert (
+        client.post(f"/api/rooms/{r['id']}/cmd", json={"cmd": 4, "args_hex": "0aFF"}).status_code
+        == 200
+    )
