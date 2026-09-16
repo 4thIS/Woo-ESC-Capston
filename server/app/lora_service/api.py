@@ -68,6 +68,10 @@ class NotFound(LookupError):
     pass
 
 
+class ValidationError(ValueError):
+    """입력 검증 실패 → 라우터가 400. 그 밖의 ValueError 는 내부 버그라 500 으로 드러낸다 (#8)."""
+
+
 def _no_records(bld: str, room: int, kind: str) -> list:
     return []
 
@@ -192,9 +196,10 @@ def _enqueue(
         kind = KIND_OF.get(type_)
         new_ver = _bump_ver(s, bld, room, kind) if kind else None
         obj = make(new_ver)
-        C.encode_payload(
-            obj
-        )  # FrameError(ValueError) 면 여기서 롤백 — 모뎀Pi의 bad_payload 를 서버에서 막는다
+        try:
+            C.encode_payload(obj)  # 실패면 여기서 롤백 — 모뎀Pi의 bad_payload 를 서버에서 막는다
+        except C.FrameError as e:
+            raise ValidationError(str(e)) from e
         ids = _insert(s, info, bld, room, unit, type_, _to_json(obj), new_ver)
     if info.modem_id:
         _hub.notify(info.modem_id)
@@ -366,7 +371,7 @@ def enqueue_full_sync(
 
 def provision(mac: str, bld: str, room: int, unit: int) -> int:
     if unit not in (1, 2):
-        raise ValueError("unit 은 1 또는 2")
+        raise ValidationError("unit 은 1 또는 2")
     return _enqueue(
         bld,
         room,
@@ -608,7 +613,7 @@ def register_modem(modem_id: str) -> str:
     token = secrets.token_urlsafe(32)
     with _Session() as s, s.begin():
         if s.get(Modem, modem_id) is not None:
-            raise ValueError(f"modem {modem_id} 이미 있음")
+            raise ValidationError(f"modem {modem_id} 이미 있음")
         s.add(Modem(modem_id=modem_id, token_hash=_hash(token)))
     return token
 

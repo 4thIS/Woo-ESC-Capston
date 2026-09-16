@@ -103,7 +103,7 @@ class SyncIn(BaseModel):
 
 class CmdIn(BaseModel):
     cmd: int = Field(ge=1, le=255)
-    args_hex: str = ""
+    args_hex: str = Field("", pattern=r"^([0-9a-fA-F]{2})*$")  # bytes.fromhex 가 받는 형태만
 
 
 class Enqueued(BaseModel):
