@@ -207,15 +207,14 @@ def test_apply_replaces_portal_keeps_higher_source(app, seeded):
                 source=1,
             )
         )
-    text = (
-        HEADER
-        + (
-            "명지,E,301,월,09:00,10:00,수업,포털월,\n"  # 수동(source 2) 과 겹침 → skipped
-            "명지,E,301,화,09:00,10:00,수업,포털화,\n"  # 긴급(source 3) 과 겹침 → skipped
-            "명지,E,301,목,09:00,10:00,수업,갱신됨,\n"  # 기존 포털 갱신
-            "명지,E,301,금,09:00,10:00,수업,새로,\n"  # 삽입
-        )
-    )  # 수 09:00 옛포털 → 삭제. 302 는 파일에 없음 → 불변
+    # 월: 수동(source 2) 과 겹침 → skipped / 화: 긴급(source 3) 과 겹침 → skipped
+    # 목: 기존 포털 갱신 / 금: 삽입 / 수 09:00 옛포털 → 삭제 / 302 는 파일에 없음 → 불변
+    text = HEADER + (
+        "명지,E,301,월,09:00,10:00,수업,포털월,\n"
+        "명지,E,301,화,09:00,10:00,수업,포털화,\n"
+        "명지,E,301,목,09:00,10:00,수업,갱신됨,\n"
+        "명지,E,301,금,09:00,10:00,수업,새로,\n"
+    )
     with app.state.Session() as s, s.begin():
         rows, errors = CI.parse(text, s)
         assert errors == []
@@ -306,13 +305,11 @@ def test_import_400_leaves_db_and_outbox_untouched(client, app, seeded):
 
 def test_import_200_creates_file_per_unit_and_bumps_ver(client, app, seeded):
     _r1, _r2 = seeded
-    text = (
-        HEADER
-        + (
-            "명지,E,301,월,09:00,10:00,수업,포털월,\n"  # 수동과 겹침 → skipped
-            "명지,E,301,금,09:00,10:00,수업,새로,\n"
-            "명지,E,302,월,09:00,10:00,수업,302,\n"
-        )
+    # 월(301): 수동과 겹침 → skipped
+    text = HEADER + (
+        "명지,E,301,월,09:00,10:00,수업,포털월,\n"
+        "명지,E,301,금,09:00,10:00,수업,새로,\n"
+        "명지,E,302,월,09:00,10:00,수업,302,\n"
     )
     res = _post(client, text)
     assert res.status_code == 200, res.text
