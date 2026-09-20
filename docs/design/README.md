@@ -8,7 +8,7 @@
 ```
 docs/design/
 ├── README.md          ← 이 문서 (규칙·템플릿)
-├── tokens.md          ← 디자인 토큰: 색·타이포·간격·라운드·그림자 (→ web/src/styles/)
+├── tokens.md          ← 디자인 토큰: 색·타이포·간격·라운드 (→ web/src/styles/)
 ├── components.md      ← 컴포넌트 카탈로그: variant·size·상태 (→ web/src/components/ui/)
 ├── screens/
 │   ├── admin-schedule.md   ← 화면 1장 = 문서 1개 (→ web/src/views/)
@@ -36,13 +36,13 @@ docs/design/
 # 디자인 토큰 v1 (시안: <링크>)
 
 ## 색
-| 토큰 | 라이트 | 다크 | 용도 |
-|---|---|---|---|
-| color.bg | #FFFFFF | #111111 | 페이지 배경 |
-| color.text | #111111 | #EEEEEE | 본문 |
-| color.primary | #2B5BD7 | #6C93F5 | 주 버튼·링크 |
-| color.status.class | #D6262B | … | 수업중 (e-Paper RED 와 일관) |
-| color.status.empty | … | … | 빈강의실 |
+| 토큰 | 값 | 용도 |
+|---|---|---|
+| color.ink | #111111 | 글자·선·반전 바탕 |
+| color.paper | #F7F6F3 | 모든 바탕 — 카드도 같다. 구분은 ink 1px 선이 한다 |
+| color.signal | #C8102E | 적색 — 사용중 상태·파괴적 동작·포커스 링 |
+| color.status.busy | = signal | 사용중 — 수업·시험·특강·대여 (e-Paper RED) |
+| color.status.free | = ink | 비어있음 — 휴강·빈강의실·쉬는시간·설정 대기 (e-Paper BLACK) |
 …
 
 ## 타이포
@@ -52,12 +52,12 @@ docs/design/
 | font.size.sm / md / lg / xl | 12 / 14 / 16 / 20 px |
 | font.weight.regular / bold | 400 / 700 |
 
-## 간격 · 라운드 · 그림자
+## 간격 · 라운드 · 보더
 | 토큰 | 값 |
 |---|---|
 | space.1 … space.6 | 4 / 8 / 12 / 16 / 24 / 32 px |
 | radius.sm / md | 4 / 8 px |
-| shadow.card | 0 1px 3px rgba(0,0,0,.12) |
+| border.thin / thick | 1 / 2px |
 
 ## 브레이크포인트
 | 토큰 | 값 |
@@ -67,6 +67,8 @@ docs/design/
 ```
 
 토큰 이름은 그대로 CSS 변수가 된다: `color.status.class` → `--color-status-class`.
+
+다크 모드는 v1 범위 밖이다. 필요해지면 이 표에 `다크` 열을 더하는 방식(additive)으로 넣고, 토큰 이름은 그대로 둔다.
 
 ### components.md
 
@@ -110,7 +112,7 @@ Select(강의실), Button(추가), Table 아님 — 커스텀 그리드, Badge(t
 - 로딩: 그리드 자리에 스켈레톤
 - 빈 상태: "이 강의실에 등록된 시간표가 없습니다" + 추가 버튼
 - 에러: 상단 Toast(danger), 재시도 버튼
-- 저장 후: outbox 상태(queued → dispatched → acked)를 셀 우상단 점으로 — 회색/노랑/초록
+- 저장 후: outbox 상태(queued → dispatched → acked)를 셀 우상단 점으로 — 색이 아니라 채움 정도 ○ ◐ ●
 
 ## 상호작용
 - 셀 클릭 → 편집 Modal. 빈 셀 클릭 → 추가 Modal(시간 미리 채움).
@@ -121,6 +123,6 @@ Select(강의실), Button(추가), Table 아님 — 커스텀 그리드, Badge(t
 
 - 값은 **숫자·색상코드·이름**으로 쓴다. "적당히", "약간 어둡게" 금지 — 코드로 옮길 수 없다.
 - 서버 필드명은 `server/app/schemas.py`(OpenAPI `/docs`)를 그대로 쓴다. 화면이 서버에 없는 필드를 요구하면 wj에게 이슈 — 서버(additive)가 먼저다.
-- 강의실 상태 색은 e-Paper 3색(흑·백·적) 의미와 일관: 수업중·시험중·특강·대여중 = RED 계열, 나머지 = BLACK 계열.
+- 웹 팔레트는 값이 셋뿐이다 — 흑·백·적 각 하나. 회색을 만들지 않는다(옅은 선도, 중간 보조 텍스트도). 위계는 크기·굵기·면적·반전으로 만든다. 강의실 상태는 사용중 = 적, 나머지 = 흑이고, 넷을 색으로 나누지 않고 라벨 텍스트로 구분한다.
 - 접근성 최소: 텍스트 대비 4.5:1, 포커스 링 토큰 1개, 상태를 색으로만 구분하지 않기(아이콘·텍스트 병기).
 - 커밋 scope: `docs(design): …`. 브랜치 `mh`. PR은 wj 리뷰 → 팀장 머지.
