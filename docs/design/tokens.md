@@ -99,9 +99,10 @@ e-Paper `layout` 1~8의 RED / BLACK 이분법 그대로. **상태 색은 2개뿐
 | `queued` | `○` 테두리만 (1px) | `ink` |
 | `dispatched` | `◐` 반 채움 | `ink` |
 | `acked` | `●` 꽉 채움 | `ink` |
-| 실패 | `●` 꽉 채움 + 느낌표 | `signal` |
+| `failed` | `●` 꽉 채움 + 느낌표 | `signal` |
+| `cancelled` | `○` 테두리만 + 사선 | `ink`, `opacity: .4` |
 
-실패만 적색이다 — 적색의 세 용도 중 "파괴적 동작·에러"에 해당한다.
+`failed` 만 적색이다 — 적색의 세 용도 중 "파괴적 동작·에러"에 해당한다. `cancelled` 는 상위 작업에 밀려 취소된 것이라 비활성으로 죽인다. 상태값은 `OutboxOut.state` 다섯 가지 전부이고, 컴포넌트 규격은 `components.md` 의 OutboxDot 에 있다.
 
 ## 성공 · 경고 알림
 
