@@ -137,3 +137,27 @@ def test_file_with_wrong_kind_is_bad_payload(db):
     )
     with pytest.raises(PreprocessError, match="bad_payload"):
         preprocess(j)
+
+
+@pytest.mark.parametrize("payload", ["[]", "3", '"x"', "null"])
+def test_any_malformed_payload_is_preprocess_error_not_a_crash(db, payload):
+    """최상위가 객체가 아닌 payload 도 PreprocessError 여야 한다 — 워커는 이것만 잡아 failed 로 닫는다.
+    AttributeError 가 그대로 올라가면 워커 루프가 통째로 죽어 그 모뎀Pi 가 멈춘다."""
+    db.put_job(
+        job_id="99", bld="", room=0, unit=0, type="TIME", payload=payload, priority=0, new_ver=None
+    )
+    with pytest.raises(PreprocessError, match="bad_payload"):
+        preprocess(db.get_job("99"))
+
+    db.put_job(
+        job_id="98",
+        bld="E",
+        room=301,
+        unit=1,
+        type="SLOT_SET",
+        payload=payload,
+        priority=3,
+        new_ver=1,
+    )
+    with pytest.raises(PreprocessError, match="bad_payload"):
+        preprocess(db.get_job("98"))

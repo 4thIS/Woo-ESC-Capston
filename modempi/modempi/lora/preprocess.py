@@ -50,6 +50,10 @@ def preprocess(job: Job, *, clock: Callable[[], float] = time.time) -> list[Unit
         payload = json.loads(job.payload)
     except ValueError as e:
         raise PreprocessError(f"bad_payload: {e}") from e
+    # 최상위가 객체가 아니면(배열·스칼라·null) 아래 모든 경로가 AttributeError 로 터진다.
+    # 워커는 PreprocessError 만 잡아 failed 로 닫으므로, 여기서 안 막으면 워커 루프가 죽는다.
+    if not isinstance(payload, dict):
+        raise PreprocessError(f"bad_payload: 최상위가 객체가 아님({type(payload).__name__})")
 
     if job.type == "TIME":
         return [_time_unit(job, payload, clock)]
