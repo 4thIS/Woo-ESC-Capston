@@ -70,7 +70,15 @@ def upgrade() -> None:
     with op.batch_alter_table("schools") as b:
         b.add_column(sa.Column("email_domain", sa.String(), nullable=True))
         b.create_unique_constraint("uq_schools_email_domain", ["email_domain"])
-    with op.batch_alter_table("rooms") as b:
+    # table_args 로 기존 이름 없는 CHECK(room BETWEEN..., units IN...)를 명시 — 재생성 시
+    # "Unnamed CHECK constraint... omitted" 경고 없이 ck_rooms_room·ck_rooms_units 로 이름 붙는다
+    with op.batch_alter_table(
+        "rooms",
+        table_args=(
+            sa.CheckConstraint("room BETWEEN 1 AND 9999", name="ck_rooms_room"),
+            sa.CheckConstraint("units IN (1, 2)", name="ck_rooms_units"),
+        ),
+    ) as b:
         b.add_column(sa.Column("reservable", sa.Boolean(), nullable=False, server_default="0"))
     with op.batch_alter_table("modems") as b:
         b.add_column(sa.Column("school_id", sa.Integer(), nullable=True))
@@ -79,16 +87,6 @@ def upgrade() -> None:
         "UPDATE modems SET school_id = (SELECT b.school_id FROM buildings b"
         " WHERE b.modem_id = modems.modem_id)"
     )
-
-    # rooms 의 batch 재생성이 이름 없는 CHECK(room BETWEEN..., units IN...)를 잃었는지 확인 — 잃었으면 이름 붙여 복구
-    insp = sa.inspect(conn)
-    room_checks = {c["name"] for c in insp.get_check_constraints("rooms")}
-    if "ck_rooms_room" not in room_checks or "ck_rooms_units" not in room_checks:
-        with op.batch_alter_table("rooms") as b:
-            if "ck_rooms_room" not in room_checks:
-                b.create_check_constraint("ck_rooms_room", "room BETWEEN 1 AND 9999")
-            if "ck_rooms_units" not in room_checks:
-                b.create_check_constraint("ck_rooms_units", "units IN (1, 2)")
 
 
 def downgrade() -> None:

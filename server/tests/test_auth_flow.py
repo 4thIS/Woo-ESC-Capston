@@ -6,6 +6,7 @@ import pytest
 from app.auth import mailer, password, ratelimit, tokens
 from app.auth.models import EmailToken, User
 from app.domain.models import School
+from app.settings import Settings
 
 
 @pytest.fixture
@@ -336,6 +337,29 @@ def test_login_status_matrix_and_token_death(client_raw, app, schools):
         u = s.get(User, "u@mju.ac.kr")
         u.status, u.token_version = "active", u.token_version + 1
     assert c.get("/api/auth/me", headers=hdr).status_code == 401  # tv 불일치 → 옛 토큰 무효
+
+
+def test_expired_jwt_returns_401(client_raw, app, schools, monkeypatch):
+    """만료 토큰 401 (spec §7). jwt_encode 는 monkeypatch 되는 utcnow 를 쓰고, jwt_decode 는
+    PyJWT 가 실제 시각으로 exp 를 검사하므로 발급 시각만 24h+ 과거로 돌려도 만료가 재현된다."""
+    with app.state.Session() as s, s.begin():
+        s.add(
+            User(
+                email="old@mju.ac.kr",
+                school_id=1,
+                role="student",
+                status="active",
+                name="옛날",
+                student_no="1",
+                pw_hash=password.hash("password1"),
+            )
+        )
+    real_now = tokens.utcnow()
+    monkeypatch.setattr(tokens, "utcnow", lambda: real_now - dt.timedelta(hours=25))
+    with app.state.Session() as s:
+        tok = tokens.jwt_encode(Settings(), s.get(User, "old@mju.ac.kr"))
+    r = client_raw.get("/api/auth/me", headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 401
 
 
 def test_forgot_reset_kills_old_tokens(client_raw, app, schools, mails):

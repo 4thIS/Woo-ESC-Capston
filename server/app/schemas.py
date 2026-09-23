@@ -5,10 +5,10 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
-from typing import Literal
+from typing import ClassVar, Literal
 
 from lora_proto import proto as P
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _bytes_max(s: str, n: int, name: str) -> str:
@@ -52,17 +52,35 @@ class RoomOut(RoomIn, Out):
     id: int
 
 
-class SchoolPatch(BaseModel):
+class _NoExplicitNull(BaseModel):
+    """PATCH 공통: 보낸 필드에 명시적 null 은 422 (생략=부분 업데이트는 허용, 리뷰 finding 1).
+    null 이 의미를 갖는 필드(예: BuildingPatch.modem_id)는 하위 클래스가 _nullable 에 넣는다."""
+
+    _nullable: ClassVar[frozenset[str]] = frozenset()
+
+    @model_validator(mode="after")
+    def _reject_explicit_null(self):
+        bad = [
+            f for f in self.model_fields_set if getattr(self, f) is None and f not in self._nullable
+        ]
+        if bad:
+            raise ValueError(f"null 불가: {', '.join(bad)}")
+        return self
+
+
+class SchoolPatch(_NoExplicitNull):
     name: str | None = None  # net_id·email_domain 은 CLI 전용 (S4a §3.3)
 
 
-class BuildingPatch(BaseModel):
+class BuildingPatch(_NoExplicitNull):
     name: str | None = None
     bld: str | None = Field(None, min_length=1, max_length=1, pattern=r"^[A-Za-z]$")
-    modem_id: str | None = None
+    modem_id: str | None = None  # null = 모뎀 배정 해제 (리뷰: nullable 로 유지)
+
+    _nullable: ClassVar[frozenset[str]] = frozenset({"modem_id"})
 
 
-class RoomPatch(BaseModel):
+class RoomPatch(_NoExplicitNull):
     room: int | None = Field(None, ge=1, le=9999)
     units: int | None = Field(None, ge=1, le=2)
     reservable: bool | None = None

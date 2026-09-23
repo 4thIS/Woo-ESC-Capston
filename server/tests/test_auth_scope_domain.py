@@ -1,3 +1,5 @@
+import pytest
+
 from app.domain.models import Building, Room, School
 from app.lora_service.models import Modem
 
@@ -75,6 +77,38 @@ def test_buildings_rooms_scoped(client, app, school, other_admin_hdr):
     # PATCH 는 보낸 필드만 — reservable 이 초기화되지 않는다
     r = client.patch(f"/api/rooms/{r.json()['id']}", json={"units": 2})
     assert r.status_code == 200 and r.json()["reservable"] is True and r.json()["units"] == 2
+
+
+@pytest.mark.parametrize(
+    "kind,body",
+    [
+        ("school", {"name": None}),
+        ("building", {"bld": None}),
+        ("building", {"name": None}),
+        ("room", {"room": None}),
+        ("room", {"units": None}),
+        ("room", {"reservable": None}),
+    ],
+)
+def test_patch_explicit_null_is_422(client, app, school, kind, body):
+    """리뷰 finding 1: 보낸 필드의 명시적 null 은 409(제약 위반)가 아니라 422 — 생략은 부분 업데이트로 허용."""
+    b, r = _bld(app, 1, "E")
+    url = {
+        "school": "/api/schools/1",
+        "building": f"/api/buildings/{b}",
+        "room": f"/api/rooms/{r}",
+    }[kind]
+    assert client.patch(url, json=body).status_code == 422
+
+
+def test_patch_building_modem_id_null_unassigns(client, app, school):
+    """BuildingPatch.modem_id 만은 null 이 모뎀 배정 해제라는 의미를 가지므로 422 가 되면 안 된다."""
+    with app.state.Session() as s, s.begin():
+        s.add(Modem(modem_id="mine", token_hash="x", school_id=1))
+    b, _r = _bld(app, 1, "E")
+    assert client.patch(f"/api/buildings/{b}", json={"modem_id": "mine"}).status_code == 200
+    r = client.patch(f"/api/buildings/{b}", json={"modem_id": None})
+    assert r.status_code == 200 and r.json()["modem_id"] is None
 
 
 def test_building_modem_and_bld_guards(client, app, school):
