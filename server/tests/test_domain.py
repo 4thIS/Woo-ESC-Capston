@@ -491,14 +491,23 @@ def test_slot_put_is_atomic_with_outbox(client, app, monkeypatch):
 
 
 def test_notify_runs_after_commit(client, app, monkeypatch):
-    """허브 알림 시점에 outbox 행이 이미 커밋돼 있어야 한다 — 아니면 허브가 못 보고 5 s sweep 까지 늦는다."""
-    _sch, _b, r = _setup(client)
+    """허브 알림 시점에 outbox 행이 이미 커밋돼 있어야 한다 — 아니면 허브가 못 보고 5 s sweep 까지 늦는다.
+    모뎀을 배정해 notify 가 올바른 modem_id 로 불리는지도 함께 확인한다(잘못된/누락된 mid 는
+    outbox 행 수만 보는 검증으로는 안 걸린다)."""
+    api.register_modem("m1")
+    with app.state.Session() as s, s.begin():
+        s.get(Modem, "m1").school_id = 1  # api 는 학교를 모른다
+    b = client.post(
+        "/api/buildings",
+        json={"school_id": 1, "name": "공학관", "bld": "E", "modem_id": "m1"},
+    ).json()
+    r = client.post("/api/rooms", json={"building_id": b["id"], "room": 301, "units": 2}).json()
     seen = []
 
     def spy(mid):
         with app.state.Session() as s:  # 새 세션 — 커밋된 것만 보인다
-            seen.append(len(s.scalars(select(Outbox)).all()))
+            seen.append((mid, len(s.scalars(select(Outbox)).all())))
 
     monkeypatch.setattr(api, "notify", spy)
     assert client.put(f"/api/rooms/{r['id']}/slots", json=SLOT).status_code == 200
-    assert seen and seen[0] == 2  # 유닛 2 행이 커밋된 뒤 알림
+    assert seen == [("m1", 2)]  # 올바른 모뎀, 유닛 2 행이 커밋된 뒤 알림
