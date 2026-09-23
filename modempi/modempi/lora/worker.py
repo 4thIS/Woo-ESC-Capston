@@ -198,9 +198,19 @@ class Worker:
         if res.status in ("no_ack", "cad_busy"):
             self._retry_or_fail(job, res.reason or res.status)
             return
+        if res.reason == "modem_disconnected":
+            # USB 끊김 — 프레임이 공중에 나가지 않았다. 재시도 횟수를 깎지 않고 BUSY 처럼 기다린다.
+            # 깎으면 모뎀이 25 s 넘게 빠져 있을 때 쌓인 작업이 전부 failed 로 메인에 보고된다. txn 은 그대로.
+            self.store.update(
+                job.job_id,
+                state="received",
+                next_try_at=self._clock() + BUSY_WAIT_S,
+                last_error="modem_disconnected",
+            )
+            return
         if res.reason == "modem_timeout":
-            # 시리얼 순간 장애 — 한 번에 영구 실패시키지 않는다. 노드가 받았다면 같은 TXN 재송이 DUP.
-            self._retry_or_fail(job, "modem_timeout")
+            # 무응답 — 공중에 나갔을 수도 있어 횟수를 센다. 노드가 받았다면 같은 TXN 재송이 DUP.
+            self._retry_or_fail(job, res.reason)
             return
         self._finish(job, "failed", attempts=attempts, last_error=res.reason or "error", **_CLEAR)
 

@@ -1546,6 +1546,8 @@ git push origin cw
 
 ## Task 7: `modem.py`(실물 시리얼) + `main.py`(공용)
 
+> **구현과 달라진 점(2026-09-23)** — 아래 코드 조각은 초안이다. 실제 구현은 S6 spec §4.6 "구현 규칙(Task 7)"을 따른다: `main.py` 는 `modempi/modempi/main.py`(패키지 안 — `[project.scripts]` 가 가리키려면), `serve(store, transport, *, stop, link)` 로 링크·파이프라인 결합, `--fake` 는 config 로 가상 노드·NET_ID 동기, USB 끊김은 `modem_disconnected`(횟수 안 깎음), 부팅 때 모뎀이 없으면 기다림, 읽기 태스크 종료 감시. 재연결 테스트는 `read_line` 을 먼저 걸어 둔 뒤 끊어야 한다(초안 테스트는 동작하지 않는다).
+
 **파일**
 - 생성: `modempi/modempi/lora/modem.py`
 - 생성: `modempi/main.py` (**공용 — wj 리뷰 필수**)
