@@ -5,7 +5,9 @@
 - NET_ID 는 프레임마다 `config["net_id"]` 에서 읽는다(로드맵 §3 — 메인Pi 가 학교마다 배정).
 - 10 s 마다 `ping` (v2 §4.5 — 30 s 없으면 모뎀이 라디오를 재초기화한다).
 - 자식 태스크의 `run(stop)` 은 sleep·큐 대기가 끝나야 `stop` 을 본다 — 그래서 멈출 땐 cancel 한다.
-- 자식 하나가 예외로 죽으면 나머지를 멈추고 그 예외를 올린다(조용히 반쪽으로 돌지 않는다).
+- 자식 하나가 예외로 죽으면 나머지를 멈추고 그 예외를 올린다(조용히 반쪽으로 돌지 않는다). 모뎀 읽기
+  태스크(`ModemClient.wait_closed`)도 감시 대상이다(#37 리뷰 3).
+- USB 순간 끊김은 죽을 일이 아니다 — 송신은 `modem_disconnected` 로 재시도, 핑·cfg 실패는 로그만.
 """
 
 from __future__ import annotations
@@ -75,8 +77,10 @@ class Pipeline:
             await client.start()
             if client.fw:
                 self.store.set_meta("modem_fw", client.fw)  # 링크가 hello 에 실어 올린다(계약 ⑦)
+            # 읽기 태스크가 죽으면 이후 요청이 전부 타임아웃이다 — 자식처럼 감시해 전체를 멈춘다.
+            tasks.append(self._spawn(client.wait_closed(), "modem_reader"))
             tasks.append(self._spawn(self._ping_loop(client, stop), "ping"))  # config 대기 중에도
-            if not await self._wait_config(stop):
+            if not await self._wait_config(stop, tasks):
                 return
             await self._apply_config(client)
             worker = Worker(
@@ -121,17 +125,16 @@ class Pipeline:
                 log.error("파이프라인 태스크 %s 가 죽었다 — 전체를 멈춘다", t.get_name())
                 raise t.exception()
 
-    async def _wait_config(self, stop: asyncio.Event) -> bool:
-        """config 가 있으면 True. 오기 전에 `stop` 이면 False."""
+    async def _wait_config(self, stop: asyncio.Event, tasks: list[asyncio.Task]) -> bool:
+        """config 가 있으면 True. 오기 전에 `stop` 이면 False. 기다리는 동안 자식(읽기·핑)이 죽으면
+        그 예외를 올린다 — config 가 영영 안 오는 동안 반쪽으로 돌지 않게."""
         while self.store.get_config() is None:
             log.info("메인Pi config 대기 중 — 받을 때까지 송신하지 않는다")
             changed = asyncio.create_task(self._config_changed.wait())
-            stopped = asyncio.create_task(stop.wait())
             try:
-                await asyncio.wait([changed, stopped], return_when=asyncio.FIRST_COMPLETED)
+                await self._until_stop_or_crash(stop, [changed, *tasks])
             finally:
                 changed.cancel()
-                stopped.cancel()
             if stop.is_set():
                 return False
         self._config_changed.clear()  # 지금 읽을 config 가 최신 — _config_loop 가 한 번 더 보내지 않게
@@ -171,6 +174,9 @@ class Pipeline:
             except TimeoutError:
                 # 모뎀이 재부팅하면 다음 ready 에 ModemClient 가 마지막 cfg 를 다시 보낸다.
                 log.error("모뎀 핑 무응답 — 모뎀이 살아 있는지 확인 필요")
+            except OSError as e:
+                # USB 가 빠졌다 — SerialTransport 가 재연결을 시도 중이다. 서비스를 재기동할 일은 아니다.
+                log.error("모뎀 시리얼 끊김(%s) — 재연결 대기", e)
 
     async def _prune_loop(self, stop: asyncio.Event) -> None:
         # 기동 때 한 번 — 하루를 못 넘기고 재기동되는 Pi 도 정리되게. 이후 하루마다.

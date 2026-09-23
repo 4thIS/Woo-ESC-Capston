@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 from dataclasses import dataclass
@@ -64,14 +63,40 @@ class ModemClient:
         self._last_cfg: dict | None = None
 
     async def start(self) -> None:
-        self._reader = asyncio.create_task(self._read_loop())
-        await asyncio.wait_for(self._ready.wait(), self._ready_timeout)
+        """읽기 태스크를 띄우고 `ready` 를 기다린다. 그 전에 읽기가 죽으면 그 예외를 바로 올린다."""
+        self._reader = asyncio.create_task(self._read_loop(), name="lora.modem_reader")
+        ready = asyncio.create_task(self._ready.wait())
+        try:
+            await asyncio.wait(
+                [ready, self._reader],
+                timeout=self._ready_timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            ready.cancel()
+        if self._ready.is_set():
+            return
+        if self._reader.done():
+            await self.wait_closed()  # 읽기 태스크의 예외를 올린다
+        raise TimeoutError(f"모뎀 ready 가 {self._ready_timeout} s 안에 오지 않았다")
+
+    async def wait_closed(self) -> None:
+        """읽기 태스크가 끝날 때까지 기다렸다가 그 예외를 올린다(예외 없이 끝났으면 `ConnectionError`).
+
+        읽기가 끝나면 이후 모든 요청이 타임아웃으로 떨어진다 — 파이프라인이 이걸 자식 태스크처럼 감시해
+        반쯤 죽은 채 돌지 않고 멈춘다(systemd 가 다시 띄운다, #37 리뷰 3). 이 대기를 취소해도 읽기 태스크는
+        그대로다(멈추는 건 `stop()`).
+        """
+        if self._reader is None:
+            raise RuntimeError("start() 전이다")
+        await asyncio.shield(self._reader)
+        raise ConnectionError("모뎀 읽기 태스크가 끝났다")
 
     async def stop(self) -> None:
         if self._reader is not None:
             self._reader.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._reader
+            # 이미 예외로 죽은 읽기 태스크면 그 예외는 wait_closed 로 이미 알렸다 — 여기서 다시 올리지 않는다.
+            await asyncio.gather(self._reader, return_exceptions=True)
         await self._t.close()
 
     async def _read_loop(self) -> None:
@@ -99,8 +124,11 @@ class ModemClient:
             was_ready = self._ready.is_set()
             self._ready.set()
             if was_ready and self._last_cfg is not None:
-                # 모뎀이 재부팅했다 — 무선 설정을 잃었으므로 마지막 cfg 를 다시 보낸다.
-                await self._t.write_line(json.dumps({"op": "cfg", **self._last_cfg}))
+                # 모뎀이 재부팅했다(또는 끊긴 동안 cfg 를 못 보냈다) — 마지막 cfg 를 다시 보낸다.
+                try:
+                    await self._t.write_line(json.dumps({"op": "cfg", **self._last_cfg}))
+                except OSError as e:  # 또 끊겼다 — 다음 ready 에 다시. 읽기 루프는 살려 둔다
+                    log.warning("모뎀 cfg 재전송 실패(%s) — 다음 ready 에 다시 보낸다", e)
         elif op == "rx":
             await self.rx.put(RxEvent(_bytes(msg["frame"]), int(msg["rssi"]), float(msg["snr"])))
         elif op in ("tx_done", "pong", "stats"):
@@ -148,6 +176,11 @@ class ModemClient:
         except TimeoutError:
             log.error("tx_done 이 오지 않았다(%s s) — 모뎀 무응답", self._request_timeout)
             return TxResult(status="error", reason="modem_timeout")
+        except OSError as e:
+            # USB 가 잠깐 빠졌다(SerialTransport.write_line 이 ConnectionError). 공중에 나가지 않았으니
+            # 워커가 modem_timeout 처럼 같은 TXN 으로 재시도한다 — 예외를 올리면 파이프라인이 통째로 멈춘다.
+            log.error("모뎀 시리얼 끊김(%s) — tx 못 보냄", e)
+            return TxResult(status="error", reason="modem_disconnected")
         finally:
             self._tx_inflight = False
         ack = msg.get("ack")
@@ -163,7 +196,7 @@ class ModemClient:
 
     async def ping(self) -> int:
         """v2 §4.5 워치독. 송신 중이면 끝날 때까지 기다린다 — 겹쳤다고 예외를 내면 파이프라인이 죽는다.
-        무응답이면 `TimeoutError` 를 올려 호출자가 모뎀을 다시 잡게 한다."""
+        무응답이면 `TimeoutError`, 시리얼이 끊겼으면 `OSError` 를 올린다(호출자가 로그로 남긴다)."""
         return int((await self._request({"op": "ping"}, timeout=self._request_timeout))["uptime_s"])
 
     async def cfg(self, **radio) -> None:
@@ -171,4 +204,8 @@ class ModemClient:
         (모뎀 재부팅 뒤 `ready` 에서의 재전송은 읽기 루프 안이라 슬롯을 잡지 않는다 — 그때 인플라이트는 이미 잃었다.)"""
         self._last_cfg = dict(radio)
         async with self._slot:
-            await self._t.write_line(json.dumps({"op": "cfg", **radio}))
+            try:
+                await self._t.write_line(json.dumps({"op": "cfg", **radio}))
+            except OSError as e:
+                # 끊긴 동안이면 기억만 해 둔다 — 재연결 뒤 모뎀이 ready 를 보내면 그때 보낸다.
+                log.warning("모뎀 시리얼 끊김(%s) — cfg 는 다음 ready 에 보낸다", e)

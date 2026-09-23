@@ -510,6 +510,24 @@ async def test_modem_timeout_is_retried_not_failed_at_once(rig):
     assert (j.state, j.attempts, j.last_error) == ("received", 1, "modem_timeout")
 
 
+async def test_modem_disconnected_is_retried_with_same_txn(rig):
+    """USB 가 잠깐 빠져 ModemClient 가 modem_disconnected 를 돌려주면 modem_timeout 처럼 재시도한다 —
+    공중에 안 나갔으니 한 번에 실패시키지 않고, txn 은 남겨 재송이 같은 TXN 이 되게."""
+    db, _, client, w = rig
+
+    from modempi.lora.modem_client import TxResult
+
+    async def unplugged_tx(frame, *, wake, ack_ms):
+        return TxResult(status="error", reason="modem_disconnected")
+
+    client.tx = unplugged_tx
+    put(db)
+    await w.once()
+    j = db.get_job("10")
+    assert (j.state, j.attempts, j.last_error) == ("received", 1, "modem_disconnected")
+    assert j.txn is not None
+
+
 async def test_file_busy_cap_is_per_frame_not_per_session(rig):
     """spec §9: BUSY 상한은 한 프레임당 5 회. 세션 전체로 세면 긴 FILE 이 정상 BUSY 몇 번에 실패한다(#35 리뷰 7)."""
     db, modem, _, w = rig

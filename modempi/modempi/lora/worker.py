@@ -198,9 +198,10 @@ class Worker:
         if res.status in ("no_ack", "cad_busy"):
             self._retry_or_fail(job, res.reason or res.status)
             return
-        if res.reason == "modem_timeout":
-            # 시리얼 순간 장애 — 한 번에 영구 실패시키지 않는다. 노드가 받았다면 같은 TXN 재송이 DUP.
-            self._retry_or_fail(job, "modem_timeout")
+        if res.reason in ("modem_timeout", "modem_disconnected"):
+            # 시리얼 순간 장애(무응답·USB 끊김) — 한 번에 영구 실패시키지 않는다. 노드가 받았다면 같은 TXN
+            # 재송이 DUP.
+            self._retry_or_fail(job, res.reason)
             return
         self._finish(job, "failed", attempts=attempts, last_error=res.reason or "error", **_CLEAR)
 

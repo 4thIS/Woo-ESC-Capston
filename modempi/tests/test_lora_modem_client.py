@@ -172,3 +172,134 @@ async def test_malformed_modem_lines_do_not_kill_the_reader(client):
     for raw in ('{"op":"rx"}', '{"op":"rx","rssi":-1,"snr":1,"frame":"zz"}', "[1, 2]", '"x"'):
         m._out.put_nowait(raw)
     assert await asyncio.wait_for(client.ping(), 2) > 0
+
+
+class _BreakingTransport:
+    """ready 뒤 `broken()` 을 부르면 read_line 이 예외를 낸다 — 읽기 태스크가 죽는 경우."""
+
+    def __init__(self, *, ready: bool = True) -> None:
+        self._out: asyncio.Queue[str | None] = asyncio.Queue()
+        if ready:
+            self._out.put_nowait(json.dumps({"op": "ready", "fw": "gw-2.0.0"}))
+        self.closed = False
+
+    def broken(self) -> None:
+        self._out.put_nowait(None)
+
+    async def write_line(self, line: str) -> None:
+        pass
+
+    async def read_line(self) -> str:
+        line = await self._out.get()
+        if line is None:
+            raise RuntimeError("read_line 이 죽었다")
+        return line
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+async def test_wait_closed_raises_when_reader_dies():
+    """읽기 태스크가 죽으면 이후 요청이 전부 타임아웃된다 — 그 사실을 wait_closed 로 알 수 있어야
+    파이프라인이 반쯤 죽은 채 돌지 않는다(#37 리뷰 3)."""
+    t = _BreakingTransport()
+    c = ModemClient(t)
+    await c.start()
+    waiter = asyncio.create_task(c.wait_closed())
+    await asyncio.sleep(0.01)
+    assert not waiter.done()
+    t.broken()
+    with pytest.raises(RuntimeError, match="read_line"):
+        await asyncio.wait_for(waiter, 1)
+    await c.stop()  # 죽은 읽기 태스크의 예외를 다시 올리지 않는다
+    assert t.closed
+
+
+async def test_start_fails_fast_when_reader_dies_before_ready():
+    """ready 전에 읽기가 죽으면 ready_timeout(10 s)을 다 기다리지 않고 그 예외를 올린다."""
+    t = _BreakingTransport(ready=False)
+    t.broken()
+    c = ModemClient(t, ready_timeout=5)
+    with pytest.raises(RuntimeError, match="read_line"):
+        await asyncio.wait_for(c.start(), 1)
+    await c.stop()
+
+
+class _Unplugged(_DeafTransport):
+    """포트가 사라진 동안의 SerialTransport — 쓰기는 ConnectionError, 읽기는 재연결을 기다린다."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.down = False
+
+    async def write_line(self, line: str) -> None:
+        if self.down:
+            raise ConnectionError("모뎀 시리얼 끊김")
+        await super().write_line(line)
+
+
+async def test_tx_while_unplugged_is_modem_disconnected_not_exception():
+    """USB 가 잠깐 빠졌을 때 쓰기 예외가 워커까지 올라가면 파이프라인이 죽는다 — 결과로 돌린다."""
+    t = _Unplugged()
+    c = ModemClient(t, request_timeout=0.05)
+    await c.start()
+    try:
+        t.down = True
+        r = await c.tx(F, wake=True, ack_ms=0)
+        assert (r.status, r.reason) == ("error", "modem_disconnected")
+        t.down = False
+        r2 = await c.tx(F, wake=True, ack_ms=0)  # 슬롯·인플라이트 표시가 풀려 있어야 한다
+        assert r2.reason == "modem_timeout"  # 귀 먹은 모뎀이라 응답은 없지만 다시 쓸 수 있다
+    finally:
+        await c.stop()
+
+
+async def test_ping_while_unplugged_raises_oserror():
+    t = _Unplugged()
+    c = ModemClient(t, request_timeout=0.05)
+    await c.start()
+    try:
+        t.down = True
+        with pytest.raises(OSError):
+            await c.ping()
+    finally:
+        await c.stop()
+
+
+async def test_cfg_while_unplugged_is_kept_and_resent_on_next_ready():
+    """끊긴 동안의 cfg 는 예외 대신 기억만 해 두고, 모뎀이 다시 ready 를 보내면 그때 보낸다."""
+    t = _Unplugged()
+    c = ModemClient(t)
+    await c.start()
+    try:
+        t.down = True
+        await c.cfg(sf=10)  # 예외 없음
+        assert not [w for w in t.written if '"cfg"' in w]
+        t.down = False
+        t._out.put_nowait(json.dumps({"op": "ready", "fw": "gw-2.0.1"}))
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if t.written:
+                break
+        assert [json.loads(w) for w in t.written] == [{"op": "cfg", "sf": 10}]
+    finally:
+        await c.stop()
+
+
+async def test_resend_cfg_on_ready_while_unplugged_does_not_kill_reader():
+    """ready 직후 cfg 재전송이 끊김으로 실패해도 읽기 태스크는 살아 있어야 한다."""
+    t = _Unplugged()
+    c = ModemClient(t, request_timeout=0.2)
+    await c.start()
+    try:
+        await c.cfg(sf=10)
+        t.down = True
+        t._out.put_nowait(json.dumps({"op": "ready", "fw": "gw-2.0.0"}))
+        await asyncio.sleep(0.02)
+        t.down = False
+        ping = asyncio.create_task(c.ping())
+        await asyncio.sleep(0.01)
+        t._out.put_nowait(json.dumps({"op": "pong", "uptime_s": 3}))
+        assert await asyncio.wait_for(ping, 1) == 3
+    finally:
+        await c.stop()
