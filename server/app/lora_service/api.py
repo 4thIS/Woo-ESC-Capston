@@ -2,6 +2,10 @@
 
 lora_service 는 domain 을 import 하지 않는다. 방·모뎀 조회는 Topology, FILE 레코드는 RecordProvider,
 허브 호출은 HubPort — 셋 다 기동 시 주입된다.
+
+`enqueue_*` 8개는 키워드 `session=` 을 받으면 호출자 트랜잭션에서 flush 까지만 하고,
+커밋·`api.notify(modem_id)` 는 호출자 몫이다(#9). `session` 생략 시(기본 None)는 기존대로
+자체 세션에서 커밋까지 하고 알린다 — additive, 이 경로는 그대로다.
 """
 
 from __future__ import annotations
@@ -197,7 +201,8 @@ def _enqueue(
 ) -> list[int]:
     """버전 +1 → codec 객체 생성·인코딩(검증) → outbox 삽입. 전부 한 트랜잭션.
     `session` 이 주어지면 그 안에서 flush 까지만 — 커밋·notify 는 호출자 몫(#9 원자화).
-    호출자는 커밋 뒤 `notify(modem_id)` 를 불러야 허브가 새 작업을 본다."""
+    호출자는 커밋 뒤 `notify(modem_id)` 를 불러야 허브가 새 작업을 본다.
+    예외 시 호출자는 롤백해야 한다 — 잡고 커밋하면 버전만 오르고 outbox 행은 없는 상태가 남는다."""
     info = _room(bld, room)
 
     def body(s: Session) -> list[int]:
