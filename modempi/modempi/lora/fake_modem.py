@@ -98,6 +98,7 @@ class FakeModem:
         self._out: asyncio.Queue[str] = asyncio.Queue()
         self._inflight: asyncio.Task | None = None
         self._rng = random.Random(1)
+        self._drop_file_seq: int | None = None
         self._emit(
             {"op": "ready", "fw": fw, "sf": P.RADIO["RP_SF"], "freq": P.RADIO["RP_FREQ_MHZ"]}
         )
@@ -118,6 +119,10 @@ class FakeModem:
         if bad:
             raise ValueError(f"알 수 없는 스크립트 토큰 {bad}; 허용: {sorted(_TOKENS)}")
         self._script.extend(outcomes)
+
+    def drop_next_file_data(self, seq: int) -> None:
+        """다음 FILE 세션에서 이 seq 의 DATA 를 한 번 버린다 → 노드가 END 에 FILE_MISSING(seq) 로 답한다."""
+        self._drop_file_seq = seq
 
     def inject_uplink(self, frame: bytes, *, rssi: int = -100, snr: float = 5.0) -> None:
         self.stats["rx"] += 1
@@ -276,6 +281,9 @@ class FakeModem:
                 "chunks": {},
             }
             return node.ack(P.AckStatus.OK)
+        if t == P.Type.FILE_DATA and self._drop_file_seq == pb[0]:
+            self._drop_file_seq = None
+            return node.ack(P.AckStatus.OK)  # 받은 척하고 버린다 (pb[0] = seq)
         if t == P.Type.FILE_DATA:
             if node._file is None:
                 return node.ack(P.AckStatus.BAD_PAYLOAD)
