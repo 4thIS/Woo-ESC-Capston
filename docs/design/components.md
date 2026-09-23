@@ -392,4 +392,4 @@ Modal 안에 들어가는 폼. **페이지1 표와 페이지2 셀이 같은 것�
 1. **폼 라이브러리를 쓸지** — 검증 규칙이 SlotForm·ResvForm·ExamForm에 겹친다. wj가 구현하며 판단한다. 이 문서는 인터페이스만 정하고 내부 구현을 지정하지 않는다
 2. **Select 30개 초과** — 건물에 강의실이 많으면 네이티브 Select가 버겁다. 검색 가능한 목록이 필요해지면 그때 추가한다
 3. **Histogram 호버** — 위 참고
-4. 학생 웹 전용 컴포넌트(`RoomListRow`·`RoomNowCard`·`WeekBar`)는 `screens/student-room.md`에 정의돼 있다. 안정되면 이 문서로 옮긴다
+4. 학생 웹 전용 컴포넌트(`RoomListRow`·`RoomNowCard`·`WeekGrid`)는 `screens/student-room.md`에 정의돼 있다. 안정되면 이 문서로 옮긴다. `WeekGrid`는 관리자 페이지2의 격자와 형태가 같으므로 둘을 한 컴포넌트로 합칠 수 있는지 구현 시 판단한다 — 겹침 처리 규칙이 갈린다(관리자는 쪼개고, 학생은 합친 것을 받는다)
