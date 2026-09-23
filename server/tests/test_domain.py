@@ -324,6 +324,56 @@ def test_resv_outside_horizon_stored_but_not_enqueued(client, app):
     assert res2.status_code == 200 and len(res2.json()["outbox_ids"]) == 2  # units=2
 
 
+def test_resv_id_cannot_move_to_another_room(client, app, other_admin_hdr):
+    """리뷰 🔴1 — 예약 id 는 전역 PK 라, 존재하는 id 를 다른 방으로 POST 하면 그 방의 행을 빼앗는다."""
+    _sch, bA, rA = _setup(client)
+    rB = client.post("/api/rooms", json={"building_id": bA["id"], "room": 302, "units": 1}).json()
+    today = dt.datetime.now(dt.UTC).date()
+    body = {
+        "id": 5,
+        "date": (today + dt.timedelta(days=1)).isoformat(),
+        "s_h": 13,
+        "s_m": 0,
+        "e_h": 15,
+        "e_m": 0,
+        "type": 6,
+        "subject": "a",
+        "professor": "",
+    }
+    assert client.post(f"/api/rooms/{rA['id']}/reservations", json=body).status_code == 200
+    r = client.post(f"/api/rooms/{rB['id']}/reservations", json=body)
+    assert r.status_code == 409
+    with app.state.Session() as s:
+        assert s.get(Reservation, 5).room_id == rA["id"]
+    # 타교 관리자가 같은 id 로 자기 방에 POST 해도 전역 PK 충돌이라 409 (학교가 달라도 봐주지 않는다)
+    b2 = client.post(
+        "/api/buildings",
+        json={"school_id": 2, "name": "타관", "bld": "G"},
+        headers=other_admin_hdr,
+    ).json()
+    r2 = client.post(
+        "/api/rooms",
+        json={"building_id": b2["id"], "room": 101, "units": 1},
+        headers=other_admin_hdr,
+    ).json()
+    resp = client.post(f"/api/rooms/{r2['id']}/reservations", json=body, headers=other_admin_hdr)
+    assert resp.status_code == 409
+    with app.state.Session() as s:
+        assert s.get(Reservation, 5).room_id == rA["id"]
+
+
+def test_exam_id_cannot_move_to_another_room(client, app):
+    """리뷰 🔴1 — put_exam 도 put_resv 와 같게 다른 방 행이면 409."""
+    _sch, bA, rA = _setup(client)
+    rB = client.post("/api/rooms", json={"building_id": bA["id"], "room": 302, "units": 1}).json()
+    body = {"id": 8, "date_start": "2026-10-19", "date_end": "2026-10-23"}
+    assert client.post(f"/api/rooms/{rA['id']}/exams", json=body).status_code == 200
+    r = client.post(f"/api/rooms/{rB['id']}/exams", json=body)
+    assert r.status_code == 409
+    with app.state.Session() as s:
+        assert s.get(ExamPeriod, 8).room_id == rA["id"]
+
+
 def test_building_gets_modem_reassigns_queued_jobs(client, app):
     """PR #5 I1 — 모뎀 없는 건물에 쌓인 outbox 는 모뎀 배정 PATCH 뒤 그 모뎀으로 재지정된다."""
     sch = {"id": 1}  # 학교는 conftest school 픽스처가 만든다

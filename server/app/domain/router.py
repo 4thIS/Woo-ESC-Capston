@@ -239,7 +239,10 @@ def list_resv(id: int, user: User = AdminUser, s: Session = _DB):
 @router.post("/rooms/{id}/reservations", response_model=S.Enqueued)
 def put_resv(id: int, body: S.ResvIn, user: User = AdminUser, s: Session = _DB):
     bld, room = _addr(s, id, user)
-    obj = s.get(Reservation, body.id) or Reservation(id=body.id)
+    obj = s.get(Reservation, body.id)
+    if obj is not None and obj.room_id != id:
+        raise HTTPException(409, f"예약 id {body.id} 는 다른 방에 있습니다")
+    obj = obj or Reservation(id=body.id)
     for k, v in body.model_dump().items():
         setattr(obj, k, v)
     obj.room_id = id
@@ -281,7 +284,10 @@ def list_exams(id: int, user: User = AdminUser, s: Session = _DB):
 @router.post("/rooms/{id}/exams", response_model=S.Enqueued)
 def put_exam(id: int, body: S.ExamIn, user: User = AdminUser, s: Session = _DB):
     bld, room = _addr(s, id, user)
-    obj = s.get(ExamPeriod, body.id) or ExamPeriod(id=body.id)
+    obj = s.get(ExamPeriod, body.id)
+    if obj is not None and obj.room_id != id:
+        raise HTTPException(409, f"시험기간 id {body.id} 는 다른 방에 있습니다")
+    obj = obj or ExamPeriod(id=body.id)
     obj.room_id, obj.date_start, obj.date_end = id, body.date_start, body.date_end
     s.add(obj)
     ids = api.enqueue_exam_set(bld, room, body.id, body.date_start, body.date_end)
