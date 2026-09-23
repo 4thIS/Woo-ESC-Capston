@@ -48,6 +48,7 @@ S1이 만드는 것에 의존한다: `lora_proto.codec`(프레임·페이로드�
 - 에어타임: SF9 기준 wake 프레임 1개 ≈ 4.3 s. 같은 노드로의 연속 작업 사이에 추가 대기는 두지 않지만, ACK 대기(`ack_ms=3000`)가 끝나야 다음을 보낸다.
 - `unit=0`(호수 전체)은 노드가 없다. 유닛 분해는 메인Pi `api._insert`가 하므로 여기 오지 않는다 — TIME이 아닌 `unit=0` 작업은 `failed(last_error="unit0")`로 닫는다(r3).
 - 모뎀Pi RTC 없음 → NTP 동기 전엔 TIME을 내지 않는다(v2 §5.2 `clockValid`와 같은 기준: `time.time() > 1_700_000_000` 이고 최근 NTP 동기 성공).
+  - **구현(2026-09-23, `lora/clock.py`)**: 임계값만으로는 부족하다 — 전원이 나갔다 켜지면 fake-hwclock이 **옛 시각**을 복원하고 그 값도 임계값을 넘는다. 그래서 systemd-timesyncd가 있으면 이번 부팅의 동기 표시(`/run/systemd/timesync/synchronized`)가 생긴 뒤에만 믿는다. 스케줄러는 믿을 수 없으면 TIME 행을 넣지 않고 1분마다 다시 보며(동기 직후 곧바로 1회), 워커는 메인의 `time_now`로 들어온 TIME도 시계를 믿을 수 없으면 60 s 미룬다. **S11 Pi 이식 시 timesyncd를 쓴다**(chrony면 표시 파일이 없어 임계값만 보게 된다).
 
 ## 4. 모듈
 

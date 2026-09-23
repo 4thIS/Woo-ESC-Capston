@@ -118,3 +118,23 @@ async def test_run_without_valid_clock_inserts_nothing(db):
         TimeScheduler(db, clock=clk, sleep=_stop_after(clk, stop, 2)).run(stop), 1.0
     )
     assert _job_ids(db) == []
+
+
+def test_tick_skips_when_clock_is_not_trusted(db):
+    clk = FakeClock()
+    assert TimeScheduler(db, clock=clk, clock_ok=lambda now: False).tick() is None
+    assert _job_ids(db) == []
+
+
+async def test_boot_before_ntp_sync_retries_every_minute_until_trusted(db):
+    """RTC 없는 Pi 는 fake-hwclock 의 옛 시각으로 깬다. 동기 전엔 내지 않고 1 분마다 다시 보고,
+    동기되면 곧바로 1 회 낸 뒤 매시 슬롯으로 돌아간다 — 다음 정시까지 최대 1 시간 기다리지 않는다."""
+    clk = FakeClock(start=1_800_001_800.0)  # :30:00 기동, 2 분 뒤 NTP 동기
+    synced_at = clk.now + 120
+    stop = asyncio.Event()
+    sched = TimeScheduler(
+        db, clock=clk, sleep=_stop_after(clk, stop, 4), clock_ok=lambda now: now >= synced_at
+    )
+    await asyncio.wait_for(sched.run(stop), 1.0)
+    assert clk.sleeps == [60.0, 60.0, 1685.0, 3600.0]
+    assert _job_ids(db) == ["time-1800001920", "time-1800003605"]

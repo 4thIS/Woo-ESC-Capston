@@ -325,3 +325,25 @@ async def test_file_session_gives_up_after_repeated_busy(rig, clk):
     await asyncio.wait_for(w.once(), 3)
     j = db.get_job("10")
     assert j.state == "received" and j.attempts == 1  # 세션 실패 → 일반 재시도 정책으로
+
+
+async def test_time_is_held_back_while_clock_is_untrusted(rig, clk):
+    """메인의 time_now 로 들어온 TIME 도 워커를 거친다. 시계를 못 믿으면 옛 시각을 방송하지 않고 미룬다."""
+    db, modem, client, _ = rig
+    w = Worker(db, client, clock=clk, sleep=clk.sleep, clock_ok=lambda now: False)
+    jid = f"time-{int(clk.now)}"
+    db.put_job(
+        job_id=jid,
+        bld="",
+        room=0,
+        unit=0,
+        type="TIME",
+        payload=json.dumps({"epoch": int(clk.now), "flags": 0}),
+        priority=0,
+        new_ver=None,
+        uploaded=1,
+    )
+    assert await w.once() is True
+    j = db.get_job(jid)
+    assert (j.state, j.next_try_at, j.attempts) == ("received", clk.now + 60.0, 0)
+    assert modem.stats["tx"] == 0

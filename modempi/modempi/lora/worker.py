@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable
 from lora_proto import codec as C
 from lora_proto import proto as P
 
+from modempi.lora.clock import clock_trusted
 from modempi.lora.modem_client import ModemClient, TxResult
 from modempi.lora.preprocess import PreprocessError, Unit, is_file_session, preprocess
 from modempi.store import Job, SqliteStore
@@ -22,6 +23,7 @@ MAX_ATTEMPTS = 3
 STALE_TIME_S = 90.0  # 이보다 오래된 TIME 행은 보내지 않고 superseded 로 닫는다
 BUSY_WAIT_S = 5.0
 FILE_MISSING_MAX = 2
+UNTRUSTED_CLOCK_WAIT_S = 60.0  # 시계를 못 믿는 동안 TIME 을 미루는 간격
 FILE_BUSY_MAX = 5  # FILE 세션 한 프레임에 허용하는 BUSY 재송 횟수 (S6 spec §9)
 
 # 재시도 끝에 failed 로 닫을 때 앞 시도의 결과를 지운다 — 메인은 결과 필드를 그대로 복사한다(로드맵 §4.3).
@@ -46,8 +48,10 @@ class Worker:
         clock: Callable[[], float] = time.time,
         sleep: Callable[[float], Awaitable] = asyncio.sleep,
         idle: float = 0.5,
+        clock_ok: Callable[[float], bool] = clock_trusted,
     ) -> None:
         self.store, self.client = store, client
+        self._clock_ok = clock_ok
         self._clock, self._sleep, self._idle = clock, sleep, idle
 
     async def run(self, stop: asyncio.Event) -> None:
@@ -65,6 +69,13 @@ class Worker:
             # 파이프라인이 멈춰 있던 동안 쌓인 TIME — 가장 새 것 하나만 보낸다(로드맵 §4.3).
             self.store.update(
                 job.job_id, expect_state="received", state="acked", last_error="superseded"
+            )
+            return True
+        if job.type == "TIME" and not self._clock_ok(self._clock()):
+            # 옛 시각(fake-hwclock)을 모든 노드에 뿌리면 노드 시계가 망가진다 — 동기될 때까지 미룬다.
+            # 그동안 90 s 가 지나면 위 superseded 로 닫히고, 스케줄러가 동기 직후 새 행을 넣는다.
+            self.store.update(
+                job.job_id, state="received", next_try_at=self._clock() + UNTRUSTED_CLOCK_WAIT_S
             )
             return True
         try:
