@@ -28,6 +28,15 @@ server/
 - 모든 상태 변경은 **멱등**이고 **버전이 붙는다**. 유실은 재전송이 아니라 재동기로 흡수한다(스펙 §8.3).
 - 공통 인프라 계층은 도메인을 import하지 않는다(의존 방향 단방향 유지).
 
+## 배포 (Docker — 2026-09-23 팀 결정)
+
+- 메인Pi 는 **루트 `compose.yaml` + `server/Dockerfile`** 로만 배포한다. 수동 `uvicorn` 실행·systemd 유닛은 개발용이다.
+- **워커는 1 개**(uvicorn 기본값). `Dockerfile` 의 `CMD` 에 `--workers` 를 붙이지 않는다 — WS 연결·outbox 디스패치 상태가 프로세스 메모리에 있다.
+- 빌드 컨텍스트는 리포 루트이고 `.dockerignore` 는 **허용 목록**(`server/`·`lora_proto/` 만)이다. 런타임에 새 디렉터리가 필요하면 `.dockerignore` 를 함께 고친다.
+- 의존성을 추가하면(`uv add`) `docker compose build` 로 이미지가 빌드되는지 확인한다 — CI `docker` job 이 amd64 기동 스모크 + arm64(Pi) 빌드를 본다.
+- 설정은 env 로만(`SERVER_DB`, `STATUS_HOUR_UTC`) — `compose.yaml` 의 `environment` 에서 준다. 비밀값이 생기면 `.env`(커밋 금지)로 넘긴다.
+- DB 는 볼륨 `/data`. **`docker compose down -v` 는 운영 DB 를 지운다** — 쓰지 않는다.
+
 ## 커밋 scope
 
 - `feat(server):`, `fix(server):`

@@ -73,25 +73,38 @@ Pi 에서는 **`main` 만 받는다**(작업 브랜치 체크아웃 금지 — P
 
 ---
 
-## 3. 메인Pi — 서버 띄우기 (약 10분)
+## 3. 메인Pi — 서버 띄우기: Docker (약 15분)
+
+> **2026-09-23 팀 결정: 메인Pi 서버는 Docker(Compose)로 돌린다.** 모뎀Pi 는 Docker 를 쓰지 않는다(USB 시리얼·시계 동기 상태에 직접 붙어야 해서 §8 의 systemd). 이미지는 amd64(노트북)·arm64(Pi) 둘 다 빌드된다.
 
 ```bash
 ssh admin@ESC-main.local
-cd ~/Woo-ESC-Capston/server
-uv sync
-mkdir -p ~/data
-export SERVER_DB=~/data/main.db
-uv run alembic upgrade head
-uv run uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000
+
+# 3-1. Docker 설치 (1회) — 공식 설치 스크립트
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker admin
+exit                                   # 그룹 반영을 위해 한 번 나갔다가
+ssh admin@ESC-main.local               # 다시 접속
+docker run --rm hello-world            # "Hello from Docker!" 가 나오면 OK
+
+# 3-2. 서버 빌드·기동 — 리포 루트에서 (compose.yaml 이 루트에 있다)
+cd ~/Woo-ESC-Capston
+git pull
+docker compose up -d --build           # 첫 빌드는 Pi 에서 수 분
+docker compose ps                      # STATUS 가 "healthy" 가 될 때까지 (약 20 s)
+docker compose logs -f server          # 로그 보기 (Ctrl+C 로 빠져나옴 — 서버는 계속 돈다)
 ```
-> **워커는 반드시 1개(기본값)** — WS 연결·outbox 디스패치 상태가 프로세스 메모리에 있다(`server/README.md`). `--workers` 를 주지 않는다.
+- DB 는 Docker 볼륨(`woo-esc_server-data`)에 있다. `docker compose down` 해도 남고, **`down -v` 는 DB 까지 지운다** — 쓰지 않는다.
+- 코드가 바뀌면: `git pull && docker compose up -d --build`
+- 마이그레이션(`alembic upgrade head`)은 컨테이너가 시작할 때마다 자동으로 돈다. 워커는 1 개로 고정돼 있다.
+- **이미 §3 을 `uv run uvicorn` 으로 해 두었다면**: 그 터미널에서 `Ctrl+C` 로 끄고(포트 8000 을 비워야 한다) 위를 한다. 그 DB(`~/data/main.db`)는 쓰지 않으므로 **§4 데이터 등록을 한 번 더** 한다(5 분).
 
 노트북 브라우저에서 확인:
 - http://ESC-main.local:8000/api/health → `{"ok": true}`
 - http://ESC-main.local:8000/docs → API 목록
 - http://ESC-main.local:8000/static/index.html → **"메인Pi — 통신 확인"** 페이지(모뎀 목록·outbox·시간표 저장 폼). 이 문서의 "대시보드"는 이 페이지다.
 
-이 터미널은 서버 로그를 보는 용도로 열어 둔다. 아래 §4 는 **노트북(또는 새 SSH 창)** 에서 한다.
+아래 §4 는 **노트북(또는 새 SSH 창)** 에서 한다.
 
 ---
 
@@ -166,6 +179,8 @@ lora.worker INFO job 1 ← acked OK rssi=-94 snr=6.0
 lora.worker INFO job 1 끝: acked
 ```
 
+> ⚠ **알려진 버그 #43 (서버, 수정 중)** — 모뎀Pi 가 **붙어 있는 동안** 저장하면 요청이 16~20 s 걸리고 결과가 `dispatched` 에서 멈출 수 있다(DB 잠금 교착). 수정 전까지는 **모뎀Pi 를 `Ctrl+C` 로 잠시 끄고 저장 → 다시 켜기**로 확인한다(그 순서면 `acked` 까지 정상 — §7-1 과 같은 흐름). outbox 가 `dispatched` 에서 멈췄다면 이 버그다.
+
 **여기까지 되면 4주차 마일스톤의 핵심은 통과다.** 이 화면(outbox JSON + 두 Pi 로그)을 캡처해 둔다.
 
 ---
@@ -180,7 +195,7 @@ lora.worker INFO job 1 끝: acked
 5. 재접속 즉시 몰아 받아 → 두 건 모두 `acked`.
 
 **7-2. 메인Pi 서버가 재시작됐을 때**
-1. 모뎀Pi 는 켜 둔 채 메인Pi 서버를 `Ctrl+C` 후 다시 `uv run uvicorn …`.
+1. 모뎀Pi 는 켜 둔 채 메인Pi 에서 `docker compose restart server`.
 2. 모뎀Pi 로그에 재접속(백오프 뒤 `hello`)이 찍히고, 그 사이 못 올린 결과가 있으면 몰아 올린다(`hello.pending_results`).
 3. 새로 저장한 시간표도 `acked`.
 
@@ -190,24 +205,9 @@ lora.worker INFO job 1 끝: acked
 
 지금까지는 터미널에 띄워 확인했다. 전원만 켜면 뜨게 한다.
 
-**8-1. 메인Pi** — `/etc/systemd/system/esc-server.service`
-```ini
-[Unit]
-Description=Woo-ESC 메인Pi 서버
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=admin
-WorkingDirectory=/home/admin/Woo-ESC-Capston/server
-Environment=SERVER_DB=/home/admin/data/main.db
-ExecStartPre=/home/admin/Woo-ESC-Capston/server/.venv/bin/alembic upgrade head
-ExecStart=/home/admin/Woo-ESC-Capston/server/.venv/bin/uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
+**8-1. 메인Pi** — 따로 할 것이 없다. `compose.yaml` 의 `restart: unless-stopped` 와 Docker 서비스(설치 스크립트가 부팅 자동 시작으로 등록)가 재부팅 뒤 서버를 다시 띄운다. 확인만 한다:
+```bash
+systemctl is-enabled docker            # enabled
 ```
 
 **8-2. 모뎀Pi** — 비밀값은 파일로 분리한다(권한 600).
@@ -243,17 +243,16 @@ WantedBy=multi-user.target
 **8-3. 켜기 + 재부팅 시험**
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now esc-server     # 메인Pi
 sudo systemctl enable --now modempi        # 모뎀Pi
 journalctl -u modempi -f                   # 로그 보기 (Ctrl+C 로 빠져나옴)
 ```
-두 Pi 를 `sudo reboot` 하고, 1~2분 뒤 §6 을 다시 해서 `acked` 가 나오면 끝.
+두 Pi 를 `sudo reboot` 하고, 1~2분 뒤 메인Pi 에서 `docker compose ps` 가 healthy, 모뎀Pi 에서 `systemctl status modempi` 가 active 인지 본 다음 §6 을 다시 해서 `acked` 가 나오면 끝.
 
 ---
 
 ## 9. 기록 · PR
 
-- 캡처: §6·§7 의 outbox JSON, 두 Pi 로그(`journalctl -u … --since "10 min ago"`), 통신 확인 페이지 스크린샷
+- 캡처: §6·§7 의 outbox JSON, 두 Pi 로그(메인Pi `docker compose logs --since 10m server`, 모뎀Pi `journalctl -u modempi --since "10 min ago"`), 통신 확인 페이지 스크린샷
 - 진행표 `docs/progress.html` 의 cw-10·wj-08 체크 + PR 번호
 - PR 본문에 위 캡처 첨부 (cw-10 DoD "결과를 PR에 첨부")
 
@@ -270,4 +269,7 @@ journalctl -u modempi -f                   # 로그 보기 (Ctrl+C 로 빠져나
 | outbox 가 계속 `queued` | 모뎀 목록에서 `mjc-eng` 가 `"connected": true` 인지, 건물의 `modem_id` 가 `mjc-eng` 인지 |
 | `dispatched` 에서 멈추고 결국 `failed(no_ack)` | 강의실이 등록돼 `config.nodes` 에 들어갔는지(가짜 모뎀은 config 의 노드만 가상으로 만든다). 모뎀Pi 로그의 `job … ← no_ack` 줄로 확인 |
 | TIME 이 안 나감(로그에 "시계를 믿을 수 없다") | `timedatectl status` 가 synchronized 인지. 인터넷 없는 직결이면 메인Pi 를 NTP 서버로(S6 spec §3) — 이번 통합의 합격 기준은 아니다 |
-| `uv sync` 가 오래 걸림 | Pi 3 은 첫 설치가 수 분 걸릴 수 있다. 정상 |
+| `uv sync`·`docker compose up --build` 가 오래 걸림 | Pi 의 첫 빌드는 수 분 걸릴 수 있다. 정상. 두 번째부터는 캐시로 빠르다 |
+| `docker: permission denied` | `usermod -aG docker admin` 뒤 SSH 를 다시 접속했는지 |
+| `port is already allocated` (8000) | 예전 `uv run uvicorn` 이 아직 돌고 있다 — 그 터미널에서 `Ctrl+C` |
+| outbox 가 `dispatched` 에서 멈춤 | 버그 #43 — §6 의 우회(모뎀Pi 끄고 저장 → 켜기) |

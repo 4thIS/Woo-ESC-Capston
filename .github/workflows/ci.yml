@@ -33,6 +33,7 @@ jobs:
       server: ${{ steps.filter.outputs.server }}
       modempi: ${{ steps.filter.outputs.modempi }}
       web: ${{ steps.filter.outputs.web }}
+      docker: ${{ steps.filter.outputs.docker }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -56,6 +57,12 @@ jobs:
               - '.github/workflows/ci.yml'
             web:
               - 'web/**'
+              - '.github/workflows/ci.yml'
+            docker:
+              - 'server/**'
+              - 'lora_proto/**'
+              - 'compose.yaml'
+              - '.dockerignore'
               - '.github/workflows/ci.yml'
 
   # ===== proto: 프로토콜 계약 (Python 미러·codec·벡터 드리프트) =====
@@ -176,6 +183,43 @@ jobs:
     #   postgres:
     #     image: postgres:16-alpine
     #     env: { POSTGRES_PASSWORD: ci_only }
+
+  # ===== docker: 메인Pi 배포 이미지 (2026-09-23 팀 결정 — 메인Pi 서버는 Docker Compose) =====
+  # amd64 로 compose 빌드·기동·헬스·API 스모크, 그리고 메인Pi 용 arm64 빌드(QEMU)까지.
+  docker:
+    needs: changes
+    if: ${{ needs.changes.outputs.docker == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: compose build (amd64)
+        run: docker compose build
+      - name: compose up → healthy
+        run: |
+          docker compose up -d
+          for i in $(seq 1 45); do
+            s=$(docker inspect -f '{{.State.Health.Status}}' esc-server 2>/dev/null || true)
+            [ "$s" = healthy ] && break
+            sleep 2
+          done
+          echo "health=$s"
+          [ "$s" = healthy ]
+      - name: API 스모크 (마이그레이션·DB 볼륨·쓰기)
+        run: |
+          curl -fsS http://localhost:8000/api/health
+          curl -fsS -X POST http://localhost:8000/api/lora/modems             -H 'content-type: application/json' -d '{"modem_id":"ci-smoke"}' > /dev/null
+          curl -fsS http://localhost:8000/api/lora/modems | grep -q ci-smoke
+          test "$(docker exec esc-server id -u)" = 10001   # root 로 돌지 않는다
+      - name: 로그 (실패 시)
+        if: failure()
+        run: docker compose logs server
+      - name: down
+        if: always()
+        run: docker compose down -v
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: arm64 빌드 (메인Pi)
+        run: docker buildx build --platform linux/arm64 -f server/Dockerfile .
 
   # ===== modempi: 모뎀Pi 서비스 (Python + uv) =====
   modempi:

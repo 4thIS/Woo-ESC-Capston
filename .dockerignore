@@ -1,0 +1,16 @@
+# 이미지에는 server/ 와 lora_proto/ 만 들어간다 (server/Dockerfile).
+*
+!server/
+!lora_proto/
+
+# 그 안에서도 빼는 것
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/*.db
+**/*.db-wal
+**/*.db-shm
+server/tests/
+lora_proto/tests/

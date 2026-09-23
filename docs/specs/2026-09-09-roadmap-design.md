@@ -230,7 +230,7 @@ CREATE INDEX ix_jobs_upload ON jobs(uploaded, finished_at);
 | `codec.py`, `modem.py`, `worker.py`(§8.4 알고리즘), TIME 스케줄러, 업링크 1차 처리 | **모뎀Pi `modempi/lora/`** (cw) |
 | `outbox`, `room_versions`, `terminal_status`, `pending_devices`, `lora_log`, `api.py`, `RecordProvider` | 메인Pi `server/lora_service/` (wj 구현, cw 리뷰). `outbox.state`에 `dispatched` 추가, `modem_id` 컬럼 추가 |
 | 신규 | 메인Pi WS 허브 `server/lora_service/hub.py`(wj), 모뎀Pi 레지스트리 `modems` 테이블(`modem_id, school, building, token_hash, net_id, last_seen_at`) |
-| §8.8 운영 | 메인Pi: FastAPI 프로세스 안에 허브. 모뎀Pi: `systemd` 서비스 1개(`modempi` 프로세스 안에 링크·파이프라인 asyncio 태스크) |
+| §8.8 운영 | 메인Pi: FastAPI 프로세스 안에 허브, **Docker Compose 로 배포**(루트 `compose.yaml`, 2026-09-23). 모뎀Pi: `systemd` 서비스 1개(`modempi` 프로세스 안에 링크·파이프라인 asyncio 태스크) |
 | `lora_log` | 프레임 로그가 아니라 **메인Pi↔모뎀Pi WS 메시지 로그**(`at, modem_id, dir, t, body`)로 재정의. 프레임 hex 로그는 모뎀Pi 쪽(S6)에 있다 (2026-09-14, S2) |
 
 ## 5. 서브프로젝트 분해

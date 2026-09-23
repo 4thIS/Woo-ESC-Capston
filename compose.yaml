@@ -1,0 +1,30 @@
+# 메인Pi 배포 (2026-09-23 팀 결정: 메인Pi 서버는 Docker 로 돌린다).
+# 모뎀Pi 는 Docker 를 쓰지 않는다 — USB 시리얼·timesyncd 상태에 직접 붙어야 해서 systemd 로 돈다
+# (docs/guides/2026-09-23-pi-integration-cw10.md §8).
+#
+#   docker compose up -d --build     # 빌드 + 기동(백그라운드). 코드가 바뀌면 같은 명령
+#   docker compose logs -f server    # 로그
+#   docker compose down              # 정지 (데이터는 볼륨에 남는다)
+#
+# 노트북에서도 같은 명령으로 메인Pi 와 똑같은 서버를 띄울 수 있다 → http://localhost:8000/docs
+name: woo-esc
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: woo-esc/server:local
+    container_name: esc-server
+    ports:
+      - "8000:8000"
+    environment:
+      SERVER_DB: /data/main.db
+      STATUS_HOUR_UTC: ${STATUS_HOUR_UTC:-18}
+    volumes:
+      - server-data:/data          # SQLite DB — 컨테이너를 지우고 다시 빌드해도 남는다
+    restart: unless-stopped         # Pi 재부팅·크래시 뒤 자동 기동 (systemd 유닛 불필요)
+    stop_grace_period: 10s
+
+volumes:
+  server-data:
