@@ -148,6 +148,23 @@ async def test_ping_timeout_raises_so_watchdog_can_react():
         await c.stop()
 
 
+async def test_cfg_waits_for_in_flight_tx():
+    """전파를 쏘는 도중 무선 설정이 바뀌면 안 된다 — cfg 는 응답이 없어도 송신이 끝날 때까지 기다린다."""
+    m = FakeModem(latency_ms=60)
+    m.add_node(ord("E"), 301, 1, sched_ver=2)
+    c = ModemClient(m)
+    await c.start()
+    try:
+        tx = asyncio.create_task(c.tx(F, wake=True, ack_ms=50))
+        await asyncio.sleep(0.01)
+        await c.cfg(sf=10)
+        await tx
+        order = [(who, msg.get("op")) for who, msg in m.log if msg.get("op") in ("cfg", "tx_done")]
+        assert order == [("modem", "tx_done"), ("host", "cfg")]
+    finally:
+        await c.stop()
+
+
 async def test_malformed_modem_lines_do_not_kill_the_reader(client):
     """_on_message 안의 KeyError·ValueError·AttributeError 가 읽기 루프를 끝내면 그 뒤 모든 요청이
     타임아웃된다. 한 줄 버리고 계속 읽는다(#35 리뷰 6)."""

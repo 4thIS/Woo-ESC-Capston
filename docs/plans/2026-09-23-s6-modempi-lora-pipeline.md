@@ -1567,6 +1567,7 @@ git push origin cw
 - `open_fn`은 테스트 주입점이다. 기본값은 `serial_asyncio.open_serial_connection(url=port, baudrate=baud)`이고, 테스트는 TCP 소켓 한 쌍(`asyncio.start_server` + `asyncio.open_connection`)을 돌려주는 함수를 넣는다 — **윈도우에는 pty가 없으므로 소켓으로 대신한다.**
 - 읽다 끊기면(`ConnectionResetError`·`SerialException`) `reconnect_s` 뒤 다시 연다. 재연결 후 모뎀이 `ready`를 보내면 `ModemClient`가 `cfg`를 다시 보낸다(Task 1에 이미 있음).
 - 줄 길이 상한 1,024 B(v2 §4.5) 초과 라인은 버리고 `log.warning`.
+- **(#37 셀프 리뷰 3) `ModemClient` 읽기 태스크를 파이프라인 감시에 넣는다.** 지금은 `Pipeline` 이 자식 태스크 사망을 감시하지만 `client._reader` 는 대상이 아니라, 실물 시리얼에서 `read_line` 이 예외로 끝나면 이후 요청이 전부 타임아웃인데 파이프라인은 계속 돌아 systemd 재기동도 안 걸린다. 읽기 태스크 종료를 파이프라인 예외로 올리는 테스트를 이 Task 에서 먼저 쓴다.
 
 - [ ] **Step 1: 실패 테스트 (소켓 한 쌍으로 시리얼 흉내)**
 

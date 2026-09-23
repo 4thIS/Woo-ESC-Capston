@@ -167,6 +167,8 @@ class ModemClient:
         return int((await self._request({"op": "ping"}, timeout=self._request_timeout))["uptime_s"])
 
     async def cfg(self, **radio) -> None:
-        # §4.2 cfg 는 응답이 없다 — 인플라이트를 잡지 않고 바로 쓴다.
+        """§4.2 cfg 는 응답이 없지만 슬롯은 잡는다 — 전파를 쏘는 도중 무선 설정이 바뀌면 안 된다.
+        (모뎀 재부팅 뒤 `ready` 에서의 재전송은 읽기 루프 안이라 슬롯을 잡지 않는다 — 그때 인플라이트는 이미 잃었다.)"""
         self._last_cfg = dict(radio)
-        await self._t.write_line(json.dumps({"op": "cfg", **radio}))
+        async with self._slot:
+            await self._t.write_line(json.dumps({"op": "cfg", **radio}))

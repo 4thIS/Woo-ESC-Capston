@@ -84,3 +84,10 @@ async def fake_hub():
 @pytest.fixture
 def clock():
     return FakeClock()
+
+
+@pytest.fixture(autouse=True)
+def _no_host_timesyncd(monkeypatch, tmp_path):
+    """시계 신뢰 판정이 테스트를 돌리는 기계(CI 리눅스의 timesyncd 상태)에 따라 달라지지 않게 한다.
+    timesyncd 가 없는 것으로 보고 임계값만 쓰게 한다 — 동기 표시 분기는 test_lora_clock 이 직접 본다."""
+    monkeypatch.setattr("modempi.lora.clock.TIMESYNC_DIR", str(tmp_path / "no-timesyncd"))

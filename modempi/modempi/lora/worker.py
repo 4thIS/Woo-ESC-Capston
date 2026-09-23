@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -10,6 +11,7 @@ from collections.abc import Awaitable, Callable
 from lora_proto import codec as C
 from lora_proto import proto as P
 
+from modempi.lora.clock import clock_trusted
 from modempi.lora.modem_client import ModemClient, TxResult
 from modempi.lora.preprocess import PreprocessError, Unit, is_file_session, preprocess
 from modempi.store import Job, SqliteStore
@@ -20,6 +22,7 @@ RETRY_BACKOFF = (5.0, 20.0, 60.0)
 MAX_ATTEMPTS = 3
 BUSY_WAIT_S = 5.0
 FILE_MISSING_MAX = 2
+UNTRUSTED_CLOCK_WAIT_S = 60.0  # 시계를 못 믿는 동안 TIME 을 미루는 간격
 FILE_BUSY_MAX = 5  # FILE 세션 한 프레임에 허용하는 BUSY 재송 횟수 (S6 spec §9)
 
 # 재시도 끝에 failed 로 닫을 때 앞 시도의 결과를 지운다 — 메인은 결과 필드를 그대로 복사한다(로드맵 §4.3).
@@ -44,8 +47,15 @@ class Worker:
         clock: Callable[[], float] = time.time,
         sleep: Callable[[float], Awaitable] = asyncio.sleep,
         idle: float = 0.5,
+        clock_ok: Callable[[float], bool] = clock_trusted,
+        net_id: Callable[[], int] = lambda: P.NET_ID,
     ) -> None:
+        """`net_id` 는 프레임마다 부른다 — 메인Pi 가 학교마다 배정해 config 로 준 값(로드맵 §3)이
+        재기동 없이 바로 적용되게. 기본값(lora_proto)은 게터 없이 쓰는 테스트용이다."""
         self.store, self.client = store, client
+        self._clock_ok = clock_ok
+        self._net_id = net_id
+        self._sent_net_id = P.NET_ID  # 마지막으로 보낸 프레임의 NET_ID — 그 ACK 는 같은 망에서 온다
         self._clock, self._sleep, self._idle = clock, sleep, idle
 
     async def run(self, stop: asyncio.Event) -> None:
@@ -59,12 +69,29 @@ class Worker:
         job = self.store.pick_next()
         if job is None:
             return False
-        if job.type == "TIME" and self.store.newer_pending(job):
+        if job.type == "TIME" and self.store.newer_pending(job) and not _requests_status(job):
             # 파이프라인이 멈춰 있던 동안 쌓인 TIME — 같은 대상에 더 새 행이 있을 때만 닫는다.
             # 나이로 버리면 가장 새 것까지 사라진다. epoch 는 송신 때 다시 찍으므로 옛 행을 보내도 무해하다.
+            # REQUEST_STATUS 가 붙은 행은 버리지 않는다 — 그날 일괄 STATUS 요청이 빠진다(#37 리뷰 2).
             self.store.update(
                 job.job_id, expect_state="received", state="acked", last_error="superseded"
             )
+            return True
+        if job.type == "TIME" and not self._clock_ok(self._clock()):
+            # 옛 시각(fake-hwclock)을 노드에 뿌리면 노드 시계가 망가진다 — 시계를 믿을 때까지 보내지 않는다.
+            if job.bld:
+                # 타겟 TIME(CLOCK_STALE)은 job_id 가 숫자가 아니라 그 노드 FIFO 의 머리에 선다. 미루기만 하면
+                # 노드의 다른 작업이 영영 못 나간다(NTP 없는 직결 전시, #37 리뷰 1) — 닫는다. 노드는 동기 직후
+                # 스케줄러가 내는 브로드캐스트 TIME 으로 복구된다.
+                self.store.update(
+                    job.job_id, expect_state="received", state="acked", last_error="clock_untrusted"
+                )
+            else:
+                # 브로드캐스트 TIME 은 자기 큐("",0,0)라 아무도 막지 않는다 — 미룬다. 동기 직후 스케줄러가 새 행을
+                # 넣으면 이 행은 위 newer_pending 으로 superseded 가 된다.
+                self.store.update(
+                    job.job_id, state="received", next_try_at=self._clock() + UNTRUSTED_CLOCK_WAIT_S
+                )
             return True
         try:
             units = preprocess(job, clock=self._clock)
@@ -84,14 +111,30 @@ class Worker:
     def _finish(self, job: Job, state: str, **fields) -> None:
         self.store.update(job.job_id, state=state, **fields)
 
-    def _frame(self, u: Unit, txn: int) -> bytes:
-        h = C.Header(type=u.type, bld=u.bld, room=u.room, unit=u.unit, txn=txn, flags=u.flags)
+    def _frame(self, u: Unit, txn: int, net_id: int) -> bytes:
+        h = C.Header(
+            type=u.type, bld=u.bld, room=u.room, unit=u.unit, txn=txn, flags=u.flags, net_id=net_id
+        )
         return C.encode_frame(h, C.encode_payload(u.payload_obj))
 
+    def _ack_of(self, res: TxResult) -> C.Ack:
+        _, pb = C.decode_frame(res.ack, net_id=self._sent_net_id)
+        return C.decode_payload(P.Type.ACK, pb)
+
     async def _tx(self, u: Unit, txn: int) -> TxResult:
-        r = await self.client.tx(self._frame(u, txn), wake=u.wake, ack_ms=u.ack_ms)
+        self._sent_net_id = self._net_id()
+        frame = self._frame(u, txn, self._sent_net_id)
+        r = await self.client.tx(frame, wake=u.wake, ack_ms=u.ack_ms)
         if r.status == "error" and r.reason == "busy":
             raise RuntimeError("모뎀이 busy — 워커가 tx 를 겹쳐 불렀다")
+        if r.status == "acked":
+            try:
+                self._ack_of(r)
+            except C.FrameError as e:
+                # ACK 를 못 읽으면 노드가 적용했는지 모른다 — 무응답과 같다. 같은 TXN 으로 재시도하면
+                # 적용된 경우 DUP 으로 닫힌다. 여기서 막지 않으면 FrameError 가 파이프라인 전체를 멈춘다.
+                log.warning("ACK 해석 실패(%s) — 무응답으로 보고 재시도", e)
+                return TxResult(status="no_ack", reason="bad_ack", rssi=r.rssi, snr=r.snr)
         return r
 
     async def _run_single(self, job: Job, u: Unit) -> None:
@@ -105,7 +148,7 @@ class Worker:
         if not self._claim(job, txn):
             return  # 그 사이 cancel
         res = await self._tx(u, txn)
-        if res.status == "acked" and _ack_of(res).status in (
+        if res.status == "acked" and self._ack_of(res).status in (
             P.AckStatus.BAD_CRC,
             P.AckStatus.STORE_FAIL,
         ):
@@ -119,7 +162,7 @@ class Worker:
             self._finish(job, "acked", attempts=attempts)  # ack_ms=0 (TIME)
             return
         if res.status == "acked":
-            ack = _ack_of(res)
+            ack = self._ack_of(res)
             common = {
                 "attempts": attempts,
                 "ack_status": int(ack.status),
@@ -153,7 +196,7 @@ class Worker:
             )
             return
         if res.status in ("no_ack", "cad_busy"):
-            self._retry_or_fail(job, res.status)
+            self._retry_or_fail(job, res.reason or res.status)
             return
         if res.reason == "modem_timeout":
             # 시리얼 순간 장애 — 한 번에 영구 실패시키지 않는다. 노드가 받았다면 같은 TXN 재송이 DUP.
@@ -186,7 +229,7 @@ class Worker:
             txn = self.store.next_txn(job.bld, job.room, job.unit)
             res = await self._tx(units[i], txn)
             if res.status == "acked":
-                ack = _ack_of(res)
+                ack = self._ack_of(res)
                 if ack.status == P.AckStatus.BUSY:
                     # 노드가 렌더 중이면 BUSY 다. 상한이 없으면 노드가 계속 바쁠 때 워커가 영영 안 돌아와
                     # 그 모뎀Pi 의 다른 노드까지 멈춘다 (S6 spec §9: 5 회 제안).
@@ -217,6 +260,10 @@ class Worker:
         self._apply(job, res)  # 결과는 마지막(보통 END) 프레임의 것
 
 
-def _ack_of(res: TxResult) -> C.Ack:
-    _, pb = C.decode_frame(res.ack)
-    return C.decode_payload(P.Type.ACK, pb)
+def _requests_status(job: Job) -> bool:
+    """TIME 행에 REQUEST_STATUS 플래그가 붙었는가. payload 가 이상하면 False(보통 TIME 처럼 다룬다)."""
+    try:
+        flags = int(json.loads(job.payload).get("flags", 0))
+    except (ValueError, TypeError, AttributeError):
+        return False
+    return bool(flags & int(P.TimeFlag.REQUEST_STATUS))
