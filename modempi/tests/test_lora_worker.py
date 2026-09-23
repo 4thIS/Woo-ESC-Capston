@@ -266,3 +266,62 @@ async def test_run_recovers_sending_row_and_resends_with_same_txn(rig):
     j = db.get_job("10")
     assert j.txn == txn
     assert (j.state, j.ack_status) == ("acked", int(P.AckStatus.DUP))
+
+
+async def test_time_uses_txn_0_and_does_not_consume_the_node_counter(rig, clk):
+    """타겟 TIME 이 노드 TXN 을 먹으면 그 노드의 재송이 DUP 이 아니게 되어 GAP → FILE 재동기가 걸린다.
+    TIME 은 버전도 없고 멱등이라 txn=0 으로 보내고 노드는 DUP 판정에서 제외한다(v2 §3.5 · S6 §9 결정)."""
+    db, _, _, w = rig
+    db.put_job(
+        job_id=f"time-{int(clk.now)}-E301-1",
+        bld="E",
+        room=301,
+        unit=1,
+        type="TIME",
+        payload=json.dumps({"epoch": int(clk.now), "flags": 0}),
+        priority=0,
+        new_ver=None,
+        uploaded=1,
+    )
+    assert await w.once() is True
+    j = db.get_job(f"time-{int(clk.now)}-E301-1")
+    assert (j.state, j.txn) == ("acked", 0)
+    assert db.next_txn("E", 301, 1) == 1  # 카운터가 그대로 — TIME 이 먹지 않았다
+
+
+async def test_targeted_time_between_send_and_retry_keeps_the_retry_txn(rig, clk):
+    db, modem, _, w = rig
+    modem.script(["no_ack"])
+    put(db)
+    await w.once()
+    first_txn = db.get_job("10").txn
+    db.put_job(
+        job_id=f"time-{int(clk.now)}-E301-1",
+        bld="E",
+        room=301,
+        unit=1,
+        type="TIME",
+        payload=json.dumps({"epoch": int(clk.now), "flags": 0}),
+        priority=0,
+        new_ver=None,
+        uploaded=1,
+    )
+    await w.once()  # 타겟 TIME 이 끼어든다
+    clk.now += 5.0
+    await w.once()  # 원래 작업 재송
+    assert db.get_job("10").txn == first_txn
+
+
+async def test_file_session_gives_up_after_repeated_busy(rig, clk):
+    """BUSY 는 세션을 유지한 채 5 s 뒤 같은 프레임 재송이지만, 무한히 반복하면 워커가 영영 안 돌아온다."""
+    db, modem, _, w = rig
+    modem.script(["ack:BUSY"] * 12)
+    put(
+        db,
+        type="FILE",
+        new_ver=3,
+        payload={"kind": int(P.FileKind.SCHEDULE), "records": slot_records(24)},
+    )
+    await asyncio.wait_for(w.once(), 3)
+    j = db.get_job("10")
+    assert j.state == "received" and j.attempts == 1  # 세션 실패 → 일반 재시도 정책으로

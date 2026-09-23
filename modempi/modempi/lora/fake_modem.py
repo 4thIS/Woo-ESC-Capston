@@ -259,6 +259,10 @@ class FakeModem:
 
     def _apply(self, node: NodeState, h: C.Header, pb: bytes) -> C.Ack:
         """v2 §3.5 멱등·§3.4 상태 규칙대로 가상 노드에 적용하고 ACK 를 만든다."""
+        if h.type == P.Type.TIME:
+            # TIME 은 버전이 없고 멱등이라 txn=0 으로 오며 DUP 판정도 lastTxn 갱신도 하지 않는다
+            # (v2 §3.5, 2026-09-23 결정). 안 그러면 타겟 TIME 이 그 노드의 재송을 DUP 에서 떨어뜨린다.
+            return node.ack(P.AckStatus.OK)
         if node.last_txn == h.txn:
             return node.ack(P.AckStatus.DUP)
         node.last_txn = h.txn

@@ -22,6 +22,7 @@ MAX_ATTEMPTS = 3
 STALE_TIME_S = 90.0  # 이보다 오래된 TIME 행은 보내지 않고 superseded 로 닫는다
 BUSY_WAIT_S = 5.0
 FILE_MISSING_MAX = 2
+FILE_BUSY_MAX = 5  # FILE 세션 한 프레임에 허용하는 BUSY 재송 횟수 (S6 spec §9)
 
 # 재시도 끝에 failed 로 닫을 때 앞 시도의 결과를 지운다 — 메인은 결과 필드를 그대로 복사한다(로드맵 §4.3).
 _CLEAR = {
@@ -102,8 +103,13 @@ class Worker:
         return r
 
     async def _run_single(self, job: Job, u: Unit) -> None:
+        # TIME 은 버전이 없고 멱등이라 txn=0 으로 보낸다(v2 §3.5, S6 §9 결정 2026-09-23).
+        # 노드 TXN 을 먹으면 그 노드가 기다리던 재송이 DUP 이 아니게 되어 GAP → FILE 재동기가 걸린다.
         # 재송(no_ack·BUSY·cad_busy·재기동 후)은 같은 TXN 이어야 노드가 DUP 으로 받는다(로드맵 §4.3).
-        txn = job.txn or self.store.next_txn(job.bld, job.room, job.unit)
+        if u.type == P.Type.TIME:
+            txn = 0
+        else:
+            txn = job.txn or self.store.next_txn(job.bld, job.room, job.unit)
         if not self._claim(job, txn):
             return  # 그 사이 cancel
         res = await self._tx(u, txn)
@@ -154,25 +160,30 @@ class Worker:
             )
             return
         if res.status in ("no_ack", "cad_busy"):
-            if attempts < MAX_ATTEMPTS:
-                self.store.update(
-                    job.job_id,
-                    state="received",
-                    attempts=attempts,
-                    next_try_at=self._clock() + RETRY_BACKOFF[attempts - 1],
-                    last_error=res.status,
-                )
-            else:
-                self._finish(job, "failed", attempts=attempts, last_error=res.status, **_CLEAR)
+            self._retry_or_fail(job, res.status)
             return
         self._finish(job, "failed", attempts=attempts, last_error=res.reason or "error", **_CLEAR)
+
+    def _retry_or_fail(self, job: Job, reason: str) -> None:
+        """v2 §8.4 재시도 정책: 3회까지 5·20·60 s 뒤 다시, 그 뒤엔 실패로 닫는다."""
+        attempts = job.attempts + 1
+        if attempts < MAX_ATTEMPTS:
+            self.store.update(
+                job.job_id,
+                state="received",
+                attempts=attempts,
+                next_try_at=self._clock() + RETRY_BACKOFF[attempts - 1],
+                last_error=reason,
+            )
+        else:
+            self._finish(job, "failed", attempts=attempts, last_error=reason, **_CLEAR)
 
     async def _run_file(self, job: Job, units: list[Unit]) -> None:
         """BEGIN → DATA×n → END 를 한 창 안에서. TXN 은 프레임마다 새로 받는다(v2 §3.5)."""
         txn = self.store.next_txn(job.bld, job.room, job.unit)
         if not self._claim(job, txn):
             return
-        i, no_ack_run, missing_used = 0, 0, 0
+        i, no_ack_run, missing_used, busy_used = 0, 0, 0, 0
         res: TxResult | None = None
         while i < len(units):
             txn = self.store.next_txn(job.bld, job.room, job.unit)
@@ -180,6 +191,14 @@ class Worker:
             if res.status == "acked":
                 ack = _ack_of(res)
                 if ack.status == P.AckStatus.BUSY:
+                    # 노드가 렌더 중이면 BUSY 다. 상한이 없으면 노드가 계속 바쁠 때 워커가 영영 안 돌아와
+                    # 그 모뎀Pi 의 다른 노드까지 멈춘다 (S6 spec §9: 5 회 제안).
+                    busy_used += 1
+                    if busy_used > FILE_BUSY_MAX:
+                        # 세션 실패로 보고 일반 재시도 정책에 맡긴다 — 그냥 BUSY 로 되돌리면
+                        # 노드가 계속 바쁠 때 이 행이 영원히 그 노드의 머리에 남아 FIFO 를 막는다.
+                        self._retry_or_fail(job, "file_busy")
+                        return
                     await self._sleep(BUSY_WAIT_S)
                     continue  # 같은 프레임 재송, 세션 유지
                 if ack.status == P.AckStatus.FILE_MISSING and missing_used < FILE_MISSING_MAX:

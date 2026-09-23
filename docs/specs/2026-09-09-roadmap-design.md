@@ -212,6 +212,7 @@ CREATE INDEX ix_jobs_upload ON jobs(uploaded, finished_at);
 - `put_job`: 같은 `job_id`만 무시(False). NOT NULL 등 다른 위반은 `IntegrityError` — 삼키면 링크가 중복으로 알고 `job_accepted`를 보내 작업이 사라진다.
 - `put_uplink(body)`: JSON으로 저장 — bytes 불가, MAC은 소문자 hex 문자열(§4.2 인코딩 규칙).
 - `get_job(id)`, `prune(older_than=초)`(보고까지 끝난 행·업링크 정리 — 모뎀Pi는 원본을 갖지 않는다, §1), `close()` 추가.
+- **TIME은 `txn=0`** (2026-09-23, cw-09 구현 중 확정): 브로드캐스트든 타겟이든 TIME은 TXN을 소비하지 않고 노드도 DUP 판정을 하지 않는다. 타겟 TIME이 노드 TXN을 먹으면 위 "재송은 같은 TXN" 규칙이 깨져 재송이 GAP을 부른다.
 - **S6(cw-09)로 넘기는 것**: 쌓인 TIME 행(모뎀 분리·파이프라인 중단 시 매시 1개씩)은 가장 새 것 하나만 보내고 나머지는 `acked(last_error="superseded")`로 닫는다. epoch는 송신 직전에 찍는다. CLOCK_STALE 타겟 TIME이 노드 TXN을 소비하면 위 "같은 TXN 재송" 가정이 깨지므로 타겟 TIME은 `txn=0`으로 보낼지 S6 plan에서 확정한다.
 
 이 분할의 효과: **wj는 fake 허브(pytest 안의 WS 서버)로, cw는 fake 모뎀 + `put_job()`으로** 각자 하드웨어·상대방 없이 테스트한다. 4주차 통합은 Pi 2대에 실제로 올려 `job → 로컬 큐 → fake 모뎀 → job_result`가 도는지 확인한다.
