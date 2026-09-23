@@ -26,7 +26,7 @@ v1 카탈로그는 첫 절 「색이 없을 때 상태를 어떻게 말하는가
 | 폴더 | 기준 | 예 |
 |---|---|---|
 | `components/ui/` | 도메인을 **모른다.** 강의실·슬롯·전송을 몰라도 동작한다 | Button, Table, Modal, Badge |
-| `components/domain/` | 도메인을 **안다.** 서버 필드명과 업무 규칙이 들어 있다 | OutboxDot, TypeBadge, SlotForm |
+| `components/domain/` | 도메인을 **안다.** 서버 필드명과 업무 규칙이 들어 있다 | RoomTree, OutboxDot, TypeBadge, SlotForm, SignalBars |
 | `views/` 옆 | 한 화면에만 있다 | WeekGrid (페이지2 격자) |
 
 경계가 헷갈리면 **"이 컴포넌트가 `schemas.py`를 알아야 하나"**로 가른다. 알아야 하면 `domain/`이다.
@@ -312,6 +312,30 @@ v2에서 쓸 수 있는 수단은 다섯이고, 이 밖으로 나가지 않는�
 
 이게 없으면 CSV 임포트 후 "왜 이 행만 안 바뀌지"를 설명할 수 없다(`screens/admin-rooms.md` §1).
 
+## RoomTree
+
+| prop | 값 | 기본 |
+|---|---|---|
+| `mode` | `multi` / `single` | `multi` |
+| `buildings` | `BuildingOut[]` | — |
+| `rooms` | `RoomOut[]` | — |
+| `selected` | `number[]` (room id) | `[]` |
+| `expanded` | `string[]` | — |
+| `query` | string | `''` |
+
+**건물 → 층 → 호수 3단 트리.** 관리자 웹의 유일한 강의실 선택 장치이고, 상단 네비게이션의 버튼을 누르면 펼쳐지는 **드롭다운**으로 뜬다(폭 320px).
+
+- `multi`: 호수가 체크박스. 건물·층을 누르면 그 아래 전체가 켜지고 꺼진다. 일부만 골라진 부모는 `indeterminate`.
+- `single`: 체크박스가 없다. 호수를 누르면 그것만 선택되고 **드롭다운이 닫힌다.** 건물·층은 접고 펴기만 한다.
+- 행 높이 32px. 들여쓰기는 패딩으로 — 건물 8px / 층 26px / 호수 62px(`multi`) · 48px(`single`).
+- 선택된 호수 행: `brand.tint` 바탕 + `brand` 글자.
+- 검색은 호수 숫자만 거른다. **선택 상태는 검색과 무관하게 유지한다.**
+- 바깥 클릭·Esc로 닫힌다. 선택은 체크하는 **즉시** 반영되고 `확인` 버튼을 두지 않는다.
+
+**층은 서버에 없다.** `RoomOut`에 층 필드가 없어 `floor = room // 100`으로 컴포넌트가 파생한다(401 → 4층, 1203 → 12층, 100 미만은 `기타`). 이 규칙을 드롭다운 바닥에 `층 = 호수 ÷ 100`으로 적어 관리자에게도 알린다.
+
+> 세로 패널이 아니라 드롭다운인 이유는 가로폭이다. 258px 패널은 표의 과목명 폭을 490 → 236px로 줄이는데, **강의실을 고르는 일은 가끔이고 표를 읽는 일은 내내다.** 자세한 판단은 `screens/admin-rooms.md` §강의실 트리.
+
 ## SlotForm
 
 | prop | 값 | 기본 |
@@ -363,6 +387,28 @@ Modal 안에 들어가는 폼. **페이지1 표와 페이지2 셀이 같은 것�
 
 # 차트 — `components/chart/`
 
+## SignalBars
+
+| prop | 값 | 기본 |
+|---|---|---|
+| `rssi` | number \| null | — |
+
+3칸 막대 + `−71 dBm` 숫자를 함께 보인다. 칸 수는 `≥ −75` 3 · `≥ −90` 2 · 그 아래 1. **색을 쓰지 않고** 채워진 칸 수로만 말한다(`text.2` / `line.3`).
+
+막대만으로는 −71과 −88을 가를 수 없고 숫자만으로는 좋고 나쁨이 안 읽힌다. 둘 다 둔다. `null`이면 `—`.
+
+## NodeStateBadge
+
+| prop | 값 | 기본 |
+|---|---|---|
+| `syncState` | string | — |
+| `clockStale` | boolean | `false` |
+| `lowBatt` | boolean | `false` |
+
+셋을 받아 **하나의 배지**로 줄인다. 문제가 둘 이상이면 가장 나쁜 것만 남기고 나머지는 `title`로 민다 — 한 행에 적색 배지가 여럿이면 무엇이 급한지 사라진다.
+
+`동기화됨`(`neutral`+`solid`) / `대기`(`neutral`+`outline`) / 문제(`danger`+`outline`).
+
 ## Histogram
 
 | prop | 값 | 기본 |
@@ -392,4 +438,4 @@ Modal 안에 들어가는 폼. **페이지1 표와 페이지2 셀이 같은 것�
 1. **폼 라이브러리를 쓸지** — 검증 규칙이 SlotForm·ResvForm·ExamForm에 겹친다. wj가 구현하며 판단한다. 이 문서는 인터페이스만 정하고 내부 구현을 지정하지 않는다
 2. **Select 30개 초과** — 건물에 강의실이 많으면 네이티브 Select가 버겁다. 검색 가능한 목록이 필요해지면 그때 추가한다
 3. **Histogram 호버** — 위 참고
-4. 학생 웹 전용 컴포넌트(`RoomListRow`·`RoomNowCard`·`WeekGrid`)는 `screens/student-room.md`에 정의돼 있다. 안정되면 이 문서로 옮긴다. `WeekGrid`는 관리자 페이지2의 격자와 형태가 같으므로 둘을 한 컴포넌트로 합칠 수 있는지 구현 시 판단한다 — 겹침 처리 규칙이 갈린다(관리자는 쪼개고, 학생은 합친 것을 받는다)
+4. 학생 웹 전용 컴포넌트(`RoomListRow`·`FavoriteStar`·`WeekGrid`·`ReserveSheet`)는 `screens/student-room.md`에 정의돼 있다. 안정되면 이 문서로 옮긴다. `WeekGrid`는 관리자 페이지2의 격자와 형태가 같으므로 둘을 한 컴포넌트로 합칠 수 있는지 구현 시 판단한다 — 겹침 처리 규칙이 갈린다(관리자는 쪼개고, 학생은 합친 것을 받는다)
