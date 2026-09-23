@@ -2,6 +2,7 @@ import datetime as dt
 import json
 
 import pytest
+from fastapi.testclient import TestClient
 from lora_proto import codec as C
 from sqlalchemy import select
 
@@ -9,7 +10,7 @@ from app.domain.models import Building, ExamPeriod, Reservation, Room, School, S
 from app.domain.topology import DomainTopology, record_provider
 from app.lora_service import api
 from app.lora_service.api import RoomInfo
-from app.lora_service.models import Modem, Outbox
+from app.lora_service.models import Modem, Outbox, RoomVersion
 
 
 def _seed(Session):
@@ -456,3 +457,48 @@ def test_put_slot_source_default_and_409_on_downgrade(client):
     assert client.get(f"/api/rooms/{r['id']}/slots").json() == []
     # 범위 밖 source
     assert client.put(f"/api/rooms/{r['id']}/slots", json={**body, "source": 4}).status_code == 422
+
+
+SLOT = {
+    "day": 1,
+    "s_h": 9,
+    "s_m": 0,
+    "e_h": 10,
+    "e_m": 50,
+    "type": 1,
+    "subject": "a",
+    "professor": "",
+}
+
+
+def test_slot_put_is_atomic_with_outbox(client, app, monkeypatch):
+    """enqueue 뒤 요청이 실패하면 outbox 행·버전 증가도 롤백된다 (#9).
+    enqueue 를 감싸 호출 직후 예외 — 구현 전(자체 세션 커밋)이면 outbox 행이 남아 FAIL."""
+    _sch, _b, r = _setup(client)
+    real = api.enqueue_slot_set
+
+    def boom(*a, **k):
+        real(*a, **k)
+        raise RuntimeError("domain write failed after enqueue")
+
+    monkeypatch.setattr(api, "enqueue_slot_set", boom)
+    with TestClient(app, headers=client.headers, raise_server_exceptions=False) as c:
+        assert c.put(f"/api/rooms/{r['id']}/slots", json=SLOT).status_code == 500
+    with app.state.Session() as s:
+        assert s.scalars(select(Outbox)).all() == []
+        assert s.get(RoomVersion, ("E", 301, "schedule")) is None
+        assert s.scalars(select(Slot)).all() == []
+
+
+def test_notify_runs_after_commit(client, app, monkeypatch):
+    """허브 알림 시점에 outbox 행이 이미 커밋돼 있어야 한다 — 아니면 허브가 못 보고 5 s sweep 까지 늦는다."""
+    _sch, _b, r = _setup(client)
+    seen = []
+
+    def spy(mid):
+        with app.state.Session() as s:  # 새 세션 — 커밋된 것만 보인다
+            seen.append(len(s.scalars(select(Outbox)).all()))
+
+    monkeypatch.setattr(api, "notify", spy)
+    assert client.put(f"/api/rooms/{r['id']}/slots", json=SLOT).status_code == 200
+    assert seen and seen[0] == 2  # 유닛 2 행이 커밋된 뒤 알림

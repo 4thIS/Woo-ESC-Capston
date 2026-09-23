@@ -25,9 +25,16 @@ router = APIRouter(prefix="/api", dependencies=[AdminUser])  # 전부 관리자 
 log = logging.getLogger(__name__)
 
 
-def _addr(s: Session, room_id: int, user: User) -> tuple[str, int]:
+def _addr(s: Session, room_id: int, user: User) -> tuple[str, int, str | None]:
     r = scope.get_scoped(s, Room, room_id, user.school_id)
-    return s.get(Building, r.building_id).bld, r.room
+    b = s.get(Building, r.building_id)
+    return b.bld, r.room, b.modem_id
+
+
+def _commit_notify(s: Session, modem_id: str | None) -> None:
+    """커밋을 먼저 끝내고 허브를 깨운다 — 허브가 새 outbox 행을 바로 본다 (#9)."""
+    s.commit()
+    api.notify(modem_id)
 
 
 def _check_building(s: Session, user: User, bld: str | None, modem_id: str | None) -> None:
@@ -176,14 +183,11 @@ def list_slots(id: int, user: User = AdminUser, s: Session = _DB):
     ).all()
 
 
-# 참고: 도메인·outbox 두 세션. 한 트랜잭션으로 묶으려면 api.enqueue_* 에 Session 을 넘기는 시그니처 추가.
-# enqueue_* 를 도메인 write(flush/execute) 보다 먼저 부른다 — SQLite WAL 은 쓰기 락이 하나뿐이라, 도메인
-# 세션이 먼저 쓰고 커밋 전에 outbox 세션이 쓰려 하면 서로 끝나기를 기다리며 busy_timeout 까지 막힌다
-# (도메인 커밋은 이 요청이 끝난 뒤라 절대 안 풀린다). outbox 를 먼저 커밋시키고 도메인은 뒤따르게 한다.
-# 이 순서라 enqueue 뒤 도메인 write 가 실패하면(예: IntegrityError → 500) outbox 행은 이미 커밋된 채 남는다.
+# 버전·outbox·도메인 write 는 같은 세션(#9). 핸들러가 커밋한 뒤 허브에 알린다 — BackgroundTasks 는
+# get_db 커밋 전에 돌므로 쓰지 않는다.
 @router.put("/rooms/{id}/slots", response_model=S.Enqueued)
 def put_slot(id: int, body: S.SlotIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
+    bld, room, mid = _addr(s, id, user)
     obj = s.scalar(
         select(Slot).where(
             Slot.room_id == id, Slot.day == body.day, Slot.s_h == body.s_h, Slot.s_m == body.s_m
@@ -205,26 +209,29 @@ def put_slot(id: int, body: S.SlotIn, user: User = AdminUser, s: Session = _DB):
         body.type,
         body.subject,
         body.professor,
+        session=s,
     )
-    s.flush()
+    _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
 @router.delete("/rooms/{id}/slots/{day}/{s_h}/{s_m}", response_model=S.Enqueued)
 def delete_slot(id: int, day: int, s_h: int, s_m: int, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    ids = api.enqueue_slot_del(bld, room, day, (s_h, s_m))
+    bld, room, mid = _addr(s, id, user)
     s.execute(
         delete(Slot).where(Slot.room_id == id, Slot.day == day, Slot.s_h == s_h, Slot.s_m == s_m)
     )
+    ids = api.enqueue_slot_del(bld, room, day, (s_h, s_m), session=s)
+    _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
 @router.delete("/rooms/{id}/slots", response_model=S.Enqueued)
 def clear_day(id: int, day: int, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    ids = api.enqueue_day_clear(bld, room, day)
+    bld, room, mid = _addr(s, id, user)
     s.execute(delete(Slot).where(Slot.room_id == id, Slot.day == day))
+    ids = api.enqueue_day_clear(bld, room, day, session=s)
+    _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
@@ -238,7 +245,7 @@ def list_resv(id: int, user: User = AdminUser, s: Session = _DB):
 
 @router.post("/rooms/{id}/reservations", response_model=S.Enqueued)
 def put_resv(id: int, body: S.ResvIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
+    bld, room, mid = _addr(s, id, user)
     obj = s.get(Reservation, body.id)
     if obj is not None and obj.room_id != id:
         raise HTTPException(409, f"예약 id {body.id} 는 다른 방에 있습니다")
@@ -260,16 +267,18 @@ def put_resv(id: int, body: S.ResvIn, user: User = AdminUser, s: Session = _DB):
             body.type,
             body.subject,
             body.professor,
+            session=s,
         )
-    s.flush()
+    _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
 @router.delete("/rooms/{id}/reservations/{resv_id}", response_model=S.Enqueued)
 def delete_resv(id: int, resv_id: int, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    ids = api.enqueue_resv_del(bld, room, resv_id)
+    bld, room, mid = _addr(s, id, user)
     s.execute(delete(Reservation).where(Reservation.id == resv_id, Reservation.room_id == id))
+    ids = api.enqueue_resv_del(bld, room, resv_id, session=s)
+    _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
@@ -283,36 +292,39 @@ def list_exams(id: int, user: User = AdminUser, s: Session = _DB):
 
 @router.post("/rooms/{id}/exams", response_model=S.Enqueued)
 def put_exam(id: int, body: S.ExamIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
+    bld, room, mid = _addr(s, id, user)
     obj = s.get(ExamPeriod, body.id)
     if obj is not None and obj.room_id != id:
         raise HTTPException(409, f"시험기간 id {body.id} 는 다른 방에 있습니다")
     obj = obj or ExamPeriod(id=body.id)
     obj.room_id, obj.date_start, obj.date_end = id, body.date_start, body.date_end
     s.add(obj)
-    ids = api.enqueue_exam_set(bld, room, body.id, body.date_start, body.date_end)
-    s.flush()
+    ids = api.enqueue_exam_set(bld, room, body.id, body.date_start, body.date_end, session=s)
+    _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
 @router.delete("/rooms/{id}/exams/{exam_id}", response_model=S.Enqueued)
 def delete_exam(id: int, exam_id: int, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    ids = api.enqueue_exam_del(bld, room, exam_id)
+    bld, room, mid = _addr(s, id, user)
     s.execute(delete(ExamPeriod).where(ExamPeriod.id == exam_id, ExamPeriod.room_id == id))
+    ids = api.enqueue_exam_del(bld, room, exam_id, session=s)
+    _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
 @router.post("/rooms/{id}/sync", response_model=S.Enqueued)
 def sync_room(id: int, body: S.SyncIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
+    bld, room, _mid = _addr(s, id, user)
     return {"outbox_ids": api.enqueue_full_sync(bld, room, tuple(body.kinds))}
 
 
 @router.post("/rooms/{id}/cmd", response_model=S.Enqueued)
 def cmd_room(id: int, body: S.CmdIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    return {"outbox_ids": api.enqueue_cmd(bld, room, body.cmd, bytes.fromhex(body.args_hex))}
+    bld, room, mid = _addr(s, id, user)
+    ids = api.enqueue_cmd(bld, room, body.cmd, bytes.fromhex(body.args_hex), session=s)
+    _commit_notify(s, mid)
+    return {"outbox_ids": ids}
 
 
 IMPORT_MAX_BYTES = 1024 * 1024
