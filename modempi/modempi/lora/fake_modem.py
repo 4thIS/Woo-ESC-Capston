@@ -111,6 +111,23 @@ class FakeModem:
         self.nodes[(bld, room, unit)] = n
         return n
 
+    def apply_config(self, config: dict) -> None:
+        """메인Pi `config`(계약 ⑥)의 `nodes`(`[{bld: "E", room, unit}]`)를 가상 노드로, `net_id` 를 망 번호로.
+
+        `--fake` 로 Pi↔Pi 통합을 돌릴 때 main.py 가 기동 때 한 번 + `store.on_config_changed` 로 부른다 — 가상
+        노드가 없으면 모든 작업이 no_ack 로 끝난다. 이미 있는 노드는 그대로 둔다(버전 유지), config 에서 빠진
+        노드도 지우지 않는다. 링크 수신 루프 안에서 불리므로 동기·즉시 끝난다.
+        """
+        self.net_id = int(config.get("net_id", P.NET_ID))
+        for n in config.get("nodes") or []:
+            try:
+                key = (ord(n["bld"]), int(n["room"]), int(n["unit"]))
+            except (KeyError, TypeError, ValueError):
+                self._emit({"op": "log", "level": "warn", "msg": f"bad config node {n!r}"})
+                continue
+            if key not in self.nodes:
+                self.add_node(*key)
+
     def add_unprovisioned(self, mac: bytes, **kw) -> NodeState:
         n = NodeState(P.BLD_UNPROVISIONED, 0, 0, ident_ver=0, **kw)
         self.unprovisioned[bytes(mac)] = n
