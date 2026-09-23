@@ -189,7 +189,8 @@ def test_slot_delete_day_clear_resv_exam_sync_cmd(client, app):
         f"/api/rooms/{rid}/reservations",
         json={
             "id": 7,
-            "date": "2026-09-16",
+            # 오늘~7일 창 안(라우터는 실제 UTC 오늘로 판정) — 고정 날짜면 그날이 지나는 순간 깨진다
+            "date": (dt.datetime.now(dt.UTC).date() + dt.timedelta(days=1)).isoformat(),
             "s_h": 13,
             "s_m": 0,
             "e_h": 15,
