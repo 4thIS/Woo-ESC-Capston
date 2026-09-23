@@ -70,7 +70,8 @@
   class ModemClient:
       rx: asyncio.Queue[RxEvent]
       fw: str | None                          # ready.fw ("gw-2.0.0")
-      def __init__(self, transport: LineTransport, *, ready_timeout: float = 10.0): ...
+      def __init__(self, transport: LineTransport, *, ready_timeout: float = 10.0,
+                   request_timeout: float = 15.0): ...
       async def start(self) -> None           # 읽기 루프 시작 + ready 대기
       async def stop(self) -> None
       async def tx(self, frame: bytes, *, wake: bool, ack_ms: int) -> TxResult
@@ -101,7 +102,7 @@ F = frame(P.Type.DAY_CLEAR, C.DayClear(3, 2), txn=7)
 @pytest.fixture
 async def client():
     m = FakeModem()
-    m.add_node(ord("E"), 301, 1, sched_ver=1)
+    m.add_node(ord("E"), 301, 1, sched_ver=2)  # DayClear(new_ver=3) 가 연속 버전이 되도록
     c = ModemClient(m)
     await c.start()
     yield c
@@ -298,6 +299,32 @@ async def test_unsolicited_uplink_goes_to_rx_queue(client):
 
 async def test_ping_returns_uptime(client):
     assert await client.ping() >= 0
+```
+
+- [ ] **Step 5b: 구현 리뷰에서 추가된 두 가지 (반드시 함께 넣는다)**
+
+1. **`ping` 은 기다리고, `tx` 끼리만 예외.** 요청 슬롯을 `asyncio.Lock` 하나로 두고 `tx` 가 인플라이트일 때 또 `tx` 가 오면 `RuntimeError`. `ping`(v2 §4.5 워치독, 10 s 주기)은 송신이 끝날 때까지 순번을 기다린다 — 겹쳤다고 예외를 내면 파이프라인이 죽는다.
+2. **요청 타임아웃.** `tx_done` 의 id 가 어긋나 무시되거나(v2 §4.3) 모뎀이 죽으면 future 가 영영 안 풀려 그 모뎀Pi 가 통째로 멈춘다. `tx` 는 `request_timeout + ack_ms/1000` 뒤 `TxResult(status="error", reason="modem_timeout")` 로 돌아오고(워커가 `failed` 로 닫는다), `ping` 은 `TimeoutError` 를 올린다(호출자가 모뎀을 다시 잡는다).
+
+```python
+async def test_ping_waits_for_in_flight_tx_instead_of_raising():
+    m = FakeModem(latency_ms=60)
+    m.add_node(ord("E"), 301, 1, sched_ver=2)
+    c = ModemClient(m)
+    await c.start()
+    tx = asyncio.create_task(c.tx(F, wake=True, ack_ms=50))
+    await asyncio.sleep(0.01)
+    assert await c.ping() > 0
+    assert (await tx).status == "acked"
+    await c.stop()
+
+
+async def test_tx_times_out_instead_of_hanging_forever():
+    c = ModemClient(_DeafTransport(), request_timeout=0.05)   # ready 만 주고 침묵하는 모뎀
+    await c.start()
+    r = await c.tx(F, wake=True, ack_ms=0)
+    assert (r.status, r.reason) == ("error", "modem_timeout")
+    await c.stop()
 ```
 
 - [ ] **Step 6: 전체 게이트 + 커밋**
@@ -1310,6 +1337,42 @@ git commit -m "feat(modempi): uplink — STATUS/HELLO 를 업링크 행으로, C
   3. `on_config_changed` → 이벤트만 세우고, 실제 `cfg` 재전송은 파이프라인 태스크가 한다(**콜백 안에서 await 하지 않는다** — 링크 수신 루프가 막힌다. PR #29 wj 리뷰 2번)
   4. worker / time_sched / uplink 세 태스크 기동, `stop` 으로 함께 종료
   5. 하루 1회 `store.prune(older_than=PRUNE_KEEP_S)`
+  6. **10 s 주기 `client.ping()`** (v2 §4.5 — 호스트 핑이 30 s 없으면 모뎀이 라디오를 재초기화한다). `ping` 은 송신 중이면 순번을 기다리므로(Task 1) 별도 태스크로 둬도 `tx` 와 겹치지 않는다. `TimeoutError` 면 `log.error` 만 남기고 계속 — 다음 `ready` 가 오면 `ModemClient` 가 `cfg` 를 다시 보낸다.
+
+```python
+PING_EVERY_S = 10.0
+
+    async def _ping_loop(self, client: ModemClient, stop: asyncio.Event) -> None:
+        while not stop.is_set():
+            await self._sleep(PING_EVERY_S)
+            if stop.is_set():
+                return
+            try:
+                await client.ping()
+            except TimeoutError:
+                log.error("모뎀 핑 무응답 — 모뎀이 살아 있는지 확인 필요")
+```
+`run()` 의 태스크 목록에 `self._ping_loop(client, stop)` 을 더하고, 다음 테스트를 Task 6 에 추가한다:
+
+```python
+async def test_watchdog_ping_does_not_collide_with_tx():
+    """v2 §4.5 핑이 송신과 겹쳐도 RuntimeError 가 나면 안 된다."""
+    db = SqliteStore(":memory:")
+    modem = FakeModem(latency_ms=30)
+    modem.add_node(ord("E"), 301, 1, sched_ver=2)
+    db.set_config({"radio": {"sf": 9, "bw": 125.0, "cr": 5, "tx_dbm": 14, "preamble_wake_ms": 3000}})
+    for i in range(5):
+        db.put_job(job_id=str(10 + i), bld="E", room=301, unit=1, type="SLOT_SET",
+                   payload=json.dumps(SLOT), priority=3, new_ver=3 + i)
+    stop = asyncio.Event()
+    clk = FakeClock()
+    task = asyncio.create_task(Pipeline(db, modem, clock=clk, sleep=clk.sleep).run(stop))
+    await asyncio.sleep(0.3)
+    stop.set()
+    await asyncio.wait_for(task, 3)
+    assert [m for m in modem.log if m[0] == "host" and m[1].get("op") == "ping"]
+    db.close()
+```
 
 - [ ] **Step 1: 실패 테스트 — 저장부터 결과까지 한 바퀴**
 

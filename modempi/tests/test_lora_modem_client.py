@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 from lora_proto import codec as C
@@ -86,3 +87,62 @@ async def test_unsolicited_uplink_goes_to_rx_queue(client):
 
 async def test_ping_returns_uptime(client):
     assert await client.ping() >= 0
+
+
+async def test_ping_waits_for_in_flight_tx_instead_of_raising():
+    """v2 §4.5 워치독 핑은 10 s 마다 나간다 — 송신 중이라고 예외를 내면 파이프라인이 죽는다.
+    tx 끼리 겹치는 것만 워커 버그(RuntimeError)이고, ping 은 순번을 기다린다."""
+    m = FakeModem(latency_ms=60)
+    m.add_node(ord("E"), 301, 1, sched_ver=2)
+    c = ModemClient(m)
+    await c.start()
+    try:
+        tx = asyncio.create_task(c.tx(F, wake=True, ack_ms=50))
+        await asyncio.sleep(0.01)  # tx 가 인플라이트인 동안
+        uptime = await c.ping()
+        assert uptime > 0
+        assert (await tx).status == "acked"
+    finally:
+        await c.stop()
+
+
+class _DeafTransport:
+    """ready 만 주고 그 뒤로는 아무 응답도 하지 않는 모뎀(라인은 삼킨다)."""
+
+    def __init__(self) -> None:
+        self._out: asyncio.Queue[str] = asyncio.Queue()
+        self._out.put_nowait(json.dumps({"op": "ready", "fw": "gw-2.0.0"}))
+        self.written: list[str] = []
+
+    async def write_line(self, line: str) -> None:
+        self.written.append(line)
+
+    async def read_line(self) -> str:
+        return await self._out.get()
+
+    async def close(self) -> None:
+        pass
+
+
+async def test_tx_times_out_instead_of_hanging_forever():
+    """tx_done 이 영영 안 오면(id 불일치로 무시됐거나 모뎀이 죽었거나) 워커가 영구 대기한다.
+    error/modem_timeout 으로 돌려 워커가 failed 로 닫게 한다."""
+    c = ModemClient(_DeafTransport(), request_timeout=0.05)
+    await c.start()
+    try:
+        r = await c.tx(F, wake=True, ack_ms=0)
+        assert (r.status, r.reason) == ("error", "modem_timeout")
+        r2 = await c.tx(F, wake=True, ack_ms=0)  # 슬롯이 풀려 다음 요청이 가능해야 한다
+        assert r2.status == "error"
+    finally:
+        await c.stop()
+
+
+async def test_ping_timeout_raises_so_watchdog_can_react():
+    c = ModemClient(_DeafTransport(), request_timeout=0.05)
+    await c.start()
+    try:
+        with pytest.raises(TimeoutError):
+            await c.ping()
+    finally:
+        await c.stop()

@@ -42,9 +42,16 @@ def _bytes(hexs: str) -> bytes:
 class ModemClient:
     """`LineTransport` 위의 요청/응답. 전역 단일 인플라이트(v2 §4.4)를 여기서 강제한다."""
 
-    def __init__(self, transport: LineTransport, *, ready_timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        transport: LineTransport,
+        *,
+        ready_timeout: float = 10.0,
+        request_timeout: float = 15.0,
+    ) -> None:
         self._t = transport
         self._ready_timeout = ready_timeout
+        self._request_timeout = request_timeout
         self.rx: asyncio.Queue[RxEvent] = asyncio.Queue()
         self.fw: str | None = None
         self._ready = asyncio.Event()
@@ -52,6 +59,8 @@ class ModemClient:
         self._id = 0
         self._pending: asyncio.Future | None = None
         self._pending_id: int | None = None
+        self._slot = asyncio.Lock()  # 모뎀은 반이중 — 요청 하나씩. ping 은 순번을 기다린다
+        self._tx_inflight = False
         self._last_cfg: dict | None = None
 
     async def start(self) -> None:
@@ -100,23 +109,39 @@ class ModemClient:
             return
         self._pending.set_result(msg)
 
-    async def _request(self, req: dict) -> dict:
-        if self._pending is not None and not self._pending.done():
-            raise RuntimeError("모뎀 요청이 이미 진행 중이다 — 전역 단일 인플라이트 위반")
-        self._pending = asyncio.get_running_loop().create_future()
-        self._pending_id = req.get("id")
-        try:
-            await self._t.write_line(json.dumps(req))
-            return await self._pending
-        finally:
-            self._pending = None
-            self._pending_id = None
+    async def _request(self, req: dict, *, timeout: float) -> dict:
+        """한 요청을 보내고 짝이 되는 한 줄을 기다린다. 슬롯은 하나뿐이라 순번을 기다린다.
+
+        타임아웃이 필요한 이유: 모뎀이 죽었거나 `tx_done` 의 id 가 어긋나 무시되면(v2 §4.3) 이
+        future 는 영영 안 풀린다. 워커가 거기 매달리면 그 모뎀Pi 전체가 멈춘다.
+        """
+        async with self._slot:
+            self._pending = asyncio.get_running_loop().create_future()
+            self._pending_id = req.get("id")
+            try:
+                await self._t.write_line(json.dumps(req))
+                return await asyncio.wait_for(self._pending, timeout)
+            finally:
+                self._pending = None
+                self._pending_id = None
 
     async def tx(self, frame: bytes, *, wake: bool, ack_ms: int) -> TxResult:
+        """`tx` 끼리 겹치면 워커 버그다(v2 §4.4 전역 단일 인플라이트) — 기다리지 않고 바로 알린다."""
+        if self._tx_inflight:
+            raise RuntimeError("tx 가 이미 진행 중이다 — 전역 단일 인플라이트 위반")
         self._id += 1
-        msg = await self._request(
-            {"op": "tx", "id": self._id, "frame": frame.hex(), "wake": wake, "ack_ms": ack_ms}
-        )
+        self._tx_inflight = True
+        try:
+            msg = await self._request(
+                {"op": "tx", "id": self._id, "frame": frame.hex(), "wake": wake, "ack_ms": ack_ms},
+                # ACK 대기 + 최대 에어타임(SF9 wake 프레임 ≈ 4.3 s) + 여유
+                timeout=self._request_timeout + ack_ms / 1000,
+            )
+        except TimeoutError:
+            log.error("tx_done 이 오지 않았다(%s s) — 모뎀 무응답", self._request_timeout)
+            return TxResult(status="error", reason="modem_timeout")
+        finally:
+            self._tx_inflight = False
         ack = msg.get("ack")
         return TxResult(
             status=msg["status"],
@@ -129,7 +154,9 @@ class ModemClient:
         )
 
     async def ping(self) -> int:
-        return int((await self._request({"op": "ping"}))["uptime_s"])
+        """v2 §4.5 워치독. 송신 중이면 끝날 때까지 기다린다 — 겹쳤다고 예외를 내면 파이프라인이 죽는다.
+        무응답이면 `TimeoutError` 를 올려 호출자가 모뎀을 다시 잡게 한다."""
+        return int((await self._request({"op": "ping"}, timeout=self._request_timeout))["uptime_s"])
 
     async def cfg(self, **radio) -> None:
         # §4.2 cfg 는 응답이 없다 — 인플라이트를 잡지 않고 바로 쓴다.
