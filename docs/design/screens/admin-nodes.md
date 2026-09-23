@@ -1,6 +1,6 @@
 # 관리자 — 노드 상태
 
-- 시안: https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi (`노드 상태` 아트보드)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Nodes`
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`admin` 치수 세트) · `components.md`
 - 서버 계약: wj의 **S4b**(`docs/specs/2026-09-23-s4b-admin-api-design.md`) — 경고 판정과 조인을 서버가 한다

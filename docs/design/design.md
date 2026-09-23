@@ -341,7 +341,7 @@ wj 가 PR #38 로 웹 백엔드 설계 3종(**S4a** 회원·인증 / **S4b** 관
 | 예약 id | 화면이 전역 범위에서 채번 | **서버가 빈 최소 id 배정** (S4b §2.5) |
 | 학번 컬럼 | `applicant_id` additive 요청 | 불필요 — `requested_by` FK `users(email)` |
 
-그 결과로 화면 둘이 새로 생겼다 — [auth.md](screens/auth.md)(가입·로그인·재설정)와 [admin-users.md](screens/admin-users.md)(회원 승인). 둘 다 아직 시안이 없다.
+그 결과로 화면 둘이 새로 생겼다 — [auth.md](screens/auth.md)(가입·로그인·재설정)와 [admin-users.md](screens/admin-users.md)(회원 승인). 둘 다 시안까지 그렸다.
 
 **요청하려던 API 셋은 전부 그 설계 안에 있다.** 건물 단위 조회(#36)는 S4b §2.6, 학생 공개 조회·예약은 S10 §4.1, 대시보드 집계는 S10 §4.3이다. 자체 제안했던 `/api/public/*` 과 `/api/lora/stats` 는 폐기했다.
 

@@ -1,6 +1,6 @@
 # 관리자 — 회원 승인
 
-- 시안: ⚠ 미정 — 아직 안 그렸다 (mh-06)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Admin-Users`
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`admin` 치수 세트) · `components.md`
 - 서버 계약: wj의 **S4a §4.2**(`docs/specs/2026-09-23-s4a-auth-design.md`)
@@ -94,7 +94,7 @@ Table, Badge(상태·역할), Button(`primary` 승인 / `ghost` 거절·정지·
 
 ## 미결
 
-1. **시안이 없다** — 이 문서는 S4a 를 읽고 쓴 것이다. mh-06에서 그린다
+1. ~~시안이 없다~~ — 그렸다(`Admin-Users`). 스펙이 먼저 나온 화면이라 그리면서 바뀐 것은 없었다
 2. **`reject_reason` 노출** — `UserOut` 화이트리스트에 없어 거절 사유를 목록에서 못 보여준다. 관리자가 자기가 왜 거절했는지 다시 볼 수 없다. additive로 요청할지 wj와 확인
 3. **검색 범위** — 이름·학번·메일 중 무엇으로 찾을지. 전시 규모(회원 수십)에서는 필터만으로 충분할 수도 있다
 4. **대기 건수 배지** — 사이드 메뉴에 띄우려면 폴링이 필요하다. 대시보드 요약(`/api/admin/summary` 의 `pending_approval.count`)을 60초마다 부르는 것으로 대신할지 결정

@@ -1,6 +1,6 @@
 # 관리자 — 전송 현황 (분석 대시보드)
 
-- 시안: https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi (`전송 현황` 아트보드)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Dashboard`
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`admin` 치수 세트 · **`chart.*`**) · `components.md`
 - 서버 계약: wj의 **S4b**(요약·노드·실패) · **S10 §2.6·§4.3**(분석 집계)

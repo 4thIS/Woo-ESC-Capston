@@ -1,6 +1,6 @@
 # 인증 — 가입 · 로그인 · 재설정
 
-- 시안: ⚠ 미정 — 아직 안 그렸다 (mh-06)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Student-Auth` (학생·관리자 공용, 1260 폭에 4단계를 나란히)
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 · `components.md`
 - 서버 계약: wj의 **S4a**(`docs/specs/2026-09-23-s4a-auth-design.md`)
@@ -148,7 +148,7 @@ Input(email · password · text), Button(`primary` 제출), Banner(`neutral` 승
 
 ## 미결
 
-1. **시안이 없다** — 이 문서는 S4a 를 읽고 쓴 것이고 아직 그리지 않았다. mh-06에서 그린다
+1. ~~시안이 없다~~ — 그렸다(`Student-Auth`). 4단계를 1260 폭에 나란히 놓아 흐름 전체가 한눈에 보이게 했다
 2. **JWT 저장 위치** — 메모리로 잡았다. 새로고침마다 로그인이 번거로우면 `sessionStorage` 까지 열지 wj와 협의
 3. **로그아웃** — S4a 에 엔드포인트가 없다(토큰 폐기는 `token_version` 뿐). 화면에서 토큰을 버리는 것으로 족한지 확인
 4. **학생 웹 첫 진입과의 관계** — 조회도 로그인이 필요하면 `/{bld}` 가 사실상 로그인 뒤 화면이 된다. [student-room.md](student-room.md) 미결 5와 같은 항목

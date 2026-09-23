@@ -1,6 +1,6 @@
 # 학생 웹 — 강의실 (S10)
 
-- 시안: https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi (`학생 웹` 4장 — 첫 진입 / 강의실 / 이번 주 / 넓은 폭)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Student-Gate`(로그인 벽) · `Student-Entry` · `Student-Room` · `Student-Week` · `Student-Reserve` · `Student-My` · `Student-Wide`(1280 폭)
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`student` 치수 세트) · `components.md`
 - 대상: **모바일 우선.** `bp.mobile` → `bp.tablet` → `bp.desktop` 세 폭 모두에서 동작한다

@@ -1,6 +1,6 @@
 # 관리자 — 강의실 설정 (페이지1)
 
-- 시안: https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Page1-Rooms`
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`admin` 치수 세트) · `components.md`
 - 서버 계약: wj의 **S4a**(인증·학교 스코프) · **S4b**(건물 단위 조회·서버 채번) · **S10**(예약 승인)
