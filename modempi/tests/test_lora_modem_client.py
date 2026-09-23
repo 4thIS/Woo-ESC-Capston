@@ -146,3 +146,12 @@ async def test_ping_timeout_raises_so_watchdog_can_react():
             await c.ping()
     finally:
         await c.stop()
+
+
+async def test_malformed_modem_lines_do_not_kill_the_reader(client):
+    """_on_message 안의 KeyError·ValueError·AttributeError 가 읽기 루프를 끝내면 그 뒤 모든 요청이
+    타임아웃된다. 한 줄 버리고 계속 읽는다(#35 리뷰 6)."""
+    m = client._t
+    for raw in ('{"op":"rx"}', '{"op":"rx","rssi":-1,"snr":1,"frame":"zz"}', "[1, 2]", '"x"'):
+        m._out.put_nowait(raw)
+    assert await asyncio.wait_for(client.ping(), 2) > 0

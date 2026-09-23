@@ -75,6 +75,8 @@ class ModemClient:
         await self._t.close()
 
     async def _read_loop(self) -> None:
+        """모뎀 줄을 계속 읽는다. 한 줄이 이상해도(필드 누락·hex 아님·객체 아님) 버리고 계속 —
+        이 루프가 끝나면 이후 모든 요청이 타임아웃으로 떨어진다(#35 리뷰 6)."""
         while True:
             line = await self._t.read_line()
             try:
@@ -82,7 +84,13 @@ class ModemClient:
             except ValueError:
                 log.warning("모뎀 라인 파싱 실패: %r", line[:120])
                 continue
-            await self._on_message(msg)
+            if not isinstance(msg, dict):
+                log.warning("모뎀 라인이 객체가 아님: %r", line[:120])
+                continue
+            try:
+                await self._on_message(msg)
+            except (KeyError, ValueError, TypeError) as e:  # 필드 누락·hex 아님·타입 틀림
+                log.warning("모뎀 라인 버림(%s): %r", e, line[:120])
 
     async def _on_message(self, msg: dict) -> None:
         op = msg.get("op")

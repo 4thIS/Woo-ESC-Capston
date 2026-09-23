@@ -161,3 +161,19 @@ def test_any_malformed_payload_is_preprocess_error_not_a_crash(db, payload):
     )
     with pytest.raises(PreprocessError, match="bad_payload"):
         preprocess(db.get_job("98"))
+
+
+def test_set_room_header_targets_unprovisioned_node(db):
+    """v2 §3.3: SET_ROOM 헤더는 BLD=0x00 ROOM=0 UNIT=0 — 미설정 단말만 받는다. 배정 목표는 payload 에만."""
+    mac = "a0b1c2d3e4f5"
+    [u] = preprocess(
+        job(
+            db,
+            type="SET_ROOM",
+            room=805,
+            new_ver=1,
+            payload={"mac": mac, "bld": ord("E"), "room": 805, "unit": 1},
+        )
+    )
+    assert (u.bld, u.room, u.unit) == (P.BLD_UNPROVISIONED, 0, 0)
+    assert (u.payload_obj.bld, u.payload_obj.room, u.payload_obj.unit) == (ord("E"), 805, 1)
