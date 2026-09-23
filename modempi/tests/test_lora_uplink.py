@@ -218,3 +218,30 @@ async def test_run_survives_exception_and_keeps_consuming(db, monkeypatch):
         await task
     [row] = db.pending_uplinks()
     assert row.body["kind"] == "HELLO"
+
+
+# NET_ID 는 메인Pi config 에서 온다(로드맵 §3) — 업링크도 그 값으로 거른다.
+OTHER_NET = (P.NET_ID + 1) % 256
+
+
+def status_frame_net(net_id: int) -> bytes:
+    ack = C.Ack(P.AckStatus.OK, 0, 3900, 2, 1, 0, 1, 20, int(P.Layout.CLASS))
+    h = C.Header(type=P.Type.STATUS, bld=E, room=301, unit=1, txn=0, flags=0, net_id=net_id)
+    return C.encode_frame(h, C.encode_payload(C.Status(ack, -90, 20, 0, 42)))
+
+
+def test_uplink_uses_config_net_id(db):
+    db.set_config({"net_id": OTHER_NET})
+    r = UplinkReader(db, client=None, net_id=lambda: db.get_config()["net_id"])
+    assert r.handle(RxEvent(status_frame_net(P.NET_ID), -95, 4.0)) is None  # 다른 학교 망
+    assert db.pending_uplinks() == []
+    assert r.handle(RxEvent(status_frame_net(OTHER_NET), -95, 4.0)) == "STATUS"
+    assert len(db.pending_uplinks()) == 1
+
+
+def test_uplink_net_id_follows_config_change(db):
+    db.set_config({"net_id": P.NET_ID})
+    r = UplinkReader(db, client=None, net_id=lambda: db.get_config()["net_id"])
+    assert r.handle(RxEvent(status_frame_net(OTHER_NET), -95, 4.0)) is None
+    db.set_config({"net_id": OTHER_NET})
+    assert r.handle(RxEvent(status_frame_net(OTHER_NET), -95, 4.0)) == "STATUS"

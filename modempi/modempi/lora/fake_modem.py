@@ -222,7 +222,8 @@ class FakeModem:
             forced = P.AckStatus[tok[4:]] if tok.startswith("ack:") else None
             ack = node.ack(forced) if forced is not None else self._apply(node, h, pb)
             ack_frame = C.encode_frame(
-                C.Header(P.Type.ACK, h.bld, h.room, h.unit, h.txn), C.encode_payload(ack)
+                C.Header(P.Type.ACK, h.bld, h.room, h.unit, h.txn, net_id=self.net_id),
+                C.encode_payload(ack),
             )
             self.stats["acked"] += 1
             self._emit(
@@ -238,7 +239,7 @@ class FakeModem:
             )
             if h.type == P.Type.CMD and C.decode_payload(h.type, pb).cmd == P.Cmd.REQUEST_STATUS:
                 st = C.encode_frame(
-                    C.Header(P.Type.STATUS, node.bld, node.room, node.unit, 0),
+                    C.Header(P.Type.STATUS, node.bld, node.room, node.unit, 0, net_id=self.net_id),
                     C.encode_payload(node.status()),
                 )
                 self.inject_uplink(st)

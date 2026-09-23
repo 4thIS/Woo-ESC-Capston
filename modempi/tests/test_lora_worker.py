@@ -347,3 +347,64 @@ async def test_time_is_held_back_while_clock_is_untrusted(rig, clk):
     j = db.get_job(jid)
     assert (j.state, j.next_try_at, j.attempts) == ("received", clk.now + 60.0, 0)
     assert modem.stats["tx"] == 0
+
+
+# NET_ID 는 메인Pi 가 학교마다 배정해 config 로 준다(로드맵 §3). lora_proto 기본값이 아니다.
+OTHER_NET = (P.NET_ID + 1) % 256
+
+
+def config_net_id(db):
+    return lambda: (db.get_config() or {}).get("net_id", P.NET_ID)
+
+
+async def test_outgoing_header_carries_config_net_id(clk):
+    db = SqliteStore(":memory:", clock=clk)
+    modem = FakeModem(net_id=OTHER_NET)  # 가상 노드는 이 NET_ID 가 아니면 프레임을 버린다
+    modem.add_node(ord("E"), 301, 1, sched_ver=2)
+    client = ModemClient(modem)
+    await client.start()
+    db.set_config({"net_id": OTHER_NET})
+    w = Worker(db, client, clock=clk, sleep=clk.sleep, net_id=config_net_id(db))
+    put(db)
+    await asyncio.wait_for(w.once(), 3)
+    assert db.get_job("10").state == "acked"
+    [msg] = [m for who, m in modem.log if who == "host" and m.get("op") == "tx"]
+    h, _ = C.decode_frame(bytes.fromhex(msg["frame"]), net_id=OTHER_NET)
+    assert h.net_id == OTHER_NET
+    await client.stop()
+    db.close()
+
+
+async def test_config_net_id_change_applies_to_next_frame(clk):
+    """재기동 없이 — 프레임마다 config 를 읽는다."""
+    db = SqliteStore(":memory:", clock=clk)
+    modem = FakeModem()
+    modem.add_node(ord("E"), 301, 1, sched_ver=2)
+    client = ModemClient(modem)
+    await client.start()
+    db.set_config({"net_id": P.NET_ID})
+    w = Worker(db, client, clock=clk, sleep=clk.sleep, net_id=config_net_id(db))
+    put(db, "10", new_ver=3)
+    await asyncio.wait_for(w.once(), 3)
+    db.set_config({"net_id": OTHER_NET})
+    modem.net_id = OTHER_NET
+    put(db, "11", new_ver=4)
+    await asyncio.wait_for(w.once(), 3)
+    assert db.get_job("10").state == "acked" and db.get_job("11").state == "acked"
+    await client.stop()
+    db.close()
+
+
+async def test_wrong_net_id_is_not_accepted_by_node(clk):
+    """config 를 무시하고 기본 NET_ID 로 보내면 가상 노드가 받지 않는다 — 위 테스트가 의미 있다는 증거."""
+    db = SqliteStore(":memory:", clock=clk)
+    modem = FakeModem(net_id=OTHER_NET)
+    modem.add_node(ord("E"), 301, 1, sched_ver=2)
+    client = ModemClient(modem)
+    await client.start()
+    w = Worker(db, client, clock=clk, sleep=clk.sleep)  # getter 없음 → lora_proto 기본값
+    put(db)
+    await asyncio.wait_for(w.once(), 3)
+    assert db.get_job("10").state == "failed"
+    await client.stop()
+    db.close()

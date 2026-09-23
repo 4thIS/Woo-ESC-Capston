@@ -45,8 +45,10 @@ class UplinkReader:
         client: ModemClient | None,
         *,
         clock: Callable[[], float] = time.time,
+        net_id: Callable[[], int] = lambda: P.NET_ID,
     ) -> None:
-        self.store, self.client, self._clock = store, client, clock
+        """`net_id` 는 프레임마다 부른다 — 메인Pi config 의 값(로드맵 §3). 다른 망 프레임은 버린다."""
+        self.store, self.client, self._clock, self._net_id = store, client, clock, net_id
 
     async def run(self, stop: asyncio.Event) -> None:
         """`rx` 를 소비한다. 한 건 처리가 무엇으로 실패하든 로그만 남기고 다음 건으로 간다.
@@ -63,7 +65,7 @@ class UplinkReader:
         """넣은 업링크 행의 kind(`"STATUS"`/`"HELLO"`), 버렸으면 None.
         프레임·페이로드 해석 실패(CRC·NET_ID·길이)는 경고 로그 후 버린다 — 예외를 내지 않는다."""
         try:
-            h, pb = C.decode_frame(ev.frame)
+            h, pb = C.decode_frame(ev.frame, net_id=self._net_id())
             obj = C.decode_payload(h.type, pb)
         except C.FrameError as e:
             log.warning("업링크 프레임 버림: %s (rssi=%s snr=%s)", e, ev.rssi, ev.snr)

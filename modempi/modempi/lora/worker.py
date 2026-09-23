@@ -49,9 +49,14 @@ class Worker:
         sleep: Callable[[float], Awaitable] = asyncio.sleep,
         idle: float = 0.5,
         clock_ok: Callable[[float], bool] = clock_trusted,
+        net_id: Callable[[], int] = lambda: P.NET_ID,
     ) -> None:
+        """`net_id` 는 프레임마다 부른다 — 메인Pi 가 학교마다 배정해 config 로 준 값(로드맵 §3)이
+        재기동 없이 바로 적용되게. 기본값(lora_proto)은 게터 없이 쓰는 테스트용이다."""
         self.store, self.client = store, client
         self._clock_ok = clock_ok
+        self._net_id = net_id
+        self._sent_net_id = P.NET_ID  # 마지막으로 보낸 프레임의 NET_ID — 그 ACK 는 같은 망에서 온다
         self._clock, self._sleep, self._idle = clock, sleep, idle
 
     async def run(self, stop: asyncio.Event) -> None:
@@ -103,12 +108,20 @@ class Worker:
     def _finish(self, job: Job, state: str, **fields) -> None:
         self.store.update(job.job_id, state=state, **fields)
 
-    def _frame(self, u: Unit, txn: int) -> bytes:
-        h = C.Header(type=u.type, bld=u.bld, room=u.room, unit=u.unit, txn=txn, flags=u.flags)
+    def _frame(self, u: Unit, txn: int, net_id: int) -> bytes:
+        h = C.Header(
+            type=u.type, bld=u.bld, room=u.room, unit=u.unit, txn=txn, flags=u.flags, net_id=net_id
+        )
         return C.encode_frame(h, C.encode_payload(u.payload_obj))
 
+    def _ack_of(self, res: TxResult) -> C.Ack:
+        _, pb = C.decode_frame(res.ack, net_id=self._sent_net_id)
+        return C.decode_payload(P.Type.ACK, pb)
+
     async def _tx(self, u: Unit, txn: int) -> TxResult:
-        r = await self.client.tx(self._frame(u, txn), wake=u.wake, ack_ms=u.ack_ms)
+        self._sent_net_id = self._net_id()
+        frame = self._frame(u, txn, self._sent_net_id)
+        r = await self.client.tx(frame, wake=u.wake, ack_ms=u.ack_ms)
         if r.status == "error" and r.reason == "busy":
             raise RuntimeError("모뎀이 busy — 워커가 tx 를 겹쳐 불렀다")
         return r
@@ -124,7 +137,7 @@ class Worker:
         if not self._claim(job, txn):
             return  # 그 사이 cancel
         res = await self._tx(u, txn)
-        if res.status == "acked" and _ack_of(res).status in (
+        if res.status == "acked" and self._ack_of(res).status in (
             P.AckStatus.BAD_CRC,
             P.AckStatus.STORE_FAIL,
         ):
@@ -138,7 +151,7 @@ class Worker:
             self._finish(job, "acked", attempts=attempts)  # ack_ms=0 (TIME)
             return
         if res.status == "acked":
-            ack = _ack_of(res)
+            ack = self._ack_of(res)
             common = {
                 "attempts": attempts,
                 "ack_status": int(ack.status),
@@ -200,7 +213,7 @@ class Worker:
             txn = self.store.next_txn(job.bld, job.room, job.unit)
             res = await self._tx(units[i], txn)
             if res.status == "acked":
-                ack = _ack_of(res)
+                ack = self._ack_of(res)
                 if ack.status == P.AckStatus.BUSY:
                     # 노드가 렌더 중이면 BUSY 다. 상한이 없으면 노드가 계속 바쁠 때 워커가 영영 안 돌아와
                     # 그 모뎀Pi 의 다른 노드까지 멈춘다 (S6 spec §9: 5 회 제안).
@@ -229,8 +242,3 @@ class Worker:
                 continue
             break
         self._apply(job, res)  # 결과는 마지막(보통 END) 프레임의 것
-
-
-def _ack_of(res: TxResult) -> C.Ack:
-    _, pb = C.decode_frame(res.ack)
-    return C.decode_payload(P.Type.ACK, pb)
