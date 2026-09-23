@@ -66,7 +66,7 @@ email_tokens
   purpose     TEXT NOT NULL          -- 'verify' | 'reset'
   created_at  DATETIME NOT NULL      -- 발급 시각. 재발송 간격(60 s)·연장 상한의 기준
   expires_at  DATETIME NOT NULL      -- 발급 + 5 분. verify 는 링크를 열면(verify/open) 입력 시간 30 분으로 연장(상한 발급 + 35 분)
-  used_at     DATETIME NULL          -- 1회용. 새 토큰 발급 시 같은 (email, purpose) 의 미사용 토큰도 채운다
+  used_at     DATETIME NULL          -- 1회용. 재발급은 이전 토큰을 죽이지 않는다(남이 재신청으로 열어 둔 링크를 죽이는 방해 방지) — verify·reset 성공 때 그 email 의 미사용 토큰 전부 채움
   INDEX ix_email_tokens_email (email, purpose)
 ```
 
@@ -94,7 +94,7 @@ signup(email) ──메일 링크──▶ verify(token, name, student_no, passw
 |---|---|
 | 메일 토큰 | `secrets.token_urlsafe(32)`. DB 는 sha256 hex. 링크를 **5 분 안에 열어야** 한다(기획). 1회용. 같은 (email, purpose) 발송 간격 **60 s** |
 | verify 입력 시간 | 2단계 가입은 링크를 연 뒤 이름·학번·비밀번호를 입력한다 — 5 분에 입력까지 넣으면 빠듯하다(r3). 링크 페이지가 먼저 `POST /verify/open` 을 부르면 토큰을 **소비하지 않고** 확인하고 만료를 `min(지금 + 30 분, 발급 + 35 분)` 로 늘린다. 몇 번 열어도 상한은 발급 + 35 분. reset 은 입력이 비밀번호 하나라 연장 없음 |
-| 링크 | `{STUDENT_WEB_URL}/verify?token=…`, `{STUDENT_WEB_URL}/reset?token=…` — SPA 가 `token` 을 읽어 API 호출. 링크에 서버 주소 없음. GET 은 토큰을 건드리지 않는다(메일 스캐너가 열어도 안전) |
+| 링크 | `{STUDENT_WEB_URL}/verify#token=…`, `{STUDENT_WEB_URL}/reset#token=…` — **fragment** 라 정적 서버 접근 로그와 `Referer` 에 토큰이 남지 않는다(자체 점검 🟡). SPA 가 `location.hash` 에서 읽고 `history.replaceState` 로 지운 뒤 API 호출. 학생 웹은 `<meta name="referrer" content="no-referrer">`. 링크에 서버 주소 없음. GET 은 토큰을 건드리지 않는다(메일 스캐너가 열어도 안전) |
 | JWT | HS256(`PyJWT`), `exp` = 발급 + `JWT_TTL_H`(기본 24 h), 클레임 `sub`=email, `role`, `school_id`, `tv`=`token_version`, `iat`. 디코드 시 `require=["exp", "sub", "tv"]`. 시크릿 `JWT_SECRET`(.env, 없거나 **32자 미만이면 기동 실패**) |
 | 비밀번호 | `hashlib.scrypt(pw, salt=16 B, n=2**14, r=8, p=1)`. 저장 `scrypt$<n>$<r>$<p>$<salt hex>$<hash hex>` — 파라미터를 저장해 나중에 올려도 옛 해시 검증 가능. n=2^14 는 OWASP 권고(2^17)보다 낮다 — Pi 메모리(2^17·r8 = 요청당 128 MB) 때문의 의도된 선택. 규칙: 8자 이상 |
 | 이메일 | 단일 주소만: `^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$` (소문자 정규화 뒤 — `@` 1개, 쉼표·공백·꺾쇠·따옴표 불가). 도메인은 `@` 뒤 전체. 어긋나면 422 (r2, 리뷰 🔴1) |
@@ -152,6 +152,10 @@ JWT 검증 뒤 **매 요청 `users` 조회**해 `status == active` 와 `tv == to
 | 409 | 기존 `"constraint violation"` 유지. 엔진 `hide_parameters=True` — IntegrityError 로그에 `pw_hash` 같은 파라미터가 찍히지 않게 |
 | 로그 | 비밀번호·메일 토큰·JWT 는 절대 기록 안 함. 로그인 실패는 email 만 INFO |
 | 브루트포스 | `login`·`forgot`·`signup`·`verify` 는 **email 당 분당 5회**, 초과 429. verify 는 409(학번 중복)가 롤백돼 같은 토큰으로 다시 낼 수 있으므로(오타 수정용) 이 제한이 학번 존재 조회를 막는다. 프로세스 메모리 dict(단일 워커 — README 의 `--workers 1` 규칙과 같은 근거). **키마다 자기 창으로** 정리(하루 창 키를 1분 뒤 지우면 한도가 풀린다 — r3). 재시작 시 초기화 감수 |
+| 메일 주소당 | 같은 주소로는 **시간당 3통**(초과는 202 + 발송 생략) — 주소 하나를 61 초마다 재신청해 도메인·종류별 상한을 고갈시키는 것을 막는다. 가짜 주소를 여럿 쓰면 도메인 상한(60/h)까지는 소진될 수 있다 — 그때는 **429 로 보이고** 한 시간 뒤 풀린다(메일 한도 보호가 우선인 의도된 한계) |
+| 동시 부하 | scrypt 동시 2개(`BoundedSemaphore`, 요청당 16 MB) + 로그인 전역 분당 60회. `ratelimit` 은 스레드 락 |
+| 입력 정규화 | 학번 `^[0-9A-Za-z-]+$`(공백·전각 불가), 이름·학번 strip — 같은 학번을 모양만 바꿔 두 번 만들지 못하게 |
+| 응답 전 쓰기 | `get_db` 커밋은 응답 뒤다 — 쓰기 핸들러는 return 전 `s.flush()`(실패가 성공으로 보이지 않게) |
 | 메일 상한 | **종류별 시간당**: verify 60 · reset 30 · decision(승인·거절) 200. 합쳐도 Gmail 일일 한도(500) 안. 초과분은 발송 생략 + `log.warning`. 공용 한 통이면 가짜 가입(`junkN@학교`)이 재설정·승인 메일까지 굶긴다(r3). 가입은 추가로 **학교 도메인당 시간당 60건**(실제 발송만 셈) — 초과는 **429 로 보인다**(조용히 버리지 않음) |
 | 메일·커밋 순서 | FastAPI `BackgroundTasks` 는 `get_db` 커밋 **전에** 돈다(실측). 메일은 핸들러에서 **`s.commit()` 한 뒤** `bg.add_task` — 쓰기 락을 쥔 채 SMTP(최대 10 s)를 돌리지 않고, 커밋 안 된 상태를 알리지 않는다 (🔴3) |
 | 시간 누설 | 없는 email 로 로그인해도 더미 해시로 scrypt 를 한 번 돌린다(응답 시간으로 가입 여부가 새지 않게) |
@@ -203,6 +207,8 @@ JWT 검증 뒤 **매 요청 `users` 조회**해 `status == active` 와 `tv == to
 create-school --name 우송대 --net-id 75 --email-domain wsu.ac.kr
 update-school --id 1 [--name …] [--net-id …] [--email-domain …]
 create-admin  --school-id 1 --email admin@wsu.ac.kr --name 관리자   # 비밀번호는 getpass 로(argv 에 안 남게), 8자 미만 거부. 같은 email 있으면 오류
+set-user      --email admin@wsu.ac.kr [--status active|disabled] [--password]   # 관리자 복구·정지, token_version+1
+assign-modem  --modem-id m2 --school-id 1          # school_id 가 NULL 로 고립된 모뎀 복구
 ```
 
 실행은 `.env` 를 읽은 환경에서: `uv run --env-file .env python -m app.cli …` (서버 기동도 `uv run --env-file .env uvicorn …`).
@@ -242,7 +248,7 @@ create-admin  --school-id 1 --email admin@wsu.ac.kr --name 관리자   # 비밀�
 - 기존 테스트 전부 통과(conftest 관리자 Bearer). 테스트 수 유지 + 아래 추가.
 - 테스트(전부 `TestClient`, `mailer.send` monkeypatch 로 캡처, `clock` 주입):
   - 가입: 이메일 형식(쉼표·두 개의 `@`·공백·꺾쇠) 422 / 도메인 불일치 400 / 정상 202 + 메일 캡처, **DB 에 users 행 없음** / 이미 가입된 email 202·메일 없음 / 60 s 이내 재신청 메일 없음
-  - 링크: verify(이름·학번·비번) 성공 → `pending_approval` / 재사용 400 / 5 분 안에 안 열면 400 / **4 분에 열고 25 분에 제출 200**, 여러 번 열어도 발급 + 35 분 상한 / 새 발급 시 이전 토큰 무효 / 비번 7자 422 / 같은 학교 학번 중복 409 → 학번 고쳐 같은 토큰 200 / 학번 조회 6번째 429 / **선점 시나리오**: 공격자가 먼저 signup 해도 행이 없어 피해자 verify 가 피해자 비밀번호로 생성 / **거절 행**: 같은 학번으로 다른 사람 가입 가능, 거절된 본인 재신청 가능
+  - 링크: verify(이름·학번·비번) 성공 → `pending_approval` / 재사용 400 / 5 분 안에 안 열면 400 / **4 분에 열고 25 분에 제출 200**, 여러 번 열어도 발급 + 35 분 상한 / 재발급해도 먼저 연 링크는 유효, 성공 뒤엔 전부 무효 / 주소당 시간 3통 / 비번 7자 422 / 같은 학교 학번 중복 409 → 학번 고쳐 같은 토큰 200 / 학번 조회 6번째 429 / **선점 시나리오**: 공격자가 먼저 signup 해도 행이 없어 피해자 verify 가 피해자 비밀번호로 생성 / **거절 행**: 같은 학번으로 다른 사람 가입 가능, 거절된 본인 재신청 가능
   - 상한: 메일 종류별(verify 상한을 다 써도 reset·decision 발송) / 가입 도메인 상한 429(다른 학교는 별도) / 레이트리밋 하루 창 키가 1 분 뒤 정리에도 유지
   - 로그인: 상태별(pending_approval 403, active 200, disabled 401, rejected 401) / 비번 틀림 401 / 없는 email 401 / JWT 클레임(`tv`) / 만료 토큰 401 / disabled 즉시 401
   - 재설정: forgot 202(없는 email 도 202) / reset 후 옛 비번 401·새 비번 200 / 토큰 1회용 / **reset 전에 받은 JWT 401**(token_version)
@@ -264,6 +270,6 @@ create-admin  --school-id 1 --email admin@wsu.ac.kr --name 관리자   # 비밀�
 ## 9. 열린 결정 (plan 단계에서 확정)
 
 - 브루트포스 카운터의 키를 email 만 할지 email+IP 로 할지 — 단일 워커·리버스 프록시 뒤라 IP 신뢰가 애매해 email 만.
-- `modems.school_id` 마이그레이션 역추적: 건물 미배정 모뎀은 NULL 로 남는다 → 어느 관리자 목록에도 안 보임. 전시 규모에서 해당 없음, 필요하면 CLI `assign-modem`.
+- `modems.school_id` 마이그레이션 역추적: 건물 미배정 모뎀은 NULL 로 남는다 → 어느 관리자 목록에도 안 보임 → CLI `assign-modem` 으로 붙인다.
 - 이메일 정규식은 RFC 5322 전체가 아니라 학교 웹메일이 실제로 쓰는 형식만. 따옴표 로컬파트 등은 거부된다 — 의도.
 - 승인·거절 메일 문구 — 최소(한 줄 + 사유). 화면 스펙(mh) 오면 다듬음.
