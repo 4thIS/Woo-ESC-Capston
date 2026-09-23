@@ -66,8 +66,29 @@ void test_hcolor_to_rgb_maps_three_colors() {
   TEST_ASSERT_EQUAL_UINT8(255, b);
 }
 
+// HColor 는 실기 GxEPD2 의 색상 상수와 **같은 값**이어야 한다(cw PR #23 승인 코멘트).
+// 이 어서션이 깨지면 dh-04 가 이식한 v1 렌더 코드가 조용히 빈 PNG 를 뱉는다 —
+// 심볼만 쓰는 다른 테스트는 값이 틀려도 전부 통과하므로 여기서만 값을 직접 못 박는다.
+void test_hcolor_values_match_gxepd2_constants() {
+  TEST_ASSERT_EQUAL_HEX16(0xFFFF, (uint16_t)HColor::WHITE);  // GxEPD_WHITE
+  TEST_ASSERT_EQUAL_HEX16(0x0000, (uint16_t)HColor::BLACK);  // GxEPD_BLACK
+  TEST_ASSERT_EQUAL_HEX16(0xF800, (uint16_t)HColor::RED);    // GxEPD_RED
+}
+
+// setRotation 은 0 만 지원한다(그 외는 assert 로 중단 — 프로세스가 죽어 단위 테스트로 못 잡는다).
+// 정상 경로가 베이스 클래스 동작을 그대로 수행하는지만 검증한다.
+void test_set_rotation_zero_keeps_base_behaviour() {
+  HostGfx g;
+  g.setRotation(0);
+  TEST_ASSERT_EQUAL_UINT8(0, g.getRotation());
+  TEST_ASSERT_EQUAL_INT16(800, g.width());
+  TEST_ASSERT_EQUAL_INT16(480, g.height());
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_hcolor_values_match_gxepd2_constants);
+  RUN_TEST(test_set_rotation_zero_keeps_base_behaviour);
   RUN_TEST(test_default_size_is_800x480_white);
   RUN_TEST(test_draw_pixel_sets_and_reads_back);
   RUN_TEST(test_out_of_bounds_draw_is_ignored_not_crash);
