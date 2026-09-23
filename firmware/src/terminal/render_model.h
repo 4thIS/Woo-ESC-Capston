@@ -23,10 +23,12 @@ struct RenderModel {
   char bld;
   uint16_t room;
   uint8_t unit;
-  char nowStr[6];
+  char nowStr[6];   // "HH:MM"
+  char dateStr[6];  // "MM.DD" (2026-09-16 추가, mh 화면 스펙 미결 1)
   uint8_t weekday;
   RenderSlot prev, cur, next;
   uint8_t nToday;
   TodaySlot today[24];
+  char newTag[9];  // "NEW-1A7F" — layout 8 전용, MAC 하위 2 B (2026-09-16 추가, mh 화면 스펙 미결 2)
   uint16_t battMv;
 };

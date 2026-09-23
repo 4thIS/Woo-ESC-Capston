@@ -59,6 +59,7 @@ bool parseFixtureFile(const char* path, RenderModel& out, char* nameOut, size_t 
   out.room = doc["room"] | 0;
   out.unit = doc["unit"] | 0;
   copyStr(out.nowStr, sizeof(out.nowStr), doc["now_str"] | "");
+  copyStr(out.dateStr, sizeof(out.dateStr), doc["date_str"] | "");
   out.weekday = doc["weekday"] | 0;
   readSlot(doc["prev"], out.prev);
   readSlot(doc["cur"], out.cur);
@@ -80,6 +81,7 @@ bool parseFixtureFile(const char* path, RenderModel& out, char* nameOut, size_t 
   long declared = doc["n_today"] | 0L;
   if (declared < 0) declared = 0;
   out.nToday = (uint8_t)((size_t)declared < i ? (size_t)declared : i);
+  copyStr(out.newTag, sizeof(out.newTag), doc["new_tag"] | "");
   out.battMv = doc["batt_mv"] | 0;
   return true;
 }
