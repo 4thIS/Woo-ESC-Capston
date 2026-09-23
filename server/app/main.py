@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.auth import password
 from app.auth.router import admin as admin_router
 from app.auth.router import router as auth_router
 from app.db import make_engine, make_session_factory
@@ -36,6 +37,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        password.warm()
         api.configure(Session)
         api.reset_connections()
         api.set_hub(hub)
@@ -86,6 +88,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
     @app.exception_handler(api.ValidationError)
     async def _bad(_r: Request, e: api.ValidationError):
         return JSONResponse({"detail": str(e)}, status_code=400)
+
+    @app.exception_handler(password.Busy)
+    async def _busy(_r: Request, _e: password.Busy):
+        return JSONResponse({"detail": "잠시 후 다시 시도하세요"}, status_code=503)
 
     @app.exception_handler(sqlalchemy.exc.IntegrityError)
     async def _conflict(_r: Request, e: sqlalchemy.exc.IntegrityError):

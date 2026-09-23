@@ -26,7 +26,8 @@ SIGNUP_PER_DOMAIN_HOUR = 60  # 가짜 주소 대량 신청이 verify 메일 상�
 MAIL_PER_ADDRESS_HOUR = (
     3  # 주소 하나로 도메인·종류별 상한을 고갈시키지 못하게 — 초과는 202 + 발송 생략
 )
-LOGIN_PER_MINUTE = 60  # 전역 — 주소를 바꿔 가며 scrypt 를 돌리는 부하 상한
+# IP 당 — 전역 키는 누구나 전원 로그인을 잠근다 (PR #42 🔴3). 전체 부하는 password.SCRYPT_WAIT_S(503)가 맡는다
+LOGIN_PER_IP_MINUTE = 30
 
 
 def _mail_allowed(email: str) -> bool:
@@ -80,54 +81,64 @@ def verify_open(body: S.TokenIn, s: Session = _DB):
 
 
 @router.post("/verify")
-def verify(body: S.VerifyIn, s: Session = _DB):
-    email = tokens.consume(s, body.token, "verify")
-    existing = s.get(User, email) if email else None
-    if email is None or (existing is not None and existing.status != "rejected"):
-        raise HTTPException(400, LINK_INVALID)
-    school = _school_by_domain(s, email)
-    if school is None:  # 발급 뒤 학교 도메인이 바뀐 경우
-        raise HTTPException(400, LINK_INVALID)
-    # 409 는 롤백돼 토큰이 산다(학번 오타를 고쳐 재제출) — 대신 학번 존재 조회 남용을 막는다
-    _limit(f"verify:{email}")
-    taken = s.scalar(
-        select(User.email).where(
-            User.school_id == school.id,
-            User.student_no == body.student_no,
-            User.email != email,
-            text(HOLDS_STUDENT_NO),
+def verify(body: S.VerifyIn, request: Request):
+    """읽기 확인 → (세션 닫고) scrypt → 짧은 쓰기 트랜잭션. scrypt 동안 커넥션·쓰기 락을 쥐지 않는다 (PR #42 🟡)."""
+    with request.app.state.Session() as s:
+        email = tokens.peek(s, body.token, "verify")
+        existing = s.get(User, email) if email else None
+        if email is None or (existing is not None and existing.status != "rejected"):
+            raise HTTPException(400, LINK_INVALID)
+        school = _school_by_domain(s, email)
+        if school is None:  # 발급 뒤 학교 도메인이 바뀐 경우
+            raise HTTPException(400, LINK_INVALID)
+        # 409 는 토큰을 소비하지 않는다(학번 오타를 고쳐 재제출) — 대신 학번 존재 조회 남용을 막는다
+        _limit(f"verify:{email}")
+        taken = s.scalar(
+            select(User.email).where(
+                User.school_id == school.id,
+                User.student_no == body.student_no,
+                User.email != email,
+                text(HOLDS_STUDENT_NO),
+            )
         )
-    )
-    if taken:
-        raise HTTPException(409, "이미 등록된 학번입니다")
-    if existing is not None:  # 거절 뒤 재신청 — 거절 기록을 새 신청으로 교체
-        s.delete(existing)
-        s.flush()
-    s.add(
-        User(
-            email=email,
-            school_id=school.id,
-            role="student",
-            status="pending_approval",
-            name=body.name,
-            student_no=body.student_no,
-            pw_hash=password.hash(body.password),
+        if taken:
+            raise HTTPException(409, "이미 등록된 학번입니다")
+        school_id = school.id
+    pw_hash = password.hash(body.password)
+    with request.app.state.Session() as s, s.begin():
+        if tokens.consume(s, body.token, "verify") is None:  # 그 사이 다른 요청이 썼다
+            raise HTTPException(400, LINK_INVALID)
+        existing = s.get(User, email)
+        if existing is not None:
+            if existing.status != "rejected":
+                raise HTTPException(400, LINK_INVALID)
+            s.delete(existing)  # 거절 뒤 재신청 — 거절 기록을 새 신청으로 교체
+            s.flush()
+        s.add(
+            User(
+                email=email,
+                school_id=school_id,
+                role="student",
+                status="pending_approval",
+                name=body.name,
+                student_no=body.student_no,
+                pw_hash=pw_hash,
+            )
         )
-    )
-    tokens.invalidate_all(
-        s, email
-    )  # 재발급으로 남아 있던 다른 verify 링크 정리 (issue 는 죽이지 않는다)
-    s.flush()  # 제약 위반을 응답 전에 — 커밋은 응답 뒤라 거기서 나면 200 을 이미 보낸 뒤다 (r2 ⚪)
-    return {"status": "pending_approval"}
+        # 재발급으로 남아 있던 다른 verify 링크 정리 (issue 는 죽이지 않는다)
+        tokens.invalidate_all(s, email)
+    return {"status": "pending_approval"}  # 커밋은 위 with 가 응답 전에 끝냈다
 
 
 @router.post("/login", response_model=S.LoginOut)
-def login(body: S.LoginIn, request: Request, s: Session = _DB):
+def login(body: S.LoginIn, request: Request):
     _limit(f"login:{body.email}")
-    _limit(
-        "login:*", limit=LOGIN_PER_MINUTE
-    )  # 주소를 바꿔 가며 보내는 부하 (scrypt 는 password._SEM 으로도 묶임)
-    user = s.get(User, body.email)
+    ip = request.client.host if request.client else "unknown"
+    _limit(f"login-ip:{ip}", limit=LOGIN_PER_IP_MINUTE)
+    # 짧은 세션으로 읽고 닫은 뒤 scrypt — 쥔 채 줄 서면 풀이 말라 허브까지 멈춘다 (PR #42 🔴2)
+    # ponytail: 분리된(detached) User 를 값 묶음으로 쓴다 — 컬럼은 get 이 모두 읽어 둔다
+    with request.app.state.Session() as s:
+        user = s.get(User, body.email)
     if user is None:
         password.dummy_verify(body.password)  # 응답 시간으로 가입 여부가 새지 않게
         log.info("login 실패 %s", body.email)
@@ -164,15 +175,21 @@ def forgot(body: S.EmailIn, request: Request, bg: BackgroundTasks, s: Session = 
 
 
 @router.post("/reset")
-def reset(body: S.ResetIn, s: Session = _DB):
-    email = tokens.consume(s, body.token, "reset")
-    user = s.get(User, email) if email else None
-    if user is None or user.status != "active":
-        raise HTTPException(400, LINK_INVALID)
-    user.pw_hash = password.hash(body.password)
-    user.token_version += 1  # 재설정 전에 발급된 JWT 무효 (S4a §2.3)
-    tokens.invalidate_all(s, user.email)
-    s.flush()  # 쓰기 핸들러 규칙 — 커밋 실패가 응답 뒤로 밀리지 않게
+def reset(body: S.ResetIn, request: Request):
+    """verify 와 같은 순서 — 읽기 확인 → scrypt → 원자적 소비·갱신 (PR #42 🟡)."""
+    with request.app.state.Session() as s:
+        email = tokens.peek(s, body.token, "reset")
+        user = s.get(User, email) if email else None
+        if user is None or user.status != "active":
+            raise HTTPException(400, LINK_INVALID)
+    pw_hash = password.hash(body.password)
+    with request.app.state.Session() as s, s.begin():
+        user = s.get(User, email) if tokens.consume(s, body.token, "reset") else None
+        if user is None or user.status != "active":
+            raise HTTPException(400, LINK_INVALID)
+        user.pw_hash = pw_hash
+        user.token_version += 1  # 재설정 전에 발급된 JWT 무효 (S4a §2.3)
+        tokens.invalidate_all(s, user.email)
     return {"status": "ok"}
 
 

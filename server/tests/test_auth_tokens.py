@@ -9,7 +9,9 @@ from app.domain.models import School
 from app.settings import Settings
 
 
-def test_password_hash_roundtrip_and_format():
+def test_password_hash_roundtrip_and_format(monkeypatch):
+    # conftest 가 속도용으로 낮춘 N 을 운영 값으로 되돌려 형식 확인
+    monkeypatch.setattr(password, "N", 2**14)
     h = password.hash("correct horse")
     parts = h.split("$")
     assert parts[:4] == ["scrypt", "16384", "8", "1"] and len(parts) == 6
@@ -55,6 +57,18 @@ def test_issue_and_consume_once(s):
     assert tokens.consume(s, plain, "verify") is None  # 1회용
     assert tokens.consume(s, "nope", "verify") is None
     assert tokens.consume(s, plain, "reset") is None  # purpose 불일치
+
+
+def test_peek_reads_without_consuming_and_consume_is_single_use(s, monkeypatch):
+    plain = tokens.issue(s, "a@mju.ac.kr", "reset")
+    assert tokens.peek(s, plain, "reset") == tokens.peek(s, plain, "reset") == "a@mju.ac.kr"
+    assert tokens.peek(s, plain, "verify") is None
+    assert tokens.consume(s, plain, "reset") == "a@mju.ac.kr"
+    assert tokens.consume(s, plain, "reset") is None and tokens.peek(s, plain, "reset") is None
+    late = tokens.issue(s, "a@mju.ac.kr", "reset")
+    t = tokens.utcnow() + dt.timedelta(minutes=6)
+    monkeypatch.setattr(tokens, "utcnow", lambda: t)
+    assert tokens.peek(s, late, "reset") is None and tokens.consume(s, late, "reset") is None
 
 
 def test_reissue_does_not_kill_open_link(s):

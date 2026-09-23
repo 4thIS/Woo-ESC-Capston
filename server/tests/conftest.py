@@ -22,6 +22,8 @@ def _env(monkeypatch):
     monkeypatch.setenv("DEBUG", "1")
     monkeypatch.delenv("CORS_ORIGINS", raising=False)
     ratelimit.reset()  # 테스트 간 카운터 격리
+    # 저장 형식이 파라미터를 담으므로 낮춘 N 으로 만든 해시도 verify 된다 — 운영 값 형식은 test_auth_tokens 가 본다
+    monkeypatch.setattr(password, "N", 2**10)
 
 
 @pytest.fixture

@@ -410,3 +410,79 @@ def test_rate_limit_login(client_raw, schools):
     for _ in range(5):
         assert client_raw.post("/api/auth/login", json=body).status_code == 401
     assert client_raw.post("/api/auth/login", json=body).status_code == 429
+
+
+def test_login_limit_is_per_ip_not_global(app, schools):
+    """가짜 주소 폭주가 다른 IP 의 로그인까지 잠그면 안 된다 (PR #42 🔴3). IP 당 30/분."""
+    from fastapi.testclient import TestClient
+
+    with app.state.Session() as s, s.begin():
+        s.add(
+            User(
+                email="u@mju.ac.kr",
+                school_id=1,
+                role="student",
+                status="active",
+                name="u",
+                student_no="1",
+                pw_hash=password.hash("password1"),
+            )
+        )
+    attacker = TestClient(app, client=("10.0.0.1", 1))
+    codes = [
+        attacker.post(
+            "/api/auth/login", json={"email": f"g{i}@mju.ac.kr", "password": "x"}
+        ).status_code
+        for i in range(31)
+    ]
+    assert codes == [401] * 30 + [429]
+    other = TestClient(app, client=("10.0.0.2", 1))
+    r = other.post("/api/auth/login", json={"email": "u@mju.ac.kr", "password": "password1"})
+    assert r.status_code == 200
+
+
+def _derive_spy(app, monkeypatch):
+    """scrypt 도는 동안 풀에서 빌려 간 커넥션 수를 적는다 — 0 이어야 커넥션·쓰기 락을 안 쥔 것 (PR #42 🔴2·🟡)."""
+    seen: list[int] = []
+    real = password._derive
+
+    def spy(*a):
+        seen.append(app.state.engine.pool.checkedout())
+        return real(*a)
+
+    monkeypatch.setattr(password, "_derive", spy)
+    return seen
+
+
+def test_scrypt_runs_without_db_connection(client_raw, app, schools, mails, monkeypatch):
+    c = client_raw
+    c.post("/api/auth/signup", json={"email": "a@mju.ac.kr"})
+    seen = _derive_spy(app, monkeypatch)
+    assert (
+        c.post("/api/auth/verify", json={"token": _token(mails, "verify"), **PROFILE}).status_code
+        == 200
+    )
+    with app.state.Session() as s, s.begin():
+        s.get(User, "a@mju.ac.kr").status = "active"
+    for pw in ("password1", "wrongpass"):
+        c.post("/api/auth/login", json={"email": "a@mju.ac.kr", "password": pw})
+    c.post("/api/auth/login", json={"email": "ghost@mju.ac.kr", "password": "password1"})
+    c.post("/api/auth/forgot", json={"email": "a@mju.ac.kr"})
+    r = c.post("/api/auth/reset", json={"token": _token(mails, "reset"), "password": "newpass12"})
+    assert r.status_code == 200
+    assert len(seen) >= 5 and set(seen) == {0}, seen
+
+
+def test_login_returns_503_when_scrypt_is_saturated(client_raw, schools, monkeypatch):
+    import threading
+
+    monkeypatch.setattr(password, "SCRYPT_WAIT_S", 0.05)
+    password._SEM.acquire()
+    password._SEM.acquire()
+    t = threading.Timer(1.0, lambda: (password._SEM.release(), password._SEM.release()))
+    t.start()  # 옛 코드(무기한 대기)도 멈추지 않게 1 s 뒤 풀어 준다
+    try:
+        r = client_raw.post("/api/auth/login", json={"email": "g@mju.ac.kr", "password": "x"})
+    finally:
+        t.join()
+    assert r.status_code == 503 and r.json() == {"detail": "잠시 후 다시 시도하세요"}

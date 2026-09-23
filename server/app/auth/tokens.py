@@ -53,15 +53,28 @@ def open_verify(s: Session, plain: str) -> str | None:
     return row.email
 
 
+def _usable(plain: str, purpose: str, now: dt.datetime) -> tuple:
+    return (
+        EmailToken.token_hash == _h(plain),
+        EmailToken.purpose == purpose,
+        EmailToken.used_at.is_(None),
+        EmailToken.expires_at >= now,
+    )
+
+
+def peek(s: Session, plain: str, purpose: str) -> str | None:
+    """consume 와 같은 조건을 읽기만 — scrypt 를 쓰기 전에 돌리려고 (PR #42 🟡). 소비는 consume 이 원자적으로."""
+    return s.scalar(select(EmailToken.email).where(*_usable(plain, purpose, utcnow())))
+
+
 def consume(s: Session, plain: str, purpose: str) -> str | None:
-    """유효하면 used_at 을 찍고 email 을 돌려준다. 만료·사용됨·purpose 불일치·없음 → None."""
-    row = s.get(EmailToken, _h(plain))
+    """유효하면 used_at 을 찍고 email 을 돌려준다. 만료·사용됨·purpose 불일치·없음 → None.
+    조건부 UPDATE 1행 — 같은 토큰 동시 2건 중 하나만 성공한다 (PR #42 🟡)."""
     now = utcnow()
-    if row is None or row.purpose != purpose or row.used_at is not None or row.expires_at < now:
+    r = s.execute(update(EmailToken).where(*_usable(plain, purpose, now)).values(used_at=now))
+    if r.rowcount != 1:
         return None
-    row.used_at = now
-    s.flush()
-    return row.email
+    return s.scalar(select(EmailToken.email).where(EmailToken.token_hash == _h(plain)))
 
 
 def last_issued_at(s: Session, email: str, purpose: str) -> dt.datetime | None:
