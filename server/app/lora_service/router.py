@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, WebSocket
+from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from app import schemas as S
@@ -53,8 +54,22 @@ def outbox(
     user: User = AdminUser,
     s: Session = _DB,
 ):
+    """학교 필터를 limit *전에* 건다 — 먼저 자르면 다른 학교의 최신 행에 내 행이 밀려 사라진다 (S4a 리뷰 🟡)."""
     keys = scope.room_keys(s, user.school_id)
-    return [o for o in api.get_outbox(state, bld, room, limit) if (o.bld, o.room) in keys]
+    if not keys:
+        return []
+    mids = scope.modem_ids(s, user.school_id)
+    q = select(Outbox).where(tuple_(Outbox.bld, Outbox.room).in_(keys))
+    # bld 재사용(B 건물 삭제 → A 가 같은 bld 로 재생성) 뒤 남은 옛 학교의 행을 숨긴다 — NULL 은 통과.
+    q = q.where(Outbox.modem_id.is_(None) | Outbox.modem_id.in_(mids))
+    if state:
+        q = q.where(Outbox.state == state)
+    if bld:
+        q = q.where(Outbox.bld == bld)
+    if room is not None:
+        q = q.where(Outbox.room == room)
+    q = q.order_by(Outbox.id.desc()).limit(limit)
+    return list(reversed(s.scalars(q).all()))
 
 
 @rest.post("/outbox/{id}/cancel")
@@ -72,7 +87,12 @@ def status(
     bld: str | None = None, room: int | None = None, user: User = AdminUser, s: Session = _DB
 ):
     keys = scope.room_keys(s, user.school_id)
-    return [t for t in api.get_status(bld, room) if (t.bld, t.room) in keys]
+    mids = scope.modem_ids(s, user.school_id)
+    return [
+        t
+        for t in api.get_status(bld, room)
+        if (t.bld, t.room) in keys and (t.modem_id is None or t.modem_id in mids)
+    ]
 
 
 @rest.get("/pending", response_model=list[S.PendingOut])

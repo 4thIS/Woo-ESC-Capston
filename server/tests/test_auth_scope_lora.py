@@ -102,6 +102,54 @@ def test_time_broadcast_rate_limited(client, school):
     assert client.post("/api/lora/time").status_code == 429  # 전역 10분 1회 (S4a §3.3)
 
 
+def test_outbox_limit_applied_after_school_filter(client, app, school):
+    """리뷰 🟡 — limit 을 먼저 자르면 타교의 최신 행이 내 행을 밀어낸다."""
+    _seed(app)
+    with app.state.Session() as s, s.begin():
+        now = dt.datetime(2026, 9, 23)  # noqa: DTZ001
+        s.add_all(
+            [
+                Outbox(
+                    id=i,
+                    modem_id="m2",
+                    bld="F",
+                    room=101,
+                    unit=1,
+                    type="CMD",
+                    payload="{}",
+                    priority=5,
+                    created_at=now,
+                )
+                for i in (3, 4, 5)
+            ]
+        )
+    assert [o["id"] for o in client.get("/api/lora/outbox?limit=1").json()] == [1]
+
+
+def test_outbox_status_hide_old_school_rows_on_bld_reuse(client, app, school):
+    """⚪ bld 재사용 — B 가 F동을 지우고 A 가 같은 bld·room 을 새로 만들어도, 남은 B 소유
+    옛 outbox·status 행(modem_id 가 B 소유)은 A 에게 보이면 안 된다."""
+    _seed(app)
+    with app.state.Session() as s, s.begin():
+        now = dt.datetime(2026, 9, 23)  # noqa: DTZ001
+        s.add(
+            Outbox(
+                id=9,
+                modem_id="m2",  # 학교 2 소유 모뎀
+                bld="E",  # 하지만 bld/room 은 학교 1 의 현재 방과 겹친다
+                room=101,
+                unit=1,
+                type="CMD",
+                payload="{}",
+                priority=5,
+                created_at=now,
+            )
+        )
+        s.add(TerminalStatus(bld="E", room=101, unit=2, modem_id="m2"))
+    assert [o["id"] for o in client.get("/api/lora/outbox").json()] == [1]
+    assert [t["unit"] for t in client.get("/api/lora/status").json()] == [1]
+
+
 def test_register_modem_sets_school(client, app, school):
     r = client.post("/api/lora/modems", json={"modem_id": "new-1"})
     assert r.status_code == 200 and api.verify_token("new-1", r.json()["token"])
