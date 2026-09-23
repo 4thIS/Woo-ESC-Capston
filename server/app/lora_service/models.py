@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Index, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -50,6 +50,9 @@ class Modem(Base):
     modem_fw: Mapped[str | None]
     last_seen_at: Mapped[datetime | None]
     connected: Mapped[bool] = mapped_column(default=False)
+    school_id: Mapped[int | None] = mapped_column(
+        ForeignKey("schools.id")
+    )  # 라우터 스코프 전용 — lora_service 코드는 읽지 않는다 (S4a §2.1)
 
 
 class RoomVersion(Base):

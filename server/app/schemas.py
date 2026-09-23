@@ -44,10 +44,27 @@ class RoomIn(BaseModel):
     building_id: int
     room: int = Field(ge=1, le=9999)
     units: int = Field(default=1, ge=1, le=2)
+    reservable: bool = False
 
 
 class RoomOut(RoomIn, Out):
     id: int
+
+
+class SchoolPatch(BaseModel):
+    name: str | None = None  # net_id·email_domain 은 CLI 전용 (S4a §3.3)
+
+
+class BuildingPatch(BaseModel):
+    name: str | None = None
+    bld: str | None = Field(None, min_length=1, max_length=1, pattern=r"^[A-Za-z]$")
+    modem_id: str | None = None
+
+
+class RoomPatch(BaseModel):
+    room: int | None = Field(None, ge=1, le=9999)
+    units: int | None = Field(None, ge=1, le=2)
+    reservable: bool | None = None
 
 
 class _Span(BaseModel):
@@ -144,6 +161,7 @@ class ModemOut(Out):
     modem_fw: str | None
     last_seen_at: dt.datetime | None
     connected: bool
+    school_id: int | None
 
 
 class TokenOut(BaseModel):
