@@ -327,6 +327,112 @@ async def test_file_session_gives_up_after_repeated_busy(rig, clk):
     assert j.state == "received" and j.attempts == 1  # 세션 실패 → 일반 재시도 정책으로
 
 
+async def test_time_is_held_back_while_clock_is_untrusted(rig, clk):
+    """메인의 time_now 로 들어온 TIME 도 워커를 거친다. 시계를 못 믿으면 옛 시각을 방송하지 않고 미룬다."""
+    db, modem, client, _ = rig
+    w = Worker(db, client, clock=clk, sleep=clk.sleep, clock_ok=lambda now: False)
+    jid = f"time-{int(clk.now)}"
+    db.put_job(
+        job_id=jid,
+        bld="",
+        room=0,
+        unit=0,
+        type="TIME",
+        payload=json.dumps({"epoch": int(clk.now), "flags": 0}),
+        priority=0,
+        new_ver=None,
+        uploaded=1,
+    )
+    assert await w.once() is True
+    j = db.get_job(jid)
+    assert (j.state, j.next_try_at, j.attempts) == ("received", clk.now + 60.0, 0)
+    assert modem.stats["tx"] == 0
+
+
+# NET_ID 는 메인Pi 가 학교마다 배정해 config 로 준다(로드맵 §3). lora_proto 기본값이 아니다.
+OTHER_NET = (P.NET_ID + 1) % 256
+
+
+def config_net_id(db):
+    return lambda: (db.get_config() or {}).get("net_id", P.NET_ID)
+
+
+async def test_outgoing_header_carries_config_net_id(clk):
+    db = SqliteStore(":memory:", clock=clk)
+    modem = FakeModem(net_id=OTHER_NET)  # 가상 노드는 이 NET_ID 가 아니면 프레임을 버린다
+    modem.add_node(ord("E"), 301, 1, sched_ver=2)
+    client = ModemClient(modem)
+    await client.start()
+    db.set_config({"net_id": OTHER_NET})
+    w = Worker(db, client, clock=clk, sleep=clk.sleep, net_id=config_net_id(db))
+    put(db)
+    await asyncio.wait_for(w.once(), 3)
+    assert db.get_job("10").state == "acked"
+    [msg] = [m for who, m in modem.log if who == "host" and m.get("op") == "tx"]
+    h, _ = C.decode_frame(bytes.fromhex(msg["frame"]), net_id=OTHER_NET)
+    assert h.net_id == OTHER_NET
+    await client.stop()
+    db.close()
+
+
+async def test_config_net_id_change_applies_to_next_frame(clk):
+    """재기동 없이 — 프레임마다 config 를 읽는다."""
+    db = SqliteStore(":memory:", clock=clk)
+    modem = FakeModem()
+    modem.add_node(ord("E"), 301, 1, sched_ver=2)
+    client = ModemClient(modem)
+    await client.start()
+    db.set_config({"net_id": P.NET_ID})
+    w = Worker(db, client, clock=clk, sleep=clk.sleep, net_id=config_net_id(db))
+    put(db, "10", new_ver=3)
+    await asyncio.wait_for(w.once(), 3)
+    db.set_config({"net_id": OTHER_NET})
+    modem.net_id = OTHER_NET
+    put(db, "11", new_ver=4)
+    await asyncio.wait_for(w.once(), 3)
+    assert db.get_job("10").state == "acked" and db.get_job("11").state == "acked"
+    await client.stop()
+    db.close()
+
+
+async def test_wrong_net_id_is_not_accepted_by_node(clk):
+    """config 를 무시하고 기본 NET_ID 로 보내면 가상 노드가 받지 않는다 — 위 테스트가 의미 있다는 증거."""
+    db = SqliteStore(":memory:", clock=clk)
+    modem = FakeModem(net_id=OTHER_NET)
+    modem.add_node(ord("E"), 301, 1, sched_ver=2)
+    client = ModemClient(modem)
+    await client.start()
+    w = Worker(db, client, clock=clk, sleep=clk.sleep)  # getter 없음 → lora_proto 기본값
+    put(db)
+    await asyncio.wait_for(w.once(), 3)
+    assert db.get_job("10").state == "failed"
+    await client.stop()
+    db.close()
+
+
+async def test_corrupt_ack_is_retried_not_a_pipeline_crash(rig, clk):
+    """노드 펌웨어 버그·다른 망의 ACK 로 ACK 프레임을 못 읽으면 FrameError 가 새어 나가 파이프라인 전체가
+    멈췄다. 적용 여부를 모르는 것이므로 무응답처럼 같은 TXN 으로 재시도한다(적용됐다면 DUP 으로 닫힌다)."""
+    db, _, client, w = rig
+    real_tx = client.tx
+
+    async def corrupt_once(frame, *, wake, ack_ms):
+        client.tx = real_tx
+        r = await real_tx(frame, wake=wake, ack_ms=ack_ms)
+        return type(r)(status="acked", ack=r.ack[:-1] + bytes([r.ack[-1] ^ 0xFF]), rssi=r.rssi)
+
+    client.tx = corrupt_once
+    put(db)
+    assert await w.once() is True
+    j = db.get_job("10")
+    assert (j.state, j.attempts, j.last_error) == ("received", 1, "bad_ack")
+    first_txn = j.txn
+    clk.now += 5.0
+    await w.once()
+    j = db.get_job("10")
+    assert (j.state, j.txn, j.ack_status) == ("acked", first_txn, int(P.AckStatus.DUP))
+
+
 # ---- #35 셀프 리뷰 반영 ----
 
 
@@ -416,3 +522,62 @@ async def test_file_busy_cap_is_per_frame_not_per_session(rig):
     )
     await w.once()
     assert db.get_job("10").state == "acked"
+
+
+# ---- #37 셀프 리뷰 반영 ----
+
+
+async def test_untrusted_clock_targeted_time_does_not_block_its_node(rig, clk):
+    """CLOCK_STALE 타겟 TIME 은 job_id 가 숫자가 아니라 노드 FIFO 의 머리에 선다. 시계를 못 믿는 동안
+    60 s 씩 미루기만 하면 그 노드의 다른 작업이 영영 못 나간다 — NTP 없는 두 Pi 직결 전시가 정확히 이 조건
+    (#37 리뷰 1). 타겟 TIME 은 닫고, 동기 직후 스케줄러의 브로드캐스트 TIME 으로 복구한다."""
+    db, modem, client, _ = rig
+    w = Worker(db, client, clock=clk, sleep=clk.sleep, clock_ok=lambda now: False)
+    put(db)  # SLOT_SET "10" → E301-1
+    db.put_job(
+        job_id=f"time-{int(clk.now)}-E301-1",
+        bld="E",
+        room=301,
+        unit=1,
+        type="TIME",
+        payload=json.dumps({"epoch": int(clk.now), "flags": 0}),
+        priority=0,
+        new_ver=None,
+        uploaded=1,
+    )
+    for _ in range(3):
+        await w.once()
+        clk.now += 61
+    t = db.get_job(f"time-{int(clk.now) - 3 * 61}-E301-1")
+    assert (t.state, t.last_error) == ("acked", "clock_untrusted")
+    assert db.get_job("10").state == "acked"
+    assert modem.stats["tx"] == 1  # SLOT_SET 만 나갔다 — 못 믿는 시각은 한 번도 방송되지 않았다
+
+
+async def test_request_status_time_is_not_superseded_by_a_newer_plain_time(rig, clk):
+    """REQUEST_STATUS 가 붙은 TIME 뒤에 플래그 없는 TIME 이 쌓이면 앞의 것이 superseded 로 닫혀
+    그날 일괄 STATUS 요청이 빠졌다(#37 리뷰 2). 플래그 달린 TIME 은 버리지 않고 보낸다."""
+    db, modem, _, w = rig
+    flag = int(P.TimeFlag.REQUEST_STATUS)
+    for jid, flags in (("time-a", flag), ("time-b", 0)):
+        db.put_job(
+            job_id=jid,
+            bld="",
+            room=0,
+            unit=0,
+            type="TIME",
+            payload=json.dumps({"epoch": int(clk.now), "flags": flags}),
+            priority=0,
+            new_ver=None,
+            uploaded=1,
+        )
+    await w.once()
+    await w.once()
+    assert db.get_job("time-a").last_error is None and db.get_job("time-a").state == "acked"
+    sent = [
+        C.decode_frame(bytes.fromhex(m["frame"].replace(" ", "")))
+        for who, m in modem.log
+        if who == "host" and m.get("op") == "tx"
+    ]
+    flags_sent = [C.decode_payload(h.type, pb).flags for h, pb in sent]
+    assert flags_sent == [flag, 0]
