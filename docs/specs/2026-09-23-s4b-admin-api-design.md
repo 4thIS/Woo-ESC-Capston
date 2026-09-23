@@ -1,7 +1,7 @@
 # S4b — 관리자 대시보드·모니터 API (요약·노드·실패 작업·건물 단위 조회·서버 채번) — 설계 (spec)
 
 - 생성일시: 2026-09-23
-- 수정일시: 2026-09-23
+- 수정일시: 2026-09-23 (r2 — S10 이 `pending_reservations` 버킷을 additive 로 추가)
 - 상위 문서: `2026-09-09-roadmap-design.md` §3(메인Pi "노드 상태 집계, 대시보드")·§5 S4. 인증·스코프는 `2026-09-23-s4a-auth-design.md`(선행). 원자료는 `2026-09-14-s2-server-design.md` §2(`terminal_status`·`outbox`·`modems`·`pending_devices`). 건물 단위 조회·채번은 이슈 #36(mh).
 - 담당: wj @leemonta9482. 영역 `server/`. `lora_service/api.py`·`hub.py` 불변 — 집계는 라우터 층에서 ORM 읽기 조인.
 
@@ -77,7 +77,8 @@ warnings: list["unseen" | "low_batt" | "resync" | "clock_stale"]
     "clock_stale":      {"count": 0, "items": []},
     "failed":           {"count": 4, "items": [FailedOut, …]},
     "pending_devices":  {"count": 2, "items": [PendingOut, …]},
-    "pending_approval": {"count": 5, "items": [UserOut, …]}
+    "pending_approval": {"count": 5, "items": [UserOut, …]},
+    "pending_reservations": {"count": 2, "items": [ResvAdminOut, …]}   // S10 §4.2 가 additive 로 추가 (신청 대기 예약)
   }
 }
 ```
