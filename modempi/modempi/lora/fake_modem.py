@@ -94,6 +94,8 @@ class FakeModem:
         self.unprovisioned: dict[bytes, NodeState] = {}
         self.log: list[tuple[str, dict]] = []
         self.stats = {"tx": 0, "acked": 0, "no_ack": 0, "cad_busy": 0, "rx": 0}
+        self.cfg_count = 0  # 받은 cfg 줄 수
+        self.radio: dict = {}  # 마지막 cfg 의 인자(op 제외) — 모뎀 시리얼 이름 그대로(v2 §4.2)
         self._script: list[str] = []
         self._out: asyncio.Queue[str] = asyncio.Queue()
         self._inflight: asyncio.Task | None = None
@@ -153,8 +155,9 @@ class FakeModem:
                     "freq": P.RADIO["RP_FREQ_MHZ"],
                 }
             )
-        elif op == "cfg":
-            pass  # §4.2: 응답 없음. 기록만.
+        elif op == "cfg":  # §4.2: 응답 없음. 적용만 한다.
+            self.cfg_count += 1
+            self.radio = {k: v for k, v in msg.items() if k != "op"}
         elif op == "tx":
             if self._inflight and not self._inflight.done():
                 self._emit(
