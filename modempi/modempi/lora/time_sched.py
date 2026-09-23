@@ -26,7 +26,7 @@ UNTRUSTED_RETRY_S = 60.0
 
 
 class TimeScheduler:
-    """매시 :00:05 에 TIME 행 하나를 `jobs` 에 넣는다. 보내는 건 워커가 한다(txn=0, 90 s 지나면 버림)."""
+    """매시 :00:05 에 TIME 행 하나를 `jobs` 에 넣는다. 보내는 건 워커가 한다(txn=0, 같은 대상에 더 새 TIME 이 있으면 버림)."""
 
     def __init__(
         self,

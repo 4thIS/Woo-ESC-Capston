@@ -49,6 +49,8 @@ S1이 만드는 것에 의존한다: `lora_proto.codec`(프레임·페이로드�
 - `unit=0`(호수 전체)은 노드가 없다. 유닛 분해는 메인Pi `api._insert`가 하므로 여기 오지 않는다 — TIME이 아닌 `unit=0` 작업은 `failed(last_error="unit0")`로 닫는다(r3).
 - 모뎀Pi RTC 없음 → NTP 동기 전엔 TIME을 내지 않는다(v2 §5.2 `clockValid`와 같은 기준: `time.time() > 1_700_000_000` 이고 최근 NTP 동기 성공).
   - **구현(2026-09-23, `lora/clock.py`)**: 임계값만으로는 부족하다 — 전원이 나갔다 켜지면 fake-hwclock이 **옛 시각**을 복원하고 그 값도 임계값을 넘는다. 그래서 systemd-timesyncd가 있으면 이번 부팅의 동기 표시(`/run/systemd/timesync/synchronized`)가 생긴 뒤에만 믿는다. 스케줄러는 믿을 수 없으면 TIME 행을 넣지 않고 1분마다 다시 보며(동기 직후 곧바로 1회), 워커는 메인의 `time_now`로 들어온 TIME도 시계를 믿을 수 없으면 60 s 미룬다. **S11 Pi 이식 시 timesyncd를 쓴다**(chrony면 표시 파일이 없어 임계값만 보게 된다).
+  - 시계를 못 믿는 동안: **브로드캐스트 TIME은 미루고, 타겟 TIME(CLOCK_STALE)은 닫는다**(`last_error="clock_untrusted"`). 타겟 TIME은 job_id가 숫자가 아니라 그 노드 FIFO의 머리에 서므로, 미루기만 하면 그 노드의 다른 작업이 영영 못 나간다(#37 셀프 리뷰 1). 노드는 동기 직후 스케줄러의 브로드캐스트 TIME으로 복구된다. `REQUEST_STATUS`가 붙은 TIME은 더 새 TIME이 있어도 버리지 않는다(#37 리뷰 2).
+  - **운영(S11)**: 인터넷 없이 두 Pi를 직결하는 전시 구성에서는 모뎀Pi에 동기 표시가 영영 생기지 않는다 → **메인Pi를 NTP 서버로** 두고 모뎀Pi timesyncd가 그쪽을 보게 한다.
 
 ## 4. 모듈
 

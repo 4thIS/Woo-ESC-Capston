@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -68,19 +69,29 @@ class Worker:
         job = self.store.pick_next()
         if job is None:
             return False
-        if job.type == "TIME" and self.store.newer_pending(job):
+        if job.type == "TIME" and self.store.newer_pending(job) and not _requests_status(job):
             # 파이프라인이 멈춰 있던 동안 쌓인 TIME — 같은 대상에 더 새 행이 있을 때만 닫는다.
             # 나이로 버리면 가장 새 것까지 사라진다. epoch 는 송신 때 다시 찍으므로 옛 행을 보내도 무해하다.
+            # REQUEST_STATUS 가 붙은 행은 버리지 않는다 — 그날 일괄 STATUS 요청이 빠진다(#37 리뷰 2).
             self.store.update(
                 job.job_id, expect_state="received", state="acked", last_error="superseded"
             )
             return True
         if job.type == "TIME" and not self._clock_ok(self._clock()):
-            # 옛 시각(fake-hwclock)을 모든 노드에 뿌리면 노드 시계가 망가진다 — 동기될 때까지 미룬다.
-            # 스케줄러가 동기 직후 새 TIME 을 넣으면 이 행은 위 newer_pending 으로 superseded 가 된다.
-            self.store.update(
-                job.job_id, state="received", next_try_at=self._clock() + UNTRUSTED_CLOCK_WAIT_S
-            )
+            # 옛 시각(fake-hwclock)을 노드에 뿌리면 노드 시계가 망가진다 — 시계를 믿을 때까지 보내지 않는다.
+            if job.bld:
+                # 타겟 TIME(CLOCK_STALE)은 job_id 가 숫자가 아니라 그 노드 FIFO 의 머리에 선다. 미루기만 하면
+                # 노드의 다른 작업이 영영 못 나간다(NTP 없는 직결 전시, #37 리뷰 1) — 닫는다. 노드는 동기 직후
+                # 스케줄러가 내는 브로드캐스트 TIME 으로 복구된다.
+                self.store.update(
+                    job.job_id, expect_state="received", state="acked", last_error="clock_untrusted"
+                )
+            else:
+                # 브로드캐스트 TIME 은 자기 큐("",0,0)라 아무도 막지 않는다 — 미룬다. 동기 직후 스케줄러가 새 행을
+                # 넣으면 이 행은 위 newer_pending 으로 superseded 가 된다.
+                self.store.update(
+                    job.job_id, state="received", next_try_at=self._clock() + UNTRUSTED_CLOCK_WAIT_S
+                )
             return True
         try:
             units = preprocess(job, clock=self._clock)
@@ -247,3 +258,12 @@ class Worker:
                 continue
             break
         self._apply(job, res)  # 결과는 마지막(보통 END) 프레임의 것
+
+
+def _requests_status(job: Job) -> bool:
+    """TIME 행에 REQUEST_STATUS 플래그가 붙었는가. payload 가 이상하면 False(보통 TIME 처럼 다룬다)."""
+    try:
+        flags = int(json.loads(job.payload).get("flags", 0))
+    except (ValueError, TypeError, AttributeError):
+        return False
+    return bool(flags & int(P.TimeFlag.REQUEST_STATUS))
