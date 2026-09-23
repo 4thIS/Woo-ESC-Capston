@@ -126,7 +126,7 @@ JWT 검증 뒤 **매 요청 `users` 조회**해 `status == active` 와 `tv == to
 | `schools` | `id == S` 만 조회·수정. **생성·삭제는 CLI**(`create-school`) — `POST/DELETE /api/schools` 제거. PATCH 로 바꿀 수 있는 건 `name` 뿐 — `net_id`·`email_domain` 은 CLI 전용(관리자가 `gmail.com` 같은 도메인을 선점하지 못하게) | 404 |
 | `buildings` | `school_id == S`. 생성·수정 시 **`modem_id` 는 `modems.school_id == S` 인 것만**(타교 모뎀 config 오염 방지, 🔴4b), **`bld` 가 다른 학교 건물에 이미 있으면 409**(공중 주소 `(bld, room)` 은 전역 — S2 §9 파킹 항목을 규칙으로, 🔴4c) | 404 / 409 |
 | `rooms`·slots·reservations·exam_periods·sync·cmd | `room → building.school_id == S` | 404 |
-| 예약·시험 `id` 지정 upsert | 기존 행이 **같은 방**이고 (예약은) `status == 'approved'` 일 때만 수정. 없는 id·다른 방·신청 상태 행이면 404/409. 방 이동은 삭제 후 재생성 (🔴4a — S4b §2.5 가 구현) | 404 / 409 |
+| 예약·시험 `id` 지정 upsert | 기존 행이 **같은 방**이고 (S10 뒤엔) `status == 'approved'` 일 때만 수정. 다른 방·다른 학교·신청 상태 행이면 409, 없는 id 는 그 id 로 생성. 방 이동은 삭제 후 재생성 (🔴4a — S4b §2.5 가 구현) | 409 |
 | `import/slots` | CSV 의 학교·건물·방 조회를 **`School.id == S` 로 한정**(이름은 유일하지 않고 PATCH 로 바뀜). 다른 학교 이름이면 그 행 `"school: 다른 학교"` (🔴4d) | 400 errors |
 | `lora/modems` | `modems.school_id == S`. 등록 시 `school_id = S` 로 채움 | 404 / 목록 필터 |
 | `lora/outbox`, `lora/status`, `lora/pending` | outbox·status는 `(bld, room) → rooms → building.school_id`; `pending_devices` 는 `modem_id → modems.school_id` | 목록 필터, 단건 404 |

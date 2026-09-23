@@ -5,6 +5,7 @@
 - 생성일시: 2026-09-23
 - 기준 spec: `docs/specs/2026-09-23-s4b-admin-api-design.md`. **선행: S4a plan(`docs/plans/2026-09-23-s4a-auth.md`) 완료** — 이 plan 은 S4a 가 만든 `app.deps._DB`, `app.auth.deps.AdminUser`, `app.auth.scope.get_scoped`, conftest 의 `client`(학교 1 관리자 Bearer)·`school`·`other_admin_hdr`·`client_raw` 를 쓴다.
 - 담당: wj @leemonta9482. 브랜치 `feature/s4b-admin-api`. 커밋 scope `feat(server)`. PR은 사용자 지시 시. 구현 PR 이 이슈 #36 을 닫는다.
+- 개정: r2 (PR #38 리뷰 — `building_outbox` 조인 수정, 채번은 S2c 세션 기준·프로세스 락·같은 방 가드, 실패 버킷에서 취소분 제외, 테스트 날짜·키 단언 정정). **선행: S4a → S2c** (`_addr` 3-튜플·`_commit_notify`·`enqueue_*(session=)`).
 
 **Goal:** 관리자 화면이 `GET /api/admin/summary` 1회로 경고 8종(카운트+미리보기)·총계를, `nodes`·`outbox/failed`·건물 단위 조회로 조인된 목록을 받고, 예약·시험 id 를 서버가 채번한다.
 
@@ -21,7 +22,8 @@
 - `summary`: `preview` 기본 5·최대 20, `count` 는 전체, `items` 정렬 — 노드류 `last_seen_at` 오래된 순(None 먼저), `failed` `finished_at desc`, `pending_*` 오래된 순. `totals.nodes = Σ units`.
 - `outbox/failed`: `days` 1..90, `limit` 1..500. 방 조인 실패 행 제외.
 - 건물 단위 조회 4개 응답 = 기존 Out + `room_id`(+outbox 는 `building`). 정렬 `room_id, day, s_h, s_m` / `room_id, date, s_h, s_m` / `room_id, date_start` / `id desc`.
-- 채번: `ResvIn.id`·`ExamIn.id` 선택. 없으면 `1..65535` 최소 빈 값, 소진 409 `"예약 id 소진"`. 응답 `Enqueued.id`. 있으면 기존 upsert.
+- 채번: `ResvIn.id`·`ExamIn.id` 선택. 없으면 `1..65535` 최소 빈 값(채번~커밋은 프로세스 락), 소진 409 `"id 소진 …"`. 응답 `Enqueued.id`. id 지정은 **같은 방의 기존 행만 수정**, 다른 방 행이면 409, 없는 id 면 그 id 로 생성. 쓰기는 `enqueue_*(session=s)` + `_commit_notify`.
+- 실패 버킷·목록은 `last_error == "cancelled"`(관리자 취소가 모뎀에서 failed 로 돌아온 것)를 뺀다.
 - 전부 `require_admin` + 학교 스코프, 타 학교 404. 마이그레이션 없음, 스키마 additive. `lora_proto/` 불변. 기존 테스트 그대로.
 - uv only; ruff 100/py312; 명령은 `server/`. 커밋 `feat(server): ...`, AI 표기 없음.
 
@@ -209,9 +211,8 @@ def building_outbox(
 ) -> list[dict]:
     q = (
         select(Outbox, Room.id, Building.name)
-        .join(Building, Building.id == building_id)
+        .join(Building, and_(Building.bld == Outbox.bld, Building.id == building_id))
         .join(Room, and_(Room.building_id == Building.id, Room.room == Outbox.room))
-        .where(Outbox.bld == Building.bld)
         .order_by(Outbox.id.desc())
         .limit(limit)
     )
@@ -314,6 +315,19 @@ def test_server_assigns_smallest_free_id(client, app, school):
     assert [x["subject"] for x in client.get(f"/api/rooms/{rid}/reservations").json() if x["id"] == 2] == ["edited"]
 
 
+def test_explicit_id_must_be_same_room(client, app, school, other_admin_hdr):
+    """id 지정 수정은 같은 방의 기존 행만 — 다른 방·다른 학교 행을 빼앗지 못한다 (S4a §3.3 🔴4a)."""
+    _, ids = _building(app, 1, "E")
+    _, other = _building(app, 2, "F", rooms=((201, 1),))
+    assert client.post(f"/api/rooms/{ids[101]}/reservations", json=RESV).json()["id"] == 1
+    r = client.post(f"/api/rooms/{ids[102]}/reservations", json={**RESV, "id": 1})
+    assert r.status_code == 409 and "다른 방" in r.json()["detail"]
+    r = client.post(f"/api/rooms/{other[201]}/reservations", json={**RESV, "id": 1}, headers=other_admin_hdr)
+    assert r.status_code == 409  # 타교 관리자도 남의 행을 못 가져간다
+    assert client.post(f"/api/rooms/{ids[101]}/exams", json=EXAM).json()["id"] == 1
+    assert client.post(f"/api/rooms/{ids[102]}/exams", json={**EXAM, "id": 1}).status_code == 409
+
+
 def test_exam_ids_same_rule(client, app, school):
     _, ids = _building(app, 1, "E")
     assert client.post(f"/api/rooms/{ids[101]}/exams", json=EXAM).json()["id"] == 1
@@ -329,6 +343,7 @@ def test_id_exhausted_409(client, app, school, monkeypatch):
     assert client.post(f"/api/rooms/{rid}/reservations", json=RESV).json()["id"] == 2
     r = client.post(f"/api/rooms/{rid}/reservations", json=RESV)
     assert r.status_code == 409 and "소진" in r.json()["detail"]
+    assert client.post(f"/api/rooms/{rid}/exams", json={"date_start": "2026-10-19", "date_end": "2026-10-23"}).json()["id"] == 1
 
 
 def test_explicit_id_still_validated(client, app, school):
@@ -372,10 +387,13 @@ class Enqueued(BaseModel):
 
 - [ ] **Step 4: 라우터**
 
-`server/app/domain/router.py` — 모듈 상수·헬퍼(`_addr` 아래):
+S2c 가 먼저 들어와 있다 — `_addr(s, id, user) -> (bld, room, modem_id)`, `_commit_notify(s, mid)`, `api.enqueue_*(..., session=s)`.
+
+`server/app/domain/router.py` — 모듈 상수·헬퍼(`_addr` 아래, `import threading`):
 
 ```python
 ID_MAX = 65535  # resvId/examId u16 (v2 §3). 테스트가 monkeypatch 로 낮춘다
+_ID_LOCK = threading.Lock()  # 채번~커밋을 직렬화 — 단일 워커(README)라 프로세스 락으로 충돌이 없다
 
 
 def _free_id(s: Session, model) -> int:
@@ -384,7 +402,16 @@ def _free_id(s: Session, model) -> int:
     for i in range(1, ID_MAX + 1):
         if i not in used:
             return i
-    raise HTTPException(409, "예약 id 소진")
+    raise HTTPException(409, "id 소진 — 지난 예약·시험기간을 정리하세요")
+
+
+def _existing_same_room(s: Session, model, obj_id: int, room_id: int):
+    """id 지정 수정은 같은 방의 기존 행만 (S4a §3.3 🔴4a). 다른 방(=다른 학교 포함) 행이면 409.
+    없는 id 지정은 그 id 로 새로 만든다 — 기존 S2 호출·테스트 호환, 탈취 위험은 기존 행에만 있다."""
+    obj = s.get(model, obj_id)
+    if obj is not None and obj.room_id != room_id:
+        raise HTTPException(409, "id 가 다른 방의 것입니다 — 방을 옮기려면 삭제 후 다시 만드세요")
+    return obj
 ```
 
 `put_resv`:
@@ -392,21 +419,26 @@ def _free_id(s: Session, model) -> int:
 ```python
 @router.post("/rooms/{id}/reservations", response_model=S.Enqueued)
 def put_resv(id: int, body: S.ResvIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    rid = body.id if body.id is not None else _free_id(s, Reservation)
-    obj = s.get(Reservation, rid) or Reservation(id=rid)
+    bld, room, mid = _addr(s, id, user)
+    if body.id is not None:
+        return _write_resv(s, id, bld, room, mid, body, body.id, _existing_same_room(s, Reservation, body.id, id))
+    with _ID_LOCK:  # 채번 → insert → 커밋까지 한 덩어리 (다음 요청은 커밋된 id 를 본다)
+        return _write_resv(s, id, bld, room, mid, body, _free_id(s, Reservation), None)
+
+
+def _write_resv(s, room_id, bld, room, mid, body: S.ResvIn, rid: int, obj: Reservation | None) -> dict:
+    obj = obj or Reservation(id=rid, room_id=room_id)
     for k, v in body.model_dump(exclude={"id"}).items():
         setattr(obj, k, v)
-    obj.room_id = id
     s.add(obj)
-    today = dt.datetime.now(dt.UTC).date()
+    today = dt.datetime.now(dt.UTC).date()  # S10 T1 이 clock.local_today() 로 바꾼다
     ids = []
     if today <= body.date <= today + dt.timedelta(days=RESV_HORIZON_DAYS):
         ids = api.enqueue_resv_set(
             bld, room, rid, body.date, (body.s_h, body.s_m), (body.e_h, body.e_m),
-            body.type, body.subject, body.professor,
+            body.type, body.subject, body.professor, session=s,
         )
-    s.flush()
+    _commit_notify(s, mid)
     return {"outbox_ids": ids, "id": rid}
 ```
 
@@ -415,17 +447,23 @@ def put_resv(id: int, body: S.ResvIn, user: User = AdminUser, s: Session = _DB):
 ```python
 @router.post("/rooms/{id}/exams", response_model=S.Enqueued)
 def put_exam(id: int, body: S.ExamIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    eid = body.id if body.id is not None else _free_id(s, ExamPeriod)
-    obj = s.get(ExamPeriod, eid) or ExamPeriod(id=eid)
-    obj.room_id, obj.date_start, obj.date_end = id, body.date_start, body.date_end
+    bld, room, mid = _addr(s, id, user)
+    if body.id is not None:
+        return _write_exam(s, id, bld, room, mid, body, body.id, _existing_same_room(s, ExamPeriod, body.id, id))
+    with _ID_LOCK:
+        return _write_exam(s, id, bld, room, mid, body, _free_id(s, ExamPeriod), None)
+
+
+def _write_exam(s, room_id, bld, room, mid, body: S.ExamIn, eid: int, obj: ExamPeriod | None) -> dict:
+    obj = obj or ExamPeriod(id=eid, room_id=room_id)
+    obj.date_start, obj.date_end = body.date_start, body.date_end
     s.add(obj)
-    ids = api.enqueue_exam_set(bld, room, eid, body.date_start, body.date_end)
-    s.flush()
+    ids = api.enqueue_exam_set(bld, room, eid, body.date_start, body.date_end, session=s)
+    _commit_notify(s, mid)
     return {"outbox_ids": ids, "id": eid}
 ```
 
-(S2 의 "enqueue 먼저" 순서는 유지 — `_free_id` 의 SELECT 는 읽기라 락과 무관.)
+리뷰는 "충돌 시 1회 재채번"을 권했지만 SQLite(pysqlite) 는 SAVEPOINT 가 기본 설정으로 동작하지 않아 세션 안 재시도가 까다롭다. 단일 워커 전제에서 **채번~커밋을 프로세스 락으로 묶으면 충돌 자체가 없다** — 그쪽을 택했다(워커를 늘리면 이 락과 허브 레지스트리가 함께 깨진다 — README 의 `--workers 1` 과 같은 근거).
 
 - [ ] **Step 5: 통과 확인·커밋**
 
@@ -489,6 +527,7 @@ def test_failed_outbox_window_join_and_limit(app, school):
     _outbox(app, "F", 101, finished_at=NOW)  # 타 학교
     _outbox(app, "E", 999, finished_at=NOW)  # 방 없음 → 제외
     _outbox(app, "E", 102, state="acked", finished_at=NOW)  # 실패 아님
+    _outbox(app, "E", 102, finished_at=NOW, last_error="cancelled")  # 관리자 취소 → 제외
     newest = _outbox(app, "E", 102, finished_at=NOW)
     with app.state.Session() as s:
         rows = admin.failed_outbox(s, 1, days=7, now=NOW)
@@ -614,6 +653,7 @@ def failed_outbox(
         .join(Building, and_(Building.bld == Outbox.bld, Building.school_id == school_id))
         .join(Room, and_(Room.building_id == Building.id, Room.room == Outbox.room))
         .where(Outbox.state == "failed", Outbox.finished_at >= cutoff)
+        .where((Outbox.last_error.is_(None)) | (Outbox.last_error != "cancelled"))  # 관리자 취소분은 실패가 아니다
         .order_by(Outbox.finished_at.desc(), Outbox.id.desc())
     )
     if limit is not None:
@@ -794,7 +834,9 @@ def test_summary_counts_previews_and_totals(client, app, school, monkeypatch):
     j = r.json()
     assert j["totals"] == {"buildings": 2, "rooms": 3, "nodes": 4, "modems": 2}
     w = j["warnings"]
-    assert {k: v["count"] for k, v in w.items()} == {
+    assert {k: w[k]["count"] for k in (
+        "modem_offline", "unseen", "low_batt", "resync", "clock_stale", "failed", "pending_devices", "pending_approval",
+    )} == {  # S10 이 pending_reservations 를 더하므로 전체 키가 아니라 이 8개만 본다
         "modem_offline": 1, "unseen": 3, "low_batt": 2, "resync": 1, "clock_stale": 0,
         "failed": 6, "pending_devices": 1, "pending_approval": 2,
     }
@@ -808,7 +850,8 @@ def test_summary_counts_previews_and_totals(client, app, school, monkeypatch):
     assert "pw_hash" not in r.text and j["as_of"] == NOW.isoformat()
 
 
-def test_summary_defaults_limits_and_auth(client, client_raw, app, school):
+def test_summary_defaults_limits_and_auth(client, client_raw, app, school, monkeypatch):
+    monkeypatch.setattr(admin, "utcnow", lambda: NOW)  # 시드가 NOW 기준 — 실제 날짜가 지나도 7일 창이 같다
     _seed(app)
     j = client.get("/api/admin/summary").json()
     assert len(j["warnings"]["failed"]["items"]) == 5 and j["warnings"]["failed"]["count"] == 6

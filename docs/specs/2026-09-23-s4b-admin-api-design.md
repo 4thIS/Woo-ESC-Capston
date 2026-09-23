@@ -1,7 +1,7 @@
 # S4b — 관리자 대시보드·모니터 API (요약·노드·실패 작업·건물 단위 조회·서버 채번) — 설계 (spec)
 
 - 생성일시: 2026-09-23
-- 수정일시: 2026-09-23 (r2 — S10 이 `pending_reservations` 버킷을 additive 로 추가)
+- 수정일시: 2026-09-23 (r3 — PR #38 리뷰: 채번 락·같은 방 가드, 실패 버킷 취소분 제외, RecordProvider 문구. r2 — S10 이 `pending_reservations` 버킷 추가)
 - 상위 문서: `2026-09-09-roadmap-design.md` §3(메인Pi "노드 상태 집계, 대시보드")·§5 S4. 인증·스코프는 `2026-09-23-s4a-auth-design.md`(선행). 원자료는 `2026-09-14-s2-server-design.md` §2(`terminal_status`·`outbox`·`modems`·`pending_devices`). 건물 단위 조회·채번은 이슈 #36(mh).
 - 담당: wj @leemonta9482. 영역 `server/`. `lora_service/api.py`·`hub.py` 불변 — 집계는 라우터 층에서 ORM 읽기 조인.
 
@@ -42,7 +42,7 @@ S2는 관리자 화면이 쓸 **원자료**(`/api/lora/status`·`/outbox`·`/mod
 | `low_batt` | `terminal_status.low_batt` | 펌웨어 StatusFlag |
 | `resync` | `terminal_status.sync_state = 'resync'` | S2 §2.4 |
 | `clock_stale` | `terminal_status.clock_stale` | |
-| `failed` | `outbox.state = 'failed'` and `finished_at ≥ now − 7 d` | 오래된 건 노이즈 |
+| `failed` | `outbox.state = 'failed'` and `finished_at ≥ now − 7 d` and `last_error ≠ 'cancelled'` | 오래된 건 노이즈. 관리자 취소가 모뎀에서 failed 로 돌아온 건 실패가 아니다 |
 | `pending_devices` | `pending_devices` 행 (그 학교 모뎀 소속) | |
 | `pending_approval` | `users.status = 'pending_approval'` | S4a |
 
@@ -93,9 +93,10 @@ outbox `(bld, room)` → rooms 조인. 방이 지워진 outbox 행(조인 실패
 
 `reservations.id`·`exam_periods.id` 는 **전역 u16 PK 그대로** 둔다(프로토콜 `resvId/examId` 는 노드 안에서만 멱등키지만, DB 를 복합 PK 로 바꾸는 비용이 전시 규모에 맞지 않음).
 
-- `ResvIn.id`·`ExamIn.id` 를 **선택**으로. 없으면 서버가 `1..65535` 중 **비어 있는 최소값** 배정. 있으면 지금처럼 그 id 로 upsert(호환·수정 경로).
+- `ResvIn.id`·`ExamIn.id` 를 **선택**으로. 없으면 서버가 `1..65535` 중 **비어 있는 최소값** 배정 — 채번부터 커밋까지 프로세스 락으로 묶어 동시 요청이 같은 id 를 잡지 않는다(단일 워커 전제, README `--workers 1`).
+- id 를 지정하면: **같은 방의 기존 행이면 수정**, 다른 방(다른 학교 포함) 행이면 **409**(빼앗기 방지 — S4a §3.3 🔴4a), 없는 id 면 그 id 로 생성(S2 호환). 방을 옮기려면 삭제 후 재생성. S10 이 `status` 컬럼을 더하면 `approved` 가 아닌 행(학생 신청)도 409.
 - 응답 `Enqueued` 에 `id` 추가(additive): `{"outbox_ids": [...], "id": 17}`.
-- 빈 id 없음(65535 전부 사용) → 409 `"예약 id 소진"`. 실제로는 S10 일일 작업(지난 예약 삭제)이 id 를 돌려준다.
+- 빈 id 없음(65535 전부 사용) → 409 `"id 소진 — 지난 예약·시험기간을 정리하세요"`. 실제로는 S10 일일 작업(지난 예약 삭제)이 id 를 돌려준다.
 - 채번은 도메인 세션 안 `SELECT id FROM reservations ORDER BY id` 한 번 스캔 — 65535 이하 정수라 ms.
 - 화면 규칙(mh 에게): **채번하지 말고 서버가 돌려준 `id` 를 쓴다.** 수정은 그 id 로 다시 POST.
 
@@ -113,7 +114,7 @@ outbox `(bld, room)` → rooms 조인. 방이 지워진 outbox 행(조인 실패
 ## 3. 접근 제어 / 제약
 
 - 전부 `require_admin` + 학교 스코프(S4a). 건물 단위 조회는 `scope.get_scoped(Building)`, 요약·노드·실패는 관리자 학교로 필터. 타 학교 건물 → 404.
-- `lora_service/api.py`·`hub.py`·`Topology`·`RecordProvider` 불변. `terminal_status`·`outbox`·`modems`·`pending_devices` 는 **도메인 세션에서 ORM 읽기만**(라우터 층이 `app.lora_service.models` 를 import 하는 것은 S4a T8 과 같은 방향 — lora_service 가 domain 을 import 하지 않는 규칙은 지켜짐).
+- `lora_service/api.py`·`hub.py`·`Topology` 불변. (`RecordProvider` 는 S10 이 예약 `status`·KST 창으로 고친다 — S10 §2.3.) `terminal_status`·`outbox`·`modems`·`pending_devices` 는 **도메인 세션에서 ORM 읽기만**(라우터 층이 `app.lora_service.models` 를 import 하는 것은 S4a T8 과 같은 방향 — lora_service 가 domain 을 import 하지 않는 규칙은 지켜짐).
 - 요약은 요청마다 계산(캐시 없음). 전시 규모(방 수십·outbox 수천)에서 SQLite ms 단위. 느려지면 그때 캐시.
 - `preview` 상한 20, `days` 상한 90, `limit` 상한 500 — 초과는 422.
 
