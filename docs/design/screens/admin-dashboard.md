@@ -8,7 +8,7 @@
 
 ## 목적 · 진입
 
-**웹에서 바꾼 것이 문 앞에 닿기까지 얼마나 걸리는지 본다.** 로드맵 §10.2의 완료 기준(`100회 중 95회 이상 30초`)을 이 화면이 보여준다.
+**웹에서 바꾼 것이 문 앞에 닿기까지 얼마나 걸리는지 본다.** 로드맵 §7의 완료 기준(`100회 중 95회 이상 30초`)을 이 화면이 보여준다.
 
 진입: 사이드 메뉴 `전송 현황`. 페이지1·2의 `failed` 점을 눌러도 온다.
 
@@ -63,7 +63,7 @@
 
 ### 3계열이 필요해지면
 
-`chart.series.3`(골드 `#CA8A04`)은 대비가 2.86:1이라 **값 라벨 또는 같은 데이터의 표가 의무**다. 4계열 이상은 금지 — 파랑↔보라가 적녹색약에서 ΔE 1.8로 붙는다. 넷째부터는 `기타`로 접거나 차트를 쪼갠다.
+`chart.series.3`(골드 `#CA8A04`)은 대비가 2.94:1이라 **값 라벨 또는 같은 데이터의 표가 의무**다. 4계열 이상은 금지 — 파랑↔보라가 적녹색약에서 ΔE 1.8로 붙는다. 넷째부터는 `기타`로 접거나 차트를 쪼갠다.
 
 ## 최근 전송
 
@@ -90,7 +90,7 @@ StatTile ×4, Histogram, Legend, Table(최근 전송), OutboxDot, Select(기간�
 | 배정률 | `GET /api/admin/analytics/allocation?from&to&building_id&group=room\|building\|weekday` |
 | 공강 | `GET /api/admin/analytics/free-slots?date&building_id` |
 | 예약 통계 | `GET /api/admin/analytics/reservations?from&to&group=day\|week` |
-| 실패 목록 | `GET /api/admin/failed?days=7` |
+| 실패 목록 | `GET /api/admin/outbox/failed?days=7` |
 
 기간은 **KST 날짜** `from~to`(양끝 포함), 기본 최근 30일, **최대 90일**(초과 422). 화면의 기간 Select도 90일을 넘기지 않는다.
 
@@ -105,6 +105,6 @@ StatTile ×4, Histogram, Legend, Table(최근 전송), OutboxDot, Select(기간�
 
 1. ~~집계 API~~ — S10 §4.3 에서 확정
 2. **`전체 전송 내역` 화면** — 이 링크가 갈 곳이 아직 없다. `analytics/latency/samples` 로 대신할 수 있는지 확인
-3. **웨이크 수신률을 뺐다** — S10 분석에 그 지표가 없다. 로드맵 §10.2-2 기준이라 어디서 계산할지 확인 필요. 지금은 `90초 이내 비율`로 대체했다
+3. **웨이크 수신률을 뺐다** — S10 분석에 그 지표가 없다. 로드맵 §7.1 기준이라 어디서 계산할지 확인 필요. 지금은 `90초 이내 비율`로 대체했다
 4. **배정률·공강·예약 통계 화면** — API는 있는데 이 화면에 안 그렸다. 별도 화면이 필요한지, 이 화면에 탭으로 붙일지 (mh-08)
 5. **요약(`/summary`)을 어디에 두나** — 경고 9종 카운트가 화면 상단 배너인지, 별도 대시보드 홈인지. `pending_approval`·`pending_reservations` 는 다른 화면으로 보내는 성격이다

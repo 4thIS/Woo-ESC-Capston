@@ -17,7 +17,7 @@ docs/design/
 │   ├── admin-dashboard.md  ← 분석 대시보드 (차트 규칙은 tokens.md 의 chart.* 를 따른다)
 │   ├── admin-nodes.md      ← 노드 상태·모뎀Pi·등록 대기
 │   ├── admin-users.md      ← 회원 승인 (S4a)
-│   ├── student-room.md     ← 학생 웹 (S10, 모바일 우선, 라우트 3개)
+│   ├── student-room.md     ← 학생 웹 (S10, 모바일 우선, 라우트 6개)
 │   └── terminal-epaper.md  ← 단말 e-Paper 화면 (→ firmware/src/terminal/, 소비자는 dh)
 └── assets/            ← 시안에서 뽑은 아이콘·이미지 원본 (wj가 web/src/assets/ 로 복사)
 ```
@@ -44,8 +44,9 @@ docs/design/
 ## 1층 — 원시 팔레트
 | 토큰 | 값 | 흰 바탕 대비 |
 |---|---|---|
-| gray.0 … gray.800 | #FFFFFF … #262626 | (gray.400 이하는 텍스트 금지) |
+| gray.0 … gray.800 | #FFFFFF … #262626 | gray.400 2.43 → 텍스트 금지 · gray.500 4.95 가 하한 |
 | blue.600 / red.700 | #0B5ED7 / #B42318 | 5.84 / 6.57 |
+| teal.600 / gold.600 | #0D9488 / #CA8A04 | 3.74 / 2.94 — 차트 마크 전용 |
 …
 
 ## 2층 — 시맨틱 (wj 가 쓰는 이름)
@@ -68,6 +69,7 @@ docs/design/
 |---|---|
 | font.family | "Pretendard Variable", Pretendard, system-ui, sans-serif |
 | font.weight.regular / medium / bold | 400 / 500 / 700 |
+| leading.tight / normal | 1.25 / 1.5 — 행간은 line.* 가 아니다(그건 선 색) |
 
 ## 치수 — admin / student 로 갈린다
 | 토큰 | admin | student |
@@ -104,7 +106,7 @@ docs/design/
 | loading | boolean | false |
 
 상태별 색: primary = brand 배경 + 흰 글자, hover 10% 어둡게, disabled 불투명도 .5 …
-높이: sm 28px / md 36px. 패딩: space.2 space.4. 라운드: radius.md.
+높이: control.height.sm / .md (admin 28 / 32px · student 48px). 패딩: space.2 space.4. 라운드: radius.md.
 
 ## Input / Select / Table / Badge / Modal / Toast …
 ```
@@ -142,7 +144,7 @@ Select(강의실), Button(추가), Table 아님 — 커스텀 그리드, Badge(t
 ## 규칙
 
 - 값은 **숫자·색상코드·이름**으로 쓴다. "적당히", "약간 어둡게" 금지 — 코드로 옮길 수 없다.
-- 서버 필드명은 `server/app/schemas.py`(OpenAPI `/docs`)를 그대로 쓴다. 화면이 서버에 없는 필드를 요구하면 wj에게 이슈 — 서버(additive)가 먼저다.
+- 서버 필드명은 `server/app/schemas.py`를 그대로 쓴다(`/docs` 는 `DEBUG=1` 에서만 뜬다 — S4a). 화면이 서버에 없는 필드를 요구하면 wj에게 이슈 — 서버(additive)가 먼저다.
 - 강의실 상태는 e-Paper 의 RED/BLACK 이분법과 1:1이다: 사용중(수업중·시험중·특강·대여중) = `room.busy`, 나머지 = `room.free`. **넷을 색으로 나누지 않고 Badge 라벨 텍스트로 나눈다** — 같은 적색 계열 안에서 갈라 봤자 서로의 대비가 1.02~1.88이라 나뉘지 않는다.
 - **유채색은 브랜드 파랑과 상태 적색 둘뿐이다.** 구조(바탕·선·보조 텍스트)는 전부 무채색이고, 위계는 크기·굵기·면으로 만든다. `brand` 는 1차 액션과 활성 상태 전용이라 화면당 채워진 brand 버튼은 하나다.
 - **적색은 면이 아니라 라벨에 쓴다.** 셀을 통째로 적색으로 채우지 않는다 — 하루치만 차도 화면이 경고판으로 읽힌다.

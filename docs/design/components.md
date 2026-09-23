@@ -106,7 +106,7 @@ v2에서 쓸 수 있는 수단은 다섯이고, 이 밖으로 나가지 않는�
 - `hint`: 아래 `font.size.xs`, `text.3`.
 - `error`: `hint` 자리를 **대체**하고 글자 `danger`, 테두리 `danger` 2px. hint와 error를 동시에 보이지 않는다 — 자리가 하나다.
 - 포커스: `focus` 2px outline. 에러와 겹치면 outline만 남긴다.
-- **`maxBytes`는 글자 수가 아니라 UTF-8 바이트를 센다.** `subject`·`professor`가 바이트 상한(`P.SUBJ_MAX`/`P.PROF_MAX`)이라 글자 수로 세면 한글에서 서버가 튕긴다. 남은 양을 `12 / 24 B`로 hint 자리에 우측 정렬해 보여주고, 넘으면 입력을 막는다.
+- **`maxBytes`는 글자 수가 아니라 UTF-8 바이트를 센다.** `subject`·`professor`가 바이트 상한(`P.SUBJ_MAX`/`P.PROF_MAX`)이라 글자 수로 세면 한글에서 서버가 튕긴다. 남은 양을 `12 / 20 B`로 hint 자리에 우측 정렬해 보여주고, 넘으면 입력을 막는다.
 - 시각 입력(`s_h`/`s_m`)은 `font-variant-numeric: tabular-nums`.
 
 ## Checkbox
@@ -401,13 +401,11 @@ Modal 안에 들어가는 폼. **페이지1 표와 페이지2 셀이 같은 것�
 
 | prop | 값 | 기본 |
 |---|---|---|
-| `syncState` | string | — |
-| `clockStale` | boolean | `false` |
-| `lowBatt` | boolean | `false` |
+| `warnings` | `string[]` | `[]` |
 
-셋을 받아 **하나의 배지**로 줄인다. 문제가 둘 이상이면 가장 나쁜 것만 남기고 나머지는 `title`로 민다 — 한 행에 적색 배지가 여럿이면 무엇이 급한지 사라진다.
+**판정은 서버가 한다.** `GET /api/admin/nodes` 의 `NodeOut.warnings[]` 를 그대로 받는다(S4b). 화면이 `batt_mv` 임계값이나 시각 오차를 다시 계산하지 않는다 — 두 곳에서 판정하면 두 값이 갈린다.
 
-`동기화됨`(`neutral`+`solid`) / `대기`(`neutral`+`outline`) / 문제(`danger`+`outline`).
+배열이 비면 `동기화됨`(`neutral`+`solid`), 하나 이상이면 **우선순위 `unseen` > `low_batt` > `resync` > `clock_stale` 중 가장 나쁜 하나만** 배지로 보이고 나머지는 `title` 로 민다 — 한 행에 적색 배지가 여럿이면 무엇이 급한지 사라진다. `low_batt` · `unseen` 은 `danger`+`outline`, 나머지는 `neutral`+`outline`. 문자열 집합은 [노드 화면](screens/admin-nodes.md)이 원본이다.
 
 ## Histogram
 
