@@ -289,6 +289,10 @@ class ResetIn(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+class RejectIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=200)
+
+
 class UserOut(Out):
     email: str
     school_id: int

@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session
 
 from app import schemas as S
 from app.auth import mailer, password, ratelimit, tokens
-from app.auth.deps import CurrentUser
+from app.auth.deps import AdminUser, CurrentUser
 from app.auth.models import HOLDS_STUDENT_NO, User
+from app.db import utcnow
 from app.deps import _DB
 from app.domain.models import School
 
@@ -178,3 +179,89 @@ def reset(body: S.ResetIn, s: Session = _DB):
 @router.get("/me", response_model=S.UserOut)
 def me(user: User = CurrentUser):
     return user
+
+
+# ---- §4.2 관리자 회원 관리 (자기 학교만) ----
+
+
+def _scoped_user(s: Session, email: str, admin_user: User) -> User:
+    u = s.get(User, email.strip().lower())
+    if u is None or u.school_id != admin_user.school_id:
+        raise HTTPException(404, "사용자 없음")  # 타 학교는 존재 자체를 숨긴다 (S4a §3.3)
+    return u
+
+
+def _transition(u: User, from_: str, to: str) -> None:
+    if u.status != from_:
+        raise HTTPException(409, f"{u.status} 상태에서는 불가")
+    u.status = to
+
+
+@admin.get("/users", response_model=list[S.UserOut])
+def list_users(status: str | None = None, admin_user: User = AdminUser, s: Session = _DB):
+    q = select(User).where(User.school_id == admin_user.school_id).order_by(User.created_at)
+    if status is not None:
+        q = q.where(User.status == status)
+    return s.scalars(q).all()
+
+
+@admin.post("/users/{email}/approve", response_model=S.UserOut)
+def approve(
+    email: str,
+    request: Request,
+    bg: BackgroundTasks,
+    admin_user: User = AdminUser,
+    s: Session = _DB,
+):
+    u = _scoped_user(s, email, admin_user)
+    _transition(u, "pending_approval", "active")
+    u.approved_at, u.approved_by = utcnow(), admin_user.email
+    out = S.UserOut.model_validate(u)  # 커밋 뒤에도 응답을 만들 수 있게 먼저 스냅샷
+    send_after_commit(
+        bg, s, request.app.state.settings, u.email, *mailer.decision_mail(True, None), "decision"
+    )
+    return out
+
+
+@admin.post("/users/{email}/reject", response_model=S.UserOut)
+def reject(
+    email: str,
+    body: S.RejectIn,
+    request: Request,
+    bg: BackgroundTasks,
+    admin_user: User = AdminUser,
+    s: Session = _DB,
+):
+    u = _scoped_user(s, email, admin_user)
+    _transition(u, "pending_approval", "rejected")
+    u.approved_at, u.approved_by, u.reject_reason = utcnow(), admin_user.email, body.reason
+    out = S.UserOut.model_validate(u)
+    send_after_commit(
+        bg,
+        s,
+        request.app.state.settings,
+        u.email,
+        *mailer.decision_mail(False, body.reason),
+        "decision",
+    )
+    return out
+
+
+@admin.post("/users/{email}/disable", response_model=S.UserOut)
+def disable(email: str, admin_user: User = AdminUser, s: Session = _DB):
+    u = _scoped_user(s, email, admin_user)
+    if u.role == "admin":
+        raise HTTPException(400, "관리자 계정은 CLI 로")
+    _transition(u, "active", "disabled")
+    u.token_version += 1
+    s.flush()  # 응답 전에 쓰기 — 커밋 실패를 성공으로 보이지 않게 (Global)
+    return u
+
+
+@admin.post("/users/{email}/enable", response_model=S.UserOut)
+def enable(email: str, admin_user: User = AdminUser, s: Session = _DB):
+    u = _scoped_user(s, email, admin_user)
+    _transition(u, "disabled", "active")
+    u.token_version += 1  # disabled 동안 탈취된 토큰도 되살아나지 않게
+    s.flush()
+    return u
