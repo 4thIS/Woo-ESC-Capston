@@ -606,3 +606,22 @@ async def test_request_status_time_is_not_superseded_by_a_newer_plain_time(rig, 
     ]
     flags_sent = [C.decode_payload(h.type, pb).flags for h, pb in sent]
     assert flags_sent == [flag, 0]
+
+
+async def test_each_send_and_result_is_logged_at_info_for_pi_integration(rig, caplog):
+    """cw-10 합격 기준은 "모뎀Pi 로그에 프레임 hex → job_result". 워커가 송신·결과를 INFO 로 남겨야
+    Pi 에서 journalctl 만으로 확인할 수 있다."""
+    import logging
+
+    db, _, _, w = rig
+    put(db)
+    with caplog.at_level(logging.INFO, logger="lora.worker"):
+        await w.once()
+    text = "\n".join(r.getMessage() for r in caplog.records if r.name == "lora.worker")
+    assert "job 10" in text and "SLOT_SET" in text and "E301-1" in text
+    assert "txn=1" in text
+    assert "acked" in text and "OK" in text
+    frame_hex = [r for r in caplog.records if "frame=" in r.getMessage()]
+    assert frame_hex and all(
+        c in "0123456789abcdef" for c in frame_hex[0].getMessage().split("frame=")[1].split()[0]
+    )

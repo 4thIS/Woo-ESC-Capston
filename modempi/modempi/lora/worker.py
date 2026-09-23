@@ -110,6 +110,12 @@ class Worker:
 
     def _finish(self, job: Job, state: str, **fields) -> None:
         self.store.update(job.job_id, state=state, **fields)
+        log.info(
+            "job %s 끝: %s%s",
+            job.job_id,
+            state,
+            f" ({fields['last_error']})" if fields.get("last_error") else "",
+        )
 
     def _frame(self, u: Unit, txn: int, net_id: int) -> bytes:
         h = C.Header(
@@ -121,10 +127,16 @@ class Worker:
         _, pb = C.decode_frame(res.ack, net_id=self._sent_net_id)
         return C.decode_payload(P.Type.ACK, pb)
 
-    async def _tx(self, u: Unit, txn: int) -> TxResult:
+    async def _tx(self, job: Job, u: Unit, txn: int) -> TxResult:
         self._sent_net_id = self._net_id()
         frame = self._frame(u, txn, self._sent_net_id)
+        # Pi 에서 journalctl 만으로 무엇이 나갔는지 보이게(cw-10 합격 기준 "모뎀Pi 로그에 프레임 hex")
+        log.info(
+            "job %s → %s %s txn=%d frame=%s",
+            job.job_id, P.Type(u.type).name, _addr(job), txn, frame.hex(),
+        )  # fmt: skip
         r = await self.client.tx(frame, wake=u.wake, ack_ms=u.ack_ms)
+        log.info("job %s ← %s%s", job.job_id, r.status, _detail(r))
         if r.status == "error" and r.reason == "busy":
             raise RuntimeError("모뎀이 busy — 워커가 tx 를 겹쳐 불렀다")
         if r.status == "acked":
@@ -147,12 +159,12 @@ class Worker:
             txn = job.txn or self.store.next_txn(job.bld, job.room, job.unit)
         if not self._claim(job, txn):
             return  # 그 사이 cancel
-        res = await self._tx(u, txn)
+        res = await self._tx(job, u, txn)
         if res.status == "acked" and self._ack_of(res).status in (
             P.AckStatus.BAD_CRC,
             P.AckStatus.STORE_FAIL,
         ):
-            res = await self._tx(u, txn)  # 즉시 1회 재송
+            res = await self._tx(job, u, txn)  # 즉시 1회 재송
         self._apply(job, res)
 
     def _apply(self, job: Job, res: TxResult) -> None:
@@ -237,7 +249,7 @@ class Worker:
         res: TxResult | None = None
         while i < len(units):
             txn = self.store.next_txn(job.bld, job.room, job.unit)
-            res = await self._tx(units[i], txn)
+            res = await self._tx(job, units[i], txn)
             if res.status == "acked":
                 ack = self._ack_of(res)
                 if ack.status == P.AckStatus.BUSY:
@@ -277,3 +289,19 @@ def _requests_status(job: Job) -> bool:
     except (ValueError, TypeError, AttributeError):
         return False
     return bool(flags & int(P.TimeFlag.REQUEST_STATUS))
+
+
+def _addr(job: Job) -> str:
+    return f"{job.bld}{job.room}-{job.unit}" if job.bld else "ALL"
+
+
+def _detail(r: TxResult) -> str:
+    """로그용 결과 한 줄. ACK 는 상태 이름까지, 못 읽으면 그대로 둔다(판정은 호출자가 한다)."""
+    if r.status == "acked" and r.ack:
+        try:
+            _, pb = C.decode_frame(r.ack, net_id=r.ack[1])
+            ack = C.decode_payload(P.Type.ACK, pb)
+            return f" {P.AckStatus(ack.status).name} rssi={r.rssi} snr={r.snr}"
+        except (C.FrameError, ValueError, IndexError):
+            return " (ACK 해석 불가)"
+    return f" ({r.reason})" if r.reason else ""
