@@ -213,6 +213,7 @@ HELLO       [mac 6B][fw u8][batt_mV u16 BE]   헤더 BLD=0x00 ROOM=0 UNIT=0 TXN=
 ### 3.5 TXN·중복·순서
 
 - 백엔드는 (room, unit)마다 TXN을 1~255 롤링. 단말은 마지막 TXN을 RTC/NVS에 보관, 같은 TXN 재수신 시 `DUP` ACK(멱등 보장).
+- **TIME(0x01)은 예외다 — `txn=0`으로 보내고 노드는 DUP 판정도 `lastTxn` 갱신도 하지 않는다** (2026-09-23 확정, S6 §9). TIME은 버전이 없고 멱등이라 중복 적용이 무해한 반면, 타겟 TIME이 노드의 `lastTxn`을 건드리면 그 노드가 기다리던 재송이 DUP에서 떨어져 GAP → 불필요한 FILE 재동기가 걸린다.
 - **TXN은 공중 프레임마다 하나씩 소비한다.** FILE 세션(BEGIN + DATA×n + END)은 n+2개의 TXN을 쓴다. 단말의 DUP 판정은 프레임 단위이므로 FILE_DATA 재송(FILE_MISSING 이후)은 **새 TXN**으로 보낸다. (2026-09-10 확정 — §8.4 의 "job 당 txn" 표현은 이 규칙으로 읽는다)
 - 단말은 TYPE별 멱등 키: SLOT=(day,sH,sM), RESV=resvId, EXAM=examId.
 - 프레임 순서는 백엔드 워커가 (room, unit) FIFO로 보장(§8.4).

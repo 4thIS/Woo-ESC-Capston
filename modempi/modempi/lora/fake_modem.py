@@ -98,6 +98,7 @@ class FakeModem:
         self._out: asyncio.Queue[str] = asyncio.Queue()
         self._inflight: asyncio.Task | None = None
         self._rng = random.Random(1)
+        self._drop_file_seq: int | None = None
         self._emit(
             {"op": "ready", "fw": fw, "sf": P.RADIO["RP_SF"], "freq": P.RADIO["RP_FREQ_MHZ"]}
         )
@@ -118,6 +119,10 @@ class FakeModem:
         if bad:
             raise ValueError(f"알 수 없는 스크립트 토큰 {bad}; 허용: {sorted(_TOKENS)}")
         self._script.extend(outcomes)
+
+    def drop_next_file_data(self, seq: int) -> None:
+        """다음 FILE 세션에서 이 seq 의 DATA 를 한 번 버린다 → 노드가 END 에 FILE_MISSING(seq) 로 답한다."""
+        self._drop_file_seq = seq
 
     def inject_uplink(self, frame: bytes, *, rssi: int = -100, snr: float = 5.0) -> None:
         self.stats["rx"] += 1
@@ -254,6 +259,10 @@ class FakeModem:
 
     def _apply(self, node: NodeState, h: C.Header, pb: bytes) -> C.Ack:
         """v2 §3.5 멱등·§3.4 상태 규칙대로 가상 노드에 적용하고 ACK 를 만든다."""
+        if h.type == P.Type.TIME:
+            # TIME 은 버전이 없고 멱등이라 txn=0 으로 오며 DUP 판정도 lastTxn 갱신도 하지 않는다
+            # (v2 §3.5, 2026-09-23 결정). 안 그러면 타겟 TIME 이 그 노드의 재송을 DUP 에서 떨어뜨린다.
+            return node.ack(P.AckStatus.OK)
         if node.last_txn == h.txn:
             return node.ack(P.AckStatus.DUP)
         node.last_txn = h.txn
@@ -276,6 +285,9 @@ class FakeModem:
                 "chunks": {},
             }
             return node.ack(P.AckStatus.OK)
+        if t == P.Type.FILE_DATA and self._drop_file_seq == pb[0]:
+            self._drop_file_seq = None
+            return node.ack(P.AckStatus.OK)  # 받은 척하고 버린다 (pb[0] = seq)
         if t == P.Type.FILE_DATA:
             if node._file is None:
                 return node.ack(P.AckStatus.BAD_PAYLOAD)
