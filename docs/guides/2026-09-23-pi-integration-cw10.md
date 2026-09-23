@@ -16,7 +16,7 @@
 | 노트북에 Raspberry Pi Imager | https://www.raspberrypi.com/software/ |
 | GitHub 접근 | 리포가 **비공개**라 Pi에서 clone하려면 인증이 필요하다(아래 §2-4) |
 
-이름은 이 문서 전체에서 이렇게 쓴다: **`main-pi`**(메인Pi), **`modem-pi`**(모뎀Pi), 사용자 **`woo`**. 다르게 정했으면 명령에서 바꿔 쓴다.
+이 문서의 이름(팀 확정, 2026-09-23): 메인Pi 호스트명 **`ESC-main`**, 모뎀Pi 호스트명 **`ESC-modem`**, 두 Pi 모두 사용자 **`admin`**. 접속 주소는 `ESC-main.local` / `ESC-modem.local`(mDNS 는 대소문자를 가리지 않는다).
 
 ---
 
@@ -25,8 +25,8 @@
 Raspberry Pi Imager에서:
 1. **OS**: Raspberry Pi OS **Lite (64-bit)** — 화면이 필요 없다.
 2. **설정(톱니바퀴 / "설정 편집")**:
-   - 호스트 이름: `main-pi` / `modem-pi`
-   - 사용자: `woo` + 비밀번호
+   - 호스트 이름: `ESC-main` / `ESC-modem`
+   - 사용자: `admin` + 비밀번호 (두 Pi 같은 이름)
    - Wi-Fi: SSID·비밀번호, 국가 `KR`
    - 로캘: 시간대 `Asia/Seoul`
    - **서비스 → SSH 사용** 체크
@@ -34,10 +34,10 @@ Raspberry Pi Imager에서:
 
 노트북에서 접속 확인:
 ```bash
-ssh woo@main-pi.local
-ssh woo@modem-pi.local
+ssh admin@ESC-main.local
+ssh admin@ESC-modem.local
 ```
-`.local`로 안 되면 공유기 관리 페이지에서 IP를 찾아 `ssh woo@192.168.x.x`.
+`.local`로 안 되면 공유기 관리 페이지에서 IP를 찾아 `ssh admin@192.168.x.x`.
 
 ---
 
@@ -61,7 +61,7 @@ uv --version
 **2-4. 리포 받기 (비공개 리포 인증)** — 둘 중 하나:
 ```bash
 # (가) SSH 키 — Pi 에서 키를 만들고 GitHub 계정 Settings → SSH keys 에 공개키를 등록
-ssh-keygen -t ed25519 -C "woo@$(hostname)" -N "" -f ~/.ssh/id_ed25519
+ssh-keygen -t ed25519 -C "admin@$(hostname)" -N "" -f ~/.ssh/id_ed25519
 cat ~/.ssh/id_ed25519.pub          # 이 한 줄을 GitHub 에 붙여 넣는다
 git clone git@github.com:4thIS/Woo-ESC-Capston.git ~/Woo-ESC-Capston
 
@@ -76,7 +76,7 @@ Pi 에서는 **`main` 만 받는다**(작업 브랜치 체크아웃 금지 — P
 ## 3. 메인Pi — 서버 띄우기 (약 10분)
 
 ```bash
-ssh woo@main-pi.local
+ssh admin@ESC-main.local
 cd ~/Woo-ESC-Capston/server
 uv sync
 mkdir -p ~/data
@@ -87,9 +87,9 @@ uv run uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000
 > **워커는 반드시 1개(기본값)** — WS 연결·outbox 디스패치 상태가 프로세스 메모리에 있다(`server/README.md`). `--workers` 를 주지 않는다.
 
 노트북 브라우저에서 확인:
-- http://main-pi.local:8000/api/health → `{"ok": true}`
-- http://main-pi.local:8000/docs → API 목록
-- http://main-pi.local:8000/static/index.html → **"메인Pi — 통신 확인"** 페이지(모뎀 목록·outbox·시간표 저장 폼). 이 문서의 "대시보드"는 이 페이지다.
+- http://ESC-main.local:8000/api/health → `{"ok": true}`
+- http://ESC-main.local:8000/docs → API 목록
+- http://ESC-main.local:8000/static/index.html → **"메인Pi — 통신 확인"** 페이지(모뎀 목록·outbox·시간표 저장 폼). 이 문서의 "대시보드"는 이 페이지다.
 
 이 터미널은 서버 로그를 보는 용도로 열어 둔다. 아래 §4 는 **노트북(또는 새 SSH 창)** 에서 한다.
 
@@ -97,10 +97,10 @@ uv run uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000
 
 ## 4. 메인Pi — 데이터 등록 (약 5분)
 
-노트북 터미널에서(Windows 면 Git Bash). `H=http://main-pi.local:8000`.
+노트북 터미널에서(Windows 면 Git Bash). `H=http://ESC-main.local:8000`.
 
 ```bash
-H=http://main-pi.local:8000
+H=http://ESC-main.local:8000
 
 # 4-1. 모뎀Pi 등록 → 토큰 (평문은 이때 한 번만 보인다 — 바로 적어 둔다)
 curl -s -X POST $H/api/lora/modems -H 'content-type: application/json' \
@@ -126,12 +126,12 @@ id 가 1 이 아니면 응답의 `id` 를 다음 명령에 넣는다.
 ## 5. 모뎀Pi — 서비스 띄우기 (약 10분)
 
 ```bash
-ssh woo@modem-pi.local
+ssh admin@ESC-modem.local
 cd ~/Woo-ESC-Capston/modempi
 uv sync
 mkdir -p ~/data
 
-export MODEMPI_MAIN_URL=ws://main-pi.local:8000/ws/modem   # 같은 LAN 이라 ws:// (TLS 는 S11)
+export MODEMPI_MAIN_URL=ws://ESC-main.local:8000/ws/modem   # 같은 LAN 이라 ws:// (TLS 는 S11)
 export MODEMPI_ID=mjc-eng
 export MODEMPI_TOKEN=<§4-1 의 token>
 export MODEMPI_STORE=~/data/jobs.db
@@ -190,7 +190,7 @@ lora.worker INFO job 1 끝: acked
 
 지금까지는 터미널에 띄워 확인했다. 전원만 켜면 뜨게 한다.
 
-**8-1. 메인Pi** — `/etc/systemd/system/woo-server.service`
+**8-1. 메인Pi** — `/etc/systemd/system/esc-server.service`
 ```ini
 [Unit]
 Description=Woo-ESC 메인Pi 서버
@@ -198,11 +198,11 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=woo
-WorkingDirectory=/home/woo/Woo-ESC-Capston/server
-Environment=SERVER_DB=/home/woo/data/main.db
-ExecStartPre=/home/woo/Woo-ESC-Capston/server/.venv/bin/alembic upgrade head
-ExecStart=/home/woo/Woo-ESC-Capston/server/.venv/bin/uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000
+User=admin
+WorkingDirectory=/home/admin/Woo-ESC-Capston/server
+Environment=SERVER_DB=/home/admin/data/main.db
+ExecStartPre=/home/admin/Woo-ESC-Capston/server/.venv/bin/alembic upgrade head
+ExecStart=/home/admin/Woo-ESC-Capston/server/.venv/bin/uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=5
 
@@ -213,10 +213,10 @@ WantedBy=multi-user.target
 **8-2. 모뎀Pi** — 비밀값은 파일로 분리한다(권한 600).
 ```bash
 sudo tee /etc/modempi.env >/dev/null <<'EOF'
-MODEMPI_MAIN_URL=ws://main-pi.local:8000/ws/modem
+MODEMPI_MAIN_URL=ws://ESC-main.local:8000/ws/modem
 MODEMPI_ID=mjc-eng
 MODEMPI_TOKEN=<토큰>
-MODEMPI_STORE=/home/woo/data/jobs.db
+MODEMPI_STORE=/home/admin/data/jobs.db
 EOF
 sudo chmod 600 /etc/modempi.env
 ```
@@ -228,10 +228,10 @@ After=network-online.target time-sync.target
 Wants=network-online.target
 
 [Service]
-User=woo
-WorkingDirectory=/home/woo/Woo-ESC-Capston/modempi
+User=admin
+WorkingDirectory=/home/admin/Woo-ESC-Capston/modempi
 EnvironmentFile=/etc/modempi.env
-ExecStart=/home/woo/Woo-ESC-Capston/modempi/.venv/bin/modempi --fake
+ExecStart=/home/admin/Woo-ESC-Capston/modempi/.venv/bin/modempi --fake
 Restart=always
 RestartSec=5
 
@@ -243,7 +243,7 @@ WantedBy=multi-user.target
 **8-3. 켜기 + 재부팅 시험**
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now woo-server     # 메인Pi
+sudo systemctl enable --now esc-server     # 메인Pi
 sudo systemctl enable --now modempi        # 모뎀Pi
 journalctl -u modempi -f                   # 로그 보기 (Ctrl+C 로 빠져나옴)
 ```
@@ -264,7 +264,7 @@ journalctl -u modempi -f                   # 로그 보기 (Ctrl+C 로 빠져나
 | 증상 | 확인 |
 |---|---|
 | `ssh …local` 안 됨 | 공유기에서 IP 확인. 같은 네트워크인지(게스트 Wi-Fi 는 기기끼리 막힌 경우가 많다) |
-| 모뎀Pi 로그에 연결 거부·재시도 반복 | 노트북에서 `http://main-pi.local:8000/api/health` 가 되는지. URL 이 `ws://`, 경로 `/ws/modem`, 포트 8000 |
+| 모뎀Pi 로그에 연결 거부·재시도 반복 | 노트북에서 `http://ESC-main.local:8000/api/health` 가 되는지. URL 이 `ws://`, 경로 `/ws/modem`, 포트 8000 |
 | 연결 직후 바로 끊김(토큰) | `MODEMPI_ID`·`MODEMPI_TOKEN` 오타. 토큰을 잃어버렸으면 `POST /api/lora/modems/mjc-eng/token` 으로 재발급 |
 | `MODEMPI_* 누락` 으로 바로 종료 | env 4개가 모두 있는지(`EnvironmentFile` 경로·권한) |
 | outbox 가 계속 `queued` | 모뎀 목록에서 `mjc-eng` 가 `"connected": true` 인지, 건물의 `modem_id` 가 `mjc-eng` 인지 |
