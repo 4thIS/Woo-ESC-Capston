@@ -15,7 +15,7 @@ docs/design/
 │   ├── admin-schedule.md   ← 페이지2: 강의실 하나의 주간 시간표 + 셀 편집
 │   ├── admin-dashboard.md  ← 분석 대시보드 (차트 규칙은 tokens.md 의 chart.* 를 따른다)
 │   ├── admin-nodes.md
-│   ├── student-today.md    ← 학생 웹 (S10, 모바일 우선)
+│   ├── student-room.md     ← 학생 웹 (S10, 모바일 우선, 라우트 3개)
 │   └── terminal-epaper.md  ← 단말 e-Paper 화면 (→ firmware/src/terminal/, 소비자는 dh)
 └── assets/            ← 시안에서 뽑은 아이콘·이미지 원본 (wj가 web/src/assets/ 로 복사)
 ```
