@@ -6,30 +6,15 @@ import pytest
 
 from app.auth import mailer, password, tokens
 from app.auth.models import User
-from app.domain.models import School
 from app.settings import Settings
 
 
 @pytest.fixture
-def seed(app):
+def seed(app, school):
+    """conftest school(학교 둘·관리자 둘) 위에 학생 3명."""
     with app.state.Session() as s, s.begin():
         s.add_all(
             [
-                School(id=1, name="명지", net_id=75, email_domain="mju.ac.kr"),
-                School(id=2, name="타교", net_id=76, email_domain="other.ac.kr"),
-            ]
-        )
-        s.flush()  # 부모 먼저 — relationship() 이 없어 INSERT 순서가 보장되지 않는다 (r2 🔴3)
-        s.add_all(
-            [
-                User(
-                    email="admin@mju.ac.kr",
-                    school_id=1,
-                    role="admin",
-                    status="active",
-                    name="관리",
-                    pw_hash=password.hash("adminpass1"),
-                ),
                 User(
                     email="p1@mju.ac.kr",
                     school_id=1,
@@ -67,8 +52,8 @@ def _hdr(app, email):
 
 
 @pytest.fixture
-def hdr(app, seed):
-    return _hdr(app, "admin@mju.ac.kr")
+def hdr(admin_hdr, seed):
+    return admin_hdr
 
 
 @pytest.fixture

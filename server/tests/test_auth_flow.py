@@ -9,11 +9,6 @@ from app.domain.models import School
 
 
 @pytest.fixture
-def client_raw(client):
-    return client  # 임시 — T7 에서 conftest client_raw 로 옮기고 지운다
-
-
-@pytest.fixture
 def schools(app):
     with app.state.Session() as s, s.begin():
         s.add(School(id=1, name="명지", net_id=75, email_domain="mju.ac.kr"))

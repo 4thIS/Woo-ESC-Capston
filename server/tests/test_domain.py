@@ -118,7 +118,7 @@ def test_record_provider_mirrors_codec_and_limits_resv_to_7_days(app):
 
 
 def _setup(client):
-    sch = client.post("/api/schools", json={"name": "명지", "net_id": 75}).json()
+    sch = {"id": 1}  # 학교는 conftest school 픽스처가 만든다
     b = client.post(
         "/api/buildings", json={"school_id": sch["id"], "name": "공학관", "bld": "E"}
     ).json()
@@ -233,13 +233,13 @@ def test_sync_rejects_bogus_kind(client):
     assert client.post(f"/api/rooms/{r['id']}/sync", json={"kinds": ["bogus"]}).status_code == 422
 
 
-def test_create_building_with_ghost_modem_returns_409(client):
-    sch = client.post("/api/schools", json={"name": "명지", "net_id": 75}).json()
+def test_create_building_with_ghost_modem_returns_404(client):
+    sch = {"id": 1}  # 학교는 conftest school 픽스처가 만든다
     res = client.post(
         "/api/buildings",
         json={"school_id": sch["id"], "name": "공학관", "bld": "E", "modem_id": "ghost"},
     )
-    assert res.status_code == 409
+    assert res.status_code == 404  # 없는 모뎀과 타교 모뎀을 구분하지 않는다 (존재 숨김)
 
 
 def test_validation_errors(client):
@@ -326,7 +326,7 @@ def test_resv_outside_horizon_stored_but_not_enqueued(client, app):
 
 def test_building_gets_modem_reassigns_queued_jobs(client, app):
     """PR #5 I1 — 모뎀 없는 건물에 쌓인 outbox 는 모뎀 배정 PATCH 뒤 그 모뎀으로 재지정된다."""
-    sch = client.post("/api/schools", json={"name": "명지", "net_id": 75}).json()
+    sch = {"id": 1}  # 학교는 conftest school 픽스처가 만든다
     b = client.post(
         "/api/buildings", json={"school_id": sch["id"], "name": "공학관", "bld": "E"}
     ).json()
@@ -348,6 +348,8 @@ def test_building_gets_modem_reassigns_queued_jobs(client, app):
     with app.state.Session() as s:
         assert s.get(Outbox, oid).modem_id is None
     api.register_modem("m1")
+    with app.state.Session() as s, s.begin():
+        s.get(Modem, "m1").school_id = 1  # api 는 학교를 모른다
     client.patch(
         f"/api/buildings/{b['id']}",
         json={"school_id": sch["id"], "name": "공학관", "bld": "E", "modem_id": "m1"},
@@ -358,9 +360,11 @@ def test_building_gets_modem_reassigns_queued_jobs(client, app):
 
 def test_room_change_resends_config_after_commit(client, app):
     api.register_modem("m1")  # buildings.modem_id FK
+    with app.state.Session() as s, s.begin():
+        s.get(Modem, "m1").school_id = 1  # api 는 학교를 모른다
     seen = []
     app.state.hub.config_changed = lambda mid: seen.append((mid, sorted(api._topology.nodes(mid))))
-    sch = client.post("/api/schools", json={"name": "명지", "net_id": 75}).json()
+    sch = {"id": 1}  # 학교는 conftest school 픽스처가 만든다
     b = client.post(
         "/api/buildings",
         json={"school_id": sch["id"], "name": "공학관", "bld": "E", "modem_id": "m1"},

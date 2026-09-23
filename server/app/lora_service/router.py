@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, WebSocket
+from sqlalchemy.orm import Session
 
 from app import schemas as S
+from app.auth.deps import AdminUser
+from app.auth.models import User
+from app.deps import _DB
 from app.lora_service import api
+from app.lora_service.models import Modem
 
 router = APIRouter()
 
@@ -24,8 +29,12 @@ def list_modems():
 
 
 @rest.post("/modems", response_model=S.TokenOut)
-def register_modem(body: S.ModemIn):
-    return {"modem_id": body.modem_id, "token": api.register_modem(body.modem_id)}
+def register_modem(body: S.ModemIn, user: User = AdminUser, s: Session = _DB):
+    # api 는 학교를 모른다 — 등록 직후 라우터가 채운다 (S4a §3.3)
+    token = api.register_modem(body.modem_id)
+    s.get(Modem, body.modem_id).school_id = user.school_id
+    s.flush()  # 응답 전에 — 여기서 실패하면 모뎀이 school_id NULL 로 고립된다(복구는 CLI assign-modem)
+    return {"modem_id": body.modem_id, "token": token}
 
 
 @rest.post("/modems/{modem_id}/token", response_model=S.TokenOut)
