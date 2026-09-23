@@ -420,9 +420,9 @@ def _existing_same_room(s: Session, model, obj_id: int, room_id: int):
 @router.post("/rooms/{id}/reservations", response_model=S.Enqueued)
 def put_resv(id: int, body: S.ResvIn, user: User = AdminUser, s: Session = _DB):
     bld, room, mid = _addr(s, id, user)
-    if body.id is not None:
-        return _write_resv(s, id, bld, room, mid, body, body.id, _existing_same_room(s, Reservation, body.id, id))
-    with _ID_LOCK:  # 채번 → insert → 커밋까지 한 덩어리 (다음 요청은 커밋된 id 를 본다)
+    with _ID_LOCK:  # 확인(채번·같은 방 검사) → insert → 커밋까지 한 덩어리 (다음 요청은 커밋된 행을 본다)
+        if body.id is not None:  # 없는 id 지정 생성도 동시 채번과 겹치지 않게 락 안 (r2 ⚪)
+            return _write_resv(s, id, bld, room, mid, body, body.id, _existing_same_room(s, Reservation, body.id, id))
         return _write_resv(s, id, bld, room, mid, body, _free_id(s, Reservation), None)
 
 
@@ -448,9 +448,9 @@ def _write_resv(s, room_id, bld, room, mid, body: S.ResvIn, rid: int, obj: Reser
 @router.post("/rooms/{id}/exams", response_model=S.Enqueued)
 def put_exam(id: int, body: S.ExamIn, user: User = AdminUser, s: Session = _DB):
     bld, room, mid = _addr(s, id, user)
-    if body.id is not None:
-        return _write_exam(s, id, bld, room, mid, body, body.id, _existing_same_room(s, ExamPeriod, body.id, id))
     with _ID_LOCK:
+        if body.id is not None:
+            return _write_exam(s, id, bld, room, mid, body, body.id, _existing_same_room(s, ExamPeriod, body.id, id))
         return _write_exam(s, id, bld, room, mid, body, _free_id(s, ExamPeriod), None)
 
 

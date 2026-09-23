@@ -1,7 +1,7 @@
 # S10 — 학생 API(빈 강의실·주간 시간표·예약 신청)·관리자 승인·04:00 일일 작업·분석 집계 — 설계 (spec)
 
 - 생성일시: 2026-09-23
-- 수정일시: 2026-09-23 (r2 — PR #38 cw 리뷰 반영: approve·cancel 은 같은 세션+커밋 뒤 알림, RecordProvider 에 approved·KST 창, 승격은 오늘+7 만, 재동기는 FILE kind·유닛별·방별 try, tzdata, 신청 철회=행 삭제·하루 10회, 벡터 JSON 픽스처)
+- 수정일시: 2026-09-23 (r2 — PR #38 cw 리뷰 반영: approve·cancel 은 같은 세션+커밋 뒤 알림, RecordProvider 에 approved·KST 창, 승격은 오늘+7 만, 재동기는 FILE kind·유닛별·방별 try, tzdata, 신청 철회=행 삭제·하루 10회, 벡터 JSON 픽스처) (r3 — 재검토: `reservations.pushed_at` 으로 승격·RESV_DEL 판단 — 놓친 날 따라잡기·id 재사용 안전·창 밖 이동 시 RESV_DEL, 승격 예약별 트랜잭션, 신청 검증·승인을 락 안으로, 일일 작업 실행 락)
 - 상위 문서: `2026-09-09-roadmap-design.md` §1("점유율 = 시간표·예약 기반 배정률"), §5 S10, §7.1(갱신 지연 기준 30 s / 90 s). 상태 판단 규칙은 `2026-09-09-lora-v2-wor-design.md` §5.3(`determineLayout`)·§5.4(`nextChangeAt`)·§12(예약 창 7일). 선행 spec: S4a(`2026-09-23-s4a-auth-design.md` 역할·스코프), S4b(`2026-09-23-s4b-admin-api-design.md` 채번·요약 버킷).
 - 담당: wj @leemonta9482. 영역 `server/`. `lora_service/api.py`·`hub.py` 불변(기존 `enqueue_resv_set/resv_del/full_sync` 만 호출).
 
@@ -42,6 +42,7 @@ reservations
   + reject_reason TEXT NULL
   + checked_in_at DATETIME NULL                      -- 자가 체크인
   + cancelled_at  DATETIME NULL
+  + pushed_at     DATETIME NULL                      -- 마지막 RESV_SET enqueue 시각. NULL = 노드에 없음 (r3)
   INDEX ix_resv_room_date (room_id, date), INDEX ix_resv_requester (requested_by, status)
 
 job_runs
@@ -89,21 +90,34 @@ job_runs
 
 | 빈도 | 학생당 하루 신청 **10회** | 429 |
 
-겹침 검사에 `requested` 도 포함 — 같은 시간에는 **선착순 1명만** 신청 가능. 관리자 승인 시 **겹침 재검사**(사이에 관리자가 직접 예약을 넣었을 수 있음), **이미 시작한 신청은 승인 409**.
+겹침 검사에 `requested` 도 포함 — 같은 시간에는 **선착순 1명만** 신청 가능. 검증~채번~커밋은 `_ID_LOCK` 안(관리자 승인의 재검사도 같은 락) — 동시에 들어온 두 신청이 둘 다 통과해 승인 때 서로 막히지 않게(r3). 관리자 승인 시 **겹침 재검사**(사이에 관리자가 직접 예약을 넣었을 수 있음), **이미 시작한 신청은 승인 409**.
 
 ### 2.5 04:00 일일 작업 (`app/domain/daily.py`)
 
 | # | 작업 | 규칙 |
 |---|---|---|
 | 1 | 만료 | `requested` · 시작 시각 < 지금 → `expired` |
-| 2 | 승격 | `approved` · KST 날짜 **== 오늘+7**(창에 막 들어온 것) · 같은 `(bld, room, RESV_SET, resv_id)` 가 `queued|dispatched|acked` 에 없음 → `enqueue_resv_set(session=s)`, 커밋 뒤 알림. 창 전체를 매일 다시 보내지 않는다 — 예약 k × 유닛 u 번 노드를 깨워 배터리를 쓴다(리뷰 🔴7). 누락은 03:00 STATUS 버전 비교 → FILE 재동기가 복구 |
+| 2 | 승격 | `approved` · **오늘 ≤ KST 날짜 ≤ 오늘+7** · **`pushed_at IS NULL`**(아직 노드로 안 보냄) → `push_set`(RESV_SET + `pushed_at`), **예약마다 자기 트랜잭션**·커밋 뒤 알림. 이미 보낸 예약은 다시 안 보낸다(배터리, 리뷰 🔴7). 서버가 꺼져 하루를 놓쳐도 다음 실행이 따라잡고, outbox 이력을 보지 않아 지운 예약의 id 재사용에도 속지 않는다(r3). 한 건이 실패하면 `pushed_at` NULL 로 남아 다음 날 재시도 |
 | 3 | 실패 재동기 | 지난 24 h `failed` outbox(`last_error ≠ 'cancelled'`) 의 **`(bld, room, unit)`** 마다 실패한 kind 집합으로 `enqueue_full_sync(bld, room, kinds, unit=u)` 1회. FILE 은 `payload.kind` 로 kind 를 얻는다(`KIND_OF` 엔 FILE 이 없음 — 가장 필요한 CSV·GAP FILE 실패를 놓치던 것). `CMD`·`SET_ROOM`·`TIME` 제외. 방마다 try — 한 방의 NotFound 가 나머지를 멈추지 않음(리뷰 🔴8) |
 | 4 | 정리 | `reservations.date < 오늘−90` 삭제 · 거절·만료 신청은 `date < 오늘−7` 삭제(id 반환) · `job_runs.ran_at < 오늘−90` 삭제 · `email_tokens.expires_at < 지금−7일` 삭제 |
-| 5 | 기록 | `job_runs(name="daily", result={"expired": n, "promoted": n, "resynced": [[bld, room, kinds], …], "pruned": {"reservations": n, "job_runs": n, "email_tokens": n}, "errors": [str, …]})` |
+| 5 | 기록 | `job_runs(name="daily", result={"expired": n, "promoted": n, "resynced": [[bld, room, unit, kinds], …], "pruned": {"reservations": n, "job_runs": n, "email_tokens": n}, "errors": [str, …]})` |
 
 - 단계마다 자기 트랜잭션. 한 단계 실패는 로그 + `errors` 에 문자열 + 다음 단계 계속.
 - 트리거: `main.py` lifespan 의 `daily_loop(interval_s=60)` — 매 tick KST 시각이 `DAILY_HOUR_LOCAL` 이상이고 **오늘 04:00(KST) 이후** `job_runs(name="daily")` 가 없으면 실행(그 전의 수동 실행은 세지 않는다). 서버가 04:00 에 꺼져 있었으면 다음 기동 첫 tick 에 실행.
-- 수동: `POST /api/admin/jobs/daily`(관리자) → 즉시 실행, 같은 result. `GET /api/admin/jobs?name=daily&limit=30` 이력.
+- 수동: `POST /api/admin/jobs/daily`(관리자) → 즉시 실행, 같은 result. `GET /api/admin/jobs?name=daily&limit=30` 이력. 전 학교 대상 전역 작업이지만 멱등(보낸 예약은 다시 안 보냄)이라 어느 학교 관리자가 눌러도 안전. 자동·수동이 겹치지 않게 프로세스 락.
+- `daily_loop` 는 **sleep 먼저**(기동 직후 바로 돌지 않음 — 테스트가 시계를 바꾸기 전에 실제 시각으로 도는 것 방지).
+
+**`pushed_at` 규칙 (r3).** 예약이 노드에 가 있는지를 예약 행이 기억한다. 바꾸는 곳은 `reserve.push_set`(RESV_SET enqueue → 지금 시각)·`push_del`(보낸 적 있고 날짜가 안 지났으면 RESV_DEL → NULL) 둘뿐:
+
+| 경로 | 동작 |
+|---|---|
+| 관리자 승인 | 창 안 → `push_set`. 창 밖 → NULL 로 두고 승격을 기다림 |
+| 관리자 작성·수정(`POST /rooms/{id}/reservations`) | 새 날짜가 창 안 → `push_set`. 창 밖(옮김 포함) → `push_del`(옮기기 전 날짜 기준) |
+| 관리자 삭제 | `push_del` 뒤 삭제. 없는 id·다른 방 id 는 200 `[]`(멱등) |
+| 취소(학생·관리자) | `push_del` |
+| 승격 | `pushed_at IS NULL` 인 창 안 승인 예약 → `push_set` |
+
+RESV_SET 이 enqueue 뒤 노드에서 실패해도 `pushed_at` 은 남는다 — 방 버전은 올라갔으므로 03:00 STATUS 버전 비교 → FILE 재동기와 일일 실패 재동기(3단계)가 복구한다. 마이그레이션 전 예약은 NULL 이라 첫 일일 작업이 창 안 승인 예약을 한 번 다시 보낸다(1회).
 
 ### 2.6 분석 정의 (`app/domain/analytics.py`)
 
@@ -111,7 +125,7 @@ job_runs
 |---|---|
 | 배정률 | 방·날짜의 **운영 시간 `OPEN_HOUR=9`~`CLOSE_HOUR=21`(KST)** 중 배정된 분 / 720 분. `room_state` 의 **layout ∈ {1,2,3,5,6,7} 이면 배정, 4 면 빈**(쉬는시간 2 는 수업 사이라 배정으로 봄). 휴강(3)은 "배정됐으나 안 씀"이라 배정률에는 넣고 `unused_min` 으로 따로 센다 |
 | 공강 | 방·요일의 빈 구간(layout 4) 목록 — 운영 시간 안에서 구간 병합 |
-| 예약 통계 | 기간(`date` 기준) 내 `requested_at` 있는 예약의 상태별 수 + No-show(§2.1) + 체크인 수. `no_show_rate = no_show / (approved 종료분)`, `checkin_rate = checked_in / (approved 종료분)` |
+| 예약 통계 | 기간(`date` 기준) 내 `requested_at` 있는 예약의 상태별 수 + No-show(§2.1) + 체크인 수. **학생이 결정 전에 철회한 신청은 행이 지워져 집계에 없다**(`cancelled` 는 승인 뒤 취소만), 거절·만료는 7일 뒤 정리돼 그 이전 기간 수에서 빠진다(r3 명시). `no_show_rate = no_show / (approved 종료분)`, `checkin_rate = checked_in / (approved 종료분)` |
 | 갱신 지연 | outbox `state='acked'` · `type ∈ {SLOT_SET, RESV_SET}` · `created_at ∈ 기간` → `seconds = finished_at − created_at`. bin 경계 `[0,10,20,30,45,60,90,120,∞)`, `p50/p95/max/n`, `within_30s`·`within_90s` 비율(로드맵 §7.1 기준) |
 
 기간은 KST 날짜 `from~to`(양끝 포함), 기본 최근 30일, 최대 90일(정리 규칙과 동일). 시험기간·슬롯 계산은 `room_state` 를 하루 단위로 **구간 병합**해 분을 센다(분 단위 루프 아님).
@@ -125,7 +139,7 @@ job_runs
 | 기존 `/api/rooms/{id}/reservations` | S4a 그대로(관리자) | |
 
 - 주간 표의 **남의 예약**은 `{s_h, s_m, e_h, e_m, label: "예약됨"}` 만. 내 것·관리자 예약(`requested_by NULL`)은 `subject` 노출.
-- 학생 API 의 outbox 생성은 **취소 시 `RESV_DEL`** 하나뿐. 승인(관리자)·승격(일일 작업)이 `RESV_SET`. `RESV_DEL` 은 날짜가 7일 창 안일 때만(창 밖 예약은 노드에 없다).
+- 학생 API 의 outbox 생성은 **취소 시 `RESV_DEL`** 하나뿐. 승인(관리자)·승격(일일 작업)이 `RESV_SET`. `RESV_DEL` 은 **노드로 보낸 적 있는(`pushed_at`) 예약만** — 신청·창 밖 예약엔 없다(관리자 삭제도 같은 규칙, r3).
 - approve·cancel 은 **요청 세션으로** `enqueue_*(…, session=s)` → 핸들러가 커밋한 뒤 허브 알림(S2c `_commit_notify`). 별도 세션으로 enqueue 하면 도메인 쓰기 락과 부딪혀 5 s 뒤 `database is locked`(리뷰 🔴5, cw 실측).
 - `analytics/*` 는 요청마다 계산. 창 90일 상한(422). 방 ≤ 100·outbox ≤ 수천 에서 SQLite 수십 ms.
 - 일일 작업은 단일 프로세스 전제(README `--workers 1`). `job_runs` 로 하루 1회를 보장(같은 날 두 번 안 돎; 수동 실행은 예외로 항상 돎).
@@ -141,7 +155,7 @@ job_runs
 | `GET /rooms/{id}/week` | `date?`(기본 오늘; 그 주 월~일) | `WeekOut{room: RoomStateOut, week_start: date, slots: SlotOut[], reservations: ResvPublicOut[], exams: ExamOut[]}`. `ResvPublicOut{id, date, s_h, s_m, e_h, e_m, mine: bool, label}` — `label` = 내 것/관리자 것이면 `subject`, 남의 것이면 `"예약됨"` |
 | `GET /me/reservations` | `status?`(기본 `requested,approved`) | `ResvMineOut[]` = `ResvOut` + `status, requested_at, decided_at, reject_reason, checked_in_at, cancelled_at, room_id, building, room` |
 | `POST /rooms/{id}/reservations` | `{date, s_h, s_m, e_h, e_m, subject}` | 201 `ResvMineOut` (`requested`, 서버 채번 — S4b `_free_id`·`_ID_LOCK`). 하루 10회 초과 429 |
-| `POST /me/reservations/{id}/cancel` | — | `ResvMineOut`. `requested` → **철회(행 삭제, 응답 status `cancelled`)**; `approved` 는 시작 전만 → `cancelled` + (창 안이면) `RESV_DEL`. 시작 후 409 |
+| `POST /me/reservations/{id}/cancel` | — | `ResvMineOut`. `requested` → **철회(행 삭제, 응답 status `cancelled`)**; `approved` 는 시작 전만 → `cancelled` + (보낸 적 있으면) `RESV_DEL`. 시작 후 409 |
 | `POST /me/reservations/{id}/checkin` | — | `ResvMineOut`. `approved` · 시작−10분 ≤ 지금 ≤ 시작+15분 · 미체크인. 창 밖 409 |
 
 ### 4.2 관리자 `/api/admin/reservations/*`, `/api/admin/jobs/*`
@@ -187,7 +201,10 @@ S4b 요약 `warnings` 에 **`pending_reservations`** 버킷 추가(additive): `c
   - `room_state` 벡터 8개 + `until` / KST 변환(UTC 자정 전후) / `put_resv` 창 KST
   - 제약 7개 각각 / 선착순(두 학생 같은 시간) / 체크인 창 경계 / 취소 전이·`RESV_DEL` / 타교·타인 404
   - 관리자 승인(창 안 `RESV_SET`·창 밖 없음)·겹침 재검사 409·거절·취소 / 요약 `pending_reservations`
-  - 일일 작업 5단계 각각(만료·승격 중복 방지·재동기 kind 집합·정리 id 반환·기록) / 하루 1회·수동 실행 / 한 단계 실패해도 계속
+  - 일일 작업 5단계 각각(만료·승격·재동기 kind 집합·정리 id 반환·기록) / 하루 1회·수동 실행 / 한 단계 실패해도 계속
+  - 승격(r3): 놓친 날(+3 인데 안 보냄) 따라잡기 / 이미 보낸 예약 안 보냄 / 지운 예약과 같은 id 의 옛 acked 이력에 속지 않음 / 한 예약 실패해도 나머지 전송·실패분 재시도 / 두 번 돌려도 0
+  - `pushed_at`: 창 밖으로 옮기면 RESV_DEL / 안 보낸 예약 삭제·취소엔 RESV_DEL 없음 / 없는 id 삭제 200
+  - 동시성: 같은 시간 두 학생 동시 신청 → 201 하나·409 하나
   - 분석: 배정률(구간 병합, 휴강 `unused_min`) / 공강 병합 / 예약 통계·No-show / 지연 bin·p50/p95·within / 90일 초과 422 / 학생 403
 - 성능 스모크(수동): 방 100·outbox 5000·예약 2000 에서 `analytics/allocation` 30일 < 1 s. `allocation` 은 방·날짜마다 쿼리 3개(≈ 9000)라 200 ms 는 어렵다(리뷰 ⚪) — 넘으면 방별 기간 일괄 로드로(plan T8 `ponytail:` 주석).
 

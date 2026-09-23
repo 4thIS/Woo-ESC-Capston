@@ -5,6 +5,7 @@
 - 생성일시: 2026-09-23
 - 기준 spec: `docs/specs/2026-09-23-s10-student-analytics-design.md`. **선행: S4a → S2c → S4b 완료** — `app.deps._DB`, `app.auth.deps.{AdminUser, StudentUser}`, `app.auth.scope.get_scoped`, `domain/router.py` 의 `_addr`(3-튜플)·`_commit_notify`·`_free_id`·`_ID_LOCK`·`_existing_same_room`, `api.enqueue_*(session=)`·`api.notify`, `domain/admin.py`, conftest `client`(학교 1 관리자)·`school`·`client_raw`·`other_admin_hdr` 를 쓴다.
 - 개정: r2 (PR #38 리뷰 — approve·cancel 은 `session=s`+커밋 뒤 notify(🔴5), RecordProvider 에 `approved`·KST 창(🔴6), 승격은 `오늘+7` 만(🔴7), 재동기는 FILE kind·방별 try·유닛별(🔴8), tzdata(🔴10), 테스트 정정, 학생 신청 일일 상한·신청 철회는 행 삭제, 04시 이전 수동 실행이 자동을 막지 않음, 창 밖 취소는 RESV_DEL 없음).
+- 개정: r3 (PR #38 cw 재검토 — **`reservations.pushed_at`** 으로 노드 전송 여부를 예약 행에 기록: 승격 = `approved ∧ 오늘≤date≤오늘+7 ∧ pushed_at IS NULL`(하루 놓쳐도 따라잡음, id 재사용 오판 없음), RESV_DEL 은 `pushed_at` 있을 때만, 날짜를 창 밖으로 옮기면 RESV_DEL. 승격은 예약마다 자기 트랜잭션. 학생 신청 검증·관리자 승인을 `_ID_LOCK` 안으로. 일일 작업 실행 락·sleep 먼저. 테스트 3곳 정정).
 - 담당: wj @leemonta9482. 브랜치 `feature/s10-student`. 커밋 scope `feat(server)`. PR은 사용자 지시 시. Task 1~7(학생·승인·일일 작업)과 Task 8(분석)은 PR 을 둘로 나눠도 된다.
 
 **Goal:** 학생이 자기 학교의 지금 빈 강의실·방 주간 표를 보고 예약을 신청·취소·체크인하며, 관리자가 승인해 노드로 보내고, 04:00 일일 작업이 만료·승격·재동기·정리를 하고, 관리자가 배정률·공강·예약 통계·갱신 지연 히스토그램을 받는다.
@@ -20,10 +21,12 @@
 - `SCHOOL_TZ = Asia/Seoul`. DB naive UTC. 요일·오늘·운영 시간·창 판정은 지역 시각. `DAILY_HOUR_LOCAL = 4`.
 - `room_state`: 우선순위 예약(approved) > 시험기간 > 기본. `typeToLayout` 1→1, 2→5, 3→3, 4→4, 5→6, 6→7. 수업(type 1) 슬롯 안 분<50 → 1, ≥50 → 2. 시험기간 + 슬롯 안 → 5. 슬롯 밖 → 4. 빈 = 4. `until` = 다음 변화 시각 또는 자정.
 - 신청 제약: 날짜 오늘~+7(KST) 400 · 5분 단위·시작<끝 422 · 15~120분 400 · 과거 400 · 학생당 requested+미래 approved ≤ 3 → 400 · `reservable`·자기 학교 아니면 404 · 슬롯/approved·requested 예약/시험기간 겹침 409. `type=6`, `professor=""`. 승인 시 겹침 재검사 409.
-- 전이: `requested → approved|rejected|expired`, `approved → cancelled`. 학생이 `requested` 를 취소하면 **행 삭제**(철회 — id 반환). 학생 취소: approved 는 시작 전만(409). 관리자 취소: 시작 후도. `RESV_DEL` 은 날짜가 7일 창 안일 때만. 이미 시작한 신청은 승인 409. 체크인 창 시작−10분 ≤ 지금 ≤ 시작+15분(409). 학생 신청 **하루 10회**(429).
+- 전이: `requested → approved|rejected|expired`, `approved → cancelled`. 학생이 `requested` 를 취소하면 **행 삭제**(철회 — id 반환). 학생 취소: approved 는 시작 전만(409). 관리자 취소: 시작 후도. `RESV_DEL` 은 **노드로 보낸 적 있는(`pushed_at` 있음) 예약만**. 이미 시작한 신청은 승인 409. 체크인 창 시작−10분 ≤ 지금 ≤ 시작+15분(409). 학생 신청 **하루 10회**(429).
 - approve·cancel·승격은 `api.enqueue_*(…, session=s)` → 호출자가 `_commit_notify(s, modem_id)` (BackgroundTasks·별도 세션 금지 — S2c).
+- **`pushed_at` 은 `reserve.push_set`/`push_del` 두 함수만 바꾼다** — RESV_SET 을 enqueue 하면 지금 시각, RESV_DEL 을 enqueue 하거나 노드에 없는 것으로 확정되면 NULL. 호출처: approve·관리자 작성/수정(`_write_resv`)·삭제(`delete_resv`)·취소·승격.
+- 예약 쓰기의 **검사~커밋은 `_ID_LOCK` 안**: 학생 신청(검증·채번), 관리자 승인(겹침 재검사). pysqlite 는 DML 전까지 트랜잭션을 열지 않아 락 안의 SELECT 는 최신 커밋을 본다.
 - 남의 예약은 `label="예약됨"`·`mine=false`·`subject` 없음.
-- 일일 작업 5단계(만료 · 승격(**KST 날짜 == 오늘+7** 이고 그 resv_id 의 RESV_SET 이 queued/dispatched/acked 에 없음) · 실패 재동기(24 h, `last_error≠cancelled`, FILE 은 `payload.kind` 로, CMD/SET_ROOM/TIME 제외, **(bld, room, unit) 별** `enqueue_full_sync(…, unit=u)`, 방마다 try) · 정리(예약 90일, 거절·만료 7일, job_runs 90일, 토큰 7일) · 기록), 단계별 트랜잭션·오류 계속. `daily_loop` 60 s tick, 하루 1회 = **오늘 04:00(KST) 이후** 실행 기록이 있으면 건너뜀(그 전 수동 실행은 세지 않음), 수동 실행은 항상.
+- 일일 작업 5단계(만료 · 승격(`approved ∧ 오늘 ≤ date ≤ 오늘+7 ∧ pushed_at IS NULL`, **예약마다 자기 트랜잭션**) · 실패 재동기(24 h, `last_error≠cancelled`, FILE 은 `payload.kind` 로, CMD/SET_ROOM/TIME 제외, **(bld, room, unit) 별** `enqueue_full_sync(…, unit=u)`, 방마다 try) · 정리(예약 90일, 거절·만료 7일, job_runs 90일, 토큰 7일) · 기록), 단계별 트랜잭션·오류 계속. `daily_loop` 60 s tick, 하루 1회 = **오늘 04:00(KST) 이후** 실행 기록이 있으면 건너뜀(그 전 수동 실행은 세지 않음), 수동 실행은 항상. 자동·수동이 겹치지 않게 `daily._RUN_LOCK`. `daily_loop` 는 **sleep 먼저**(기동 직후·테스트 중 실제 시각으로 돌지 않게).
 - `topology.record_provider`: 예약은 `status == 'approved'` 만, `today` 기본값 `clock.local_today` (계약 ③ 구현 변경 — cw 리뷰).
 - 분석: 운영 시간 09~21, 배정 = layout ∈ {1,2,3,5,6,7}, 휴강 3 은 `unused_min`. 예약 통계 상태별 + No-show(`approved`·`requested_by`·종료 지남·미체크인). 지연 = acked·SLOT_SET/RESV_SET·`finished_at−created_at` 초, bin `[0,10,20,30,45,60,90,120,∞)`, p50/p95/max/n/within_30s/within_90s. 기간 기본 30일·최대 90일(422).
 - S4b 요약에 `pending_reservations` 버킷 추가(additive). `put_resv` 창 판정 KST.
@@ -114,7 +117,7 @@ def _exam(app, room_id, id_, d1, d2):
 - Test: `server/tests/test_clock_migration.py`
 
 **Interfaces:**
-- Produces: `clock.SCHOOL_TZ`, `clock.now_utc() -> datetime`(naive UTC; 테스트가 monkeypatch), `clock.to_local(naive_utc) -> datetime`(naive 지역), `clock.to_utc(naive_local) -> datetime`, `clock.local_now()`, `clock.local_today() -> date`, `clock.week_start(date) -> date`(월요일), `clock.local_dt(date, h, m) -> datetime`. `Reservation.{status, requested_by, requested_at, decided_at, decided_by, reject_reason, checked_in_at, cancelled_at}`, `JobRun(id, name, ran_at, result)`. `S.ResvOut` 에 `status` 노출. conftest `students`(s1@mju.ac.kr·s2@mju.ac.kr 학교 1, s3@other.ac.kr 학교 2, 학번 `S1`·`S2`·`S3`, active) — **`school` 과 별도 픽스처**(S4a·S4b 의 사용자 목록 단언을 건드리지 않게).
+- Produces: `clock.SCHOOL_TZ`, `clock.now_utc() -> datetime`(naive UTC; 테스트가 monkeypatch), `clock.to_local(naive_utc) -> datetime`(naive 지역), `clock.to_utc(naive_local) -> datetime`, `clock.local_now()`, `clock.local_today() -> date`, `clock.week_start(date) -> date`(월요일), `clock.local_dt(date, h, m) -> datetime`. `Reservation.{status, requested_by, requested_at, decided_at, decided_by, reject_reason, checked_in_at, cancelled_at, pushed_at}`, `JobRun(id, name, ran_at, result)`. `delete_resv` 는 없는 id·다른 방 id 에 200 `{"outbox_ids": []}`(멱등, RESV_DEL 없음). `S.ResvOut` 에 `status` 노출. conftest `students`(s1@mju.ac.kr·s2@mju.ac.kr 학교 1, s3@other.ac.kr 학교 2, 학번 `S1`·`S2`·`S3`, active) — **`school` 과 별도 픽스처**(S4a·S4b 의 사용자 목록 단언을 건드리지 않게).
 
 - [ ] **Step 1: 실패 테스트**
 
@@ -151,7 +154,7 @@ def test_web_student_migration(tmp_path):
     assert "job_runs" in names
     cols = {c["name"] for c in inspect(create_engine(f"sqlite:///{db}")).get_columns("reservations")}
     assert {"status", "requested_by", "requested_at", "decided_at", "decided_by", "reject_reason",
-            "checked_in_at", "cancelled_at"} <= cols
+            "checked_in_at", "cancelled_at", "pushed_at"} <= cols
 
 
 def test_put_resv_window_is_local_date(client, app, school, students, monkeypatch):
@@ -176,6 +179,7 @@ def test_put_resv_window_is_local_date(client, app, school, students, monkeypatc
         s.add(Reservation(id=50, room_id=rid, date=dt.date(2026, 9, 24), s_h=9, s_m=0, e_h=10, e_m=0, type=6,
                           subject="신청", professor="", status="requested", requested_by="s1@mju.ac.kr"))
     assert client.post(f"/api/rooms/{rid}/reservations", json={**body, "id": 50}).status_code == 409
+
 
 
 def test_record_provider_only_approved_and_local_window(app, students, monkeypatch):
@@ -312,6 +316,9 @@ def local_dt(d: dt.date, h: int, m: int) -> dt.datetime:
     reject_reason: Mapped[str | None] = mapped_column(String)
     checked_in_at: Mapped[dt.datetime | None]
     cancelled_at: Mapped[dt.datetime | None]
+    # 마지막으로 RESV_SET 을 enqueue 한 시각. NULL = 노드에 없다(안 보냈거나 RESV_DEL 로 지움).
+    # 승격·RESV_DEL 판단을 outbox 이력 대신 이 칸으로 — id 재사용·놓친 날에 안전 (S10 §2.5, r3)
+    pushed_at: Mapped[dt.datetime | None]
     __table_args__ = (
         CheckConstraint("id BETWEEN 1 AND 65535", name="ck_resv_id"),
         CheckConstraint("status IN ('requested','approved','rejected','cancelled','expired')", name="ck_resv_status"),
@@ -332,12 +339,12 @@ class JobRun(Base):
     __table_args__ = (Index("ix_job_runs_name", "name", "ran_at"),)
 ```
 
-Run: `uv run alembic revision -m "web_student"` → `down_revision` = web_auth rev. `upgrade`: `op.create_table("job_runs", …)` + `op.create_index`, `with op.batch_alter_table("reservations") as b:` 8 컬럼 `add_column`(`status` 는 `nullable=False, server_default="approved"`), `b.create_check_constraint("ck_resv_status", "status IN (...)")`, `b.create_check_constraint("ck_resv_id", "id BETWEEN 1 AND 65535")`(batch 재생성이 기존의 이름 없는 CHECK 를 지운다 — 리뷰 🟡, 실측), `b.create_foreign_key("fk_resv_requester", "users", ["requested_by"], ["email"])`, `b.create_index("ix_resv_room_date", ["room_id", "date"])`, `b.create_index("ix_resv_requester", ["requested_by", "status"])`. `downgrade` 역순. (`env.py` 의 `PRAGMA foreign_keys=OFF` 는 S4a 에서 넣음.)
+Run: `uv run alembic revision -m "web_student"` → `down_revision` = web_auth rev. `upgrade`: `op.create_table("job_runs", …)` + `op.create_index`, `with op.batch_alter_table("reservations") as b:` 9 컬럼(`pushed_at` 포함) `add_column`(`status` 는 `nullable=False, server_default="approved"`), `b.create_check_constraint("ck_resv_status", "status IN (...)")`, `b.create_check_constraint("ck_resv_id", "id BETWEEN 1 AND 65535")`(batch 재생성이 기존의 이름 없는 CHECK 를 지운다 — 리뷰 🟡, 실측), `b.create_foreign_key("fk_resv_requester", "users", ["requested_by"], ["email"])`, `b.create_index("ix_resv_room_date", ["room_id", "date"])`, `b.create_index("ix_resv_requester", ["requested_by", "status"])`. `downgrade` 역순. alembic 엔진은 원래 FK OFF 라 batch 재생성이 FK 에 막히지 않는다 — **`env.py` 는 건드리지 않는다**(연결에 SQL 을 먼저 실행하면 마이그레이션 전체가 조용히 롤백된다 — S4a T2, r3). 기존 예약의 `pushed_at` 은 NULL 로 두어도 된다: 다음 일일 작업이 창 안 승인 예약을 한 번 다시 보낸다(1회, 배터리 영향 미미).
 
 - [ ] **Step 5: `put_resv` KST + `ResvOut.status`**
 
 `server/app/domain/router.py`:
-- `_write_resv`(S4b): `today = dt.datetime.now(dt.UTC).date()` → `today = clock.local_today()` (`from app.domain import clock`). 관리자 생성은 `status` 기본값 `approved`.
+- `_write_resv`(S4b): `today = dt.datetime.now(dt.UTC).date()` → `today = clock.local_today()` (`from app.domain import clock`). 관리자 생성은 `status` 기본값 `approved`. (`pushed_at` 을 쓰는 교체는 `reserve.py` 가 생기는 T3 Step 4b.)
 - `_existing_same_room`(S4b): 예약이면 `obj.status != "approved"` 도 409 `"신청 상태 예약은 승인 절차로"` — 학생 신청 행을 id 지정 upsert 로 고쳐 미승인 RESV_SET 이 나가는 것을 막는다(리뷰 🔴4a).
 
 ```python
@@ -576,12 +583,12 @@ git commit -m "feat(server): room_state — v2 §5.3 determineLayout 서버판 +
 
 **Files:**
 - Create: `server/app/domain/reserve.py`
-- Modify: `server/app/schemas.py`(`StudentResvIn`)
+- Modify: `server/app/schemas.py`(`StudentResvIn`), `server/app/domain/router.py`(`_write_resv`·`delete_resv` 가 `pushed_at` 사용)
 - Test: `server/tests/test_reserve.py`
 
 **Interfaces:**
 - Consumes: T1 conftest `students`·`student_hdr` 등, S2c `api.enqueue_*(session=)`.
-- Produces: `reserve.MAX_ACTIVE = 3`, `MIN_MIN = 15`, `MAX_MIN = 120`, `CHECKIN_BEFORE = 10`, `CHECKIN_AFTER = 15`, `STUDENT_TYPE = 6`; `reserve.addr(s, r) -> tuple[str, int, str | None]`(bld, room, modem_id); `reserve.overlaps(s, room_id, date, s_min, e_min, exclude_id=None) -> bool`; `reserve.validate_request(s, user, room, body, now_local) -> None`(HTTPException 400/409); `reserve.start_local(r)`, `reserve.end_local(r)`, `reserve.in_window(date, today) -> bool`; `reserve.approve(s, r, admin_email, now_local) -> list[int]`; `reserve.reject(s, r, admin_email, reason, now_local)`; `reserve.cancel(s, r, *, by_admin, now_local) -> list[int]`; `reserve.withdraw(s, r) -> None`(requested 행 삭제); `reserve.checkin(s, r, now_local)`. **`approve`·`cancel` 은 `enqueue_*(…, session=s)` 로 쓰고 커밋하지 않는다 — 호출자(라우터)가 `_commit_notify(s, reserve.addr(s, r)[2])`** (별도 세션 enqueue 는 도메인 쓰기 락과 5 s 뒤 `database is locked`, 리뷰 🔴5).
+- Produces: `reserve.MAX_ACTIVE = 3`, `MIN_MIN = 15`, `MAX_MIN = 120`, `CHECKIN_BEFORE = 10`, `CHECKIN_AFTER = 15`, `STUDENT_TYPE = 6`; `reserve.addr(s, r) -> tuple[str, int, str | None]`(bld, room, modem_id); `reserve.overlaps(s, room_id, date, s_min, e_min, exclude_id=None) -> bool`; `reserve.validate_request(s, user, room, body, now_local) -> None`(HTTPException 400/409); `reserve.start_local(r)`, `reserve.end_local(r)`, `reserve.in_window(date, today) -> bool`; `reserve.push_set(s, r) -> list[int]`(RESV_SET enqueue + `pushed_at=지금`), `reserve.push_del(s, r, today, date=None) -> list[int]`(`pushed_at` 있고 날짜(`date` 주면 그 날짜 — 옮기기 전) ≥ 오늘이면 RESV_DEL, 어느 쪽이든 `pushed_at=None`); `reserve.approve(s, r, admin_email, now_local) -> list[int]`; `reserve.reject(s, r, admin_email, reason, now_local)`; `reserve.cancel(s, r, *, by_admin, now_local) -> list[int]`; `reserve.withdraw(s, r) -> None`(requested 행 삭제); `reserve.checkin(s, r, now_local)`. **`approve`·`cancel` 은 `enqueue_*(…, session=s)` 로 쓰고 커밋하지 않는다 — 호출자(라우터)가 `_commit_notify(s, reserve.addr(s, r)[2])`** (별도 세션 enqueue 는 도메인 쓰기 락과 5 s 뒤 `database is locked`, 리뷰 🔴5).
 
 - [ ] **Step 1: 실패 테스트**
 
@@ -660,7 +667,9 @@ def test_approve_reject_cancel_enqueue_in_same_session(db, hub, app, students, m
     with app.state.Session() as s, s.begin():
         assert len(reserve.approve(s, s.get(Reservation, a), "admin@mju.ac.kr", clock.local_now())) == 2
         assert s.get(Reservation, a).status == "approved" and hub.notified == []
+        assert s.get(Reservation, a).pushed_at is not None      # 보냈다
         assert reserve.approve(s, s.get(Reservation, far), "admin@mju.ac.kr", clock.local_now()) == []  # 창 밖 → 일일 작업이 승격
+        assert s.get(Reservation, far).pushed_at is None
         with pytest.raises(HTTPException) as e:
             reserve.approve(s, s.get(Reservation, started), "admin@mju.ac.kr", clock.local_now())
         assert e.value.status_code == 409                    # 이미 시작한 신청은 승인 불가
@@ -674,9 +683,47 @@ def test_approve_reject_cancel_enqueue_in_same_session(db, hub, app, students, m
         reserve.reject(s, r, "admin@mju.ac.kr", "겹침", clock.local_now())
         assert r.status == "rejected" and r.reject_reason == "겹침"
         assert len(reserve.cancel(s, s.get(Reservation, a), by_admin=True, now_local=clock.local_now())) == 2
-        assert reserve.cancel(s, s.get(Reservation, far), by_admin=True, now_local=clock.local_now()) == []  # 창 밖 → DEL 없음
+        assert reserve.cancel(s, s.get(Reservation, far), by_admin=True, now_local=clock.local_now()) == []  # 안 보낸 것 → DEL 없음
+        assert s.get(Reservation, a).pushed_at is None
     with db() as s:
         assert [o.type for o in s.scalars(select(Outbox).order_by(Outbox.id))] == ["RESV_SET"] * 2 + ["RESV_DEL"] * 2
+```
+
+`server/tests/test_reserve.py` 에 이어서(관리자 REST 경로):
+
+```python
+def test_admin_write_tracks_pushed_at(client, live, app, school, students, monkeypatch):
+    """pushed_at = 노드로 보냈는가. 창 밖으로 옮기면 RESV_DEL, 안 보낸 예약 삭제엔 RESV_DEL 없음 (r2 🔴1c·⚪)."""
+    monkeypatch.setattr(clock, "now_utc", lambda: dt.datetime(2026, 9, 23, 1, 30))  # KST 9/23 10:30
+    from app.domain.models import Building, Room
+    from app.lora_service.models import Outbox
+    from sqlalchemy import select
+
+    with app.state.Session() as s, s.begin():
+        b = Building(school_id=1, name="E동", bld="E")
+        s.add(b)
+        s.flush()
+        r = Room(building_id=b.id, room=302, units=1)  # live FakeTopo: E302 units 1
+        s.add(r)
+        s.flush()
+        rid = r.id
+    body = {"date": "2026-09-24", "s_h": 9, "s_m": 0, "e_h": 10, "e_m": 0, "type": 6, "subject": "r", "professor": ""}
+
+    def types():
+        with live() as s:
+            return [o.type for o in s.scalars(select(Outbox).order_by(Outbox.id))]
+
+    i = client.post(f"/api/rooms/{rid}/reservations", json=body).json()["id"]
+    with app.state.Session() as s:
+        assert s.get(Reservation, i).pushed_at is not None
+    client.post(f"/api/rooms/{rid}/reservations", json={**body, "id": i, "date": "2026-10-10"})  # 창 밖으로
+    assert types() == ["RESV_SET", "RESV_DEL"]
+    with app.state.Session() as s:
+        assert s.get(Reservation, i).pushed_at is None
+    client.post(f"/api/rooms/{rid}/reservations", json={**body, "id": i, "date": "2026-10-11"})  # 창 밖 → 창 밖
+    assert client.delete(f"/api/rooms/{rid}/reservations/{i}").json()["outbox_ids"] == []  # 보낸 적 없음
+    assert client.delete(f"/api/rooms/{rid}/reservations/999").status_code == 200  # 멱등
+    assert types() == ["RESV_SET", "RESV_DEL"]
 ```
 
 `db` 픽스처(conftest)의 `FakeTopo` 에 `("E", 301)` units=2 modem "m1" 이 있으므로 `api.enqueue_*` 가 행을 만든다. `reserve.addr` 는 DB 건물의 `modem_id`(테스트 건물엔 없음 → None)를 준다 — 라우터가 notify 에 쓴다.
@@ -758,6 +805,27 @@ def addr(s: Session, r: Reservation) -> tuple[str, int, str | None]:
     return b.bld, room.room, b.modem_id
 
 
+def push_set(s: Session, r: Reservation) -> list[int]:
+    """RESV_SET 을 호출자 세션으로 enqueue 하고 pushed_at 을 찍는다 — pushed_at 을 바꾸는 두 곳 중 하나."""
+    bld, room, _ = addr(s, r)
+    ids = api.enqueue_resv_set(
+        bld, room, r.id, r.date, (r.s_h, r.s_m), (r.e_h, r.e_m), r.type, r.subject, r.professor, session=s
+    )
+    r.pushed_at = clock.now_utc()
+    return ids
+
+
+def push_del(s: Session, r: Reservation, today: dt.date, date: dt.date | None = None) -> list[int]:
+    """노드에 가 있을 수 있는(보낸 적 있고 아직 안 지난) 예약만 RESV_DEL. 어느 쪽이든 pushed_at 을 비운다.
+    `date` 는 날짜를 옮길 때 옮기기 전 날짜 — 노드가 가진 건 옛 날짜 항목이다."""
+    if r.pushed_at is None or (date or r.date) < today:
+        r.pushed_at = None
+        return []
+    bld, room, _ = addr(s, r)
+    r.pushed_at = None
+    return api.enqueue_resv_del(bld, room, r.id, session=s)
+
+
 def overlaps(s: Session, room_id: int, date: dt.date, s_min: int, e_min: int, exclude_id: int | None = None) -> bool:
     """정규 슬롯(그 요일, type 무관)·approved/requested 예약과 1분이라도 겹치면 True.
     시험기간은 슬롯이 있을 때만 의미가 있어 슬롯 겹침에 이미 포함된다."""
@@ -810,11 +878,8 @@ def approve(s: Session, r: Reservation, admin_email: str, now_local: dt.datetime
         raise HTTPException(409, "그 시간에 다른 예약·수업이 생겼습니다")
     r.status, r.decided_at, r.decided_by = "approved", clock.to_utc(now_local), admin_email
     if not in_window(r.date, now_local.date()):
-        return []  # 창 밖 — 일일 작업이 오늘+7 이 되는 날 승격 (S10 §2.5)
-    bld, room, _ = addr(s, r)
-    return api.enqueue_resv_set(
-        bld, room, r.id, r.date, (r.s_h, r.s_m), (r.e_h, r.e_m), r.type, r.subject, r.professor, session=s
-    )
+        return []  # 창 밖 — pushed_at NULL 로 남아 창에 들어오는 날 일일 작업이 승격 (S10 §2.5)
+    return push_set(s, r)
 
 
 def reject(s: Session, r: Reservation, admin_email: str, reason: str, now_local: dt.datetime) -> None:
@@ -829,15 +894,12 @@ def withdraw(s: Session, r: Reservation) -> None:
 
 
 def cancel(s: Session, r: Reservation, *, by_admin: bool, now_local: dt.datetime) -> list[int]:
-    """approved → cancelled. 학생은 시작 전만. 노드에 가 있을 수 있는(창 안) 예약만 RESV_DEL."""
+    """approved → cancelled. 학생은 시작 전만. 노드로 보낸 적 있는 예약만 RESV_DEL(push_del)."""
     _require(r, "approved")
     if not by_admin and start_local(r) <= now_local:
         raise HTTPException(409, "시작된 예약은 취소할 수 없습니다")
     r.status, r.cancelled_at = "cancelled", clock.to_utc(now_local)
-    if not in_window(r.date, now_local.date()):
-        return []
-    bld, room, _ = addr(s, r)
-    return api.enqueue_resv_del(bld, room, r.id, session=s)
+    return push_del(s, r, now_local.date())
 
 
 def checkin(s: Session, r: Reservation, now_local: dt.datetime) -> None:
@@ -850,10 +912,44 @@ def checkin(s: Session, r: Reservation, now_local: dt.datetime) -> None:
     r.checked_in_at = clock.to_utc(now_local)
 ```
 
+- [ ] **Step 4b: 관리자 REST 가 `pushed_at` 을 쓰게**
+
+`server/app/domain/router.py` 의 `_write_resv`(S4b·T1)·`delete_resv`(S2c) 를 다음으로 교체 — 전송 여부는 `pushed_at`(위 `push_set/push_del`):
+
+```python
+def _write_resv(s, room_id, bld, room, mid, body: S.ResvIn, rid: int, obj: Reservation | None) -> dict:
+    obj = obj or Reservation(id=rid, room_id=room_id)
+    old_date = obj.date  # 새 행이면 None
+    for k, v in body.model_dump(exclude={"id"}).items():
+        setattr(obj, k, v)
+    s.add(obj)
+    today = clock.local_today()
+    if reserve.in_window(body.date, today):
+        ids = reserve.push_set(s, obj)
+    else:  # 창 밖으로 옮겼으면 노드의 옛 날짜 항목을 지운다 (r3, 리뷰 🔴1c — main 에도 있던 문제)
+        ids = reserve.push_del(s, obj, today, date=old_date)
+    _commit_notify(s, mid)
+    return {"outbox_ids": ids, "id": rid}
+
+
+@router.delete("/rooms/{id}/reservations/{resv_id}", response_model=S.Enqueued)
+def delete_resv(id: int, resv_id: int, user: User = AdminUser, s: Session = _DB):
+    bld, room, mid = _addr(s, id, user)
+    r = s.get(Reservation, resv_id)
+    if r is None or r.room_id != id:  # 멱등 — 없는 id 에 RESV_DEL 을 보내지 않는다
+        return {"outbox_ids": []}
+    ids = reserve.push_del(s, r, clock.local_today())  # 노드로 보낸 적 있는 것만 (r2 ⚪: 신청·창 밖 예약엔 DEL 없음)
+    s.delete(r)
+    _commit_notify(s, mid)
+    return {"outbox_ids": ids}
+```
+
+(import `from app.domain import clock, reserve`. `reserve` 는 `router` 를 import 하지 않으므로 순환 없음.)
+
 - [ ] **Step 5: 통과·커밋**
 
 ```bash
-git add app/domain/reserve.py app/schemas.py tests/test_reserve.py
+git add app/domain/reserve.py app/domain/router.py app/schemas.py tests/test_reserve.py
 git commit -m "feat(server): reserve — 학생 신청 제약·겹침, 승인/거절/취소/철회/체크인 전이 (enqueue 는 호출자 세션)"
 ```
 
@@ -874,7 +970,7 @@ git commit -m "feat(server): reserve — 학생 신청 제약·겹침, 승인/�
 `server/tests/test_student_rooms.py` (공용 헬퍼 복사):
 
 ```python
-def test_free_rooms_now_and_at(client, app, school, student_hdr, monkeypatch):
+def test_free_rooms_now_and_at(client, client_raw, app, school, student_hdr, monkeypatch):
     _fix_clock(monkeypatch)  # KST 수 10:30
     _, ids = _building(app, 1, "E", rooms=((101, 1), (102, 1), (103, 1)))
     _building(app, 1, "G", rooms=((201, 1),), reservable=False)   # 예약 불가 방 제외
@@ -887,8 +983,8 @@ def test_free_rooms_now_and_at(client, app, school, student_hdr, monkeypatch):
     assert [(x["room"], x["layout"], x["free_until"]) for x in r.json()] == [(103, 4, "13:00")]
     r = client.get("/api/student/rooms/free?at=2026-09-23T11:00:00", headers=student_hdr)
     assert [x["room"] for x in r.json()] == [101, 102, 103]
-    assert client.get("/api/student/rooms/free").status_code == 401
-    assert client.get("/api/student/rooms/free", headers=client.headers).status_code == 403  # 관리자
+    assert client_raw.get("/api/student/rooms/free").status_code == 401  # client 는 관리자 Bearer 가 붙어 403 이 된다
+    assert client.get("/api/student/rooms/free").status_code == 403  # 관리자
 
 
 def test_rooms_with_state(client, app, school, student_hdr, monkeypatch):
@@ -1125,13 +1221,35 @@ def test_daily_request_cap(client, app, school, student_hdr, monkeypatch):
     assert r.status_code == 429  # 신청·철회 반복으로 id 를 소진하지 못하게 (리뷰 🟡)
 
 
+def test_concurrent_requests_cannot_both_pass(client, app, school, student_hdr, other_student_hdr, monkeypatch):
+    """검증이 락 밖이면 동시 두 신청이 둘 다 requested → 승인 재검사에서 서로 막혀 둘 다 409 (r2 🟡).
+    검증~커밋이 _ID_LOCK 안이므로 둘째는 첫째의 커밋을 보고 409. (sync 핸들러는 스레드풀에서 동시에 돈다.)"""
+    import threading
+
+    _fix_clock(monkeypatch)
+    _, ids = _building(app, 1, "E")
+    hdrs = [student_hdr, other_student_hdr]
+    gate, codes = threading.Barrier(2), []
+
+    def go(h):
+        gate.wait()
+        codes.append(client.post(f"/api/student/rooms/{ids[101]}/reservations", json=BODY, headers=h).status_code)
+
+    ts = [threading.Thread(target=go, args=(h,)) for h in hdrs]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert sorted(codes) == [201, 409]
+
+
 def test_cancel_approved_sends_resv_del_and_checkin_window(client, live, app, school, student_hdr, monkeypatch):
     seen = []
     monkeypatch.setattr(api, "notify", lambda mid: seen.append(mid))  # 커밋 뒤 호출되는지 (S2c)
     _fix_clock(monkeypatch)
     _, ids = _building(app, 1, "E", rooms=((301, 2),))
     rid = ids[301]
-    a = _resv(app, rid, dt.date(2026, 9, 24), 13, 0, 14, 0, id_=1, status="approved", requested_by="s1@mju.ac.kr")
+    a = _resv(app, rid, dt.date(2026, 9, 24), 13, 0, 14, 0, id_=1, status="approved", requested_by="s1@mju.ac.kr", pushed_at=UTC_NOW)  # 노드에 가 있음
     b = _resv(app, rid, dt.date(2026, 9, 23), 10, 25, 11, 0, id_=2, status="approved", requested_by="s1@mju.ac.kr")  # 시작 5분 전
     r = client.post(f"/api/student/me/reservations/{b}/checkin", headers=student_hdr)
     assert r.status_code == 200 and r.json()["checked_in_at"]
@@ -1166,7 +1284,7 @@ class ResvMineOut(ResvOut):
 
 - [ ] **Step 4: 라우터**
 
-`student_router.py` 에 (import `from app.auth import ratelimit`, `from app.domain import reserve`, `from app.domain.router import _ID_LOCK, _commit_notify, _free_id`):
+`student_router.py` 에 (import `from app.auth import ratelimit`, `from app.domain import reserve`, `from app.domain.router import _ID_LOCK, _commit_notify, _free_id`). 레이트리밋은 S4a r3 의 **키별 창 정리**에 기대어 하루 창이 유지된다(r2 🟡 — 1분 뒤 풀리던 것):
 
 ```python
 def _mine_out(s: Session, r: Reservation) -> dict:
@@ -1191,10 +1309,12 @@ DAILY_REQUESTS = 10  # 학생당 하루 신청 상한 — 신청·철회 반복�
 def request_resv(id: int, body: S.StudentResvIn, user: User = StudentUser, s: Session = _DB):
     room, _ = _student_room(s, user, id)
     now = clock.local_now()
-    reserve.validate_request(s, user, room, body, now)
-    if not ratelimit.check(f"resv:{user.email}", limit=DAILY_REQUESTS, window_s=86400.0):
-        raise HTTPException(429, f"신청은 하루 {DAILY_REQUESTS}회까지입니다")
-    with _ID_LOCK:  # 채번~커밋 직렬화 (S4b §2.5)
+    # 검증~채번~커밋을 한 덩어리로 — 동시 두 신청이 둘 다 겹침·MAX_ACTIVE 검사를 통과하지 않게 (r2 🟡).
+    # pysqlite 는 DML 전까지 트랜잭션을 열지 않아, 락 안의 SELECT 는 앞 요청의 커밋을 본다.
+    with _ID_LOCK:
+        reserve.validate_request(s, user, room, body, now)
+        if not ratelimit.check(f"resv:{user.email}", limit=DAILY_REQUESTS, window_s=86400.0):
+            raise HTTPException(429, f"신청은 하루 {DAILY_REQUESTS}회까지입니다")
         r = Reservation(
             id=_free_id(s, Reservation), room_id=id, date=body.date, s_h=body.s_h, s_m=body.s_m, e_h=body.e_h,
             e_m=body.e_m, type=reserve.STUDENT_TYPE, subject=body.subject, professor="", status="requested",
@@ -1217,7 +1337,7 @@ def my_reservations(status: str | None = None, user: User = StudentUser, s: Sess
 
 @router.post("/me/reservations/{id}/cancel", response_model=S.ResvMineOut)
 def cancel_resv(id: int, user: User = StudentUser, s: Session = _DB):
-    """requested → 철회(행 삭제), approved → 시작 전 취소(창 안이면 RESV_DEL). 커밋 뒤 허브 알림."""
+    """requested → 철회(행 삭제), approved → 시작 전 취소(보낸 적 있으면 RESV_DEL). 커밋 뒤 허브 알림."""
     r = _my_resv(s, user, id)
     if r.status == "requested":
         out = _mine_out(s, r) | {"status": "cancelled"}
@@ -1271,7 +1391,7 @@ def test_list_scope_and_filters(client, app, school, students, other_admin_hdr, 
     _resv(app, ids2[101], dt.date(2026, 9, 24), 13, 0, 14, 0, id_=3, status="requested", requested_by="s3@other.ac.kr")
     r = client.get("/api/admin/reservations")
     assert r.status_code == 200 and [x["id"] for x in r.json()] == [1]
-    assert r.json()[0]["requester"] == {"email": "s1@mju.ac.kr", "name": "학생1", "student_no": "1"}
+    assert r.json()[0]["requester"] == {"email": "s1@mju.ac.kr", "name": "학생1", "student_no": "S1"}  # students 픽스처 학번
     assert [x["id"] for x in client.get("/api/admin/reservations?status=approved").json()] == [2]
     assert client.get("/api/admin/reservations?status=approved").json()[0]["requester"] is None
     assert [x["id"] for x in client.get(f"/api/admin/reservations?status=requested,approved&building_id={bid}").json()] == [1, 2]
@@ -1358,7 +1478,7 @@ from app.auth.deps import AdminUser
 from app.auth.models import User
 from app.deps import _DB
 from app.domain import admin, clock, reserve
-from app.domain.router import _commit_notify
+from app.domain.router import _ID_LOCK, _commit_notify
 from app.domain.models import Building, Reservation, Room
 
 router = APIRouter(prefix="/api/admin", dependencies=[AdminUser])
@@ -1393,10 +1513,11 @@ def list_reservations(
 
 @router.post("/reservations/{id}/approve", response_model=S.ResvAdminOut)
 def approve(id: int, user: User = AdminUser, s: Session = _DB):
-    r = _scoped_resv(s, user, id)
-    reserve.approve(s, r, user.email, clock.local_now())
-    out = admin.resv_admin_out(s, r)
-    _commit_notify(s, reserve.addr(s, r)[2])  # 같은 세션의 RESV_SET 을 커밋한 뒤 허브 알림 (S2c)
+    with _ID_LOCK:  # 겹침 재검사~커밋 — 동시에 들어온 학생 신청과 경합하지 않게 (학생 신청도 같은 락)
+        r = _scoped_resv(s, user, id)
+        reserve.approve(s, r, user.email, clock.local_now())
+        out = admin.resv_admin_out(s, r)
+        _commit_notify(s, reserve.addr(s, r)[2])  # 같은 세션의 RESV_SET 을 커밋한 뒤 허브 알림 (S2c)
     return out
 
 
@@ -1457,11 +1578,12 @@ def test_run_daily_five_steps(db, hub, app, school, students, monkeypatch):
     r301, r302 = ids[301], ids[302]
     # 1 만료: 신청인데 시작 지남
     _resv(app, r301, dt.date(2026, 9, 23), 9, 0, 10, 0, id_=1, status="requested", requested_by="s1@mju.ac.kr")
-    # 2 승격: '오늘+7' 에 막 들어온 것만 (리뷰 🔴7 — 이미 받은 예약을 매일 다시 보내지 않는다)
-    _resv(app, r301, dt.date(2026, 9, 30), 13, 0, 14, 0, id_=2, status="approved")   # +7, outbox 없음 → 승격
-    _resv(app, r301, dt.date(2026, 9, 24), 13, 0, 14, 0, id_=3, status="approved")   # +1 → 이미 창 안이던 것, 안 보냄
-    _resv(app, r302, dt.date(2026, 9, 30), 15, 0, 16, 0, id_=6, status="approved")   # +7 이지만 이미 acked → 안 보냄
-    _outbox(app, "E", 302, "RESV_SET", "acked", UTC_NOW, payload=json.dumps({"resv_id": 6}))
+    # 2 승격: 창 안(오늘~+7) 승인 예약 중 아직 안 보낸 것(pushed_at NULL) 전부 (r3)
+    _resv(app, r301, dt.date(2026, 9, 30), 13, 0, 14, 0, id_=2, status="approved")   # +7, 안 보냄 → 승격
+    _outbox(app, "E", 301, "RESV_SET", "acked", UTC_NOW, payload=json.dumps({"resv_id": 2}))  # 지운 옛 예약 2 의 이력 — id 재사용에 속지 않는다
+    _resv(app, r302, dt.date(2026, 9, 26), 15, 0, 16, 0, id_=8, status="approved")   # +3, 안 보냄(서버가 꺼져 그날을 놓침) → 따라잡음
+    _resv(app, r301, dt.date(2026, 9, 24), 13, 0, 14, 0, id_=3, status="approved", pushed_at=UTC_NOW)  # 이미 보냄 → 안 보냄(배터리)
+    _resv(app, r302, dt.date(2026, 9, 30), 15, 0, 16, 0, id_=6, status="approved", pushed_at=UTC_NOW)  # 이미 보냄
     _resv(app, r301, dt.date(2026, 10, 5), 13, 0, 14, 0, id_=4, status="approved")   # 창 밖 → 없음
     # 3 재동기: 24 h 안 실패 — SLOT_SET(302/1) + FILE resv(301/2) / CMD·25 h 전·관리자 취소분은 무시
     _outbox(app, "E", 302, "SLOT_SET", "failed", UTC_NOW - dt.timedelta(hours=1))
@@ -1474,21 +1596,45 @@ def test_run_daily_five_steps(db, hub, app, school, students, monkeypatch):
     _resv(app, r302, dt.date(2026, 9, 15), 9, 0, 10, 0, id_=7, status="rejected", requested_by="s2@mju.ac.kr")
     with app.state.Session() as s, s.begin():
         s.add(JobRun(name="daily", ran_at=UTC_NOW - dt.timedelta(days=91), result="{}"))
-        s.add(EmailToken(token_hash="x", email="s1@mju.ac.kr", purpose="verify", expires_at=UTC_NOW - dt.timedelta(days=8)))
-        s.add(EmailToken(token_hash="y", email="s1@mju.ac.kr", purpose="verify", expires_at=UTC_NOW - dt.timedelta(days=6)))
+        s.add(EmailToken(token_hash="x", email="s1@mju.ac.kr", purpose="verify", created_at=UTC_NOW - dt.timedelta(days=8),
+                         expires_at=UTC_NOW - dt.timedelta(days=8)))  # created_at 은 S4a r3 에서 NOT NULL
+        s.add(EmailToken(token_hash="y", email="s1@mju.ac.kr", purpose="verify", created_at=UTC_NOW - dt.timedelta(days=6),
+                         expires_at=UTC_NOW - dt.timedelta(days=6)))
     res = daily.run_daily(app.state.Session)
     assert res["errors"] == []
-    assert res["expired"] == 1 and res["promoted"] == 1
+    assert res["expired"] == 1 and res["promoted"] == 2
     assert res["resynced"] == [["E", 301, 2, ["resv"]], ["E", 302, 1, ["schedule"]]]  # 유닛별, FILE 은 payload.kind 로
     assert res["pruned"] == {"reservations": 2, "job_runs": 1, "email_tokens": 1}
     with app.state.Session() as s:
         assert s.get(Reservation, 1).status == "expired" and s.get(Reservation, 5) is None and s.get(Reservation, 7) is None
         rows = s.scalars(select(Outbox).where(Outbox.state == "queued").order_by(Outbox.id)).all()
         assert sorted((o.room, o.unit, o.type) for o in rows) == [
-            (301, 1, "RESV_SET"), (301, 2, "FILE"), (301, 2, "RESV_SET"), (302, 1, "FILE")]
+            (301, 1, "RESV_SET"), (301, 2, "FILE"), (301, 2, "RESV_SET"), (302, 1, "FILE"), (302, 1, "RESV_SET")]
+        assert s.get(Reservation, 2).pushed_at is not None and s.get(Reservation, 4).pushed_at is None
         assert s.scalar(select(EmailToken.token_hash).where(EmailToken.token_hash == "y")) == "y"
         runs = s.scalars(select(JobRun).order_by(JobRun.id)).all()
-        assert len(runs) == 1 and json.loads(runs[0].result)["promoted"] == 1
+        assert len(runs) == 1 and json.loads(runs[0].result)["promoted"] == 2
+    assert daily.run_daily(app.state.Session)["promoted"] == 0  # 다음 날 다시 돌아도 이미 보낸 건 안 보낸다
+
+
+def test_promote_one_failure_does_not_stop_others(db, hub, app, school, monkeypatch):
+    """예약마다 자기 트랜잭션 — 한 건(삭제된 방 등)이 실패해도 나머지는 보내고, 실패분은 다음 날 다시 시도 (r3)."""
+    _fix_clock(monkeypatch)
+    _, ids = _building(app, 1, "E", rooms=((301, 2), (302, 1)))
+    _resv(app, ids[301], dt.date(2026, 9, 25), 13, 0, 14, 0, id_=1, status="approved")
+    _resv(app, ids[302], dt.date(2026, 9, 25), 13, 0, 14, 0, id_=2, status="approved")
+    real = daily.api.enqueue_resv_set
+
+    def flaky(bld, room, *a, **kw):
+        if room == 301:
+            raise LookupError("room gone")
+        return real(bld, room, *a, **kw)
+
+    monkeypatch.setattr(daily.api, "enqueue_resv_set", flaky)
+    res = daily.run_daily(app.state.Session)
+    assert res["promoted"] == 1 and any("resv 1" in e for e in res["errors"])
+    with app.state.Session() as s:
+        assert s.get(Reservation, 1).pushed_at is None and s.get(Reservation, 2).pushed_at is not None
 
 
 def test_resync_one_room_failure_does_not_stop_others(db, hub, app, school, monkeypatch):
@@ -1510,7 +1656,7 @@ def test_resync_one_room_failure_does_not_stop_others(db, hub, app, school, monk
 
 def test_step_failure_continues(db, hub, app, school, monkeypatch):
     _fix_clock(monkeypatch)
-    monkeypatch.setattr(daily, "_promote", lambda s, now_local, mids: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(daily, "_promote", lambda Session, now_local, errors: (_ for _ in ()).throw(RuntimeError("boom")))
     res = daily.run_daily(app.state.Session)
     assert res["promoted"] == 0 and res["errors"] == ["promoted: boom"] and "pruned" in res
 
@@ -1557,12 +1703,13 @@ import asyncio
 import datetime as dt
 import json
 import logging
+import threading
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth.models import EmailToken
-from app.domain import clock
+from app.domain import clock, reserve
 from app.domain.models import Building, JobRun, Reservation, Room
 from app.domain.topology import RESV_HORIZON_DAYS
 from app.lora_service import api
@@ -1573,6 +1720,7 @@ log = logging.getLogger(__name__)
 KEEP_DAYS = 90
 TOKEN_KEEP_DAYS = 7
 RESYNC_WINDOW_H = 24
+_RUN_LOCK = threading.Lock()  # 자동(daily_loop)·수동(POST /jobs/daily) 실행이 겹치지 않게 — 단일 워커 전제
 
 
 FILE_KINDS = {1: "schedule", 2: "resv", 3: "exam"}  # FILE payload.kind → room_versions.kind
@@ -1601,27 +1749,37 @@ def _expire(s: Session, now_local: dt.datetime) -> int:
     return n
 
 
-def _promote(s: Session, now_local: dt.datetime, mids: set) -> int:
-    """오늘 창에 **막 들어온**(날짜 == 오늘+7) 승인 예약만 RESV_SET (리뷰 🔴7).
-    이미 창 안이던 예약은 승인 때 보냈고, 누락은 03:00 STATUS 버전 비교 → FILE 재동기가 복구한다.
-    매일 창 전체를 다시 보내면 예약 k × 유닛 u 번 노드를 깨운다(배터리, v2 §1.4)."""
-    target = now_local.date() + dt.timedelta(days=RESV_HORIZON_DAYS)
-    addr = _rooms_by_id(s)
-    sent = {
-        (o.bld, o.room, json.loads(o.payload).get("resv_id"))
-        for o in s.scalars(select(Outbox).where(
-            Outbox.type == "RESV_SET", Outbox.state.in_(("queued", "dispatched", "acked"))))
-    }
+def _promote(Session: sessionmaker, now_local: dt.datetime, errors: list[str]) -> int:
+    """창 안(오늘~오늘+7)인데 아직 노드로 안 보낸(pushed_at IS NULL) 승인 예약을 RESV_SET (r3).
+    - 서버가 꺼져 하루를 놓쳐도 다음 실행이 따라잡는다(r2 의 "날짜 == 오늘+7 만" 은 그날을 놓치면 영영 안 갔다).
+    - outbox 이력이 아니라 예약 행의 pushed_at 으로 판단 — 지운 예약의 id 를 새 예약이 재사용해도 오판 없음.
+    - 이미 보낸 예약은 다시 보내지 않는다(예약 k × 유닛 u 번 웨이크 방지, v2 §1.4).
+    예약마다 자기 트랜잭션: 한 건이 실패해도(방 삭제 등) 나머지는 보내고, 실패분은 pushed_at NULL 로 남아 다음 날 재시도.
+    pysqlite 는 기본 설정에서 SAVEPOINT 가 동작하지 않아 세션 하나에서 부분 롤백을 할 수 없다."""
+    today = now_local.date()
+    with Session() as s:
+        ids = s.scalars(
+            select(Reservation.id).where(
+                Reservation.status == "approved",
+                Reservation.pushed_at.is_(None),
+                Reservation.date >= today,
+                Reservation.date <= today + dt.timedelta(days=RESV_HORIZON_DAYS),
+            ).order_by(Reservation.date, Reservation.id)
+        ).all()
     n = 0
-    for r in s.scalars(select(Reservation).where(Reservation.status == "approved", Reservation.date == target)):
-        bld, room, mid = addr[r.room_id]
-        if (bld, room, r.id) in sent:
-            continue
-        api.enqueue_resv_set(
-            bld, room, r.id, r.date, (r.s_h, r.s_m), (r.e_h, r.e_m), r.type, r.subject, r.professor, session=s
-        )
-        mids.add(mid)
-        n += 1
+    for rid in ids:
+        try:
+            with Session() as s, s.begin():
+                r = s.get(Reservation, rid)
+                if r is None or r.status != "approved" or r.pushed_at is not None:
+                    continue  # 그 사이 취소·삭제·전송됨
+                mid = reserve.addr(s, r)[2]
+                reserve.push_set(s, r)
+            api.notify(mid)  # 커밋 뒤 (S2c)
+            n += 1
+        except Exception as e:
+            log.exception("승격 실패 resv %s", rid)
+            errors.append(f"promoted: resv {rid}: {e}")
     return n
 
 
@@ -1662,6 +1820,11 @@ def _prune(s: Session, now_utc: dt.datetime, now_local: dt.datetime) -> dict:
 
 
 def run_daily(Session: sessionmaker, now_utc: dt.datetime | None = None) -> dict:
+    with _RUN_LOCK:
+        return _run_daily(Session, now_utc)
+
+
+def _run_daily(Session: sessionmaker, now_utc: dt.datetime | None) -> dict:
     now_utc = now_utc or clock.now_utc()
     now_local = clock.to_local(now_utc)
     res: dict = {"expired": 0, "promoted": 0, "resynced": [], "pruned": {}, "errors": []}
@@ -1679,7 +1842,7 @@ def run_daily(Session: sessionmaker, now_utc: dt.datetime | None = None) -> dict
             api.notify(mid)
 
     step("expired", lambda s, mids: _expire(s, now_local))
-    step("promoted", lambda s, mids: _promote(s, now_local, mids))
+    step("promoted", lambda s, mids: _promote(Session, now_local, res["errors"]))  # 예약마다 자기 세션
     step("resynced", lambda s, mids: _resync_failed(s, now_utc, res["errors"]))
     step("pruned", lambda s, mids: _prune(s, now_utc, now_local))
     with Session() as s, s.begin():
@@ -1708,24 +1871,31 @@ def tick(Session: sessionmaker) -> bool:
 
 async def daily_loop(Session: sessionmaker, interval_s: float = 60.0) -> None:
     while True:
+        # sleep 먼저 — 기동 직후(테스트 포함) clock 이 monkeypatch 되기 전 실제 시각으로 돌지 않게. 04:00~04:01 사이 실행
+        await asyncio.sleep(interval_s)
         try:
             await asyncio.to_thread(tick, Session)
         except Exception:
             log.exception("daily tick 실패")
-        await asyncio.sleep(interval_s)
 ```
 
-`server/app/main.py` lifespan: `daily_task = asyncio.ensure_future(daily.daily_loop(Session))` (sweeper 옆), finally 에서 cancel. **테스트에서는 `clock.now_utc` 가 monkeypatch 되기 전에 앱이 뜨므로 tick 이 실제 시각으로 한 번 돌 수 있다** — `create_app(db_path, daily=False)` 는 두지 않고, 대신 `settings.debug` 와 무관하게 lifespan 첫 tick 전에 60 s sleep 부터 하도록 `daily_loop` 를 `await asyncio.sleep(interval_s)` 먼저 하게 바꾼다(테스트 수명 < 60 s). 위 코드의 while 안 순서를 sleep → tick 으로.
+`server/app/main.py` lifespan: `daily_task = asyncio.ensure_future(daily.daily_loop(Session))` (sweeper 옆), finally 에서 cancel.
 
 `admin_resv_router.py` 에:
 
 ```python
 @router.post("/jobs/daily", response_model=S.JobRunOut)
-def run_daily_now(request: Request, s: Session = _DB):
+def run_daily_now(request: Request):
+    """전 학교 대상 전역 작업(학교 스코프 없음) — 결과는 멱등(보낸 예약은 다시 안 보냄)이라 어느 관리자가 눌러도 안전.
+    `_DB` 를 쓰지 않는다: run_daily 가 자기 세션들로 쓰고, 조회는 끝난 뒤 새 세션으로."""
     from app.domain import daily
 
-    daily.run_daily(request.app.state.Session)
-    return s.scalar(select(JobRun).where(JobRun.name == "daily").order_by(JobRun.id.desc()).limit(1))
+    Session = request.app.state.Session
+    daily.run_daily(Session)
+    with Session() as s:
+        return S.JobRunOut.model_validate(
+            s.scalar(select(JobRun).where(JobRun.name == "daily").order_by(JobRun.id.desc()).limit(1))
+        )
 
 
 @router.get("/jobs", response_model=list[S.JobRunOut])
@@ -1733,7 +1903,7 @@ def jobs(name: str = "daily", limit: int = Query(30, ge=1, le=200), s: Session =
     return s.scalars(select(JobRun).where(JobRun.name == name).order_by(JobRun.id.desc()).limit(limit)).all()
 ```
 
-(`from fastapi import Request`, `from app.domain.models import JobRun`.) `run_daily_now` 는 `_DB` 세션과 별개로 `run_daily` 가 자기 세션들을 쓰므로, 읽기 전용 `_DB` 세션은 마지막 조회에만 — 같은 요청 안에서 `_DB` 가 열린 채 `run_daily` 가 쓰면 WAL 락? `_DB` 는 아직 아무것도 안 썼으므로(읽기 트랜잭션도 시작 전) 문제없다. 안전하게 `s` 의존성을 지우고 `with request.app.state.Session() as s:` 로 조회해도 된다.
+(`from fastapi import Request`, `from app.domain.models import JobRun`.)
 
 `S.JobRunOut`:
 
@@ -2172,4 +2342,4 @@ git commit -m "feat(server): 분석 집계 — 배정률·공강·예약 통계(
 - **Spec coverage:** §2.1 스키마·전이·No-show → T1·T3·T8. §2.2 시각·`put_resv` KST·`DAILY_HOUR_LOCAL` → T1·T7. §2.3 `room_state`·벡터(JSON 9, 1 xfail) → T2, RecordProvider → T1. §2.4 제약 7개·선착순·승인 재검사 → T3(T5 라우터 422/400/404/409). §2.5 일일 작업 5단계·트리거·수동 → T7. §2.6 정의(배정 집합·휴강 unused·No-show·bin·within) → T8. §3 스코프(학생 404·관리자 학교·남의 예약 라벨) → T4·T5·T6. §4.1 7개 → T4·T5. §4.2 6개 + 요약 버킷 → T6·T7. §4.3 5개 → T8. §5 README → T9.
 - **Placeholder scan:** 없음 (테스트 기대값은 본문에서 확정: p95 = 95, 20시 슬롯 구간 2개, `by_w[0].key == 3`).
 - **리뷰(PR #38) 반영:** 🔴5 approve·cancel·승격은 `enqueue_*(session=s)` + 커밋 뒤 알림(T3·T5·T6·T7). 🔴6 `record_provider` approved·KST(T1). 🔴7 승격 `오늘+7` 만·acked 포함 중복 방지(T7). 🔴8 FILE kind·유닛별·방별 try·취소분 제외(T7). 🔴10 tzdata(T1). 🟡 픽스처 충돌 → `students` 분리·학번 S1~S3(T1), FK → 모든 requested_by 테스트가 `students` 요청, 목록 정렬에서 NULL `requested_at` 제거(T6), `"promoted: boom"`(T7), 벡터 JSON·tentative·xfail(T2), 이름 붙인 CHECK(T1), 신청 철회 삭제·하루 10회(T3·T5). ⚪ 이미 시작한 신청 승인 409·창 밖 취소 DEL 없음(T3), 04시 이전 수동 실행이 자동을 막지 않음(T7), allocation 쿼리 수 ceiling 주석(T8).
-- **Type consistency:** `clock.*` T1 = 전 Task. `room_state.Span(s, e, type, label, mine, id)`·`room_state()`·`load_inputs()`·`state_of()`·`fmt_hhmm()` T2 = T4·T8. `reserve.validate_request(s, user, room, body, now_local)`·`approve/reject/cancel(by_admin=)/checkin` T3 = T5·T6. `_mine_out`·`_student_room` T4/T5 = T6 `admin.resv_admin_out`. `_free_id(s, Reservation)` = S4b T2. `daily.run_daily(Session, now_utc=None)`·`tick`·`already_ran_today` T7 = T7 테스트·라우터. `analytics.parse_range/allocation/free_slots/reservation_stats/latency/latency_samples` T8 = 라우터. conftest `students`·`student_hdr`·`other_student_hdr`·`student_hdr_school2` T1 = T2~T8. `reserve.addr`·`reserve.withdraw` T3 = T5·T6. `_commit_notify`·`_ID_LOCK` = S2c·S4b. `live`·`db`·`hub` 는 S2 conftest.
+- **Type consistency:** `clock.*` T1 = 전 Task. `room_state.Span(s, e, type, label, mine, id)`·`room_state()`·`load_inputs()`·`state_of()`·`fmt_hhmm()` T2 = T4·T8. `reserve.validate_request(s, user, room, body, now_local)`·`approve/reject/cancel(by_admin=)/checkin` T3 = T5·T6. `_mine_out`·`_student_room` T4/T5 = T6 `admin.resv_admin_out`. `_free_id(s, Reservation)` = S4b T2. `daily.run_daily(Session, now_utc=None)`·`tick`·`already_ran_today` T7 = T7 테스트·라우터. `analytics.parse_range/allocation/free_slots/reservation_stats/latency/latency_samples` T8 = 라우터. conftest `students`·`student_hdr`·`other_student_hdr`·`student_hdr_school2` T1 = T2~T8. `reserve.addr`·`reserve.withdraw` T3 = T5·T6. `reserve.push_set/push_del` T3 = T3 Step 4b(`_write_resv`·`delete_resv`)·T7 `_promote`. `_ID_LOCK` = T5 신청·T6 승인. `daily._promote(Session, now_local, errors)` T7 = T7 테스트 monkeypatch. `_commit_notify`·`_ID_LOCK` = S2c·S4b. `live`·`db`·`hub` 는 S2 conftest.
