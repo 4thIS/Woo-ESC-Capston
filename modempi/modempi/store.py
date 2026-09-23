@@ -1,8 +1,8 @@
 """계약 ⑦ JobStore — 모뎀Pi 안에서 링크(wj)와 LoRa 파이프라인(cw)이 만나는 유일한 통로 (로드맵 §4.3).
 
 - 링크 측 공식 시그니처는 `modempi.link.store_port.JobStore` Protocol. 이 클래스는 그것을 그대로 구현하고
-  파이프라인 측 함수(`recover`·`pick_next`·`get_job`·`update`·`next_txn`·`get_config`·`on_config_changed`·
-  `put_uplink`·`set_meta`·`prune`)를 더한다.
+  파이프라인 측 함수(`recover`·`pick_next`·`get_job`·`newer_pending`·`update`·`next_txn`·`get_config`·
+  `on_config_changed`·`put_uplink`·`set_meta`·`prune`)를 더한다.
 - **동기 `sqlite3`, 연결 1개** — 이벤트 루프에서 직접 부른다(S5 spec §9, S6 spec §2). 모든 쓰기는 호출이
   끝나기 전에 커밋된다(autocommit + 여러 문장은 `_tx()`).
 - 스키마 변경은 additive만(기존 컬럼 불변). 바꾸면 `SCHEMA_VERSION` +1, `_SCHEMA`(새 DB용)와
@@ -285,6 +285,19 @@ class SqliteStore:
                 " WHERE state = 'received' AND next_try_at IS NOT NULL"
             ).rowcount
         return n
+
+    def newer_pending(self, job: Job) -> bool:
+        """같은 노드·같은 type 의 `received` 행이 이 행보다 뒤에 들어와 있는가.
+
+        쌓인 TIME 을 정리할 때 쓴다 — 더 새 행이 있을 때만 옛 행을 보내지 않고 닫는다. 나이만 보고 버리면
+        파이프라인이 오래 멈췄다 돌아왔을 때 가장 새 TIME 까지 버려진다(로드맵 §4.3 "가장 새 것 하나는 보낸다").
+        """
+        row = self._conn.execute(
+            "SELECT 1 FROM jobs WHERE state = 'received' AND type = ? AND bld = ? AND room = ?"
+            " AND unit = ? AND rowid > (SELECT rowid FROM jobs WHERE job_id = ?) LIMIT 1",
+            (job.type, job.bld, job.room, job.unit, job.job_id),
+        ).fetchone()
+        return row is not None
 
     def get_job(self, job_id: str) -> Job | None:
         row = self._conn.execute(

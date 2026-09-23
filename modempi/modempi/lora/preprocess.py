@@ -84,6 +84,10 @@ def _plain_unit(job: Job, payload: dict) -> Unit:
         obj = jsonio.from_json(type_, payload, new_ver=job.new_ver)
     except (KeyError, ValueError, TypeError) as e:
         raise PreprocessError(f"bad_payload: {e}") from e
+    if type_ == P.Type.SET_ROOM:
+        # 미설정 단말은 BLD=0x00 프레임만 받는다(v2 §3.3·§6.6). 배정 목표 주소는 payload 에만 있다 —
+        # 메인은 행을 목표 주소로 큐잉하지만(노드 FIFO·TXN 카운터 키) 헤더는 미설정 대상으로 보낸다.
+        return Unit(P.BLD_UNPROVISIONED, 0, 0, type_, obj, True, 3000, P.FLAG_ACK_REQ)
     bld, room, unit = _addr(job)
     return Unit(bld, room, unit, type_, obj, True, 3000, P.FLAG_ACK_REQ)
 

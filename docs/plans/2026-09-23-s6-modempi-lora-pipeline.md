@@ -589,7 +589,8 @@ git commit -m "feat(modempi): preprocess — jobs 행을 송신 단위로 (TIME 
   ```python
   RETRY_BACKOFF = (5.0, 20.0, 60.0)
   MAX_ATTEMPTS = 3
-  STALE_TIME_S = 90.0        # 이보다 오래된 TIME 행은 보내지 않고 superseded 로 닫는다
+  # (#35 리뷰 4 로 삭제) STALE_TIME_S — 나이로 버리면 가장 새 TIME 까지 사라진다.
+  # 같은 대상에 더 새 received TIME 이 있을 때만(store.newer_pending) superseded 로 닫는다.
 
   class Worker:
       def __init__(self, store, client, *, clock=time.time, sleep=asyncio.sleep, idle: float = 0.5): ...
@@ -1047,7 +1048,7 @@ def test_tick_inserts_hourly_time_row_not_reported_to_main(db):
 
 def test_request_status_flag_on_configured_hour(db):
     db.set_config({"status_hour_utc": 18})
-    clk = FakeClock(start=1_800_064_805.0)   # UTC 18:00:05 인 시각
+    clk = FakeClock(start=1_800_036_005.0)   # UTC 18:00:05 (2027-01-15). 1_800_064_805 는 02:00:05 — #35 리뷰 8
     import datetime as dt
     assert dt.datetime.fromtimestamp(clk.now, dt.UTC).hour == 18
     jid = TimeScheduler(db, clock=clk).tick()

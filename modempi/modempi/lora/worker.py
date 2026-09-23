@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -20,7 +19,6 @@ log = logging.getLogger("lora.worker")
 
 RETRY_BACKOFF = (5.0, 20.0, 60.0)
 MAX_ATTEMPTS = 3
-STALE_TIME_S = 90.0  # 이보다 오래된 TIME 행은 보내지 않고 superseded 로 닫는다
 BUSY_WAIT_S = 5.0
 FILE_MISSING_MAX = 2
 UNTRUSTED_CLOCK_WAIT_S = 60.0  # 시계를 못 믿는 동안 TIME 을 미루는 간격
@@ -70,15 +68,16 @@ class Worker:
         job = self.store.pick_next()
         if job is None:
             return False
-        if job.type == "TIME" and self._is_stale_time(job):
-            # 파이프라인이 멈춰 있던 동안 쌓인 TIME — 가장 새 것 하나만 보낸다(로드맵 §4.3).
+        if job.type == "TIME" and self.store.newer_pending(job):
+            # 파이프라인이 멈춰 있던 동안 쌓인 TIME — 같은 대상에 더 새 행이 있을 때만 닫는다.
+            # 나이로 버리면 가장 새 것까지 사라진다. epoch 는 송신 때 다시 찍으므로 옛 행을 보내도 무해하다.
             self.store.update(
                 job.job_id, expect_state="received", state="acked", last_error="superseded"
             )
             return True
         if job.type == "TIME" and not self._clock_ok(self._clock()):
             # 옛 시각(fake-hwclock)을 모든 노드에 뿌리면 노드 시계가 망가진다 — 동기될 때까지 미룬다.
-            # 그동안 90 s 가 지나면 위 superseded 로 닫히고, 스케줄러가 동기 직후 새 행을 넣는다.
+            # 스케줄러가 동기 직후 새 TIME 을 넣으면 이 행은 위 newer_pending 으로 superseded 가 된다.
             self.store.update(
                 job.job_id, state="received", next_try_at=self._clock() + UNTRUSTED_CLOCK_WAIT_S
             )
@@ -93,13 +92,6 @@ class Worker:
         else:
             await self._run_single(job, units[0])
         return True
-
-    def _is_stale_time(self, job: Job) -> bool:
-        try:
-            epoch = int(json.loads(job.payload)["epoch"])
-        except (ValueError, KeyError, TypeError):
-            return False
-        return epoch < self._clock() - STALE_TIME_S
 
     def _claim(self, job: Job, txn: int) -> bool:
         """집기. False 면 그 사이 링크가 취소한 행이므로 보내지 않는다(로드맵 §4.3)."""
@@ -186,13 +178,18 @@ class Worker:
                 self._finish(job, "acked", **common)  # GAP 은 메인이 FILE 재동기로 받는다
                 return
             if ack.status in (P.AckStatus.BAD_PAYLOAD, P.AckStatus.UNSUPPORTED):
-                log.error("job %s: 노드가 %s — 코덱/스펙 불일치 의심", job.job_id, ack.status.name)
+                name = P.AckStatus(ack.status).name  # decode_payload 의 status 는 int
+                log.error("job %s: 노드가 %s — 코덱/스펙 불일치 의심", job.job_id, name)
             self._finish(
                 job, "failed", last_error=f"ack_{P.AckStatus(ack.status).name.lower()}", **common
             )
             return
         if res.status in ("no_ack", "cad_busy"):
             self._retry_or_fail(job, res.reason or res.status)
+            return
+        if res.reason == "modem_timeout":
+            # 시리얼 순간 장애 — 한 번에 영구 실패시키지 않는다. 노드가 받았다면 같은 TXN 재송이 DUP.
+            self._retry_or_fail(job, "modem_timeout")
             return
         self._finish(job, "failed", attempts=attempts, last_error=res.reason or "error", **_CLEAR)
 
@@ -236,11 +233,11 @@ class Worker:
                 if ack.status == P.AckStatus.FILE_MISSING and missing_used < FILE_MISSING_MAX:
                     missing_used += 1
                     i = 1 + int(ack.detail)  # DATA 는 units[1] 부터
-                    no_ack_run = 0
+                    no_ack_run, busy_used = 0, 0
                     continue
                 if ack.status not in (P.AckStatus.OK, P.AckStatus.DUP):
                     break
-                no_ack_run = 0
+                no_ack_run, busy_used = 0, 0  # 다음 프레임 — BUSY 상한은 프레임마다(spec §9)
                 i += 1
                 continue
             if res.status == "no_ack":

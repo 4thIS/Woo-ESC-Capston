@@ -431,3 +431,94 @@ async def test_corrupt_ack_is_retried_not_a_pipeline_crash(rig, clk):
     await w.once()
     j = db.get_job("10")
     assert (j.state, j.txn, j.ack_status) == ("acked", first_txn, int(P.AckStatus.DUP))
+
+
+# ---- #35 셀프 리뷰 반영 ----
+
+
+@pytest.mark.parametrize(
+    "tok,err", [("ack:BAD_PAYLOAD", "ack_bad_payload"), ("ack:UNSUPPORTED", "ack_unsupported")]
+)
+async def test_bad_payload_or_unsupported_ack_fails_without_crashing(rig, tok, err):
+    """ack.status 는 int 라 .name 에서 AttributeError → 워커가 죽고 행이 sending 에 남았다.
+    재기동 뒤 같은 TXN 재송이 DUP 으로 닫혀 적용 안 된 작업이 acked 로 기록될 수 있었다(#35 리뷰 1)."""
+    db, modem, _, w = rig
+    modem.script([tok])
+    put(db)
+    assert await w.once() is True
+    j = db.get_job("10")
+    assert (j.state, j.last_error) == ("failed", err)
+
+
+async def test_set_room_reaches_unprovisioned_node(rig):
+    """메인은 SET_ROOM 을 배정 목표 주소로 큐잉한다. 미설정 단말은 BLD=0x00 프레임만 받으므로
+    헤더는 BLD=0x00 ROOM=0 UNIT=0, 배정 목표는 payload 에만(v2 §3.3 · §6.6, #35 리뷰 2)."""
+    db, modem, _, w = rig
+    mac = bytes.fromhex("a0b1c2d3e4f5")
+    modem.add_unprovisioned(mac)
+    payload = {"mac": mac.hex(), "bld": ord("E"), "room": 805, "unit": 1}
+    db.put_job(
+        job_id="20",
+        bld="E",
+        room=805,
+        unit=1,
+        type="SET_ROOM",
+        payload=json.dumps(payload),
+        priority=3,
+        new_ver=1,
+    )
+    assert await w.once() is True
+    j = db.get_job("20")
+    assert (j.state, j.ack_status) == ("acked", int(P.AckStatus.OK))
+    assert modem.unprovisioned == {} and (ord("E"), 805, 1) in modem.nodes
+
+
+async def test_lone_old_time_row_is_still_sent(rig, clk):
+    """파이프라인이 90 s 넘게 멈췄다 돌아와도 가장 새 TIME 하나는 보낸다 — 더 새 행이 있을 때만 버린다
+    (로드맵 §4.3, #35 리뷰 4). epoch 는 송신 시 다시 찍힌다."""
+    db, modem, _, w = rig
+    db.put_job(
+        job_id="time-old",
+        bld="",
+        room=0,
+        unit=0,
+        type="TIME",
+        payload=json.dumps({"epoch": int(clk.now) - 3600, "flags": 0}),
+        priority=0,
+        new_ver=None,
+        uploaded=1,
+    )
+    await w.once()
+    j = db.get_job("time-old")
+    assert (j.state, j.last_error) == ("acked", None)
+    assert modem.stats["tx"] == 1
+
+
+async def test_modem_timeout_is_retried_not_failed_at_once(rig):
+    """시리얼 순간 장애 한 번에 작업이 영구 실패하면 안 된다 — 무응답과 같이 재시도(#35 리뷰 5)."""
+    db, _, client, w = rig
+
+    from modempi.lora.modem_client import TxResult
+
+    async def timeout_tx(frame, *, wake, ack_ms):
+        return TxResult(status="error", reason="modem_timeout")
+
+    client.tx = timeout_tx
+    put(db)
+    await w.once()
+    j = db.get_job("10")
+    assert (j.state, j.attempts, j.last_error) == ("received", 1, "modem_timeout")
+
+
+async def test_file_busy_cap_is_per_frame_not_per_session(rig):
+    """spec §9: BUSY 상한은 한 프레임당 5 회. 세션 전체로 세면 긴 FILE 이 정상 BUSY 몇 번에 실패한다(#35 리뷰 7)."""
+    db, modem, _, w = rig
+    modem.script(["ack:BUSY"] * 4 + ["auto"] + ["ack:BUSY"] * 4)
+    put(
+        db,
+        type="FILE",
+        new_ver=3,
+        payload={"kind": int(P.FileKind.SCHEDULE), "records": slot_records(24)},
+    )
+    await w.once()
+    assert db.get_job("10").state == "acked"

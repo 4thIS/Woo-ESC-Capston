@@ -119,7 +119,8 @@ loop:
   job = store.pick_next()     # 노드마다 머리 행만(메인 job_id 순 FIFO, 머리가 대기 중이면 노드 전체 대기),
                               # 노드끼리는 priority ASC, received_at ASC — store 가 보장 (로드맵 §4.3)
   없으면 0.5 s 대기
-  if job.type == 'TIME': 더 오래된 TIME 행을 acked(last_error='superseded') 로 닫고, epoch 는 지금 시각으로
+  if job.type == 'TIME' and store.newer_pending(job): acked(last_error='superseded') 로 닫고 다음 — 같은 대상에 더 새 TIME 이 있을 때만
+                              # (나이로 버리면 가장 새 것까지 사라진다, #35 리뷰 4). 보낼 때 epoch 는 지금 시각으로
   units = preprocess(job)
   txn = job.txn or store.next_txn(...)   # 비-FILE: 첫 송신에서만 새 TXN. 재송(no_ack·BUSY·재기동)은 jobs.txn 재사용
   store.update(job.job_id, expect_state='received', state='sending', txn=txn)   # False 면 cancel 됨 → continue
@@ -195,6 +196,7 @@ loop:
 - S7 이후: 실물 모뎀으로 같은 pytest 시나리오 중 하드웨어 무관 항목 통과, 벤치 v2 §10.2-1.
 
 ## 9. 열린 결정 (plan 단계)
+- **FILE_END 의 ACK 유실 → 적용된 파일이 실패로 보고된다** (#35 셀프 리뷰 3, 노드 FW S8 과 함께 결정). FILE 프레임은 재송 때 새 TXN 이라 DUP 으로 걸러지지 않고, 노드는 이미 커밋·세션 종료했으므로 END 재송에 `BAD_PAYLOAD`(fake 기준)로 답한다 → `failed(ack_bad_payload)`. 후보: v2 §3.4 에 "세션 없는 END 수신 시 CRC16·NEW_VER 가 현재 파일과 같으면 DUP" 규칙을 두고 노드 FW(S8)·fake 모뎀·워커가 함께 따른다. **S8 착수 전 확정.**
 - ~~FILE 세션 중 `BUSY`가 몇 번까지 허용되는지~~ → **확정(2026-09-23): 한 프레임당 5회**(`FILE_BUSY_MAX`). 초과하면 세션 실패로 보고 일반 재시도 정책(5·20·60 s, 3회)에 맡긴다 — 그냥 BUSY로 되돌리면 노드가 계속 바쁠 때 그 행이 노드 FIFO의 머리에 영원히 남아 같은 노드의 뒤 작업이 전부 막힌다.
 - `next_txn` 롤링에서 0 건너뛰기 외에, 노드 `lastTxn`과 우연히 같아지는(255 주기) DUP 오판 — 프레임 간 최소 2개 이상 차이를 두는 규칙 필요 여부. 현재 v2 §3.5는 "같은 TXN 재수신 = DUP"만 정의.
 - ~~`split` 대신 부모 행을 삭제할지~~ → r3에서 모뎀Pi 유닛 분해 자체를 삭제.
