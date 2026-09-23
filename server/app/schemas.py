@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 from typing import Literal
 
 from lora_proto import proto as P
@@ -234,3 +235,66 @@ class ProvisionIn(BaseModel):
     bld: str = Field(min_length=1, max_length=1)
     room: int = Field(ge=1, le=9999)
     unit: int = Field(ge=1, le=2)
+
+
+# ---- S4a 인증 ----
+
+# 단일 주소만 — @ 1개, 쉼표·공백·꺾쇠·따옴표 불가 (S4a §2.3, 리뷰 🔴1). 소문자 정규화 뒤 검사.
+EMAIL_RE = re.compile(r"^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$")
+
+
+class EmailIn(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not EMAIL_RE.fullmatch(v):
+            raise ValueError("이메일 형식이 아닙니다")
+        return v
+
+
+class TokenIn(BaseModel):
+    # 길이는 VerifyIn·ResetIn 과 같다 — 짧은 무효 토큰도 422 가 아니라 400 링크 무효로 (test "nope")
+    token: str = Field(min_length=1, max_length=128)
+
+
+class VerifyIn(BaseModel):
+    token: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=50)
+    # ASCII 영숫자·하이픈만 — 공백·전각 숫자로 같은 학번을 두 번 만들어 유일성을 피하지 못하게 (자체 점검 🟡)
+    student_no: str = Field(min_length=1, max_length=20, pattern=r"^[0-9A-Za-z-]+$")
+    password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("name", "student_no", mode="before")
+    @classmethod
+    def _strip(cls, v):
+        return v.strip() if isinstance(v, str) else v  # strip 뒤 빈 문자열은 min_length 로 422
+
+
+class LoginIn(EmailIn):
+    password: str = Field(max_length=128)
+
+
+class LoginOut(BaseModel):
+    token: str
+    role: str
+    school_id: int
+    name: str
+
+
+class ResetIn(BaseModel):
+    token: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class UserOut(Out):
+    email: str
+    school_id: int
+    role: str
+    status: str
+    name: str
+    student_no: str | None
+    created_at: dt.datetime
+    approved_at: dt.datetime | None

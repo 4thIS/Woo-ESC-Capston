@@ -14,6 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.auth.router import admin as admin_router
+from app.auth.router import router as auth_router
 from app.db import make_engine, make_session_factory
 from app.domain.router import router as domain_router
 from app.domain.topology import DomainTopology, record_provider
@@ -68,6 +70,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
         )
     app.include_router(lora_router)
     app.include_router(domain_router)
+    app.include_router(auth_router)
+    app.include_router(admin_router)
     if settings.debug:
         app.mount(
             "/static",
