@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from collections.abc import Awaitable, Callable, Coroutine
@@ -57,8 +58,10 @@ class Pipeline:
         clock: Callable[[], float] = time.time,
         sleep: Callable[[float], Awaitable] = asyncio.sleep,
         clock_ok: Callable[[float], bool] = clock_trusted,
+        ready_warn_s: float = 60.0,
     ) -> None:
         self.store, self._transport = store, transport
+        self._ready_warn_s = ready_warn_s
         self._clock, self._sleep, self._clock_ok = clock, sleep, clock_ok
         self._config_changed = asyncio.Event()
         self._sent_cfg: dict | None = None
@@ -71,10 +74,21 @@ class Pipeline:
         return (self.store.get_config() or {}).get("net_id", P.NET_ID)
 
     async def run(self, stop: asyncio.Event) -> None:
-        client = ModemClient(self._transport)
+        # 모뎀이 없어도(부팅 때 USB 미연결) 죽지 않고 ready 를 기다린다 — 죽으면 systemd 가 서비스를
+        # 재기동하며 링크까지 끊겼다 붙는다. 기다리는 동안에도 stop 으로 멈출 수 있어야 한다.
+        client = ModemClient(self._transport, ready_timeout=None, ready_warn_s=self._ready_warn_s)
         tasks: list[asyncio.Task] = []
         try:
-            await client.start()
+            starting = asyncio.create_task(client.start(), name="lora.modem_start")
+            stopping = asyncio.create_task(stop.wait())
+            await asyncio.wait([starting, stopping], return_when=asyncio.FIRST_COMPLETED)
+            stopping.cancel()
+            if not starting.done():
+                starting.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await starting
+                return
+            starting.result()  # 읽기 태스크가 ready 전에 죽었으면 여기서 올라간다
             if client.fw:
                 self.store.set_meta("modem_fw", client.fw)  # 링크가 hello 에 실어 올린다(계약 ⑦)
             # 읽기 태스크가 죽으면 이후 요청이 전부 타임아웃이다 — 자식처럼 감시해 전체를 멈춘다.

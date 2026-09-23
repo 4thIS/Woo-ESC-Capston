@@ -333,3 +333,45 @@ async def test_usb_blip_is_logged_not_fatal_and_job_goes_out_after(monkeypatch, 
     await asyncio.wait_for(task, 3)
     assert db.get_job("10").state == "acked"
     db.close()
+
+
+class LateModem(ClosingSpy):
+    """부팅 때 USB 에 없던 모뎀 — `plug()` 전까지는 아무 줄도 올리지 않는다(ready 도 없다)."""
+
+    def __init__(self, modem: FakeModem):
+        super().__init__(modem)
+        self._plugged = asyncio.Event()
+
+    def plug(self) -> None:
+        self._plugged.set()
+
+    async def read_line(self) -> str:
+        await self._plugged.wait()
+        return await self.modem.read_line()
+
+
+async def test_modem_absent_at_boot_waits_for_ready_instead_of_crashing():
+    """모뎀이 없다고 10 s 뒤 예외를 내면 서비스가 RestartSec 마다 재기동하며 링크까지 끊겼다 붙는다.
+    ready 가 올 때까지 기다리고, 꽂히면 그대로 이어서 보낸다."""
+    db = SqliteStore(":memory:")
+    modem = FakeModem()
+    modem.add_node(ord("E"), 301, 1, sched_ver=2)
+    db.set_config(
+        {"radio": {"sf": 9, "bw": 125.0, "cr": 5, "tx_dbm": 14, "preamble_wake_ms": 3000}}
+    )
+    db.put_job(job_id="10", bld="E", room=301, unit=1, type="SLOT_SET",
+               payload=json.dumps(SLOT), priority=3, new_ver=3)  # fmt: skip
+    late = LateModem(modem)
+    stop = asyncio.Event()
+    task = asyncio.create_task(Pipeline(db, late, ready_warn_s=0.05).run(stop))
+    await asyncio.sleep(0.3)  # ready_timeout 을 여러 번 넘겨도
+    assert not task.done()  # 죽지 않고 기다린다
+    late.plug()
+    for _ in range(100):
+        await asyncio.sleep(0.02)
+        if db.get_job("10").state == "acked":
+            break
+    stop.set()
+    await asyncio.wait_for(task, 3)
+    assert db.get_job("10").state == "acked"
+    db.close()

@@ -45,11 +45,13 @@ class ModemClient:
         self,
         transport: LineTransport,
         *,
-        ready_timeout: float = 10.0,
+        ready_timeout: float | None = 10.0,
+        ready_warn_s: float = 60.0,
         request_timeout: float = 15.0,
     ) -> None:
         self._t = transport
         self._ready_timeout = ready_timeout
+        self._ready_warn_s = ready_warn_s
         self._request_timeout = request_timeout
         self.rx: asyncio.Queue[RxEvent] = asyncio.Queue()
         self.fw: str | None = None
@@ -63,22 +65,34 @@ class ModemClient:
         self._last_cfg: dict | None = None
 
     async def start(self) -> None:
-        """읽기 태스크를 띄우고 `ready` 를 기다린다. 그 전에 읽기가 죽으면 그 예외를 바로 올린다."""
+        """읽기 태스크를 띄우고 `ready` 를 기다린다. 그 전에 읽기가 죽으면 그 예외를 바로 올린다.
+
+        `ready_timeout=None` 이면 끝없이 기다리며 `ready_warn_s` 마다 경고만 남긴다 — 부팅 때 모뎀이 USB 에
+        없어도 서비스(링크 포함)를 재기동시키지 않기 위해서다(파이프라인이 이렇게 쓴다).
+        """
         self._reader = asyncio.create_task(self._read_loop(), name="lora.modem_reader")
         ready = asyncio.create_task(self._ready.wait())
+        waited = 0.0
         try:
-            await asyncio.wait(
-                [ready, self._reader],
-                timeout=self._ready_timeout,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            while True:
+                step = (
+                    self._ready_timeout if self._ready_timeout is not None else self._ready_warn_s
+                )
+                await asyncio.wait(
+                    [ready, self._reader], timeout=step, return_when=asyncio.FIRST_COMPLETED
+                )
+                if self._ready.is_set():
+                    return
+                if self._reader.done():
+                    await self.wait_closed()  # 읽기 태스크의 예외를 올린다
+                if self._ready_timeout is not None:
+                    raise TimeoutError(f"모뎀 ready 가 {self._ready_timeout} s 안에 오지 않았다")
+                waited += step
+                log.warning(
+                    "모뎀 ready 를 %.0f s 째 못 받았다 — USB 연결을 확인. 계속 기다린다", waited
+                )
         finally:
             ready.cancel()
-        if self._ready.is_set():
-            return
-        if self._reader.done():
-            await self.wait_closed()  # 읽기 태스크의 예외를 올린다
-        raise TimeoutError(f"모뎀 ready 가 {self._ready_timeout} s 안에 오지 않았다")
 
     async def wait_closed(self) -> None:
         """읽기 태스크가 끝날 때까지 기다렸다가 그 예외를 올린다(예외 없이 끝났으면 `ConnectionError`).

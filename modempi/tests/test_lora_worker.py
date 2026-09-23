@@ -510,9 +510,11 @@ async def test_modem_timeout_is_retried_not_failed_at_once(rig):
     assert (j.state, j.attempts, j.last_error) == ("received", 1, "modem_timeout")
 
 
-async def test_modem_disconnected_is_retried_with_same_txn(rig):
-    """USB 가 잠깐 빠져 ModemClient 가 modem_disconnected 를 돌려주면 modem_timeout 처럼 재시도한다 —
-    공중에 안 나갔으니 한 번에 실패시키지 않고, txn 은 남겨 재송이 같은 TXN 이 되게."""
+async def test_modem_disconnected_waits_without_spending_an_attempt(rig, clk):
+    """USB 가 빠져 ModemClient 가 modem_disconnected 를 돌려주면 프레임은 공중에 나가지 않았다 —
+    재시도 횟수를 깎지 않고 BUSY 처럼 5 s 뒤 다시 본다. 깎으면 모뎀이 25 s 넘게 빠져 있을 때 쌓인 작업이
+    전부 failed 로 메인에 보고된다. txn 은 남겨 재송이 같은 TXN 이 되게(무응답 modem_timeout 은 공중에
+    나갔을 수 있어 지금처럼 센다)."""
     db, _, client, w = rig
 
     from modempi.lora.modem_client import TxResult
@@ -524,8 +526,13 @@ async def test_modem_disconnected_is_retried_with_same_txn(rig):
     put(db)
     await w.once()
     j = db.get_job("10")
-    assert (j.state, j.attempts, j.last_error) == ("received", 1, "modem_disconnected")
+    assert (j.state, j.attempts, j.last_error) == ("received", 0, "modem_disconnected")
+    assert j.next_try_at == clk.now + 5.0
     assert j.txn is not None
+    for _ in range(5):  # 오래 빠져 있어도 실패로 닫지 않는다
+        clk.now += 5.0
+        await w.once()
+    assert (db.get_job("10").state, db.get_job("10").attempts) == ("received", 0)
 
 
 async def test_file_busy_cap_is_per_frame_not_per_session(rig):

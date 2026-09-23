@@ -233,3 +233,18 @@ def test_hub_job_payload_is_codec_slotset_without_new_ver():
 
     assert {f.name for f in fields(C.SlotSet)} - {"new_ver"} == set(HUB_JOB["payload"])
     assert json.loads(json.dumps(HUB_JOB))["new_ver"] == 1
+
+
+async def test_serial_port_absent_at_start_does_not_exit(tmp_path):
+    """포트가 없다고 곧바로 exit 1 하면 systemd 가 5 s 마다 재기동하며 링크까지 끊긴다 — 경고만 남기고
+    SerialTransport 의 재연결 루프에 맡긴다."""
+    from modempi.lora.modem import SerialTransport
+    from modempi.main import open_best_effort
+
+    async def no_port():
+        raise OSError("could not open port COM99")
+
+    t = SerialTransport("COM99", open_fn=no_port, reconnect_s=0.01)
+    await open_best_effort(t)  # 예외 없이 돌아온다
+    assert t.connected is False
+    await t.close()

@@ -112,12 +112,22 @@ def _install_signal_handlers(stop: asyncio.Event) -> None:
             pass
 
 
+async def open_best_effort(transport: SerialTransport) -> None:
+    """한 번 열어 본다. 포트가 없어도 끝내지 않는다 — exit 하면 systemd 가 RestartSec 마다 재기동하며
+    링크(메인Pi 연결)까지 끊겼다 붙는다. 이후는 `read_line` 의 재연결 루프가 맡고, 파이프라인은 모뎀의
+    `ready` 가 올 때까지 기다린다."""
+    try:
+        await transport.open()
+    except OSError as e:
+        log.warning("모뎀 시리얼을 열지 못했다(%s) — 꽂힐 때까지 재연결을 시도한다", e)
+
+
 async def _amain(args: argparse.Namespace) -> None:
     store = SqliteStore(args.store)
     transport: LineTransport = FakeModem() if args.fake else SerialTransport(args.port)
     try:
         if isinstance(transport, SerialTransport):
-            await transport.open()  # 포트가 없으면 여기서 OSError → exit 1 → systemd 재기동
+            await open_best_effort(transport)
         stop = asyncio.Event()
         _install_signal_handlers(stop)
         await serve(store, transport, stop=stop)

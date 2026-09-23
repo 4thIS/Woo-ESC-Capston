@@ -172,6 +172,12 @@ loop:
   - **깨진 ACK는 무응답과 같다**: ACK 프레임을 못 읽으면 적용 여부를 모르므로 `no_ack`(`last_error="bad_ack"`)로 보고 같은 TXN으로 재시도한다.
   - **`cfg`도 송신 슬롯을 잡는다**: 응답은 없지만 전파를 쏘는 도중 무선 설정이 바뀌면 안 된다.
   - `prune`은 기동 직후 1회 + 매일.
+- **구현 규칙(2026-09-23, cw-09 Task 7 — 실물 시리얼·`main.py`)**
+  - 진입점 `modempi/modempi/main.py`: `modempi [--store PATH] (--port DEV | --fake)`. 링크(`link.run.main`)와 파이프라인이 `SqliteStore` 하나를 공유한다. 둘 중 하나가 예외로 끝나면 다른 쪽을 멈추고 exit 1 → systemd `Restart=always`. SIGTERM은 정상 종료(exit 0).
+  - **USB 끊김은 서비스를 재기동시키지 않는다**: `SerialTransport`가 2 s마다 재연결, 끊긴 동안 `tx`는 `error/modem_disconnected` → 워커는 **재시도 횟수를 깎지 않고** 5 s 뒤 다시(프레임이 공중에 나가지 않았다). 무응답 `modem_timeout`은 나갔을 수 있어 횟수를 센다.
+  - **부팅 때 모뎀이 없어도 죽지 않는다**: 포트를 못 열면 경고 후 재연결 루프에 맡기고, 파이프라인은 `ready`를 끝없이 기다리며 60 s마다 경고한다. 그동안 링크는 살아 결과·업링크를 계속 올린다. 기다리는 중에도 `stop`으로 멈춘다.
+  - 모뎀 읽기 태스크가 끝나면 파이프라인 예외로 올린다(#37 리뷰 3) — 반쯤 죽은 채 돌지 않는다.
+  - `--fake`: 가짜 모뎀의 가상 노드·NET_ID를 `config`(`nodes`, `net_id`)에 맞춘다 — Pi↔Pi 통합(cw-10)은 메인Pi `config.nodes`에 대상 강의실이 있어야 acked가 난다.
 - `transport_factory`가 fake면 `--fake` 모드. `main.py` CLI: `modempi --store /var/lib/modempi/jobs.db --port /dev/lora-modem` 또는 `--fake`.
 
 ## 5. 영역별 영향
@@ -198,6 +204,8 @@ loop:
 - S7 이후: 실물 모뎀으로 같은 pytest 시나리오 중 하드웨어 무관 항목 통과, 벤치 v2 §10.2-1.
 
 ## 9. 열린 결정 (plan 단계)
+- **S7 모뎀 펌웨어 요구(2026-09-23, Task 7에서 도출)**: USB 재연결 뒤 호스트는 모뎀의 `ready`를 받아야 `cfg`를 다시 보낸다. Heltec V3의 CP2102 자동 리셋이 포트 열 때 ESP32를 리셋해 `ready`를 내는지 벤치에서 확인하고, 안 되면 **호스트 연결(DTR) 시 `ready`를 다시 내거나** 호스트가 재연결 후 `reset`을 보내는 쪽으로 정한다. 그렇지 않으면 무선 설정이 모뎀 기본값에 머문다.
+- 첫 `hello.modem_fw`는 실기에서 모뎀 `ready`가 늦으면 `"unknown"`일 수 있다(다음 링크 재접속 때 바로잡힘). 필요하면 S5 쪽에서 `modem_fw` 변경 시 hello 재전송을 검토.
 - **FILE_END 의 ACK 유실 → 적용된 파일이 실패로 보고된다** (#35 셀프 리뷰 3, 노드 FW S8 과 함께 결정). FILE 프레임은 재송 때 새 TXN 이라 DUP 으로 걸러지지 않고, 노드는 이미 커밋·세션 종료했으므로 END 재송에 `BAD_PAYLOAD`(fake 기준)로 답한다 → `failed(ack_bad_payload)`. 후보: v2 §3.4 에 "세션 없는 END 수신 시 CRC16·NEW_VER 가 현재 파일과 같으면 DUP" 규칙을 두고 노드 FW(S8)·fake 모뎀·워커가 함께 따른다. **S8 착수 전 확정.**
 - ~~FILE 세션 중 `BUSY`가 몇 번까지 허용되는지~~ → **확정(2026-09-23): 한 프레임당 5회**(`FILE_BUSY_MAX`). 초과하면 세션 실패로 보고 일반 재시도 정책(5·20·60 s, 3회)에 맡긴다 — 그냥 BUSY로 되돌리면 노드가 계속 바쁠 때 그 행이 노드 FIFO의 머리에 영원히 남아 같은 노드의 뒤 작업이 전부 막힌다.
 - `next_txn` 롤링에서 0 건너뛰기 외에, 노드 `lastTxn`과 우연히 같아지는(255 주기) DUP 오판 — 프레임 간 최소 2개 이상 차이를 두는 규칙 필요 여부. 현재 v2 §3.5는 "같은 TXN 재수신 = DUP"만 정의.
