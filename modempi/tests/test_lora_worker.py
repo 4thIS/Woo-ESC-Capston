@@ -408,3 +408,26 @@ async def test_wrong_net_id_is_not_accepted_by_node(clk):
     assert db.get_job("10").state == "failed"
     await client.stop()
     db.close()
+
+
+async def test_corrupt_ack_is_retried_not_a_pipeline_crash(rig, clk):
+    """노드 펌웨어 버그·다른 망의 ACK 로 ACK 프레임을 못 읽으면 FrameError 가 새어 나가 파이프라인 전체가
+    멈췄다. 적용 여부를 모르는 것이므로 무응답처럼 같은 TXN 으로 재시도한다(적용됐다면 DUP 으로 닫힌다)."""
+    db, _, client, w = rig
+    real_tx = client.tx
+
+    async def corrupt_once(frame, *, wake, ack_ms):
+        client.tx = real_tx
+        r = await real_tx(frame, wake=wake, ack_ms=ack_ms)
+        return type(r)(status="acked", ack=r.ack[:-1] + bytes([r.ack[-1] ^ 0xFF]), rssi=r.rssi)
+
+    client.tx = corrupt_once
+    put(db)
+    assert await w.once() is True
+    j = db.get_job("10")
+    assert (j.state, j.attempts, j.last_error) == ("received", 1, "bad_ack")
+    first_txn = j.txn
+    clk.now += 5.0
+    await w.once()
+    j = db.get_job("10")
+    assert (j.state, j.txn, j.ack_status) == ("acked", first_txn, int(P.AckStatus.DUP))

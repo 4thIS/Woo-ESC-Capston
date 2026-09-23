@@ -146,3 +146,20 @@ async def test_ping_timeout_raises_so_watchdog_can_react():
             await c.ping()
     finally:
         await c.stop()
+
+
+async def test_cfg_waits_for_in_flight_tx():
+    """전파를 쏘는 도중 무선 설정이 바뀌면 안 된다 — cfg 는 응답이 없어도 송신이 끝날 때까지 기다린다."""
+    m = FakeModem(latency_ms=60)
+    m.add_node(ord("E"), 301, 1, sched_ver=2)
+    c = ModemClient(m)
+    await c.start()
+    try:
+        tx = asyncio.create_task(c.tx(F, wake=True, ack_ms=50))
+        await asyncio.sleep(0.01)
+        await c.cfg(sf=10)
+        await tx
+        order = [(who, msg.get("op")) for who, msg in m.log if msg.get("op") in ("cfg", "tx_done")]
+        assert order == [("modem", "tx_done"), ("host", "cfg")]
+    finally:
+        await c.stop()

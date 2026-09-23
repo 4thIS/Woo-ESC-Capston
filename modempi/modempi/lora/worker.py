@@ -124,6 +124,14 @@ class Worker:
         r = await self.client.tx(frame, wake=u.wake, ack_ms=u.ack_ms)
         if r.status == "error" and r.reason == "busy":
             raise RuntimeError("모뎀이 busy — 워커가 tx 를 겹쳐 불렀다")
+        if r.status == "acked":
+            try:
+                self._ack_of(r)
+            except C.FrameError as e:
+                # ACK 를 못 읽으면 노드가 적용했는지 모른다 — 무응답과 같다. 같은 TXN 으로 재시도하면
+                # 적용된 경우 DUP 으로 닫힌다. 여기서 막지 않으면 FrameError 가 파이프라인 전체를 멈춘다.
+                log.warning("ACK 해석 실패(%s) — 무응답으로 보고 재시도", e)
+                return TxResult(status="no_ack", reason="bad_ack", rssi=r.rssi, snr=r.snr)
         return r
 
     async def _run_single(self, job: Job, u: Unit) -> None:
@@ -184,7 +192,7 @@ class Worker:
             )
             return
         if res.status in ("no_ack", "cad_busy"):
-            self._retry_or_fail(job, res.status)
+            self._retry_or_fail(job, res.reason or res.status)
             return
         self._finish(job, "failed", attempts=attempts, last_error=res.reason or "error", **_CLEAR)
 

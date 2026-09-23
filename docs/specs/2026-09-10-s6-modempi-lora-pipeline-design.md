@@ -162,6 +162,13 @@ loop:
 
 ### 4.6 `pipeline.py`
 - `run(store_path, transport_factory, config_getter)`: `ModemClient.start()` → `cfg(config.radio)` → 태스크 3개(worker, time_sched, uplink) 기동. `on_config_changed`로 `cfg` 재전송 + 노드 목록 갱신.
+- **구현 규칙(2026-09-23, cw-09 Task 6)**
+  - **`config.radio` → 모뎀 `cfg` 이름 변환**: 계약 ⑥의 `radio`는 `{sf, bw, cr, tx_dbm, preamble_wake_ms}`, 계약 ②(모뎀 시리얼 v2 §4.2)의 `cfg`는 `{sf, bw, cr, power, freq, wake_ms}`다. `pipeline.radio_to_cfg()`가 ⑥→② 경계에서 `tx_dbm→power`, `preamble_wake_ms→wake_ms`로 옮기고 `freq`는 `lora_proto` `RP_FREQ_MHZ`에서 넣는다. ⑥ 메시지 자체는 바꾸지 않는다. `radio` 값이 그대로면 `cfg`를 다시 보내지 않는다(`nodes`만 바뀐 config).
+  - **NET_ID는 `config.net_id`에서** — 워커 헤더·ACK 해석·업링크 해석 모두 프레임마다 읽는다(학교마다 메인Pi가 배정, 로드맵 §3). config에 없을 때만 `lora_proto` 기본값.
+  - **감시**: 자식 태스크(워커·스케줄러·업링크·핑·설정·정리) 하나가 죽으면 전체를 멈추고 그 예외를 올린다 — 반쯤 죽은 채 도는 것보다 systemd 재기동이 낫다. 워치독 `ping`은 config 대기 중에도 돈다(모뎀 30 s 워치독).
+  - **깨진 ACK는 무응답과 같다**: ACK 프레임을 못 읽으면 적용 여부를 모르므로 `no_ack`(`last_error="bad_ack"`)로 보고 같은 TXN으로 재시도한다.
+  - **`cfg`도 송신 슬롯을 잡는다**: 응답은 없지만 전파를 쏘는 도중 무선 설정이 바뀌면 안 된다.
+  - `prune`은 기동 직후 1회 + 매일.
 - `transport_factory`가 fake면 `--fake` 모드. `main.py` CLI: `modempi --store /var/lib/modempi/jobs.db --port /dev/lora-modem` 또는 `--fake`.
 
 ## 5. 영역별 영향
