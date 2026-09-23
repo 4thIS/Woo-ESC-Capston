@@ -6,12 +6,13 @@ import datetime as dt
 import logging
 from dataclasses import asdict
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import schemas as S
+from app.deps import _DB
 from app.domain import csv_import
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
 from app.domain.topology import RESV_HORIZON_DAYS
@@ -19,14 +20,6 @@ from app.lora_service import api
 
 router = APIRouter(prefix="/api")
 log = logging.getLogger(__name__)
-
-
-def get_db(request: Request):
-    with request.app.state.Session() as s, s.begin():
-        yield s
-
-
-_DB = Depends(get_db)  # 참고: B008 회피용 모듈 싱글턴 (ruff 권고)
 
 
 def _get(s: Session, model, id_: int):

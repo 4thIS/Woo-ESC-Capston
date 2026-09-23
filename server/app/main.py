@@ -10,6 +10,7 @@ from pathlib import Path
 
 import sqlalchemy.exc
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -46,18 +47,33 @@ def create_app(db_path: str | None = None) -> FastAPI:
             sweeper.cancel()
             await hub.stop()
 
-    app = FastAPI(title="Woo-ESC-Capston 메인Pi", lifespan=lifespan)
+    # /docs·/openapi.json 은 내부 엔드포인트 목록 — DEBUG 에서만 (S4a §3.2)
+    app = FastAPI(
+        title="Woo-ESC-Capston 메인Pi",
+        lifespan=lifespan,
+        docs_url="/docs" if settings.debug else None,
+        redoc_url="/redoc" if settings.debug else None,
+        openapi_url="/openapi.json" if settings.debug else None,
+    )
     app.state.settings = settings
     app.state.engine = engine
     app.state.Session = Session
     app.state.hub = hub
+    if settings.cors_origins:  # 빈 값 = 차단 (미들웨어 없음)
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     app.include_router(lora_router)
     app.include_router(domain_router)
-    app.mount(
-        "/static",
-        StaticFiles(directory=Path(__file__).resolve().parents[1] / "static"),
-        name="static",
-    )
+    if settings.debug:
+        app.mount(
+            "/static",
+            StaticFiles(directory=Path(__file__).resolve().parents[1] / "static"),
+            name="static",
+        )
 
     @app.exception_handler(api.NotFound)
     async def _nf(_r: Request, e: api.NotFound):
@@ -72,8 +88,13 @@ def create_app(db_path: str | None = None) -> FastAPI:
         log.warning("IntegrityError: %s", e)
         return JSONResponse({"detail": "constraint violation"}, status_code=409)
 
+    @app.exception_handler(Exception)
+    async def _internal(_r: Request, e: Exception):
+        log.exception("unhandled")  # 내용은 로그에만 — 클라이언트엔 고정 문구 (S4a §3.4)
+        return JSONResponse({"detail": "internal error"}, status_code=500)
+
     @app.get("/api/health")
     def health() -> dict:
-        return {"ok": True}
+        return {"ok": True}  # 이 이상 넣지 않는다 (S4a §3.2)
 
     return app

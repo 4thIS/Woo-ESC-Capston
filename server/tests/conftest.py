@@ -8,6 +8,16 @@ from app.lora_service.api import RoomInfo
 from app.main import create_app
 
 
+@pytest.fixture(autouse=True)
+def _env(monkeypatch):
+    """Settings() 가 요구하는 env. 테스트마다 같은 값 — DEBUG 는 켠다(정적 페이지·/docs 테스트)."""
+    monkeypatch.setenv("JWT_SECRET", "test-secret-" + "x" * 32)  # 32자 이상 (S4a §2.3)
+    monkeypatch.setenv("STUDENT_WEB_URL", "http://student.test")
+    monkeypatch.setenv("MAIL_BACKEND", "console")
+    monkeypatch.setenv("DEBUG", "1")
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
