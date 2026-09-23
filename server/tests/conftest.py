@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 import app.auth.models
 import app.domain.models
+from app.auth import ratelimit
 from app.db import Base
 from app.lora_service import api
 from app.lora_service.api import RoomInfo
@@ -17,6 +18,7 @@ def _env(monkeypatch):
     monkeypatch.setenv("MAIL_BACKEND", "console")
     monkeypatch.setenv("DEBUG", "1")
     monkeypatch.delenv("CORS_ORIGINS", raising=False)
+    ratelimit.reset()  # 테스트 간 카운터 격리
 
 
 @pytest.fixture
