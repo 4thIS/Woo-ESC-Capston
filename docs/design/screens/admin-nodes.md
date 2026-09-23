@@ -3,6 +3,7 @@
 - 시안: https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi (`노드 상태` 아트보드)
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`admin` 치수 세트) · `components.md`
+- 서버 계약: wj의 **S4b**(`docs/specs/2026-09-23-s4b-admin-api-design.md`) — 경고 판정과 조인을 서버가 한다
 - 대상: **데스크톱 전용** (`bp.desktop` ≥ 1024px) — `README.md` 규칙
 
 ## 목적 · 진입
@@ -63,17 +64,22 @@
 
 `sched_ver` / `resv_ver` / `exam_ver` / `ident_ver`를 `41/12/3/2`로 붙여 적고 헤더를 `버전 S/R/E/I`로 쓴다. 네 열로 펴면 표가 넓어지는데 **평소에 읽는 값이 아니다** — 어긋났을 때만 본다.
 
-### 상태 — `sync_state` 하나로
+### 상태 — `warnings[]` 를 서버가 준다
 
-| 표시 | 뜻 |
-|---|---|
-| `동기화됨` | 서버가 보낸 것이 다 반영됨 |
-| `대기` | 보낸 것이 아직 안 닿음 |
-| `응답 없음` · `배터리` | 문제 (`danger` 테두리 배지) |
+**화면이 판정하지 않는다.** S4b §2.1이 경고를 코드 상수로 정의하고 `NodeOut.warnings` 에 배열로 담아 준다.
 
-`clock_stale`·`low_batt`도 여기 배지로 합쳐 보여준다. 한 행에 배지가 둘 이상이면 가장 나쁜 것만 남기고 나머지는 툴팁으로 민다.
+| 키 | 판정 (서버) | 배지 |
+|---|---|---|
+| `unseen` | `terminal_status` 행이 없거나 `last_seen_at < now − 48h` | `응답 없음` · `danger` 테두리 |
+| `low_batt` | 펌웨어 StatusFlag | `배터리` · `danger` 테두리 |
+| `resync` | `sync_state = 'resync'` | `재동기 중` · `neutral` 테두리 |
+| `clock_stale` | 시계 어긋남 | `시계` · `neutral` 테두리 |
 
-⚠ **`sync_state`의 실제 문자열 값을 모른다.** 위 라벨은 화면 쪽 제안이고 wj 확인이 필요하다(미결 1).
+`warnings` 가 비면 `동기화됨`(`neutral` + `solid`). 한 행에 둘 이상이면 **가장 나쁜 것만 배지로** 남기고 나머지는 `title` 로 민다 — 적색 배지가 여럿이면 무엇이 급한지 사라진다. 순서는 `unseen` > `low_batt` > `resync` > `clock_stale`.
+
+**한 번도 보고하지 않은 노드도 목록에 나온다.** 기대 노드(`rooms × units`)에 `terminal_status` 를 LEFT JOIN하므로, 상태 필드가 전부 `null` 이고 `sync_state = "unknown"`, `warnings = ["unseen"]` 인 행이 있다. 화면은 `null` 을 `—` 로 그리고 그 행을 목록 위쪽에 둔다(정렬: `last_seen_at` 오래된 순, `null` 이 먼저).
+
+`unseen` 기준이 **48시간**인 이유는 STATUS가 하루 1회라 24시간이면 오탐이 나기 때문이다(S4b §2.1). 화면에 그 숫자를 적지 않는다 — 바뀌면 서버만 고친다.
 
 ## 사용하는 컴포넌트
 
@@ -82,7 +88,7 @@ Table, Badge(상태·배터리), Button(`primary` 배정·등록 / `secondary` �
 노드 전용 — `components/domain/`:
 
 - **`SignalBars`** — props: `rssi`. 3칸 막대 + 숫자. 위 규칙을 진다
-- **`NodeStateBadge`** — props: `syncState` · `clockStale` · `lowBatt`. 셋을 받아 **하나의 배지**로 줄인다
+- **`NodeStateBadge`** — props: `warnings: string[]`. 서버가 준 배열을 받아 **하나의 배지**로 줄인다(우선순위 `unseen` > `low_batt` > `resync` > `clock_stale`). 판정은 하지 않는다
 
 ## 데이터 (서버 계약)
 
@@ -91,7 +97,8 @@ Table, Badge(상태·배터리), Button(`primary` 배정·등록 / `secondary` �
 | 모뎀Pi 목록 | `GET /api/lora/modems` → `ModemOut{modem_id, agent_ver, modem_fw, last_seen_at, connected}` |
 | 모뎀Pi 등록 | `POST /api/lora/modems` (`ModemIn`) → `TokenOut{modem_id, token}` |
 | 토큰 재발급 | `POST /api/lora/modems/{modem_id}/token` → `TokenOut` |
-| 노드 상태 | `GET /api/lora/status?bld=&room=` → `StatusOut[]` |
+| 노드 목록 | `GET /api/admin/nodes` → `NodeOut[]` — **기대 노드 × 상태 LEFT JOIN**, 방·건물 이름 조인, `warnings[]` 서버 판정 |
+| 원자료(필요 시) | `GET /api/lora/status?bld=&room=` → `StatusOut[]` |
 | 등록 대기 | `GET /api/lora/pending` → `PendingOut{mac, modem_id, fw, batt_mv, rssi, first_seen_at, last_seen_at}` |
 | 강의실 배정 | `POST /api/lora/pending/{mac}/provision` (`ProvisionIn{bld, room, unit}`) → `Enqueued` |
 | 시각 브로드캐스트 | `POST /api/lora/time` → `{modems: N}` |
@@ -116,6 +123,6 @@ Table, Badge(상태·배터리), Button(`primary` 배정·등록 / `secondary` �
 
 ## 미결
 
-1. **`sync_state` 값 목록** — 실제 문자열을 wj에게 확인. 위 라벨 매핑은 제안이다
+1. ~~`sync_state` 값 목록~~ — S4b §2.1 에서 확정. `resync` · `unknown` + `warnings[]` 배열을 서버가 판정해 준다
 2. **`unit` 1/2의 뜻** — 한 강의실에 노드 2대를 붙이는 경우의 표시 방법. `401-1` / `401-2`로 쓸지 한 행에 묶을지
 3. **배터리 임계값** — `low_batt` 판정을 서버가 한다고 보고 그렸다. 서버에 임계가 없으면 화면이 정해야 한다

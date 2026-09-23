@@ -330,15 +330,32 @@ danger 적색과 계열색 후보의 분리도:
 
 **넓은 폭에서 할 일은 키우기가 아니라 더 보여주기다.** 학생 웹의 1280px 레이아웃은 같은 라우트(`/{bld}/{room}`)에서 좌측에 강의실 목록을 상주시키고(폰에서는 뒤로가기로 오가던 것), 우측에 "다음 비는 시간" 카드와 이번 주 격자를 더한다. **색 값은 폭에 따라 바뀌지 않고** `student` 치수 세트와 배치만 바뀐다 [src:6].
 
+## 서버 설계와의 정렬 (2026-09-23)
+
+wj 가 PR #38 로 웹 백엔드 설계 3종(**S4a** 회원·인증 / **S4b** 관리자 API / **S10** 학생·분석)을 올렸고, 화면 스펙을 그에 맞췄다. 바뀐 것이 넷이다.
+
+| | 이 문서의 이전 판 | 지금 (wj 설계 기준) |
+| --- | --- | --- |
+| 학생 인증 | 로그인 없음. 예약 시 학번+이름 입력 | **웹메일 가입 → 관리자 승인 → JWT 로그인** (S4a) |
+| 예약 확정 | 신청 즉시 확정 | **신청 → 관리자 승인 → 확정** (S10) |
+| 예약 id | 화면이 전역 범위에서 채번 | **서버가 빈 최소 id 배정** (S4b §2.5) |
+| 학번 컬럼 | `applicant_id` additive 요청 | 불필요 — `requested_by` FK `users(email)` |
+
+그 결과로 화면 둘이 새로 생겼다 — [auth.md](screens/auth.md)(가입·로그인·재설정)와 [admin-users.md](screens/admin-users.md)(회원 승인). 둘 다 아직 시안이 없다.
+
+**요청하려던 API 셋은 전부 그 설계 안에 있다.** 건물 단위 조회(#36)는 S4b §2.6, 학생 공개 조회·예약은 S10 §4.1, 대시보드 집계는 S10 §4.3이다. 자체 제안했던 `/api/public/*` 과 `/api/lora/stats` 는 폐기했다.
+
+한 가지가 열린 채 남았다 — **S10 은 조회 API 에도 `require_student` 를 건다.** "복도에서 폰으로 빨리 확인"이라는 학생 웹의 목적과 부딪히므로 wj 와 확인해야 한다.
+
 ## Known Gaps
 
 1. **구현이 없다.** `web/src/styles/` 와 `web/src/components/` 가 `.gitkeep` 뿐이다. 이 문서의 모든 값은 아직 코드로 검증되지 않았다.
 2. **시안 서체가 대역이다.** Pretendard 가 아니라 Noto Sans KR 로 그렸다. 자간·굵기 인상은 실물로 다시 봐야 하고, 서브셋 범위도 미정이다.
 3. **시안에 대비 미달 잔재가 있다.** 날짜 라벨을 `#909090`(3.19:1)으로 그린 곳이 남아 있다 — 이 문서의 하한(`gray-500`) 아래다. 구현 시 올린다.
 4. **`sync_state` 의 실제 문자열 값을 모른다.** 노드 상태 배지를 `동기화됨 / 대기 / 응답 없음` 으로 그렸으나 서버 확인이 필요하다.
-5. **서버에 없는 API 가 셋 있다.** 건물 단위 조회(관리자 페이지1), 학생용 공개 파생 조회 + 예약 쓰기, 대시보드 집계. 앞의 하나는 이슈로 요청했고 뒤의 둘은 초안 상태다.
-6. **`/api` 에 인증이 없다.** 학생 웹이 같은 경로를 쓰면 화면에 버튼이 없을 뿐 쓰기도 부를 수 있다. 읽기 전용 공개 경로 분리가 전제다.
-7. **학생 예약에 승인 단계가 없다.** 신청이 바로 복도 화면에 뜬다. 막는 수단은 관리자가 지우는 것뿐이고, 이것은 의도된 선택이다.
+5. ~~서버에 없는 API 가 셋~~ — 전부 wj 의 PR #38 설계 안에 있다(위 절). 이슈 #36 도 S4b 가 답했다.
+6. ~~`/api` 에 인증이 없다~~ — S4a 가 전부 `require_admin`/`require_student` + 학교 스코프로 닫는다. **다만 조회에도 로그인이 필요한 것이 학생 웹 목적과 맞는지**는 열린 항목이다.
+7. ~~학생 예약에 승인 단계가 없다~~ — S10 이 `requested → approved` 를 확정했다. 대신 **승인·거절 메일 알림이 후속**이라, 그때까지 학생은 `/me` 를 직접 열어 확인해야 한다.
 8. **다크 모드는 범위 밖이다.** 넣는다면 `gray` 램프를 뒤집는 방식이고, 유채색은 다크 표면 기준으로 **다시 계산**해야 한다 — 밝기를 그냥 뒤집으면 통과하지 않는다.
 
 ## References
@@ -348,11 +365,12 @@ danger 적색과 계열색 후보의 분리도:
 - [src:3] `docs/specs/2026-09-09-roadmap-design.md` — 토폴로지·서브프로젝트·주차별 산출물
 - [src:4] `lora_proto/proto.h` — `LP_SLOTTYPE_*`, `LP_LAYOUT_*` 상수
 - [src:5] `docs/design/components.md` — 컴포넌트 카탈로그 v2
-- [src:6] `docs/design/screens/student-room.md` — 학생 웹 화면 스펙
+- [src:6] `docs/design/screens/student-room.md` · `auth.md` · `admin-users.md` — 학생 웹·인증·회원 화면 스펙
 - [src:7] `web/package.json` — Vue 3 · Vite · vue-router
 - [src:8] 시안 캔버스 — https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi
 - [src:9] `docs/design/screens/admin-rooms.md` — 관리자 강의실 설정 화면 스펙
-- [src:10] `server/app/schemas.py` · `server/app/domain/router.py` — 서버 계약
+- [src:10] `server/app/schemas.py` · `server/app/domain/router.py` — 서버 계약 (구현)
+- [src:14] `docs/specs/2026-09-23-s4a-auth-design.md` · `…-s4b-admin-api-design.md` · `…-s10-student-analytics-design.md` — wj 의 웹 백엔드 설계 (PR #38)
 - [src:11] `docs/design/screens/admin-nodes.md` — 노드 상태 화면 스펙
 - [src:12] `docs/design/screens/admin-dashboard.md` — 전송 현황 화면 스펙
 - [src:13] `docs/design/screens/admin-schedule.md` · `README.md` — 주간 시간표 스펙, 데스크톱 전용 규칙

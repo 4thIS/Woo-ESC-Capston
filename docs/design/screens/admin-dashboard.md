@@ -3,6 +3,7 @@
 - 시안: https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi (`전송 현황` 아트보드)
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`admin` 치수 세트 · **`chart.*`**) · `components.md`
+- 서버 계약: wj의 **S4b**(요약·노드·실패) · **S10 §2.6·§4.3**(분석 집계)
 - 대상: **데스크톱 전용** (`bp.desktop` ≥ 1024px) — `README.md` 규칙
 
 ## 목적 · 진입
@@ -19,7 +20,7 @@
 ┌─ 상단 ────────────────────────────────────────────────┐
 │ 반영 지연            기간[최근 7일▾]  건물[전체▾]        │
 ├─ KPI 4 ───────────────────────────────────────────────┤
-│ [평균 18.4초][30초이내 94.2%][웨이크 96.5%][실패 2건]   │
+│ [p50 18.4초][30초이내 94.2%][90초이내 99.1%][실패 2건]  │
 ├─ 본문 ────────────────────────────────────────────────┤
 │ ┌ 반영 지연 분포 ────────────┐┌ 최근 전송 ──────────┐ │
 │ │ 범례: ■SLOT_SET ■RESV_SET ││ 시각│강의실│지연│●   │ │
@@ -34,9 +35,9 @@
 
 | 라벨 | 값 | 아래 줄 |
 |---|---|---|
-| 평균 반영 지연 | `18.4 초` | 지난주 비교 |
+| p50 반영 지연 | `18.4 초` | `p95 41.2초 · 최대 88초` |
 | 30초 이내 비율 | `94.2 %` | `목표 95% · 미달` |
-| 웨이크 수신률 | `96.5 %` | `목표 95% · 충족` |
+| 90초 이내 비율 | `99.1 %` | `목표 전부 · 충족` |
 | 전송 실패 | `2 건` (값만 `danger`) | 모수 |
 
 - 값은 `font.size.xl` + `bold` + `tabular-nums`. 단위는 값보다 작게(`font.size.sm`, `text.2`).
@@ -50,11 +51,11 @@
 
 ### 반영 지연 분포 (히스토그램)
 
-- 구간: `0–10` / `10–20` / `20–30` / `30–40` / `40–50` / `50–60` / `60+` 초
+- 구간은 **서버가 정한다** — bin 경계 `[0, 10, 20, 30, 45, 60, 90, 120, ∞)` (S10 §2.6). 화면이 버킷을 만들지 않고 `bins: [{ge, lt, count}]` 를 그대로 그린다. 이전 판의 10초 균등 구간은 폐기
 - 계열 2개: `SLOT_SET`(`chart.series.1`) · `RESV_SET`(`chart.series.2`). 검증기에서 전 쌍 통과, 경고 없음
 - 막대 폭 17px, 같은 구간 안 계열 간격 2px, 상단만 `radius.sm`, 바닥은 축에 붙는다
 - **값 라벨은 계열마다 가장 큰 막대에만.** 전부 적으면 격자가 숫자로 덮인다
-- `SLA 30초`는 `20–30`과 `30–40` 사이에 세로 점선(`line.3`) 하나 + `text.3` 라벨
+- `SLA 30초`는 `20–30`과 `30–45` 사이에 세로 점선(`line.3`) 하나 + `text.3` 라벨. 서버의 bin 경계에 30이 있으므로 선이 정확히 경계에 선다
 - 격자선은 `chart.grid`로 2개만(눈금 10, 20). 축선 `chart.axis`
 - 계열이 2개이므로 **범례를 둔다**(제목 오른쪽). 텍스트는 `text.2`이고 계열색을 입지 않는다
 
@@ -79,19 +80,19 @@ StatTile ×4, Histogram, Legend, Table(최근 전송), OutboxDot, Select(기간�
 
 ## 데이터 (서버 계약)
 
+**집계 API는 S10 §4.3 에서 확정됐다.** 이전 판이 요청하려던 `/api/lora/stats` 는 폐기하고 아래를 쓴다.
+
 | 하는 일 | 엔드포인트 |
 |---|---|
-| 최근 전송 | `GET /api/lora/outbox?state=&bld=&room=&limit=` → `OutboxOut[]` |
-| 작업 취소 | `POST /api/lora/outbox/{id}/cancel` |
-| 재전송 | `POST /api/rooms/{id}/sync` |
+| 요약(경고 9종) | `GET /api/admin/summary?preview=5` → `SummaryOut` |
+| 갱신 지연 | `GET /api/admin/analytics/latency?from&to&type=SLOT_SET\|RESV_SET\|all` |
+| 지연 원자료 | `GET /api/admin/analytics/latency/samples?from&to&type&limit=100` |
+| 배정률 | `GET /api/admin/analytics/allocation?from&to&building_id&group=room\|building\|weekday` |
+| 공강 | `GET /api/admin/analytics/free-slots?date&building_id` |
+| 예약 통계 | `GET /api/admin/analytics/reservations?from&to&group=day\|week` |
+| 실패 목록 | `GET /api/admin/failed?days=7` |
 
-`OutboxOut`에 `created_at`·`dispatched_at`·`finished_at`·`attempts`·`ack_status`·`rssi`·`snr`이 다 있다.
-
-> ⚠ **집계 API가 없다.** KPI 4개와 히스토그램은 **집계값**인데 서버는 `outbox` 행을 그대로 줄 뿐이다. `limit`으로 몇백 건을 받아 프론트에서 계산하면 기간이 길어질수록 무너진다(최근 30일이면 수천 건).
->
-> `GET /api/lora/stats?days=&bld=` 같은 집계 엔드포인트를 wj에게 요청한다. 반환: 평균 지연 · 30초 이내 비율 · 웨이크 수신률 · 실패 건수 · 구간별 히스토그램(계열별). **지연 = `finished_at − created_at`** (로드맵 §10.2의 정의 그대로 — 끝은 e-Paper 리프레시 완료 후 ACK다).
->
-> 이 API 없이도 `최근 전송` 목록만으로 화면은 뜬다. KPI와 차트는 그 위에 얹힌다.
+기간은 **KST 날짜** `from~to`(양끝 포함), 기본 최근 30일, **최대 90일**(초과 422). 화면의 기간 Select도 90일을 넘기지 않는다.
 
 ## 상태
 
@@ -102,6 +103,8 @@ StatTile ×4, Histogram, Legend, Table(최근 전송), OutboxDot, Select(기간�
 
 ## 미결
 
-1. **집계 API** — 위 ⚠. wj 요청 대상
-2. **`전체 전송 내역` 화면** — 이 링크가 갈 곳이 아직 없다. 필터·페이지네이션이 붙은 별도 화면이 필요한지, 이 화면의 표를 늘리는 것으로 족한지
-3. **웨이크 수신률의 출처** — 로드맵 §10.2-2 지표인데 `outbox`만으로 계산되는지, `terminal_status`가 필요한지 확인
+1. ~~집계 API~~ — S10 §4.3 에서 확정
+2. **`전체 전송 내역` 화면** — 이 링크가 갈 곳이 아직 없다. `analytics/latency/samples` 로 대신할 수 있는지 확인
+3. **웨이크 수신률을 뺐다** — S10 분석에 그 지표가 없다. 로드맵 §10.2-2 기준이라 어디서 계산할지 확인 필요. 지금은 `90초 이내 비율`로 대체했다
+4. **배정률·공강·예약 통계 화면** — API는 있는데 이 화면에 안 그렸다. 별도 화면이 필요한지, 이 화면에 탭으로 붙일지 (mh-08)
+5. **요약(`/summary`)을 어디에 두나** — 경고 9종 카운트가 화면 상단 배너인지, 별도 대시보드 홈인지. `pending_approval`·`pending_reservations` 는 다른 화면으로 보내는 성격이다

@@ -11,10 +11,12 @@ docs/design/
 ├── tokens.md          ← 디자인 토큰: 원시·시맨틱·도메인 3층 + 치수 (→ web/src/styles/)
 ├── components.md      ← 컴포넌트 카탈로그: variant·size·상태 (→ web/src/components/ ui/ · domain/ · chart/)
 ├── screens/
+│   ├── auth.md             ← 가입·로그인·재설정 (학생·관리자 공용 흐름)
 │   ├── admin-rooms.md      ← 페이지1: 건물 전체 시간표·예약·시험기간 설정 (→ web/src/views/)
 │   ├── admin-schedule.md   ← 페이지2: 강의실 하나의 주간 시간표 + 셀 편집
 │   ├── admin-dashboard.md  ← 분석 대시보드 (차트 규칙은 tokens.md 의 chart.* 를 따른다)
-│   ├── admin-nodes.md
+│   ├── admin-nodes.md      ← 노드 상태·모뎀Pi·등록 대기
+│   ├── admin-users.md      ← 회원 승인 (S4a)
 │   ├── student-room.md     ← 학생 웹 (S10, 모바일 우선, 라우트 3개)
 │   └── terminal-epaper.md  ← 단말 e-Paper 화면 (→ firmware/src/terminal/, 소비자는 dh)
 └── assets/            ← 시안에서 뽑은 아이콘·이미지 원본 (wj가 web/src/assets/ 로 복사)
