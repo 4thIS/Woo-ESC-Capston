@@ -236,7 +236,7 @@ assign-modem  --modem-id m2 --school-id 1          # school_id 가 NULL 로 고�
 | `STUDENT_WEB_URL` | ✅ | — | 메일 링크 prefix (예 `https://rooms.wsu.ac.kr`) |
 | `SMTP_USER`, `SMTP_PASSWORD` | `MAIL_BACKEND=smtp` 면 ✅ | — | Gmail 계정 + **앱 비밀번호**(2단계 인증 필요) |
 | `MAIL_FROM` | | `SMTP_USER` | 발신 표시 |
-| `MAIL_BACKEND` | | `smtp` | `smtp` \| `console`(stdout, 개발·테스트) |
+| `MAIL_BACKEND` | | `smtp` | `smtp` \| `console`(stdout, 개발·테스트 — 메일 토큰이 로그에 남으므로 `DEBUG=1` 필요, 아니면 기동 실패) |
 | `DEBUG` | | `0` | `1` 이면 `/docs`·`/openapi.json`·`/static` |
 | `CORS_ORIGINS` | | 빈 값 | 쉼표 구분 허용 origin |
 | `JWT_TTL_H` | | `24` | |

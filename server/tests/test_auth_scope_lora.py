@@ -148,6 +148,9 @@ def test_outbox_status_hide_old_school_rows_on_bld_reuse(client, app, school):
         s.add(TerminalStatus(bld="E", room=101, unit=2, modem_id="m2"))
     assert [o["id"] for o in client.get("/api/lora/outbox").json()] == [1]
     assert [t["unit"] for t in client.get("/api/lora/status").json()] == [1]
+    assert (
+        client.post("/api/lora/outbox/9/cancel").status_code == 404
+    )  # 안 보이는 행은 취소도 못 한다
 
 
 def test_register_modem_sets_school(client, app, school):

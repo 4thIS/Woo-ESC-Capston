@@ -25,7 +25,7 @@
 | `JWT_SECRET` | (필수) | HS256 서명 키, 32자 이상 아니면 기동 실패 |
 | `JWT_TTL_H` | `24` | 발급 토큰 유효시간(시간) |
 | `STUDENT_WEB_URL` | (필수) | 학생 웹 오리진 — 가입/재설정 메일 링크에 사용 |
-| `MAIL_BACKEND` | `smtp` | `smtp`(Gmail SMTP_SSL) 또는 `console`(개발용, 콘솔 출력) |
+| `MAIL_BACKEND` | `smtp` | `smtp`(Gmail SMTP_SSL) 또는 `console`(개발용, 콘솔 출력 — 토큰이 로그에 남으므로 `DEBUG=1` 일 때만 허용, 아니면 기동 실패) |
 | `SMTP_USER` | (빈 값) | `MAIL_BACKEND=smtp`면 필수 — Gmail 주소 |
 | `SMTP_PASSWORD` | (빈 값) | `MAIL_BACKEND=smtp`면 필수 — Gmail **앱 비밀번호** |
 | `MAIL_FROM` | `SMTP_USER` | 발신자 표시 주소 |

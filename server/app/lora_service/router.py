@@ -75,7 +75,11 @@ def outbox(
 @rest.post("/outbox/{id}/cancel")
 def cancel(id: int, user: User = AdminUser, s: Session = _DB):
     row = s.get(Outbox, id)
-    if row is None or (row.bld, row.room) not in scope.room_keys(s, user.school_id):
+    if (
+        row is None
+        or (row.bld, row.room) not in scope.room_keys(s, user.school_id)
+        or (row.modem_id is not None and row.modem_id not in scope.modem_ids(s, user.school_id))
+    ):  # 목록과 같은 규칙 — bld 재사용 뒤 옛 학교의 행은 보이지도 취소되지도 않는다
         raise HTTPException(404, "취소할 수 없는 작업")
     if not api.cancel(id):
         raise HTTPException(404, "취소할 수 없는 작업")
