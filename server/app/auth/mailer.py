@@ -14,12 +14,18 @@ log = logging.getLogger(__name__)
 
 # 종류별 시간당 상한 — Gmail 일일 한도(500) 보호 + 가짜 가입이 재설정·승인 메일을 굶기지 못하게 (S4a §3.4)
 MAIL_PER_HOUR = {"verify": 60, "reset": 30, "decision": 200}
+# 종류별 일일 상한 — 합 450 < Gmail 500/일 (PR #42 🟡). 시간 상한만으론 하루 수천 통
+MAIL_PER_DAY = {"verify": 250, "reset": 100, "decision": 100}
 
 
 def send(settings: Settings, to: str, subject: str, body: str, kind: str) -> None:
-    if not ratelimit.check(f"mail:{kind}", limit=MAIL_PER_HOUR[kind], window_s=3600.0):
+    day = (f"mail-day:{kind}", MAIL_PER_DAY[kind], 86400.0)
+    if ratelimit.saturated(*day) or not ratelimit.check(
+        f"mail:{kind}", limit=MAIL_PER_HOUR[kind], window_s=3600.0
+    ):
         log.warning("메일 상한 초과(%s) — 발송 생략 to=%s", kind, to)
         return
+    ratelimit.check(*day)  # 실제로 보낼 때만 하루 카운트를 쓴다
     if settings.mail_backend == "console":
         print(f"[mail] to={to} subject={subject}\n{body}")
         return

@@ -39,6 +39,13 @@ def check(key: str, limit: int = 5, window_s: float = 60.0) -> bool:
         return True
 
 
+def saturated(key: str, limit: int, window_s: float) -> bool:
+    """check 와 같은 판정이지만 기록하지 않는다 — 존재 여부와 무관하게 먼저 거절할 때 (PR #42 🟡)."""
+    with _lock:
+        now = _now()
+        return sum(1 for t in _hits.get(key, ()) if now - t < window_s) >= limit
+
+
 def reset() -> None:
     global _last_sweep
     with _lock:

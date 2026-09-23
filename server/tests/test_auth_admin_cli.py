@@ -191,3 +191,28 @@ def test_cli_create_update_school_and_admin_then_login(tmp_path):
             == 401
         )
     assert _cli(db, "assign-modem", "--modem-id", "nope", "--school-id", "1").returncode != 0
+
+
+def test_cli_set_user_password_kills_mail_tokens(tmp_path):
+    """CLI 로 비밀번호를 바꾸면 이전 reset 링크도 죽는다 (PR #42 🟡)."""
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    db = tmp_path / "cli.db"
+    assert _cli(db, "create-school", "--name", "우송", "--net-id", "77").returncode == 0
+    r = _cli(
+        db,
+        "create-admin",
+        *("--school-id", "1", "--email", "admin@wsu.ac.kr", "--name", "관리"),
+        stdin="adminpass1\n",
+    )
+    assert r.returncode == 0, r.stderr
+    app = create_app(str(db))
+    with app.state.Session() as s, s.begin():
+        tok = tokens.issue(s, "admin@wsu.ac.kr", "reset")
+    r = _cli(db, "set-user", "--email", "admin@wsu.ac.kr", "--password", stdin="newpass12\n")
+    assert r.returncode == 0, r.stderr
+    with TestClient(app) as c:
+        r = c.post("/api/auth/reset", json={"token": tok, "password": "hijacked1"})
+        assert r.status_code == 400

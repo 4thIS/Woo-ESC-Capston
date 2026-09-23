@@ -30,8 +30,9 @@ MAIL_PER_ADDRESS_HOUR = (
 LOGIN_PER_IP_MINUTE = 30
 
 
-def _mail_allowed(email: str) -> bool:
-    return ratelimit.check(f"mail-to:{email}", limit=MAIL_PER_ADDRESS_HOUR, window_s=3600.0)
+def _mail_allowed(email: str, kind: str) -> bool:
+    """종류별 — verify 스팸이 같은 주소의 reset 메일을 굶기지 못하게 (PR #42 ⚪)."""
+    return ratelimit.check(f"mail-to:{kind}:{email}", limit=MAIL_PER_ADDRESS_HOUR, window_s=3600.0)
 
 
 def _limit(key: str, limit: int = 5, window_s: float = 60.0) -> None:
@@ -57,11 +58,14 @@ def signup(body: S.EmailIn, request: Request, bg: BackgroundTasks, s: Session = 
     school = _school_by_domain(s, body.email)
     if school is None:
         raise HTTPException(400, "학교 웹메일이 아닙니다")
+    # 상한은 존재 조회 **전에** — 뒤에 두면 가입 주소만 202 라 가입 여부가 샌다 (PR #42 🟡)
+    if ratelimit.saturated(f"signup-domain:{school.id}", SIGNUP_PER_DOMAIN_HOUR, 3600.0):
+        raise HTTPException(429, "잠시 후 다시 시도하세요")
     existing = s.get(User, body.email)
     if (
         (existing is None or existing.status == "rejected")
         and tokens.can_send(s, body.email, "verify")
-        and _mail_allowed(body.email)
+        and _mail_allowed(body.email, "verify")
     ):
         # 도메인 상한은 실제로 보낼 때만 센다 — 60 s 재신청·기존 회원은 세지 않는다
         _limit(f"signup-domain:{school.id}", limit=SIGNUP_PER_DOMAIN_HOUR, window_s=3600.0)
@@ -166,7 +170,7 @@ def forgot(body: S.EmailIn, request: Request, bg: BackgroundTasks, s: Session = 
         user is not None
         and user.status == "active"
         and tokens.can_send(s, user.email, "reset")
-        and _mail_allowed(user.email)
+        and _mail_allowed(user.email, "reset")
     ):
         st = request.app.state.settings
         subj, msg = mailer.reset_mail(st, tokens.issue(s, user.email, "reset"))

@@ -486,3 +486,52 @@ def test_login_returns_503_when_scrypt_is_saturated(client_raw, schools, monkeyp
     finally:
         t.join()
     assert r.status_code == 503 and r.json() == {"detail": "잠시 후 다시 시도하세요"}
+
+
+def test_domain_cap_429_does_not_reveal_registration(client_raw, app, schools, mails, monkeypatch):
+    """도메인 상한이 찬 뒤엔 가입·미가입 주소 모두 429 — 응답으로 가입 여부가 새지 않게 (PR #42 🟡)."""
+    from app.auth import router as auth_router
+
+    monkeypatch.setattr(auth_router, "SIGNUP_PER_DOMAIN_HOUR", 2)
+    with app.state.Session() as s, s.begin():
+        s.add(
+            User(
+                email="b@mju.ac.kr",
+                school_id=1,
+                role="student",
+                status="active",
+                name="b",
+                student_no="9",
+                pw_hash=password.hash("password1"),
+            )
+        )
+    c = client_raw
+    for i in range(2):
+        assert c.post("/api/auth/signup", json={"email": f"junk{i}@mju.ac.kr"}).status_code == 202
+    assert c.post("/api/auth/signup", json={"email": "new@mju.ac.kr"}).status_code == 429
+    assert c.post("/api/auth/signup", json={"email": "b@mju.ac.kr"}).status_code == 429
+
+
+def test_student_no_is_case_insensitive(client_raw, schools, mails):
+    c = client_raw
+    c.post("/api/auth/signup", json={"email": "a@mju.ac.kr"})
+    r = c.post(
+        "/api/auth/verify",
+        json={"token": _token(mails, "verify"), **PROFILE, "student_no": "ab123"},
+    )
+    assert r.status_code == 200
+    c.post("/api/auth/signup", json={"email": "z@mju.ac.kr"})
+    r = c.post(
+        "/api/auth/verify",
+        json={"token": _token(mails, "verify"), **PROFILE, "student_no": "AB123"},
+    )
+    assert r.status_code == 409
+
+
+def test_address_mail_cap_is_per_kind():
+    """verify 스팸이 같은 주소의 reset 메일을 굶기지 못하게 (PR #42 ⚪)."""
+    from app.auth import router as auth_router
+
+    assert all(auth_router._mail_allowed("a@mju.ac.kr", "verify") for _ in range(3))
+    assert not auth_router._mail_allowed("a@mju.ac.kr", "verify")
+    assert auth_router._mail_allowed("a@mju.ac.kr", "reset")

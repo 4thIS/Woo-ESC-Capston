@@ -55,6 +55,9 @@ def test_docs_and_static_only_in_debug(tmp_path, monkeypatch):
         assert c.get("/static/index.html").status_code == 200
         assert c.get("/docs").status_code == 200 and c.get("/openapi.json").status_code == 200
     monkeypatch.setenv("DEBUG", "0")
+    monkeypatch.setenv("MAIL_BACKEND", "smtp")  # console 은 DEBUG=1 에서만
+    monkeypatch.setenv("SMTP_USER", "me@gmail.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "app-pw")
     with TestClient(_fresh(tmp_path / "b.db")) as c:
         for path in ("/static/index.html", "/docs", "/redoc", "/openapi.json"):
             assert c.get(path).status_code == 404, path

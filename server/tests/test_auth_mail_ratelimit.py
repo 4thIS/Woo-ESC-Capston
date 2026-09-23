@@ -93,3 +93,36 @@ def test_mail_caps_are_per_kind(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "v0@x.test" in out and "v1@x.test" in out and "v2@x.test" not in out
     assert "r@x.test" in out and "d@x.test" in out
+
+
+def test_mail_daily_cap_per_kind(monkeypatch, capsys):
+    """Gmail 일일 한도(500) 보호 — 시간 상한만으론 하루 수천 통 (PR #42 🟡)."""
+    ratelimit.reset()
+    t = [1000.0]
+    monkeypatch.setattr(ratelimit, "_now", lambda: t[0])
+    monkeypatch.setattr(mailer, "MAIL_PER_DAY", {"verify": 2, "reset": 1, "decision": 1})
+    for i in range(3):
+        mailer.send(Settings(), f"v{i}@x.test", "s", "b", "verify")
+    t[0] += 3601  # 시간 창은 지났지만 하루 창은 그대로
+    mailer.send(Settings(), "v3@x.test", "s", "b", "verify")
+    mailer.send(Settings(), "r@x.test", "s", "b", "reset")
+    out = capsys.readouterr().out
+    assert "v0@x.test" in out and "v1@x.test" in out
+    assert "v2@x.test" not in out and "v3@x.test" not in out and "r@x.test" in out
+
+
+def test_saturated_does_not_record(monkeypatch):
+    ratelimit.reset()
+    assert not ratelimit.saturated("k", limit=1, window_s=60.0)
+    assert not ratelimit.saturated("k", limit=1, window_s=60.0)  # 세지 않는다
+    assert ratelimit.check("k", limit=1, window_s=60.0)
+    assert ratelimit.saturated("k", limit=1, window_s=60.0)
+
+
+def test_console_backend_requires_debug(monkeypatch):
+    """console 백엔드는 토큰을 stdout(journald)에 찍는다 — DEBUG=1 에서만 (PR #42 ⚪)."""
+    import pytest
+
+    monkeypatch.setenv("DEBUG", "0")
+    with pytest.raises(RuntimeError, match="DEBUG=1"):
+        Settings()

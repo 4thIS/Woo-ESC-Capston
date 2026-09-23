@@ -290,6 +290,11 @@ class VerifyIn(BaseModel):
     def _strip(cls, v):
         return v.strip() if isinstance(v, str) else v  # strip 뒤 빈 문자열은 min_length 로 422
 
+    @field_validator("student_no")
+    @classmethod
+    def _upper(cls, v: str) -> str:
+        return v.upper()  # ab123·AB123 이 같은 학번으로 잡히게 (PR #42 🟡)
+
 
 class LoginIn(EmailIn):
     password: str = Field(max_length=128)

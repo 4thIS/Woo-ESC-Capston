@@ -45,3 +45,5 @@ class Settings:
             raise RuntimeError("MAIL_BACKEND=smtp 이면 SMTP_USER·SMTP_PASSWORD 가 필요하다")
         if self.mail_backend not in ("smtp", "console"):
             raise RuntimeError("MAIL_BACKEND 는 smtp | console")
+        if self.mail_backend == "console" and not self.debug:  # 토큰이 journald 에 남는다
+            raise RuntimeError("MAIL_BACKEND=console 은 DEBUG=1 에서만")

@@ -12,7 +12,7 @@ from pathlib import Path
 from alembic.config import Config
 
 from alembic import command
-from app.auth import password
+from app.auth import password, tokens
 from app.auth.models import User
 from app.db import make_engine, make_session_factory
 from app.domain.models import School
@@ -65,6 +65,7 @@ def update_school(a: argparse.Namespace) -> None:
         for k in ("name", "net_id", "email_domain"):
             if getattr(a, k) is not None:
                 setattr(sch, k, getattr(a, k))
+        s.flush()  # 제약 위반을 성공 출력 전에
         print(
             f"school id={sch.id} name={sch.name} net_id={sch.net_id} email_domain={sch.email_domain}"
         )
@@ -107,6 +108,7 @@ def set_user(a: argparse.Namespace) -> None:
             u.status = a.status
         if pw:
             u.pw_hash = password.hash(pw)
+            tokens.invalidate_all(s, email)  # 남아 있던 reset 링크로 되돌리지 못하게 (PR #42 🟡)
         u.token_version += 1
     print(f"user {email} status={a.status or '(유지)'} password={'변경' if pw else '(유지)'}")
 
