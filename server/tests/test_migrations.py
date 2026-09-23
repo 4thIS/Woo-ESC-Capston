@@ -123,6 +123,47 @@ def test_web_auth_refuses_bld_shared_across_schools(tmp_path):
         command.upgrade(_cfg(db), "head")
 
 
+def test_web_auth_refuses_modem_shared_across_schools(tmp_path):
+    """모뎀 하나가 두 학교 건물에 배정되면 school_id 를 하나로 정할 수 없다 (S4a §3.3, cw 리뷰)."""
+    import pytest
+    from sqlalchemy import text
+
+    from alembic import command
+
+    db = tmp_path / "f.db"
+    command.upgrade(_cfg(db), "6b47ab194f9a")
+    with create_engine(f"sqlite:///{db}").begin() as c:
+        c.execute(text("INSERT INTO modems (modem_id, token_hash, connected) VALUES ('m1','x',0)"))
+        c.execute(text("INSERT INTO schools (id, name, net_id) VALUES (1,'a',75), (2,'b',76)"))
+        c.execute(
+            text(
+                "INSERT INTO buildings (school_id, name, bld, modem_id)"
+                " VALUES (1,'x','E','m1'), (2,'y','F','m1')"
+            )
+        )
+    with pytest.raises(RuntimeError, match="모뎀"):
+        command.upgrade(_cfg(db), "head")
+
+
+def test_downgrade_keeps_rooms_check_constraint(tmp_path):
+    """리뷰: CHECK table_args 는 테이블을 재생성하는 downgrade 쪽에 둬야 실제로 효과가 있다."""
+    import pytest
+    import sqlalchemy.exc
+    from sqlalchemy import text
+
+    from alembic import command
+
+    db = tmp_path / "g.db"
+    _upgrade(db)
+    command.downgrade(_cfg(db), "-1")
+    eng = create_engine(f"sqlite:///{db}")
+    with eng.begin() as c:
+        c.execute(text("INSERT INTO schools (id, name, net_id) VALUES (1,'a',75)"))
+        c.execute(text("INSERT INTO buildings (school_id, name, bld) VALUES (1,'x','E')"))
+    with pytest.raises(sqlalchemy.exc.IntegrityError), eng.begin() as c:
+        c.execute(text("INSERT INTO rooms (building_id, room, units) VALUES (1, 0, 1)"))
+
+
 def test_rejected_row_does_not_hold_student_no(tmp_path):
     """부분 유일 인덱스 — 거절 행은 학번을 잡지 않고, 대기·활성·정지 행끼리는 막는다 (r2 🟡)."""
     import pytest

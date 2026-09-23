@@ -141,6 +141,45 @@ def test_building_modem_and_bld_guards(client, app, school):
     assert r.status_code == 200 and r.json()["modem_id"] == "mine" and r.json()["bld"] == "G"
 
 
+@pytest.mark.parametrize(
+    "method,path,body",
+    [
+        ("delete", "/api/rooms/{r}/slots/1/9/0", None),
+        ("delete", "/api/rooms/{r}/slots?day=1", None),
+        (
+            "post",
+            "/api/rooms/{r}/reservations",
+            {
+                "id": 5,
+                "date": "2026-10-01",
+                "s_h": 13,
+                "s_m": 0,
+                "e_h": 15,
+                "e_m": 0,
+                "type": 6,
+                "subject": "a",
+                "professor": "",
+            },
+        ),
+        ("delete", "/api/rooms/{r}/reservations/5", None),
+        (
+            "post",
+            "/api/rooms/{r}/exams",
+            {"id": 5, "date_start": "2026-10-19", "date_end": "2026-10-23"},
+        ),
+        ("delete", "/api/rooms/{r}/exams/5", None),
+        ("post", "/api/rooms/{r}/cmd", {"cmd": 4, "args_hex": ""}),
+        ("post", "/api/rooms/{r}/sync", {}),
+    ],
+)
+def test_other_school_room_write_routes_404(client, app, school, method, path, body):
+    """⚪ 스코프 테스트 — 타교 방에 대한 쓰기 라우트는 전부 404 (존재 자체를 숨긴다, S4a §3.3)."""
+    _b, r = _bld(app, 2, "F")
+    url = path.format(r=r)
+    resp = client.request(method.upper(), url, json=body)
+    assert resp.status_code == 404, url
+
+
 def test_csv_import_rejects_other_school_rows(client, app, school):
     _bld(app, 2, "F")
     text = "school,building,room,day,start,end,type,subject,professor\n타교,F,101,월,09:00,10:00,1,a,\n"
