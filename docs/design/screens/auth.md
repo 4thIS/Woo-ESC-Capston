@@ -1,6 +1,6 @@
 # 인증 — 가입 · 로그인 · 재설정
 
-- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Student-Auth` (학생·관리자 공용, 1260 폭에 4단계를 나란히)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Student-Auth` (학생·관리자 공용, 1260 폭에 4단계를 나란히) · `Student-Forgot` (`/forgot` 보낸 뒤 · `/reset` 성공)
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 · `components.md`
 - 서버 계약: wj의 **S4a**(`docs/specs/2026-09-23-s4a-auth-design.md`)
