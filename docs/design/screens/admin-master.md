@@ -1,6 +1,6 @@
 # 관리자 — 건물 · 강의실 (마스터)
 
-- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Admin-Master` · `Admin-Master-Bulk`
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Admin-Master` · `Admin-Master-Bulk` · `Admin-Master-Edit`(수정 폼 — `bld`·호수 잠금)
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`admin` 치수 세트) · `components.md`
 - 서버 계약: **S2** `server/app/domain/router.py`(건물·강의실 CRUD, 이미 구현됨) + **S4a §4.3**(`require_admin`·학교 스코프·`rooms.reservable`·부분 PATCH)
