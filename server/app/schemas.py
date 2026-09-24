@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-from typing import Literal
+import re
+from typing import ClassVar, Literal
 
 from lora_proto import proto as P
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _bytes_max(s: str, n: int, name: str) -> str:
@@ -44,10 +45,45 @@ class RoomIn(BaseModel):
     building_id: int
     room: int = Field(ge=1, le=9999)
     units: int = Field(default=1, ge=1, le=2)
+    reservable: bool = False
 
 
 class RoomOut(RoomIn, Out):
     id: int
+
+
+class _NoExplicitNull(BaseModel):
+    """PATCH 공통: 보낸 필드에 명시적 null 은 422 (생략=부분 업데이트는 허용, 리뷰 finding 1).
+    null 이 의미를 갖는 필드(예: BuildingPatch.modem_id)는 하위 클래스가 _nullable 에 넣는다."""
+
+    _nullable: ClassVar[frozenset[str]] = frozenset()
+
+    @model_validator(mode="after")
+    def _reject_explicit_null(self):
+        bad = [
+            f for f in self.model_fields_set if getattr(self, f) is None and f not in self._nullable
+        ]
+        if bad:
+            raise ValueError(f"null 불가: {', '.join(bad)}")
+        return self
+
+
+class SchoolPatch(_NoExplicitNull):
+    name: str | None = None  # net_id·email_domain 은 CLI 전용 (S4a §3.3)
+
+
+class BuildingPatch(_NoExplicitNull):
+    name: str | None = None
+    bld: str | None = Field(None, min_length=1, max_length=1, pattern=r"^[A-Za-z]$")
+    modem_id: str | None = None  # null = 모뎀 배정 해제 (리뷰: nullable 로 유지)
+
+    _nullable: ClassVar[frozenset[str]] = frozenset({"modem_id"})
+
+
+class RoomPatch(_NoExplicitNull):
+    room: int | None = Field(None, ge=1, le=9999)
+    units: int | None = Field(None, ge=1, le=2)
+    reservable: bool | None = None
 
 
 class _Span(BaseModel):
@@ -144,6 +180,7 @@ class ModemOut(Out):
     modem_fw: str | None
     last_seen_at: dt.datetime | None
     connected: bool
+    school_id: int | None
 
 
 class TokenOut(BaseModel):
@@ -216,3 +253,75 @@ class ProvisionIn(BaseModel):
     bld: str = Field(min_length=1, max_length=1)
     room: int = Field(ge=1, le=9999)
     unit: int = Field(ge=1, le=2)
+
+
+# ---- S4a 인증 ----
+
+# 단일 주소만 — @ 1개, 쉼표·공백·꺾쇠·따옴표 불가 (S4a §2.3, 리뷰 🔴1). 소문자 정규화 뒤 검사.
+EMAIL_RE = re.compile(r"^[a-z0-9._+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$")
+
+
+class EmailIn(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not EMAIL_RE.fullmatch(v):
+            raise ValueError("이메일 형식이 아닙니다")
+        return v
+
+
+class TokenIn(BaseModel):
+    # 길이는 VerifyIn·ResetIn 과 같다 — 짧은 무효 토큰도 422 가 아니라 400 링크 무효로 (test "nope")
+    token: str = Field(min_length=1, max_length=128)
+
+
+class VerifyIn(BaseModel):
+    token: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=50)
+    # ASCII 영숫자·하이픈만 — 공백·전각 숫자로 같은 학번을 두 번 만들어 유일성을 피하지 못하게 (자체 점검 🟡)
+    student_no: str = Field(min_length=1, max_length=20, pattern=r"^[0-9A-Za-z-]+$")
+    password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("name", "student_no", mode="before")
+    @classmethod
+    def _strip(cls, v):
+        return v.strip() if isinstance(v, str) else v  # strip 뒤 빈 문자열은 min_length 로 422
+
+    @field_validator("student_no")
+    @classmethod
+    def _upper(cls, v: str) -> str:
+        return v.upper()  # ab123·AB123 이 같은 학번으로 잡히게 (PR #42 🟡)
+
+
+class LoginIn(EmailIn):
+    password: str = Field(max_length=128)
+
+
+class LoginOut(BaseModel):
+    token: str
+    role: str
+    school_id: int
+    name: str
+
+
+class ResetIn(BaseModel):
+    token: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class RejectIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=200)
+
+
+class UserOut(Out):
+    email: str
+    school_id: int
+    role: str
+    status: str
+    name: str
+    student_no: str | None
+    created_at: dt.datetime
+    approved_at: dt.datetime | None
