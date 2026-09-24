@@ -32,7 +32,7 @@ JWT 가 24시간이라 하루 한 번이지만, **"복도에서 폰으로 빨리
 | `/{bld}/{room}` | 그 강의실 | 공유 가능한 딥링크 — 주소를 그대로 보내면 된다. 별도 `링크 복사` 버튼은 두지 않는다 |
 | `/{bld}/{room}/week` | 이번 주 | 모바일에서만 별도 화면 — 아래 「넓은 폭」 |
 | `/{bld}/{room}/reserve` | 예약 신청 | **로그인 필요.** 아래 「예약」 |
-| `/me` | 내 신청 | **로그인 필요.** 신청·승인 상태, 체크인, 취소 |
+| `/me` | 내 예약 | **로그인 필요.** 신청·승인 상태, 체크인, 취소 |
 | `/login` · `/signup` · `/verify` · `/reset` | 인증 | [auth.md](auth.md) |
 
 예: `esc.wsu.ac.kr/E/401`
@@ -169,11 +169,13 @@ JWT 가 24시간이라 하루 한 번이지만, **"복도에서 폰으로 빨리
 │ 쓸 시간  [10:00 ▾] – [12:00 ▾]  │  ← 5분 단위, 15~120분
 │ 무엇에 쓰나요 *                  │
 │ [캡스톤 스터디          18/20 B] │
-│ 신청하면 관리자 승인 뒤 확정돼요  │
+│ 예약하면 관리자 승인 뒤 확정돼요  │
 ├─────────────────────────────────┤
-│ 10월 24일 토 10:00–12:00 [신청하기]│
+│ 10월 24일 토 10:00–12:00 [예약하기]│
 └─────────────────────────────────┘
 ```
+
+**버튼 이름은 `예약하기` 다.** 서버에서는 `requested`(신청)이지만 학생에게 익숙한 말은 '예약'이다. 승인제라는 사실은 버튼 이름이 아니라 폼의 `예약하면 관리자 승인 뒤 확정돼요` 한 줄과 [내 예약](#내-예약--me)의 상태 배지가 말한다. 같은 이유로 `/me` 화면 이름도 `내 예약` 이다.
 
 **이름·학번을 받지 않는다.** 로그인한 사람이 누구인지 서버가 안다(`requested_by`). 가입 때 이미 이름·학번을 냈다(S4a §4.1 `verify`).
 
@@ -210,13 +212,13 @@ POST /api/student/rooms/{id}/reservations
 - `type` 은 서버가 6(대여) 고정, `professor` 는 빈 문자열이다 — 폼에 없다.
 - **문 앞 e-Paper 에는 `"학생 예약"` 으로 나간다**(S10 §2.5). 학생이 적은 용도는 본인과 관리자만 본다. 폼에 그 사실을 한 줄로 적는다: `문 앞 화면에는 "학생 예약"으로만 표시돼요`.
 
-## 내 신청 — `/me`
+## 내 예약 — `/me`
 
 신청한 뒤 학생이 돌아오는 자리다. `GET /api/student/me/reservations`.
 
 ```
 ┌ 헤더 ───────────────────────────┐
-│ ‹   내 신청                      │
+│ ‹   내 예약                      │
 ├─────────────────────────────────┤
 │ ┌───────────────────────────┐   │
 │ │ [승인됨] 공학관 401호       │   │
@@ -292,7 +294,7 @@ Select(건물·시간), Checkbox(빈 강의실만), Input(사용 목적·이름�
 - **`FavoriteStar`** — ★/☆ 토글. props: `on`. 48px 터치 타깃, `aria-label`이 상태에 따라 갈린다. `localStorage` 쓰기는 이 컴포넌트가 아니라 화면이 한다
 - **`ReserveSheet`** — 예약 신청 화면 전체. props: `room` · `days`(7개) · `freeSpans` · `maxBytes` · `myFutureCount`. 위 §예약의 제약 여덟을 이 컴포넌트가 진다
 - **`ResvStatusBadge`** — props: `status`(5종). `approved` 만 `room.busy` 틴트, 나머지 넷은 무채색. 적색은 "그 방이 실제로 쓰인다"는 뜻이라 신청·거절·취소에 쓰지 않는다
-- **`MyResvCard`** — 내 신청 한 건. props: `resv` · `now`. 체크인 창(시작 −10 ~ +15분) 판정과 취소/철회 구분을 진다
+- **`MyResvCard`** — 내 예약 한 건. props: `resv` · `now`. 체크인 창(시작 −10 ~ +15분) 판정과 취소/철회 구분을 진다
 - **`WeekGrid`** — 요일 가로 × 시간 세로 격자. props: `days`(1~7 중 보일 것) · `blocks: { day, top, height, label, extra, type }[]` · `rowHeight`(24 | 32) · `todayIndex` · `nowTop`. 관리자 페이지2의 격자와 **형태는 같고 규칙이 하나 다르다** — 겹친 블록을 합쳐서 받는다(위 §겹침). 합치는 계산은 컴포넌트가 아니라 서버가 한다
 
 Table은 쓰지 않는다. `SlotForm`·`OutboxDot`·`SourceBadge`는 관리자 전용이라 여기 없다.
@@ -306,7 +308,7 @@ Table은 쓰지 않는다. `SlotForm`·`OutboxDot`·`SourceBadge`는 관리자 �
 | 지금 빈 강의실 | `GET /api/student/rooms/free?at&building_id` → `FreeRoomOut{room_id, building, bld, room, layout: 4, free_until}` | 로그인 |
 | 강의실 목록 + 현재 상태 | `GET /api/student/rooms?building_id` → `RoomStateOut{…, layout, until}`. **`reservable=1` 만** | 로그인 |
 | 주간 표 | `GET /api/student/rooms/{id}/week?date` → `WeekOut{room, week_start, slots, reservations, exams}` | 로그인 |
-| 내 신청 | `GET /api/student/me/reservations?status` → `ResvMineOut[]` | 로그인 |
+| 내 예약 | `GET /api/student/me/reservations?status` → `ResvMineOut[]` | 로그인 |
 | 신청 | `POST /api/student/rooms/{id}/reservations` | 로그인 |
 | 취소·철회 | `POST /api/student/me/reservations/{id}/cancel` | 로그인 |
 | 체크인 | `POST /api/student/me/reservations/{id}/checkin` | 로그인 |
