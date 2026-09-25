@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { defaultPick, resvDot, roomLabeler } from '@/admin/roomsView'
-import type { BuildingOut, ResvWithRoom, RoomOut } from '@/api/types'
+import { defaultPick, groupExams, resvDot, roomLabeler, roomsLabel } from '@/admin/roomsView'
+import type { BuildingOut, ExamWithRoom, ResvWithRoom, RoomOut } from '@/api/types'
 
 const B = (id: number, name: string, bld: string): BuildingOut => ({
   id,
@@ -59,5 +59,31 @@ describe('resvDot — 예약 행의 점', () => {
   })
   it('추적 중이면 그 상태가 먼저', () => {
     expect(resvDot(r({}), 'queued', '2026-09-25')).toBe('queued')
+  })
+})
+
+describe('시험기간 묶기', () => {
+  const X = (id: number, room_id: number, ds: string, de: string): ExamWithRoom => ({
+    id,
+    room_id,
+    date_start: ds,
+    date_end: de,
+  })
+  it('같은 시작일·종료일은 한 행 — 날짜순, 행 안은 트리 순서', () => {
+    const order = (roomId: number) => [12, 11, 13].indexOf(roomId)
+    const g = groupExams(
+      [
+        X(1, 11, '2026-10-19', '2026-10-23'),
+        X(2, 12, '2026-10-19', '2026-10-23'),
+        X(3, 13, '2026-10-12', '2026-10-16'),
+      ],
+      order,
+    )
+    expect(g.map((x) => x.id)).toEqual(['2026-10-12~2026-10-16', '2026-10-19~2026-10-23'])
+    expect(g[1].items.map((x) => x.room_id)).toEqual([12, 11])
+  })
+  it('셋까지 나열, 넘으면 외 N곳', () => {
+    expect(roomsLabel(['401', '402'])).toBe('401, 402')
+    expect(roomsLabel(['401', '402', '405', '406', '407'])).toBe('401, 402, 405 외 2곳')
   })
 })

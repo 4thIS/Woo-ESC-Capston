@@ -298,4 +298,19 @@ describe('강의실 설정 — 트리와 시간표', () => {
     await mountView()
     expect(w.text()).toContain('강의실이 없습니다. 건물 · 강의실 화면에서 먼저 만드세요.')
   })
+
+  it('선택한 곳 동기화 — 고른 방마다 보내고, 일부 실패는 그 방을 말한다', async () => {
+    lora.syncRoom.mockImplementation(async (roomId: number) => {
+      if (roomId === 12) throw new ApiError(500, MESSAGES[500])
+      return { outbox_ids: [1], id: null }
+    })
+    await mountView()
+    await btn(w, '선택한 곳 동기화').trigger('click')
+    await flushPromises()
+    expect(lora.syncRoom.mock.calls).toEqual([[11], [12]])
+    expect(toasts.value.at(-1)).toMatchObject({
+      tone: 'danger',
+      message: '2곳 중 1곳 보냄 · 402호 실패',
+    })
+  })
 })

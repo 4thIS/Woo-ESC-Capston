@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import { showToast } from '@/components/ui/toast'
 import RoomTree from '@/components/domain/RoomTree.vue'
 import { examKey, resvKey, slotKey, type SavedRow } from '@/components/domain/rules'
+import { ApiError } from '@/api/client'
 import { adminApi } from '@/api/admin'
+import { loraApi } from '@/api/lora'
 import { roomsApi } from '@/api/rooms'
 import type { RoomOut } from '@/api/types'
 import { useResource } from '@/lib/useResource'
 import { useOutboxTracker } from '../outboxTrack'
 import { defaultPick, roomLabeler } from '../roomsView'
 import { picked } from '../selection'
+import CsvImport from './rooms/CsvImport.vue'
+import ExamBlock from './rooms/ExamBlock.vue'
 import PendingBlock from './rooms/PendingBlock.vue'
 import ResvBlock from './rooms/ResvBlock.vue'
 import SlotBlock from './rooms/SlotBlock.vue'
@@ -79,6 +84,7 @@ const fresh = computed(() =>
 )
 const slots = computed(() => inPick(fresh.value?.slots))
 const resv = computed(() => inPick(fresh.value?.resv))
+const exams = computed(() => inPick(fresh.value?.exams))
 const scopeFailed = computed(() => !fresh.value && !!scope.error.value && !scope.loading.value)
 const scopeLoading = computed(() => !fresh.value && !scopeFailed.value)
 function reloadAll() {
@@ -106,18 +112,59 @@ function onSaved(s: SavedRow) {
 }
 // 재전송은 방 단위 — 그 방에서 실패·취소로 보이는 행을 모두 새 작업으로 따라간다
 const DEAD = ['failed', 'cancelled']
-function resync(roomId: number, key: string) {
-  const b = buildingOf(roomId)
-  if (b === undefined) return
+/** 그 방의 행 keys — 시간표·예약·시험기간 */
+function roomKeys(roomId: number): string[] {
   const d = fresh.value
   const mine = <T extends { room_id: number }>(xs: T[] | undefined) =>
     (xs ?? []).filter((x) => x.room_id === roomId)
-  const keys = [
+  return [
     ...mine(d?.slots).map(slotKey),
     ...mine(d?.resv).map((r) => resvKey(r.id)),
     ...mine(d?.exams).map((x) => examKey(x.id)),
-  ].filter((k) => k !== key && DEAD.includes(tracker.states.get(k) ?? ''))
+  ]
+}
+function resync(roomId: number, key: string) {
+  const b = buildingOf(roomId)
+  if (b === undefined) return
+  const keys = roomKeys(roomId).filter(
+    (k) => k !== key && DEAD.includes(tracker.states.get(k) ?? ''),
+  )
   void tracker.resync([key, ...keys], roomId, b)
+}
+
+// CSV — 파일 선택은 숨은 input, 흐름(미리보기→적용)은 CsvImport 가 진다
+const csv = ref<InstanceType<typeof CsvImport>>()
+// 선택한 곳 동기화 — '전체 동기화'를 범위로 좁혔다. 건물 전체를 실수로 재전송하지 않게. 확인 없이 보낸다(파괴적이지 않다)
+const syncing = ref(false)
+async function syncPicked() {
+  const list = [...pickedRooms.value]
+  if (syncing.value || !list.length) return
+  syncing.value = true
+  const bad: string[] = []
+  try {
+    for (const r of list) {
+      try {
+        const res = await loraApi.syncRoom(r.id)
+        // 점이 있던 행(실패·취소 등)은 새 작업을 따라간다 — 옛 실패 점이 남아 거짓말하지 않게
+        for (const k of roomKeys(r.id))
+          if (tracker.states.has(k)) tracker.track(k, r.building_id, res.outbox_ids)
+      } catch (e) {
+        if (!(e instanceof ApiError)) throw e
+        if (e.status === 401 || e.status === 403) return // 로그인 화면으로 간다
+        bad.push(`${label.value(r.id)}호`)
+      }
+    }
+  } finally {
+    syncing.value = false
+  }
+  showToast(
+    bad.length
+      ? {
+          tone: 'danger',
+          message: `${list.length}곳 중 ${list.length - bad.length}곳 보냄 · ${bad.join(', ')} 실패`,
+        }
+      : { message: `${list.length}곳에 다시 보냈습니다.` },
+  )
 }
 </script>
 
@@ -127,7 +174,18 @@ function resync(roomId: number, key: string) {
     <header class="rooms__bar">
       <RoomTree v-model:selected="selection" :buildings="buildings" :rooms="allRooms" />
       <span class="rooms__hint">강의실 선택</span>
+      <div class="rooms__tools">
+        <Button variant="secondary" :loading="csv?.busy" @click="csv?.pick()">CSV 가져오기</Button>
+        <Button
+          variant="secondary"
+          :loading="syncing"
+          :disabled="!pickedRooms.length"
+          @click="syncPicked"
+          >선택한 곳 동기화</Button
+        >
+      </div>
     </header>
+    <CsvImport ref="csv" @applied="scope.reload" />
     <EmptyState
       v-if="hasNoRooms"
       message="강의실이 없습니다. 건물 · 강의실 화면에서 먼저 만드세요."
@@ -138,7 +196,7 @@ function resync(roomId: number, key: string) {
     <div v-else class="rooms__blocks">
       <EmptyState
         v-if="scopeFailed"
-        message="시간표·예약을 불러오지 못했습니다"
+        message="시간표·예약·시험기간을 불러오지 못했습니다"
         :actions="[{ label: '다시 불러오기', onClick: () => void scope.reload() }]"
       />
       <SlotBlock
@@ -152,6 +210,7 @@ function resync(roomId: number, key: string) {
         @saved="onSaved"
         @changed="scope.reload"
         @resync="resync"
+        @csv="csv?.pick()"
       />
       <!-- 신청 대기는 예약 블록 위에 선다 — 승인해야 approved 가 되어 노드로 나간다 -->
       <PendingBlock :pending="pending.data.value" @changed="reloadAll" />
@@ -165,6 +224,18 @@ function resync(roomId: number, key: string) {
         :loading="scopeLoading"
         @saved="onSaved"
         @changed="reloadAll"
+        @resync="resync"
+      />
+      <ExamBlock
+        v-if="!scopeFailed"
+        :rooms="pickedRooms"
+        :label="label"
+        :exams="exams"
+        :states="tracker.states"
+        :resyncing="tracker.resyncing"
+        :loading="scopeLoading"
+        @saved="onSaved"
+        @changed="scope.reload"
         @resync="resync"
       />
     </div>
@@ -188,6 +259,11 @@ function resync(roomId: number, key: string) {
 .rooms__hint {
   font-size: var(--font-size-sm);
   color: var(--text-3);
+}
+.rooms__tools {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
 }
 /* 탭이 아니라 세로 스택 — 셋이 같은 강의실의 다른 시간 축이라 함께 보여야 한다 */
 .rooms__blocks {

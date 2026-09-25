@@ -384,3 +384,70 @@ test('신청 대기 — 오래된 순, 승인하면 예약 표로, 다른 관리
   await expect(page.getByText('거절했습니다. 사유가 학생에게 보입니다.')).toBeVisible()
   await expect(pend).toHaveCount(0)
 })
+
+test('시험기간 — 고른 3곳에 한 번에(진행 라벨), 같은 기간은 한 행으로 접고 펼쳐서 지운다', async () => {
+  const ex = page.getByRole('region', { name: '시험기간' })
+  await ex.getByRole('button', { name: '+ 선택한 3곳에 기간 추가' }).click()
+  const d = page.getByRole('dialog', { name: '시험기간 추가' })
+  await expect(d).toContainText('대상 3곳 · 101호, 102호, 202호')
+  await d.getByLabel('시작일').fill(kstDate(20))
+  await d.getByLabel('종료일').fill(kstDate(24))
+  await d.getByRole('button', { name: '선택한 3곳에 기간 추가' }).click()
+  await expect(d).toHaveCount(0)
+  await expect(page.getByText('3곳에 시험기간을 넣었습니다.')).toBeVisible()
+  const g = ex.locator('tbody tr').first()
+  await expect(g).toContainText('101, 102, 202')
+  await expect(g).toContainText('3곳')
+  await g.getByRole('button', { name: '펼치기' }).click()
+  const items = ex.locator('.blk__item')
+  await expect(items).toHaveCount(3)
+  await items.filter({ hasText: '202호' }).getByRole('button', { name: '삭제' }).click()
+  const c = page.getByRole('dialog', { name: '시험기간 삭제' })
+  await c.getByRole('button', { name: '삭제' }).click()
+  await expect(items).toHaveCount(2)
+  // 상단 바 오른쪽 버튼이 보이게 Toast 가 걷힌 뒤 찍는다
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 10_000 })
+  await shot(page, 'admin-rooms-1440')
+})
+
+test('CSV — 먼저 미리보기, 웹에서 고친 행은 건너뛴다고 말하고, 적용하면 포털 출처 / 행 오류는 아무것도 적용 안 됨', async () => {
+  const csv = (rows: string[]) => ({
+    name: 'slots.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      ['school,building,room,day,start,end,type,subject,professor', ...rows].join('\n'),
+    ),
+  })
+  await page
+    .locator('input[type=file]')
+    .setInputFiles(
+      csv([
+        '우송대,K,101,월,13:00,15:00,수업,포털수업,박교수',
+        '우송대,K,202,수,09:00,10:00,수업,포털과목,이교수',
+      ]),
+    )
+  const d = page.getByRole('dialog', { name: 'CSV 가져오기 — slots.csv' })
+  await expect(d).toContainText('강의실 1곳 · 추가 1 · 수정 0 · 삭제 0')
+  await expect(d.getByRole('row').filter({ hasText: '수동 슬롯 있음' })).toContainText('2')
+  await shot(page, 'admin-rooms-csv-1440')
+  await d.getByRole('button', { name: '적용' }).click()
+  await expect(page.getByText(/시간표를 가져왔습니다/)).toBeVisible()
+  const slots = page.getByRole('region', { name: '시간표' })
+  await expect(slots.getByRole('row').filter({ hasText: '포털과목' })).toContainText('포털')
+  await expect(slots.getByRole('row').filter({ hasText: '캡스톤디자인' })).toContainText('수동')
+  await expect(slots.getByRole('row').filter({ hasText: '포털수업' })).toHaveCount(0)
+  await page
+    .locator('input[type=file]')
+    .setInputFiles(csv(['우송대,K,999,월,09:00,10:00,수업,없는방,김교수']))
+  const e = page.getByRole('dialog', { name: 'CSV 오류 — 아무것도 적용되지 않았습니다' })
+  await expect(e.getByRole('row').filter({ hasText: '999' })).toContainText('2')
+  await e.getByRole('button', { name: '닫기' }).click()
+  await expect(e).toHaveCount(0)
+})
+
+test('선택한 곳 동기화 — 고른 방 수만큼 보내고 결과를 말한다', async () => {
+  // 앞 테스트의 Toast 더미가 상단 바 오른쪽 버튼을 가린다 — 걷힐 때까지
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 10_000 })
+  await page.getByRole('button', { name: '선택한 곳 동기화' }).click()
+  await expect(page.getByText('3곳에 다시 보냈습니다.')).toBeVisible()
+})

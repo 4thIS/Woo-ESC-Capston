@@ -34,6 +34,7 @@ const emit = defineEmits<{
   saved: [row: SavedRow]
   changed: []
   resync: [roomId: number, key: string]
+  csv: []
 }>()
 
 // 호수 필터는 트리가 한다 — 블록에는 요일·유형만 (admin-rooms.md)
@@ -143,7 +144,10 @@ async function remove() {
         <EmptyState
           v-else
           message="이 건물에 등록된 시간표가 없습니다"
-          :actions="[{ label: '슬롯 추가', variant: 'primary', onClick: () => openForm(null) }]"
+          :actions="[
+            { label: 'CSV 가져오기', onClick: () => emit('csv') },
+            { label: '슬롯 추가', variant: 'primary', onClick: () => openForm(null) },
+          ]"
         />
       </template>
       <template #cell-room="{ row }">
