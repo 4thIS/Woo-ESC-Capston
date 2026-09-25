@@ -284,3 +284,42 @@ def test_parse_range_and_endpoints(client, app, school, student_hdr, monkeypatch
     assert client.get(f"{base}/latency").json()["n"] == 0
     assert client.get(f"{base}/latency/samples").json() == []
     assert client.get(f"{base}/allocation", headers=student_hdr).status_code == 403
+
+
+def test_extreme_dates_are_422_not_500(client, app, school, student_hdr, monkeypatch):
+    """#49 리뷰: 날짜 계산(±일·시간대)이 OverflowError(500) 가 되던 극단값 → 공용 범위 검사로 422."""
+    _fix_clock(monkeypatch)
+    _, ids = _building(app, 1, "E", rooms=((101, 1),))
+    st = "/api/student"
+    ad = "/api/admin"
+    bad_student = [
+        f"{st}/rooms/{ids[101]}/week?date=9999-12-31",
+        f"{st}/rooms/free?at=0001-01-01T00:00:00%2B14:00",
+        f"{st}/rooms/free?at=9999-12-31T23:59:00-14:00",
+    ]
+    bad_admin = [
+        f"{ad}/analytics/allocation?to=0001-01-01",
+        f"{ad}/analytics/latency?from=9999-12-30&to=9999-12-31",
+        f"{ad}/analytics/latency/samples?from=9999-12-30&to=9999-12-31",
+        f"{ad}/analytics/reservations?to=0001-01-01",
+        f"{ad}/analytics/free-slots?date=9999-12-31",
+        f"{ad}/reservations?date_from=0001-01-01",
+        f"{ad}/reservations?date_to=9999-12-31",
+    ]
+    for u in bad_student:
+        assert client.get(u, headers=student_hdr).status_code == 422, u
+    for u in bad_admin:
+        assert client.get(u).status_code == 422, u
+    ok_student = [
+        f"{st}/rooms/{ids[101]}/week?date=2026-09-23",
+        f"{st}/rooms/free?at=2026-09-23T01:30:00Z",
+    ]
+    for u in ok_student:
+        assert client.get(u, headers=student_hdr).status_code == 200, u
+    for u in (
+        f"{ad}/analytics/allocation?to=2026-09-23",
+        f"{ad}/analytics/latency?from=2026-09-01&to=2026-09-23",
+        f"{ad}/analytics/free-slots?date=2026-09-23",
+        f"{ad}/reservations?date_from=2026-09-01&date_to=2026-09-30",
+    ):
+        assert client.get(u).status_code == 200, u

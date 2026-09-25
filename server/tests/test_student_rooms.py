@@ -261,10 +261,11 @@ def test_week_date_upper_bound_is_422_not_500(client, app, school, student_hdr, 
     _fix_clock(monkeypatch)
     _, ids = _building(app, 1, "E")
     url = f"/api/student/rooms/{ids[101]}/week"
-    # 9999-12-27(월) 의 주 끝은 10000년 — 계산하면 OverflowError(500)
+    # 9999-12-27(월) 의 주 끝은 10000년 — 계산하면 OverflowError(500). 범위는 clock.DATE_MIN~MAX
     assert client.get(f"{url}?date=9999-12-27", headers=student_hdr).status_code == 422
-    j = client.get(f"{url}?date=9999-12-26", headers=student_hdr).json()
-    assert j["week_start"] == "9999-12-20" and len(j["busy"]) == 7
+    assert client.get(f"{url}?date=2100-01-01", headers=student_hdr).status_code == 422
+    j = client.get(f"{url}?date=2099-12-31", headers=student_hdr).json()
+    assert j["week_start"] == "2099-12-28" and len(j["busy"]) == 7
 
 
 def test_week_free_spans_match_what_request_accepts(client, app, school, student_hdr, monkeypatch):
