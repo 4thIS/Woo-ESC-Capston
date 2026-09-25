@@ -336,3 +336,32 @@ def test_record_provider_picks_first_24_by_date_start_not_id(app, students):
         )
     recs = record_provider(app.state.Session)("E", 101, "resv")
     assert [x.resv_id for x in recs] == list(range(26, 26 - NODE_RESV_MAX, -1))  # 26..3, 1·2 잘림
+
+
+def test_downgrade_drops_non_approved_reservations(tmp_path):
+    """#49 리뷰: status 컬럼을 지우면 옛 코드는 모든 행을 확정 예약으로 FILE 에 싣는다 —
+    downgrade 가 approved 가 아닌 행(requested·rejected·cancelled·expired)을 먼저 지운다."""
+    from sqlalchemy import text
+
+    from alembic import command
+    from tests.test_migrations import _cfg
+
+    db = tmp_path / "d.db"
+    _upgrade(db)
+    statuses = ("approved", "requested", "rejected", "cancelled", "expired")
+    with create_engine(f"sqlite:///{db}").begin() as c:
+        c.execute(text("INSERT INTO schools (id, name, net_id) VALUES (1,'a',75)"))
+        c.execute(text("INSERT INTO buildings (id, school_id, name, bld) VALUES (1,1,'x','E')"))
+        c.execute(text("INSERT INTO rooms (id, building_id, room, units) VALUES (1,1,101,1)"))
+        for i, st in enumerate(statuses, 1):
+            c.execute(
+                text(
+                    "INSERT INTO reservations (id, room_id, date, s_h, s_m, e_h, e_m, type,"
+                    " subject, professor, status) VALUES (:i,1,'2026-09-24',9,0,10,0,6,'x','',:st)"
+                ),
+                {"i": i, "st": st},
+            )
+    command.downgrade(_cfg(db), "1739aef3234e")  # web_student 직전
+    with create_engine(f"sqlite:///{db}").connect() as c:
+        ids = [x for (x,) in c.execute(text("SELECT id FROM reservations ORDER BY id"))]
+    assert ids == [1]

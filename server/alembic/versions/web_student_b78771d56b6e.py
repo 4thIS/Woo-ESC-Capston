@@ -78,6 +78,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     # ck_resv_id 는 이름 붙어 있어 reflection 이 재생성에 그대로 살려 낸다 — table_args 불필요.
     # ck_resv_status 는 status 컬럼을 참조하므로 그 컬럼을 지우기 전에 명시적으로 지운다.
+    # status 가 사라지면 옛 코드는 모든 행을 확정 예약으로 FILE 에 싣는다 — 비승인 행은 먼저 지운다 (#49).
+    op.execute("DELETE FROM reservations WHERE status != 'approved'")
     with op.batch_alter_table("reservations") as b:
         b.drop_constraint("fk_resv_requester", type_="foreignkey")
         b.drop_constraint("ck_resv_status", type_="check")
