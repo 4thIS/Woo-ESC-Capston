@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import threading
 from dataclasses import asdict
 
-from fastapi import APIRouter, BackgroundTasks, Body, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -16,7 +17,7 @@ from app.auth import scope
 from app.auth.deps import AdminUser
 from app.auth.models import User
 from app.deps import _DB
-from app.domain import csv_import
+from app.domain import admin, csv_import
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
 from app.domain.topology import RESV_HORIZON_DAYS
 from app.lora_service import api
@@ -53,6 +54,28 @@ def _check_building(s: Session, user: User, bld: str | None, modem_id: str | Non
 
 def _modem_of(s: Session, building_id: int) -> str | None:
     return s.get(Building, building_id).modem_id
+
+
+ID_MAX = 65535  # resvId/examId u16 (v2 §3). 테스트가 monkeypatch 로 낮춘다
+_ID_LOCK = threading.Lock()  # 채번~커밋을 직렬화 — 단일 워커(README)라 프로세스 락으로 충돌이 없다
+
+
+def _free_id(s: Session, model) -> int:
+    """1..ID_MAX 중 비어 있는 최소값 (S4b §2.5). 전역 PK 라 방과 무관."""
+    used = set(s.scalars(select(model.id)))
+    for i in range(1, ID_MAX + 1):
+        if i not in used:
+            return i
+    raise HTTPException(409, "id 소진 — 지난 예약·시험기간을 정리하세요")
+
+
+def _existing_same_room(s: Session, model, obj_id: int, room_id: int):
+    """id 지정 수정은 같은 방의 기존 행만 (S4a §3.3 🔴4a). 다른 방(=다른 학교 포함) 행이면 409.
+    없는 id 지정은 그 id 로 새로 만든다 — 기존 S2 호출·테스트 호환, 탈취 위험은 기존 행에만 있다."""
+    obj = s.get(model, obj_id)
+    if obj is not None and obj.room_id != room_id:
+        raise HTTPException(409, "id 가 다른 방의 것입니다 — 방을 옮기려면 삭제 후 다시 만드세요")
+    return obj
 
 
 # ---- schools / buildings / rooms ----
@@ -124,6 +147,53 @@ def delete_building(id: int, bg: BackgroundTasks, user: User = AdminUser, s: Ses
     if mid:
         bg.add_task(api.config_changed, mid)
     return {"ok": True}
+
+
+# ---- 건물 단위 조회 (S4b §2.6, 이슈 #36) — 쓰기는 /rooms/{id}/… 그대로 ----
+
+
+def _rooms_of(s: Session, building_id: int, user: User):
+    scope.get_scoped(s, Building, building_id, user.school_id)
+    return select(Room.id).where(Room.building_id == building_id)
+
+
+@router.get("/buildings/{id}/slots", response_model=list[S.SlotWithRoom])
+def building_slots(id: int, user: User = AdminUser, s: Session = _DB):
+    return s.scalars(
+        select(Slot)
+        .where(Slot.room_id.in_(_rooms_of(s, id, user)))
+        .order_by(Slot.room_id, Slot.day, Slot.s_h, Slot.s_m)
+    ).all()
+
+
+@router.get("/buildings/{id}/reservations", response_model=list[S.ResvWithRoom])
+def building_reservations(id: int, user: User = AdminUser, s: Session = _DB):
+    return s.scalars(
+        select(Reservation)
+        .where(Reservation.room_id.in_(_rooms_of(s, id, user)))
+        .order_by(Reservation.room_id, Reservation.date, Reservation.s_h, Reservation.s_m)
+    ).all()
+
+
+@router.get("/buildings/{id}/exams", response_model=list[S.ExamWithRoom])
+def building_exams(id: int, user: User = AdminUser, s: Session = _DB):
+    return s.scalars(
+        select(ExamPeriod)
+        .where(ExamPeriod.room_id.in_(_rooms_of(s, id, user)))
+        .order_by(ExamPeriod.room_id, ExamPeriod.date_start)
+    ).all()
+
+
+@router.get("/buildings/{id}/outbox", response_model=list[S.FailedOut])
+def building_outbox(
+    id: int,
+    state: str | None = None,
+    limit: int = Query(200, ge=1, le=500),
+    user: User = AdminUser,
+    s: Session = _DB,
+):
+    scope.get_scoped(s, Building, id, user.school_id)
+    return admin.building_outbox(s, id, user.school_id, state, limit)
 
 
 @router.get("/rooms", response_model=list[S.RoomOut])
@@ -245,21 +315,37 @@ def list_resv(id: int, user: User = AdminUser, s: Session = _DB):
 @router.post("/rooms/{id}/reservations", response_model=S.Enqueued)
 def put_resv(id: int, body: S.ResvIn, user: User = AdminUser, s: Session = _DB):
     bld, room, mid = _addr(s, id, user)
-    obj = s.get(Reservation, body.id)
-    if obj is not None and obj.room_id != id:
-        raise HTTPException(409, f"예약 id {body.id} 는 다른 방에 있습니다")
-    obj = obj or Reservation(id=body.id)
-    for k, v in body.model_dump().items():
+    with (
+        _ID_LOCK
+    ):  # 확인(채번·같은 방 검사) → insert → 커밋까지 한 덩어리 (다음 요청은 커밋된 행을 본다)
+        if body.id is not None:  # 없는 id 지정 생성도 동시 채번과 겹치지 않게 락 안 (r2 ⚪)
+            return _write_resv(
+                s,
+                id,
+                bld,
+                room,
+                mid,
+                body,
+                body.id,
+                _existing_same_room(s, Reservation, body.id, id),
+            )
+        return _write_resv(s, id, bld, room, mid, body, _free_id(s, Reservation), None)
+
+
+def _write_resv(
+    s, room_id, bld, room, mid, body: S.ResvIn, rid: int, obj: Reservation | None
+) -> dict:
+    obj = obj or Reservation(id=rid, room_id=room_id)
+    for k, v in body.model_dump(exclude={"id"}).items():
         setattr(obj, k, v)
-    obj.room_id = id
     s.add(obj)
-    today = dt.datetime.now(dt.UTC).date()  # app 전역 naive UTC 관행 (app.db.utcnow)
+    today = dt.datetime.now(dt.UTC).date()  # S10 T1 이 clock.local_today() 로 바꾼다
     ids = []
     if today <= body.date <= today + dt.timedelta(days=RESV_HORIZON_DAYS):
         ids = api.enqueue_resv_set(
             bld,
             room,
-            body.id,
+            rid,
             body.date,
             (body.s_h, body.s_m),
             (body.e_h, body.e_m),
@@ -269,7 +355,7 @@ def put_resv(id: int, body: S.ResvIn, user: User = AdminUser, s: Session = _DB):
             session=s,
         )
     _commit_notify(s, mid)
-    return {"outbox_ids": ids}
+    return {"outbox_ids": ids, "id": rid}
 
 
 @router.delete("/rooms/{id}/reservations/{resv_id}", response_model=S.Enqueued)
@@ -292,15 +378,30 @@ def list_exams(id: int, user: User = AdminUser, s: Session = _DB):
 @router.post("/rooms/{id}/exams", response_model=S.Enqueued)
 def put_exam(id: int, body: S.ExamIn, user: User = AdminUser, s: Session = _DB):
     bld, room, mid = _addr(s, id, user)
-    obj = s.get(ExamPeriod, body.id)
-    if obj is not None and obj.room_id != id:
-        raise HTTPException(409, f"시험기간 id {body.id} 는 다른 방에 있습니다")
-    obj = obj or ExamPeriod(id=body.id)
-    obj.room_id, obj.date_start, obj.date_end = id, body.date_start, body.date_end
+    with _ID_LOCK:
+        if body.id is not None:
+            return _write_exam(
+                s,
+                id,
+                bld,
+                room,
+                mid,
+                body,
+                body.id,
+                _existing_same_room(s, ExamPeriod, body.id, id),
+            )
+        return _write_exam(s, id, bld, room, mid, body, _free_id(s, ExamPeriod), None)
+
+
+def _write_exam(
+    s, room_id, bld, room, mid, body: S.ExamIn, eid: int, obj: ExamPeriod | None
+) -> dict:
+    obj = obj or ExamPeriod(id=eid, room_id=room_id)
+    obj.date_start, obj.date_end = body.date_start, body.date_end
     s.add(obj)
-    ids = api.enqueue_exam_set(bld, room, body.id, body.date_start, body.date_end, session=s)
+    ids = api.enqueue_exam_set(bld, room, eid, body.date_start, body.date_end, session=s)
     _commit_notify(s, mid)
-    return {"outbox_ids": ids}
+    return {"outbox_ids": ids, "id": eid}
 
 
 @router.delete("/rooms/{id}/exams/{exam_id}", response_model=S.Enqueued)

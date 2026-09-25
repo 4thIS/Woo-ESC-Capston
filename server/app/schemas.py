@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 from lora_proto import proto as P
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -116,22 +116,22 @@ class SlotOut(SlotIn, Out):
 
 
 class ResvIn(_Span):
-    id: int = Field(ge=1, le=65535)
+    id: int | None = Field(None, ge=1, le=65535)  # 없으면 서버 채번 (S4b §2.5)
     date: dt.date
 
 
 class ResvOut(ResvIn, Out):
-    pass
+    id: int
 
 
 class ExamIn(BaseModel):
-    id: int = Field(ge=1, le=65535)
+    id: int | None = Field(None, ge=1, le=65535)
     date_start: dt.date
     date_end: dt.date
 
 
 class ExamOut(ExamIn, Out):
-    pass
+    id: int
 
 
 class SyncIn(BaseModel):
@@ -145,6 +145,7 @@ class CmdIn(BaseModel):
 
 class Enqueued(BaseModel):
     outbox_ids: list[int]
+    id: int | None = None  # 예약·시험 채번 결과 (S4b §2.5)
 
 
 class ImportSkipped(BaseModel):
@@ -215,6 +216,25 @@ class OutboxOut(Out):
         return json.loads(v) if isinstance(v, str) else v
 
 
+class SlotWithRoom(SlotOut):
+    room_id: int
+
+
+class ResvWithRoom(ResvOut):
+    room_id: int
+
+
+class ExamWithRoom(ExamOut):
+    room_id: int
+
+
+class FailedOut(OutboxOut):
+    """outbox + 방 조인 (S4b §2.4). 건물 단위 outbox·실패 목록·요약 미리보기가 같이 쓴다."""
+
+    room_id: int
+    building: str
+
+
 class StatusOut(Out):
     bld: str
     room: int
@@ -237,6 +257,36 @@ class StatusOut(Out):
     last_ack_at: dt.datetime | None
     last_status_at: dt.datetime | None
     sync_state: str
+
+
+class NodeOut(BaseModel):
+    """기대 노드(rooms × units) × terminal_status (S4b §2.2). 보고 없는 노드는 상태 null + unseen."""
+
+    room_id: int
+    building_id: int
+    building: str
+    bld: str
+    room: int
+    unit: int
+    modem_id: str | None
+    mac: str | None
+    fw: int | None
+    batt_mv: int | None
+    rssi: int | None
+    snr: float | None
+    sched_ver: int | None
+    resv_ver: int | None
+    exam_ver: int | None
+    ident_ver: int | None
+    layout: int | None
+    clock_stale: bool
+    low_batt: bool
+    uptime_h: int | None
+    last_seen_at: dt.datetime | None
+    last_ack_at: dt.datetime | None
+    last_status_at: dt.datetime | None
+    sync_state: str
+    warnings: list[str]
 
 
 class PendingOut(Out):
@@ -325,3 +375,32 @@ class UserOut(Out):
     student_no: str | None
     created_at: dt.datetime
     approved_at: dt.datetime | None
+
+
+# ---- S4b §2.3 요약 ----
+
+
+class ModemBriefOut(BaseModel):
+    modem_id: str
+    last_seen_at: dt.datetime | None
+    buildings: list[str]
+
+
+class WarningBucket(BaseModel):
+    count: int
+    items: list[
+        Any
+    ]  # 버킷마다 모양이 다르다 (NodeOut / FailedOut / PendingOut / UserOut / ModemBriefOut)
+
+
+class SummaryTotals(BaseModel):
+    buildings: int
+    rooms: int
+    nodes: int
+    modems: int
+
+
+class SummaryOut(BaseModel):
+    as_of: dt.datetime
+    totals: SummaryTotals
+    warnings: dict[str, WarningBucket]
