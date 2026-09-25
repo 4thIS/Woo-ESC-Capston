@@ -110,8 +110,9 @@ const failedRes = computed(() => {
 })
 const loadingRes = computed(() => id.value !== null && !fresh.value && !failedRes.value)
 for (const r of [master, res])
-  watch(r.error, (e) => {
-    if (e && ![401, 403, 404].includes(e.status))
+  // 다시 불러오기도 실패하면 Toast 를 쌓지 않는다 — 처음 실패할 때 한 번 (MasterView 와 같다)
+  watch(r.error, (e, prev) => {
+    if (e && !prev && ![401, 403, 404].includes(e.status))
       showToast({
         tone: 'danger',
         message: e.message,
