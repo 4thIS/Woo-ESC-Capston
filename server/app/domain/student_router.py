@@ -212,6 +212,9 @@ def cancel_resv(id: int, user: User = StudentUser, s: Session = _DB):
 
 @router.post("/me/reservations/{id}/checkin", response_model=S.ResvMineOut)
 def checkin_resv(id: int, user: User = StudentUser, s: Session = _DB):
-    r = _my_resv(s, user, id)
-    reserve.checkin(s, r, clock.local_now())
-    return _mine_out(s, r)
+    with _ID_LOCK:  # 예약 쓰기 — 동시 취소와 엇갈려 cancelled 행에 checked_in_at 이 찍히지 않게
+        r = _my_resv(s, user, id)
+        reserve.checkin(s, r, clock.local_now())
+        out = _mine_out(s, r)
+        s.commit()
+    return out

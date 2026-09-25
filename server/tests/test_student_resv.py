@@ -204,7 +204,7 @@ def test_concurrent_requests_cannot_both_pass(
 
 
 def test_cancel_approved_sends_resv_del_and_checkin_window(
-    client, live, app, school, student_hdr, monkeypatch
+    client, live, app, school, student_hdr, other_student_hdr, monkeypatch
 ):
     seen = []
     monkeypatch.setattr(api, "notify", lambda mid: seen.append(mid))  # 커밋 뒤 호출되는지 (S2c)
@@ -235,9 +235,12 @@ def test_cancel_approved_sends_resv_del_and_checkin_window(
         id_=2,
         status="approved",
         requested_by="s1@mju.ac.kr",
-    )  # 시작 5분 전
+    )  # 10:25 시작 — 지금 10:30, 5분 지남(체크인 창 안)
     r = client.post(f"/api/student/me/reservations/{b}/checkin", headers=student_hdr)
     assert r.status_code == 200 and r.json()["checked_in_at"]
+    url = f"/api/student/me/reservations/{b}/checkin"
+    assert client.post(url, headers=other_student_hdr).status_code == 404  # 남의 예약
+    assert client.post(url, headers=student_hdr).status_code == 409  # 두 번째 체크인
     assert (
         client.post(f"/api/student/me/reservations/{a}/checkin", headers=student_hdr).status_code
         == 409
@@ -248,6 +251,8 @@ def test_cancel_approved_sends_resv_del_and_checkin_window(
     )  # 10:25 시작, 지금 10:30 → 이미 시작
     r = client.post(f"/api/student/me/reservations/{a}/cancel", headers=student_hdr)
     assert r.status_code == 200
+    url = f"/api/student/me/reservations/{a}/cancel"
+    assert client.post(url, headers=student_hdr).status_code == 409  # 이미 cancelled
     with live() as s:
         assert [o.type for o in s.scalars(select(Outbox))] == ["RESV_DEL", "RESV_DEL"]  # 유닛 2
     assert seen == [None]  # 테스트 건물엔 modem 없음 — 호출 자체는 됐다
