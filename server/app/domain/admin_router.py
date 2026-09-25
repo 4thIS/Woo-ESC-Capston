@@ -45,3 +45,12 @@ def failed(
     s: Session = _DB,
 ):
     return admin.failed_outbox(s, user.school_id, days, limit)
+
+
+@router.get("/summary", response_model=S.SummaryOut)
+def summary(
+    preview: int = Query(admin.PREVIEW_DEFAULT, ge=1, le=admin.PREVIEW_MAX),
+    user: User = AdminUser,
+    s: Session = _DB,
+):
+    return admin.summary(s, user.school_id, preview)

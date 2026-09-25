@@ -5,14 +5,15 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app import schemas as S
 from app.auth import scope
+from app.auth.models import User
 from app.db import utcnow
 from app.domain.models import Building, Room
-from app.lora_service.models import Outbox, TerminalStatus
+from app.lora_service.models import Modem, Outbox, PendingDevice, TerminalStatus
 
 
 def _outbox_rows(s: Session, q) -> list[dict]:
@@ -145,3 +146,72 @@ def failed_outbox(
     if limit is not None:
         q = q.limit(limit)
     return _outbox_rows(s, q)
+
+
+PREVIEW_DEFAULT = 5
+PREVIEW_MAX = 20
+_MIN = dt.datetime.min  # noqa: DTZ901 — 앱 전역이 naive UTC (app.db.utcnow)
+
+
+def _bucket(items: list, preview: int) -> dict:
+    return {"count": len(items), "items": items[:preview]}
+
+
+def summary(
+    s: Session, school_id: int, preview: int = PREVIEW_DEFAULT, now: dt.datetime | None = None
+) -> dict:
+    """S4b §2.3 — 경고 8종 카운트 + 미리보기, 총계. 요청마다 계산(캐시 없음)."""
+    now = now or utcnow()
+    nodes = expected_nodes(s, school_id, now=now)
+    by_seen = sorted(nodes, key=lambda n: n["last_seen_at"] or _MIN)  # 보고 없음(None) 먼저
+    modems = s.scalars(
+        select(Modem).where(Modem.school_id == school_id).order_by(Modem.modem_id)
+    ).all()
+    bnames: dict[str, list[str]] = {}
+    for m in modems:
+        bnames[m.modem_id] = list(
+            s.scalars(
+                select(Building.name).where(Building.modem_id == m.modem_id).order_by(Building.name)
+            )
+        )
+    offline = [
+        {"modem_id": m.modem_id, "last_seen_at": m.last_seen_at, "buildings": bnames[m.modem_id]}
+        for m in modems
+        if not m.connected
+    ]
+    failed = failed_outbox(s, school_id, FAILED_DAYS_DEFAULT, None, now)
+    mids = {m.modem_id for m in modems}
+    pending = [
+        S.PendingOut.model_validate(p).model_dump()
+        for p in s.scalars(select(PendingDevice).order_by(PendingDevice.first_seen_at))
+        if p.modem_id in mids
+    ]
+    approvals = [
+        S.UserOut.model_validate(u).model_dump()
+        for u in s.scalars(
+            select(User)
+            .where(User.school_id == school_id, User.status == "pending_approval")
+            .order_by(User.created_at)
+        )
+    ]
+    return {
+        "as_of": now,
+        "totals": {
+            "buildings": s.scalar(
+                select(func.count()).select_from(Building).where(Building.school_id == school_id)
+            ),
+            "rooms": len({n["room_id"] for n in nodes}),
+            "nodes": len(nodes),
+            "modems": len(modems),
+        },
+        "warnings": {
+            "modem_offline": _bucket(offline, preview),
+            **{
+                w: _bucket([n for n in by_seen if w in n["warnings"]], preview)
+                for w in WARNING_ORDER
+            },
+            "failed": _bucket(failed, preview),
+            "pending_devices": _bucket(pending, preview),
+            "pending_approval": _bucket(approvals, preview),
+        },
+    }

@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 from lora_proto import proto as P
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -375,3 +375,32 @@ class UserOut(Out):
     student_no: str | None
     created_at: dt.datetime
     approved_at: dt.datetime | None
+
+
+# ---- S4b §2.3 요약 ----
+
+
+class ModemBriefOut(BaseModel):
+    modem_id: str
+    last_seen_at: dt.datetime | None
+    buildings: list[str]
+
+
+class WarningBucket(BaseModel):
+    count: int
+    items: list[
+        Any
+    ]  # 버킷마다 모양이 다르다 (NodeOut / FailedOut / PendingOut / UserOut / ModemBriefOut)
+
+
+class SummaryTotals(BaseModel):
+    buildings: int
+    rooms: int
+    nodes: int
+    modems: int
+
+
+class SummaryOut(BaseModel):
+    as_of: dt.datetime
+    totals: SummaryTotals
+    warnings: dict[str, WarningBucket]
