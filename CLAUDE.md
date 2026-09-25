@@ -10,7 +10,7 @@
 - 장비 명칭: **메인Pi**(웹서버·DB 원본, 전체 1대) · **모뎀Pi**(학교 건물당 1대, Heltec 모뎀 USB 연결, 메인Pi에 WebSocket 접속) · **ESP노드**(강의실 문마다, Heltec V3 + e-Paper). 이 세 이름만 쓴다.
 - 스택: 노드·모뎀 펌웨어 = PlatformIO / C++ (ESP32-S3 + SX1262, RadioLib + GxEPD2) · 메인Pi 서버 = FastAPI / Python(uv) · 모뎀Pi 서비스 = Python asyncio(uv) · 웹 = Vue 3 / TypeScript(pnpm) · 프로토콜 계약 = `lora_proto/` (C++ 헤더 + Python 미러)
 - 호스팅: https://github.com/4thIS/Woo-ESC-Capston
-- 배포: 메인Pi·모뎀Pi 모두 Raspberry Pi(보유). 개발·데모는 노트북, 4주차 Pi↔Pi 통합부터 실기. 자동 배포 파이프라인은 S11 시점에 확정한다. 현재 CI는 검증까지만 수행한다.
+- 배포: 메인Pi·모뎀Pi 모두 Raspberry Pi(보유). 개발·데모는 노트북, 4주차 Pi↔Pi 통합부터 실기. **메인Pi 서버는 Docker Compose**(루트 `compose.yaml` + `server/Dockerfile`, 2026-09-23 팀 결정) — 노트북에서도 같은 명령(`docker compose up -d --build`)으로 똑같이 띄운다. **모뎀Pi 는 systemd**(USB 시리얼·시계 동기에 직접 붙어야 해서). 자동 배포 파이프라인은 S11 시점에 확정한다. 현재 CI는 검증까지만 수행한다.
 
 ## 역할 분담
 
@@ -42,6 +42,7 @@ Woo-ESC-Capston/
 ├── server/       ← 메인Pi: FastAPI 백엔드 + outbox·버전·WS 허브
 ├── modempi/      ← 모뎀Pi: WS 링크(wj) + LoRa 파이프라인(cw)
 ├── web/          ← Vue 3 학생/관리자 웹 (wj 전체)
+├── compose.yaml  ← 메인Pi 배포(Docker). 서버 이미지는 server/Dockerfile
 └── docs/         ← 사람·AI 공용 문서 (specs/·plans/·design/ 포함. design/ 은 mh의 디자인 스펙)
 ```
 
