@@ -243,7 +243,7 @@ def test_latency_bins_and_samples(app, school, monkeypatch):
     with app.state.Session() as s:
         d0, d1 = dt.date(2026, 8, 25), dt.date(2026, 9, 23)
         lat = A.latency(s, 1, d0, d1, "all")
-        assert lat["n"] == 8 and lat["max"] == 130 and lat["p50"] == 25 and lat["p95"] == 95
+        assert lat["n"] == 8 and lat["max"] == 130 and lat["p50"] == 25 and lat["p95"] == 130
         assert [b["count"] for b in lat["bins"]] == [2, 1, 1, 1, 1, 0, 1, 1]
         assert lat["bins"][-1] == {"ge": 120, "lt": None, "count": 1}
         assert lat["within_30s"] == round(4 / 8, 4) and lat["within_90s"] == round(6 / 8, 4)
@@ -251,6 +251,24 @@ def test_latency_bins_and_samples(app, school, monkeypatch):
         smp = A.latency_samples(s, 1, d0, d1, "all", 3)
         assert len(smp) == 3 and smp[0]["seconds"] in (5, 12, 25, 31, 50, 95, 130, 8)
         assert smp[0]["room"] == 101
+
+
+def test_latency_nearest_rank_and_boundary_agree_with_bins(app, school, monkeypatch):
+    """#49 리뷰: p95 는 nearest-rank(rank = ceil(p·n), 1-based). within_30s·within_90s 는 bin 과 같은
+    반열림 경계 [lo, hi) — 정확히 30 초는 bin [30,45) 이고 within_30s 에도 안 든다."""
+    _fix_clock(monkeypatch)
+    _building(app, 1, "E", rooms=((101, 1),))
+    day_ago = UTC_NOW - dt.timedelta(days=1)
+    samples = (10, 20, 29, 30, 30, 45, 60, 89, 90, 100)  # n=10
+    for secs in samples:
+        _acked(app, "E", 101, "SLOT_SET", day_ago, secs)
+    with app.state.Session() as s:
+        lat = A.latency(s, 1, dt.date(2026, 9, 1), dt.date(2026, 9, 23), "all")
+    # nearest-rank: p50 → rank 5 = 30, p95 → rank ceil(9.5)=10 = 100
+    assert lat["p50"] == 30 and lat["p95"] == 100
+    below = lambda hi: sum(b["count"] for b in lat["bins"] if b["lt"] is not None and b["lt"] <= hi)
+    assert below(30) == 3 and lat["within_30s"] == round(3 / 10, 4)
+    assert below(90) == 8 and lat["within_90s"] == round(8 / 10, 4)
 
 
 def test_latency_excludes_other_school_modem_on_bld_reuse(app, school, monkeypatch):
