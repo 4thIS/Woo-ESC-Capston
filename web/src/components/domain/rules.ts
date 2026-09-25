@@ -87,6 +87,8 @@ const CONFLICTS: [RegExp, string][] = [
   [/시작 시각이 지난/, '이미 시작 시각이 지난 신청입니다.'],
   [/다른 예약·수업이 생겼/, '그 시간에 다른 예약이나 수업이 생겨 승인할 수 없습니다.'],
   [/상태에서는 불가/, '이미 처리된 신청입니다.'],
+  [/다른 학교/, '이 bld 는 다른 학교가 쓰고 있습니다'],
+  [/constraint violation/, '같은 bld·호수가 이미 있습니다'],
 ]
 export function conflictMessage(e: ApiError): string {
   const t = detailText(e)

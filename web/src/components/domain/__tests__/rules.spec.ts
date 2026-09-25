@@ -69,7 +69,10 @@ describe('rules', () => {
       '그 시간에 다른 예약이나 수업이 생겨 승인할 수 없습니다.',
     )
     expect(conflictMessage(e409('approved 상태에서는 불가'))).toBe('이미 처리된 신청입니다.')
-    expect(conflictMessage(e409('constraint violation'))).toBe(MESSAGES[409])
+    expect(conflictMessage(e409("bld 'E' 는 다른 학교가 쓰고 있습니다 (공중 주소는 전역)"))).toBe(
+      '이 bld 는 다른 학교가 쓰고 있습니다',
+    )
+    expect(conflictMessage(e409('constraint violation'))).toBe('같은 bld·호수가 이미 있습니다')
     expect(conflictMessage(new ApiError(409, MESSAGES[409]))).toBe(MESSAGES[409])
   })
 })
