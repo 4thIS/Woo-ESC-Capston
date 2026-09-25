@@ -50,3 +50,27 @@ export function relativeKo(d: Date, now: Date = new Date()): string {
   const k = kst(d)
   return `${Number(k.mo)}월 ${Number(k.d)}일`
 }
+
+// ---- 달력 날짜 'YYYY-MM-DD' — 서버 date 필드(KST 달력)를 시간대 없이 센다 (F2) ----
+const DAY_MS = 86_400_000
+const asUtc = (d: string) => Date.parse(`${d}T00:00:00Z`)
+
+/** 'YYYY-MM-DD' + n일 — 달·해 경계를 넘는다 */
+export function addDays(d: string, n: number): string {
+  return new Date(asUtc(d) + n * DAY_MS).toISOString().slice(0, 10)
+}
+
+/** 요일 1=월 … 7=일 (SlotIn.day 와 같다) */
+export function dayOfDate(d: string): number {
+  return ((new Date(asUtc(d)).getUTCDay() + 6) % 7) + 1
+}
+
+/** 그 주의 월요일 */
+export const mondayOf = (d: string) => addDays(d, 1 - dayOfDate(d))
+
+/** 9, 5 → '09:05' */
+export const hm = (h: number, m: number) =>
+  `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+
+/** '2026-10-05' → '10/5' */
+export const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
