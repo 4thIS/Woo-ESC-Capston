@@ -30,14 +30,14 @@
     - `POST /api/student/me/reservations/{id}/cancel` — 신청 철회 또는 시작 전 취소.
     - `POST /api/student/me/reservations/{id}/checkin` — 체크인.
   - 관리자(자기 학교 스코프):
-    - `GET /api/admin/reservations?status=&building_id=&date_from=&date_to=` — 예약 목록(기본 `requested`).
+    - `GET /api/admin/reservations?status=&building_id=&date_from=&date_to=&limit=` — 예약 목록(기본 `requested`, `limit` 기본 500·최대 1000). 시작이 지난 신청은 승인할 수 없어 빠진다.
     - `POST /api/admin/reservations/{id}/{approve|reject|cancel}` — 승인·거절·취소.
     - `GET /api/admin/analytics/allocation?from=&to=&building_id=&group=` — 배정률(방/건물/요일별).
     - `GET /api/admin/analytics/free-slots?date=&building_id=` — 공강 슬롯.
-    - `GET /api/admin/analytics/reservations?from=&to=&group=` — 예약·No-show 통계.
+    - `GET /api/admin/analytics/reservations?from=&to=&group=` — 예약·No-show 통계. `requested` 는 받은 신청 전체(현재 상태 무관), 나머지는 현재 상태별 수.
     - `GET /api/admin/analytics/latency?from=&to=&type=` — 갱신 지연 히스토그램(`SLOT_SET`/`RESV_SET`/`all`).
     - `GET /api/admin/analytics/latency/samples?from=&to=&type=&limit=` — 지연 원본 샘플.
-  - 일일 작업(만료·승격·실패 재동기·정리)은 KST **04:00**에 자동 실행(`daily_loop`), 필요 시 수동 `POST /api/admin/jobs/daily`. 실행 기록은 `GET /api/admin/jobs?name=daily&limit=`.
+  - 일일 작업(만료·승격·실패 재동기·정리)은 KST **04:00**에 자동 실행(`daily_loop`), 필요 시 수동 `POST /api/admin/jobs/daily`. 실행 기록은 `GET /api/admin/jobs?name=daily&limit=`. 실패 재동기의 FILE 자체가 실패하면 다음 날 다시 나간다(매일 재시도 — 계속 실패하는 노드는 매일 깨움, 연속 실패 상한은 후속 검토). `errors` 에는 예외 클래스명만 남는다(자세한 내용은 서버 로그).
   - `.env` 변경 없음.
 - 테스트: `uv run pytest -q`
 

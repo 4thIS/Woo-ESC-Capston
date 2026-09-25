@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import math
 from collections import defaultdict
 from itertools import pairwise
 
@@ -256,8 +257,10 @@ def latency(s: Session, school_id: int, d_from: dt.date, d_to: dt.date, type_: s
         for lo, hi in pairwise(edges)
     ]
 
-    def pct(p: float) -> float | None:  # 하위 p 분위 = secs[int(p*(n-1))] (내림)
-        return secs[int(p * (n - 1))] if n else None
+    def pct(
+        p: float,
+    ) -> float | None:  # nearest-rank: rank = ceil(p·n) (1-based). round = 부동소수 오차
+        return secs[max(1, math.ceil(round(p * n, 9))) - 1] if n else None
 
     return {
         "n": n,
@@ -265,8 +268,9 @@ def latency(s: Session, school_id: int, d_from: dt.date, d_to: dt.date, type_: s
         "p50": pct(0.5),
         "p95": pct(0.95),
         "max": secs[-1] if n else None,
-        "within_30s": round(sum(1 for x in secs if x <= 30) / n, 4) if n else 0.0,
-        "within_90s": round(sum(1 for x in secs if x <= 90) / n, 4) if n else 0.0,
+        # bin 과 같은 반열림 [0, hi) — 정확히 30 초는 bin [30,45) 이자 within_30s 밖 (#49)
+        "within_30s": round(sum(1 for x in secs if x < 30) / n, 4) if n else 0.0,
+        "within_90s": round(sum(1 for x in secs if x < 90) / n, 4) if n else 0.0,
     }
 
 

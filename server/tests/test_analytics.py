@@ -243,7 +243,7 @@ def test_latency_bins_and_samples(app, school, monkeypatch):
     with app.state.Session() as s:
         d0, d1 = dt.date(2026, 8, 25), dt.date(2026, 9, 23)
         lat = A.latency(s, 1, d0, d1, "all")
-        assert lat["n"] == 8 and lat["max"] == 130 and lat["p50"] == 25 and lat["p95"] == 95
+        assert lat["n"] == 8 and lat["max"] == 130 and lat["p50"] == 25 and lat["p95"] == 130
         assert [b["count"] for b in lat["bins"]] == [2, 1, 1, 1, 1, 0, 1, 1]
         assert lat["bins"][-1] == {"ge": 120, "lt": None, "count": 1}
         assert lat["within_30s"] == round(4 / 8, 4) and lat["within_90s"] == round(6 / 8, 4)
@@ -251,6 +251,24 @@ def test_latency_bins_and_samples(app, school, monkeypatch):
         smp = A.latency_samples(s, 1, d0, d1, "all", 3)
         assert len(smp) == 3 and smp[0]["seconds"] in (5, 12, 25, 31, 50, 95, 130, 8)
         assert smp[0]["room"] == 101
+
+
+def test_latency_nearest_rank_and_boundary_agree_with_bins(app, school, monkeypatch):
+    """#49 리뷰: p95 는 nearest-rank(rank = ceil(p·n), 1-based). within_30s·within_90s 는 bin 과 같은
+    반열림 경계 [lo, hi) — 정확히 30 초는 bin [30,45) 이고 within_30s 에도 안 든다."""
+    _fix_clock(monkeypatch)
+    _building(app, 1, "E", rooms=((101, 1),))
+    day_ago = UTC_NOW - dt.timedelta(days=1)
+    samples = (10, 20, 29, 30, 30, 45, 60, 89, 90, 100)  # n=10
+    for secs in samples:
+        _acked(app, "E", 101, "SLOT_SET", day_ago, secs)
+    with app.state.Session() as s:
+        lat = A.latency(s, 1, dt.date(2026, 9, 1), dt.date(2026, 9, 23), "all")
+    # nearest-rank: p50 → rank 5 = 30, p95 → rank ceil(9.5)=10 = 100
+    assert lat["p50"] == 30 and lat["p95"] == 100
+    below = lambda hi: sum(b["count"] for b in lat["bins"] if b["lt"] is not None and b["lt"] <= hi)
+    assert below(30) == 3 and lat["within_30s"] == round(3 / 10, 4)
+    assert below(90) == 8 and lat["within_90s"] == round(8 / 10, 4)
 
 
 def test_latency_excludes_other_school_modem_on_bld_reuse(app, school, monkeypatch):
@@ -284,3 +302,42 @@ def test_parse_range_and_endpoints(client, app, school, student_hdr, monkeypatch
     assert client.get(f"{base}/latency").json()["n"] == 0
     assert client.get(f"{base}/latency/samples").json() == []
     assert client.get(f"{base}/allocation", headers=student_hdr).status_code == 403
+
+
+def test_extreme_dates_are_422_not_500(client, app, school, student_hdr, monkeypatch):
+    """#49 리뷰: 날짜 계산(±일·시간대)이 OverflowError(500) 가 되던 극단값 → 공용 범위 검사로 422."""
+    _fix_clock(monkeypatch)
+    _, ids = _building(app, 1, "E", rooms=((101, 1),))
+    st = "/api/student"
+    ad = "/api/admin"
+    bad_student = [
+        f"{st}/rooms/{ids[101]}/week?date=9999-12-31",
+        f"{st}/rooms/free?at=0001-01-01T00:00:00%2B14:00",
+        f"{st}/rooms/free?at=9999-12-31T23:59:00-14:00",
+    ]
+    bad_admin = [
+        f"{ad}/analytics/allocation?to=0001-01-01",
+        f"{ad}/analytics/latency?from=9999-12-30&to=9999-12-31",
+        f"{ad}/analytics/latency/samples?from=9999-12-30&to=9999-12-31",
+        f"{ad}/analytics/reservations?to=0001-01-01",
+        f"{ad}/analytics/free-slots?date=9999-12-31",
+        f"{ad}/reservations?date_from=0001-01-01",
+        f"{ad}/reservations?date_to=9999-12-31",
+    ]
+    for u in bad_student:
+        assert client.get(u, headers=student_hdr).status_code == 422, u
+    for u in bad_admin:
+        assert client.get(u).status_code == 422, u
+    ok_student = [
+        f"{st}/rooms/{ids[101]}/week?date=2026-09-23",
+        f"{st}/rooms/free?at=2026-09-23T01:30:00Z",
+    ]
+    for u in ok_student:
+        assert client.get(u, headers=student_hdr).status_code == 200, u
+    for u in (
+        f"{ad}/analytics/allocation?to=2026-09-23",
+        f"{ad}/analytics/latency?from=2026-09-01&to=2026-09-23",
+        f"{ad}/analytics/free-slots?date=2026-09-23",
+        f"{ad}/reservations?date_from=2026-09-01&date_to=2026-09-30",
+    ):
+        assert client.get(u).status_code == 200, u

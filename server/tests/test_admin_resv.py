@@ -241,3 +241,28 @@ def test_list_carries_pushed_at(client, app, school, students, monkeypatch):
     _resv(app, ids[101], dt.date(2026, 12, 1), 13, 0, 14, 0, id_=2)  # 창 밖 — 아직 안 보냄
     got = client.get("/api/admin/reservations?status=approved").json()
     assert [(x["id"], x["pushed_at"]) for x in got] == [(1, "2026-09-23T01:30:00"), (2, None)]
+
+
+def test_list_limit_and_hides_started_requests(client, app, school, students, monkeypatch):
+    """#49 리뷰: limit 없음 → ?limit (기본 500, 1..1000). 시작 지난 신청은 승인 불가(409)라 목록에서 뺀다
+    (summary.pending_reservations 와 같은 규칙). 다른 상태는 그대로."""
+    _fix_clock(monkeypatch)  # KST 9/23 10:30
+    _, ids = _building(app, 1, "E")
+    today, tmr = dt.date(2026, 9, 23), dt.date(2026, 9, 24)
+    req = {"status": "requested", "requested_by": "s1@mju.ac.kr", "requested_at": UTC_NOW}
+    _resv(app, ids[101], dt.date(2026, 9, 22), 13, 0, 14, 0, id_=1, **req)  # 어제
+    _resv(app, ids[101], today, 10, 30, 11, 0, id_=2, **req)  # 방금 시작(10:30) — 승인 불가
+    _resv(app, ids[101], today, 10, 35, 11, 0, id_=3, **req)  # 아직
+    _resv(app, ids[101], tmr, 9, 0, 10, 0, id_=4, **req)
+    _resv(app, ids[101], today, 9, 0, 10, 0, id_=5, status="approved")  # 지난 승인은 그대로
+    assert [x["id"] for x in client.get("/api/admin/reservations").json()] == [3, 4]
+    assert [
+        x["id"] for x in client.get("/api/admin/reservations?status=requested,approved").json()
+    ] == [5, 3, 4]
+    assert [x["id"] for x in client.get("/api/admin/reservations?limit=1").json()] == [3]
+    for bad in ("0", "1001"):
+        assert client.get(f"/api/admin/reservations?limit={bad}").status_code == 422
+    with app.state.Session() as s:
+        from app.domain import admin
+
+        assert [x["id"] for x in admin.pending_reservations(s, 1, clock.local_now())] == [3, 4]

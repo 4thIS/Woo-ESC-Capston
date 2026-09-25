@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as dt
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -31,8 +30,9 @@ def _scoped_resv(s: Session, user: User, id: int) -> Reservation:
 def list_reservations(
     status: str = "requested",
     building_id: int | None = None,
-    date_from: dt.date | None = None,
-    date_to: dt.date | None = None,
+    date_from: clock.QDate | None = None,
+    date_to: clock.QDate | None = None,
+    limit: int = Query(500, ge=1, le=1000),
     user: User = AdminUser,
     s: Session = _DB,
 ):
@@ -43,8 +43,11 @@ def list_reservations(
         .where(
             Building.school_id == user.school_id,
             Reservation.status.in_(reserve.parse_statuses(status)),
+            # 시작 지난 신청은 승인 불가(409) — summary 의 pending_reservations 와 같은 규칙 (#49)
+            (Reservation.status != "requested") | reserve.not_started(clock.local_now()),
         )
         .order_by(Reservation.date, Reservation.s_h, Reservation.s_m, Reservation.id)
+        .limit(limit)
     )
     if building_id is not None:
         q = q.where(Building.id == building_id)
@@ -114,8 +117,8 @@ _LatencyType = Literal["SLOT_SET", "RESV_SET", "all"]
 
 @router.get("/analytics/allocation", response_model=list[S.AllocationOut])
 def analytics_allocation(
-    from_: dt.date | None = _FROM,
-    to: dt.date | None = None,
+    from_: clock.QDate | None = _FROM,
+    to: clock.QDate | None = None,
     building_id: int | None = None,
     group: Literal["room", "building", "weekday"] = "room",
     user: User = AdminUser,
@@ -127,7 +130,7 @@ def analytics_allocation(
 
 @router.get("/analytics/free-slots", response_model=list[S.FreeSlotsOut])
 def analytics_free(
-    date: dt.date | None = None,
+    date: clock.QDate | None = None,
     building_id: int | None = None,
     user: User = AdminUser,
     s: Session = _DB,
@@ -137,8 +140,8 @@ def analytics_free(
 
 @router.get("/analytics/reservations", response_model=S.ResvStatsOut)
 def analytics_resv(
-    from_: dt.date | None = _FROM,
-    to: dt.date | None = None,
+    from_: clock.QDate | None = _FROM,
+    to: clock.QDate | None = None,
     group: Literal["day", "week"] = "day",
     user: User = AdminUser,
     s: Session = _DB,
@@ -149,8 +152,8 @@ def analytics_resv(
 
 @router.get("/analytics/latency", response_model=S.LatencyOut)
 def analytics_latency(
-    from_: dt.date | None = _FROM,
-    to: dt.date | None = None,
+    from_: clock.QDate | None = _FROM,
+    to: clock.QDate | None = None,
     type: _LatencyType = "all",
     user: User = AdminUser,
     s: Session = _DB,
@@ -161,8 +164,8 @@ def analytics_latency(
 
 @router.get("/analytics/latency/samples", response_model=list[S.LatencySampleOut])
 def analytics_samples(
-    from_: dt.date | None = _FROM,
-    to: dt.date | None = None,
+    from_: clock.QDate | None = _FROM,
+    to: clock.QDate | None = None,
     type: _LatencyType = "all",
     limit: int = Query(100, ge=1, le=1000),
     user: User = AdminUser,

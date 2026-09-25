@@ -1,6 +1,8 @@
 import datetime as dt
 
-from app.domain import clock, reserve
+from sqlalchemy import select
+
+from app.domain import clock, reserve, room_state
 from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
 
 UTC_NOW = dt.datetime(2026, 9, 23, 1, 30)  # noqa: DTZ001 — KST 9/23(수) 10:30
@@ -259,10 +261,11 @@ def test_week_date_upper_bound_is_422_not_500(client, app, school, student_hdr, 
     _fix_clock(monkeypatch)
     _, ids = _building(app, 1, "E")
     url = f"/api/student/rooms/{ids[101]}/week"
-    # 9999-12-27(월) 의 주 끝은 10000년 — 계산하면 OverflowError(500)
+    # 9999-12-27(월) 의 주 끝은 10000년 — 계산하면 OverflowError(500). 범위는 clock.DATE_MIN~MAX
     assert client.get(f"{url}?date=9999-12-27", headers=student_hdr).status_code == 422
-    j = client.get(f"{url}?date=9999-12-26", headers=student_hdr).json()
-    assert j["week_start"] == "9999-12-20" and len(j["busy"]) == 7
+    assert client.get(f"{url}?date=2100-01-01", headers=student_hdr).status_code == 422
+    j = client.get(f"{url}?date=2099-12-31", headers=student_hdr).json()
+    assert j["week_start"] == "2099-12-28" and len(j["busy"]) == 7
 
 
 def test_week_free_spans_match_what_request_accepts(client, app, school, student_hdr, monkeypatch):
@@ -355,3 +358,67 @@ def test_week_full_flag_empties_free(client, app, school, student_hdr, monkeypat
     j = client.get(f"/api/student/rooms/{ids[101]}/week", headers=student_hdr).json()
     assert j["full"] is True  # 화면은 '예약이 가득 찼어요' — '빈 시간 없음' 이 아니라
     assert len(j["free"]) == 8 and all(d["spans"] == [] for d in j["free"])
+
+
+def _count_sql(app):
+    from sqlalchemy import event
+
+    n = [0]
+    event.listen(app.state.engine, "before_cursor_execute", lambda *a: n.__setitem__(0, n[0] + 1))
+    return n
+
+
+def _mixed_rooms(app, n):
+    """방 n 개 — 수업·휴강·예약(승인·신청)·시험기간을 섞는다. 응답 스냅숏 비교용."""
+    bid, ids = _building(app, 1, "E", rooms=tuple((100 + i, 1) for i in range(n)))
+    d = dt.date(2026, 9, 23)  # 수
+    for i, rid in enumerate(ids.values()):
+        if i % 5 == 0:
+            _slot(app, rid, 3, 9, 0, 10, 50)
+        if i % 5 == 1:
+            _slot(app, rid, 3, 10, 0, 12, 0, type=3, subject="휴강")
+        if i % 5 == 2:
+            _resv(app, rid, d, 10, 0, 11, 0, id_=1000 + i)
+            _resv(app, rid, d, 10, 0, 11, 0, id_=2000 + i, status="requested")
+        if i % 5 == 3:
+            _slot(app, rid, 3, 10, 0, 11, 0)
+            _exam(app, rid, 3000 + i, d, d)
+        if i % 7 == 0:
+            _slot(app, rid, 3, 13, 0, 14, 0)
+    return bid, ids
+
+
+def test_student_rooms_and_free_are_constant_queries_and_unchanged(
+    client, app, school, student_hdr, monkeypatch
+):
+    """#49 리뷰: 방마다 쿼리 3개(N+1) → 방 수와 무관한 상수. 응답은 방별 state_of(옛 경로)와 같다."""
+    _fix_clock(monkeypatch)  # KST 수 10:30
+    _mixed_rooms(app, 30)
+    n = _count_sql(app)
+    urls = (
+        "/api/student/rooms",
+        "/api/student/rooms/free",
+        "/api/student/rooms/free?at=2026-09-23T13:10:00",
+    )
+    counts = {}
+    for u in urls:
+        n[0] = 0
+        r = client.get(u, headers=student_hdr)
+        assert r.status_code == 200
+        counts[u] = n[0]
+        # 스냅숏 = 방별 state_of (배치 전 구현이 쓰던 경로)
+        at = dt.datetime(2026, 9, 23, 13, 10) if "at=" in u else clock.local_now()  # noqa: DTZ001 — KST naive
+        with app.state.Session() as s:
+            want = []
+            for room in s.scalars(select(Room).order_by(Room.room)):
+                layout, until = room_state.state_of(s, room.id, at)
+                want.append((room.room, layout, room_state.fmt_hhmm(until)))
+        key = "free_until" if "free" in u else "until"
+        got = [(x["room"], x["layout"], x[key]) for x in r.json()]
+        assert got == ([w for w in want if w[1] == room_state.FREE] if "free" in u else want)
+    # 방 1개(building_id 로 좁힘)일 때와 쿼리 수가 같다
+    b2, _ = _building(app, 1, "Z", rooms=((1, 1),))
+    for u in ("/api/student/rooms", "/api/student/rooms/free"):
+        n[0] = 0
+        assert client.get(f"{u}?building_id={b2}", headers=student_hdr).status_code == 200
+        assert n[0] == counts[u], (u, n[0], counts[u])
