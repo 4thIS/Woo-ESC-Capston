@@ -6,7 +6,7 @@ import {
   type Page,
 } from '@playwright/test'
 import cfg from './env.json' with { type: 'json' }
-import { SIZES, WEB_URL, ensureModems, login, nextAdmin, shot } from './helpers'
+import { SIZES, WEB_URL, apiLogin, ensureModems, login, nextAdmin, shot } from './helpers'
 
 // 한 파일 = 컨텍스트 둘(우리 학교·다른 학교), 로그인 각 한 번 — 서버의 IP 당 분당 로그인 30회 상한.
 // 화면 이동은 사이드 메뉴 클릭으로 (page.goto 는 새로고침 = 메모리 세션 소실)
@@ -146,4 +146,43 @@ test('삭제 — 강의실이 있으면 건물 삭제 잠김(툴팁), 강의실 
   await expect(c).toHaveCount(0)
   await expect(panel.getByText('이 건물에 강의실이 없습니다')).toBeVisible()
   await expect(b.getByRole('button', { name: '삭제' })).toBeEnabled()
+})
+
+test('범위로 추가 — 이미 있는 호수는 점선·취소선, 눌러서 빼고, 라벨이 실제 개수를 말한다', async () => {
+  const panel = roomPanel()
+  await panel.getByRole('button', { name: '범위로 추가' }).first().click()
+  const d = page.getByRole('dialog', { name: '마스터관2 범위로 추가' })
+  await d.getByLabel('시작 호수').fill('101')
+  await d.getByLabel('끝 호수').fill('105')
+  await d.getByRole('button', { name: '5곳 만들기' }).click()
+  await expect(d).toHaveCount(0)
+  await expect(
+    page.getByText('5곳을 만들었습니다. 마스터관2 모뎀Pi 에 설정이 다시 내려갔습니다.'),
+  ).toBeVisible()
+  await panel.getByRole('button', { name: '범위로 추가' }).first().click()
+  await d.getByLabel('시작 호수').fill('101')
+  await d.getByLabel('끝 호수').fill('112')
+  await expect(d).toContainText('만들어질 방 12곳 중 7곳 · 이미 있는 5곳은 건너뛴다')
+  await expect(d.getByRole('button', { name: '103', exact: true })).toBeDisabled()
+  await d.getByRole('button', { name: '106', exact: true }).click()
+  await expect(d.getByRole('button', { name: '6곳 만들기' })).toBeVisible()
+  await shot(page, 'admin-master-range-1440')
+  await d.getByRole('button', { name: '6곳 만들기' }).click()
+  await expect(d).toHaveCount(0)
+  await expect(panel).toContainText('11곳 · 학생 웹에 보이는 곳 11')
+  await expect(panel.getByRole('row').filter({ hasText: '106' })).toHaveCount(0)
+  await shot(page, 'admin-master-1440')
+  // /api/admin/nodes 는 학교 전체를 본다 — 방을 지우지 않으면 뒤에 도는 monitor.spec.ts 의 노드 수가 어긋난다
+  const headers = { authorization: `Bearer ${await apiLogin(api, nextAdmin())}` }
+  const buildings = (await (await api.get('/api/buildings', { headers })).json()) as {
+    id: number
+    name: string
+  }[]
+  const bid = buildings.find((b) => b.name === '마스터관2')!.id
+  const created = (await (await api.get('/api/rooms', { headers })).json()) as {
+    id: number
+    building_id: number
+  }[]
+  for (const r of created.filter((r) => r.building_id === bid))
+    await api.delete(`/api/rooms/${r.id}`, { headers })
 })

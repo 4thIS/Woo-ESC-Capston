@@ -7,6 +7,7 @@ import { loraApi } from '@/api/lora'
 import { roomsApi } from '@/api/rooms'
 import { useResource } from '@/lib/useResource'
 import BuildingPanel from './master/BuildingPanel.vue'
+import RangeAddModal from './master/RangeAddModal.vue'
 import RoomPanel from './master/RoomPanel.vue'
 
 // 마스터 데이터는 관리자가 바꿀 때만 바뀐다 — 자동 새로고침 없음 (admin-master.md)
@@ -27,6 +28,7 @@ watch(data, (d) => {
 const selected = computed(
   () => data.value?.buildings.find((b) => b.id === selectedId.value) ?? null,
 )
+const ranging = ref(false)
 // reservable 기본값이 꺼짐 — 켜는 것을 잊으면 학생 웹이 빈 채로 남는다
 const noReservable = computed(
   () => !!data.value?.rooms.length && !data.value.rooms.some((r) => r.reservable),
@@ -67,8 +69,17 @@ watch(error, (e, prev) => {
         :nodes="data?.nodes ?? []"
         :loading="loading && !data"
         @changed="reload"
+        @range="ranging = true"
       />
     </div>
+    <RangeAddModal
+      v-if="selected"
+      :open="ranging"
+      :building="selected"
+      :rooms="data?.rooms ?? []"
+      @close="ranging = false"
+      @changed="reload"
+    />
   </main>
 </template>
 

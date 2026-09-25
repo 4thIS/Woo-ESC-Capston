@@ -155,6 +155,14 @@ describe('강의실 패널', () => {
     expect(w.text()).toContain('학생 예약을 받는 강의실이 없습니다. 학생 웹 목록이 비어 있습니다.')
   })
 
+  it('강의실이 0곳이면 빈 상태의 1차 액션이 범위로 추가다', async () => {
+    rooms.rooms.mockResolvedValue([])
+    await mountView()
+    expect(panel().text()).toContain('이 건물에 강의실이 없습니다')
+    await btn(panel(), '범위로 추가').trigger('click')
+    expect(dialog('공학관 범위로 추가')).toBeTruthy()
+  })
+
   it('한 곳 추가 — 호수 범위·중복은 저장 전에, 층 입력 칸은 없다', async () => {
     await mountView()
     await btn(panel(), '+ 강의실').trigger('click')

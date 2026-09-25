@@ -27,7 +27,7 @@ const props = defineProps<{
   nodes: NodeOut[]
   loading: boolean
 }>()
-const emit = defineEmits<{ changed: [] }>()
+const emit = defineEmits<{ changed: []; range: [] }>()
 
 const mine = computed(() =>
   props.rooms.filter((r) => r.building_id === props.building.id).sort((a, b) => a.room - b.room),
@@ -211,6 +211,8 @@ async function remove() {
       <span class="panel__count num">{{ mine.length }}곳 · 학생 웹에 보이는 곳 {{ visible }}</span>
       <span class="panel__note">층 = 호수 ÷ 100</span>
       <div class="panel__tools">
+        <!-- 방 30개를 하나씩 넣는 것은 실사용이 안 된다 — 범위가 정상 경로 -->
+        <Button variant="secondary" size="sm" @click="emit('range')">범위로 추가</Button>
         <Button size="sm" @click="openForm(null)">+ 강의실</Button>
       </div>
     </header>
@@ -223,7 +225,7 @@ async function remove() {
       <template #empty>
         <EmptyState
           message="이 건물에 강의실이 없습니다"
-          :actions="[{ label: '+ 강의실', variant: 'primary', onClick: () => openForm(null) }]"
+          :actions="[{ label: '범위로 추가', variant: 'primary', onClick: () => emit('range') }]"
         />
       </template>
       <template #cell-room="{ row }"
