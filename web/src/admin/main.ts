@@ -1,3 +1,4 @@
+import '@/styles/index.css'
 import { createApp } from 'vue'
 import AdminApp from './AdminApp.vue'
 import { makeRouter } from './router'
