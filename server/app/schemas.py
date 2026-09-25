@@ -417,6 +417,9 @@ class UserOut(Out):
     student_no: str | None
     created_at: dt.datetime
     approved_at: dt.datetime | None
+    # web A1 — 관리자 회원 목록의 거절 사유. 값은 status=rejected 행에만 있다: 재신청(verify)이 행을
+    # 교체하고 /api/auth/me 는 active 만 통과하므로 학생 본인 응답에서는 구조적으로 null
+    reject_reason: str | None = None
 
 
 # ---- S4b §2.3 요약 ----
