@@ -215,6 +215,25 @@ class OutboxOut(Out):
         return json.loads(v) if isinstance(v, str) else v
 
 
+class SlotWithRoom(SlotOut):
+    room_id: int
+
+
+class ResvWithRoom(ResvOut):
+    room_id: int
+
+
+class ExamWithRoom(ExamOut):
+    room_id: int
+
+
+class FailedOut(OutboxOut):
+    """outbox + 방 조인 (S4b §2.4). 건물 단위 outbox·실패 목록·요약 미리보기가 같이 쓴다."""
+
+    room_id: int
+    building: str
+
+
 class StatusOut(Out):
     bld: str
     room: int
