@@ -34,6 +34,11 @@ export function formatHm(d: Date): string {
 const KST_MS = 9 * 3600_000
 const kstDay = (d: Date) => Math.floor((d.getTime() + KST_MS) / 86_400_000)
 
+/** KST 달력 날짜 'YYYY-MM-DD' (+offsetDays). 분석 API 의 from·to 가 KST 날짜다 (S10 §4.3) */
+export function kstDateStr(d: Date, offsetDays = 0): string {
+  return new Date((kstDay(d) + offsetDays) * 86_400_000).toISOString().slice(0, 10)
+}
+
 export function relativeKo(d: Date, now: Date = new Date()): string {
   const sec = (now.getTime() - d.getTime()) / 1000
   if (sec < 60) return '방금'
