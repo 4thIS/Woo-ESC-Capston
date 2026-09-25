@@ -11,6 +11,7 @@ html {
   color: var(--text-1);
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
+  word-break: keep-all; /* 한국어를 낱말 가운데서 끊지 않는다 ("로그/인이") */
 }
 html[data-surface='student'] {
   background: var(--bg-student);

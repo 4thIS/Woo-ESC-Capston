@@ -56,7 +56,7 @@ async function send() {
       <p><strong>보냈어요</strong></p>
       <!-- "가입된 메일이면" 을 꼭 적는다 — 없으면 오타 낸 사람이 영원히 기다린다 (auth.md) -->
       <p class="auth-form__note">
-        가입된 메일이면 재설정 링크가 갑니다. 안 오면 60초 뒤 다시 보낼 수 있어요<span
+        가입된 메일이면 재설정 링크가 갑니다. 안 오면 60초 뒤 다시 보낼 수 있어요.<span
           v-if="resend.active.value"
           class="num"
         >
