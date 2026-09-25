@@ -17,7 +17,7 @@ from app.auth import scope
 from app.auth.deps import AdminUser
 from app.auth.models import User
 from app.deps import _DB
-from app.domain import admin, csv_import
+from app.domain import admin, clock, csv_import
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
 from app.domain.topology import RESV_HORIZON_DAYS
 from app.lora_service import api
@@ -75,6 +75,8 @@ def _existing_same_room(s: Session, model, obj_id: int, room_id: int):
     obj = s.get(model, obj_id)
     if obj is not None and obj.room_id != room_id:
         raise HTTPException(409, "id 가 다른 방의 것입니다 — 방을 옮기려면 삭제 후 다시 만드세요")
+    if obj is not None and getattr(obj, "status", "approved") != "approved":
+        raise HTTPException(409, "신청 상태 예약은 승인 절차로 처리하세요")
     return obj
 
 
@@ -340,7 +342,7 @@ def _write_resv(
     for k, v in body.model_dump(exclude={"id"}).items():
         setattr(obj, k, v)
     s.add(obj)
-    today = dt.datetime.now(dt.UTC).date()  # S10 T1 이 clock.local_today() 로 바꾼다
+    today = clock.local_today()
     ids = []
     if today <= body.date <= today + dt.timedelta(days=RESV_HORIZON_DAYS):
         ids = api.enqueue_resv_set(

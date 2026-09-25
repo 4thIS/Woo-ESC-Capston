@@ -9,10 +9,12 @@ from lora_proto import codec as C
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.domain import clock
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
 from app.lora_service.api import RoomInfo
 
 RESV_HORIZON_DAYS = 7  # v2 §12: 예약은 오늘~7일 이내만 노드로
+NODE_RESV_MAX = 24  # 노드 Resv resv[24] (v2 §5.1). T3 의 reserve.NODE_RESV_MAX 가 이 값을 import
 
 
 def _room_q(bld: str, room: int):
@@ -56,12 +58,8 @@ class DomainTopology:
             )
 
 
-def _utc_today() -> dt.date:
-    return dt.datetime.now(dt.UTC).date()
-
-
 def record_provider(
-    session_factory: sessionmaker, today: Callable[[], dt.date] = _utc_today
+    session_factory: sessionmaker, today: Callable[[], dt.date] = clock.local_today
 ) -> Callable[[str, int, str], list]:
     def _room_id(s: Session, bld: str, room: int) -> int | None:
         hit = s.execute(_room_q(bld, room)).first()
@@ -95,17 +93,19 @@ def record_provider(
                         x.e_h,
                         x.e_m,
                         x.type,
-                        x.subject,
+                        x.subject if x.requested_by is None else "학생 예약",
                         x.professor,
                     )
                     for x in s.scalars(
                         select(Reservation)
                         .where(
                             Reservation.room_id == rid,
+                            Reservation.status == "approved",
                             Reservation.date >= lo,
                             Reservation.date <= hi,
                         )
-                        .order_by(Reservation.date, Reservation.s_h)
+                        .order_by(Reservation.date, Reservation.s_h, Reservation.s_m)
+                        .limit(NODE_RESV_MAX)
                     )
                 ]
             if kind == "exam":

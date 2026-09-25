@@ -122,6 +122,7 @@ class ResvIn(_Span):
 
 class ResvOut(ResvIn, Out):
     id: int
+    status: str = "approved"
 
 
 class ExamIn(BaseModel):
