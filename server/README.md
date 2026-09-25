@@ -14,6 +14,12 @@
 - 모뎀Pi 등록: `POST /api/lora/modems {"modem_id": "mjc-eng"}` → 응답의 `token`을 모뎀Pi 설정에 넣는다(평문은 이때 한 번만 보인다).
 - 시간표 CSV: `POST /api/import/slots` 본문에 CSV 텍스트(`text/csv`, UTF-8). 규격·출처 규칙은 `../docs/specs/2026-09-16-s2b-csv-import-design.md` §2. `?dry_run=true`로 미리보기.
 - 시각 필드(`*_at`)는 모두 UTC이며 `Z` 접미사 없이 저장·응답된다.
+- 관리자 API(경고·요약·건물 단위 조회): 설계는 `../docs/specs/2026-09-23-s4b-admin-api-design.md`.
+  - `GET /api/admin/summary?preview=` — 경고 8종 카운트+미리보기(기본 5, 최대 20), 총계.
+  - `GET /api/admin/nodes?only=&building_id=` — 기대 노드(학교 rooms × units) × 상태, `only`로 경고 필터.
+  - `GET /api/admin/outbox/failed?days=&limit=` — 최근 실패 outbox(기본 7일, 관리자 취소 제외).
+  - `GET /api/buildings/{id}/{slots|reservations|exams|outbox}` — 건물 단위 시간표·예약·시험기간·outbox 목록.
+  - 예약·시험기간 등록 POST는 `id` 생략 시 서버가 채번하고 응답 `Enqueued.id`로 알려준다(지정 시 같은 방의 기존 id만 수정).
 - 테스트: `uv run pytest -q`
 
 ## env

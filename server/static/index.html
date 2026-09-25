@@ -36,6 +36,9 @@
 <h2>outbox (2 s 갱신)</h2>
 <table id="outbox" border="1"><tr><th>id</th><th>modem</th><th>addr</th><th>type</th><th>ver</th><th>state</th><th>attempts</th><th>ack</th><th>created</th><th>finished</th></tr></table>
 
+<h2>관리자 요약</h2>
+<pre id="summary"></pre>
+
 <script>
 const num = v => Number(v);
 let TOKEN = null;
@@ -57,6 +60,8 @@ async function refresh() {
   const rows = await (await fetch('/api/lora/outbox?limit=50', {headers: auth()})).json();
   document.querySelector('#outbox').innerHTML = '<tr><th>id</th><th>modem</th><th>addr</th><th>type</th><th>ver</th><th>state</th><th>attempts</th><th>ack</th><th>created</th><th>finished</th></tr>' +
     rows.reverse().map(r => `<tr><td>${r.id}</td><td>${r.modem_id ?? ''}</td><td>${r.bld}${r.room}-${r.unit}</td><td>${r.type}</td><td>${r.new_ver ?? ''}</td><td>${r.state}</td><td>${r.attempts}</td><td>${r.ack_status ?? ''}${r.last_error ? ' ' + r.last_error : ''}</td><td>${r.created_at}</td><td>${r.finished_at ?? ''}</td></tr>`).join('');
+  const summary = await (await fetch('/api/admin/summary?preview=3', {headers: auth()})).json();
+  document.querySelector('#summary').textContent = JSON.stringify(summary, null, 1);
 }
 document.querySelector('#slot').onsubmit = async e => {
   e.preventDefault();
