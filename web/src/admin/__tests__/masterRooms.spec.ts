@@ -250,6 +250,22 @@ describe('강의실 패널', () => {
     expect(rooms.patchRoom).toHaveBeenCalledWith(11, { units: 2 })
   })
 
+  it('삭제가 도는 동안 — Esc·바탕·취소로 닫히지 않는다(지운 것을 취소한 줄 알지 않게)', async () => {
+    rooms.buildingSlots.mockResolvedValue([])
+    rooms.buildingResv.mockResolvedValue([])
+    rooms.buildingExams.mockResolvedValue([])
+    rooms.deleteRoom.mockReturnValue(new Promise(() => {}))
+    await mountView()
+    await btn(row(401), '삭제').trigger('click')
+    await flushPromises()
+    const c = () => dialog('강의실 삭제')!
+    await btn(c(), '삭제').trigger('click')
+    expect(btn(c(), '취소').attributes('disabled')).toBeDefined()
+    await c().trigger('keydown', { key: 'Escape' })
+    for (const b of w.findAll('.modal__backdrop')) await b.trigger('mousedown')
+    expect(dialog('강의실 삭제')).toBeTruthy()
+  })
+
   it('삭제 — 함께 지워질 개수와 단말을 적는다 (이름 입력은 요구하지 않는다)', async () => {
     rooms.buildingSlots.mockResolvedValue([{ room_id: 11 }, { room_id: 11 }] as SlotWithRoom[])
     rooms.buildingResv.mockResolvedValue([
