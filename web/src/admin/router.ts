@@ -8,6 +8,7 @@ export const routes: RouteRecordRaw[] = [
     meta: { auth: true },
     children: [
       { path: '', redirect: '/users' },
+      { path: 'nodes', component: () => import('./views/NodesView.vue') },
       { path: 'users', component: () => import('./views/UsersView.vue') },
     ],
   },
