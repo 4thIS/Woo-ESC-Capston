@@ -23,6 +23,31 @@
 - 모뎀Pi 등록: `POST /api/lora/modems {"modem_id": "mjc-eng"}` → 응답의 `token`을 모뎀Pi 설정에 넣는다(평문은 이때 한 번만 보인다).
 - 시간표 CSV: `POST /api/import/slots` 본문에 CSV 텍스트(`text/csv`, UTF-8). 규격·출처 규칙은 `../docs/specs/2026-09-16-s2b-csv-import-design.md` §2. `?dry_run=true`로 미리보기.
 - 시각 필드(`*_at`)는 모두 UTC이며 `Z` 접미사 없이 저장·응답된다.
+- 관리자 API(경고·요약·건물 단위 조회): 설계는 `../docs/specs/2026-09-23-s4b-admin-api-design.md`.
+  - `GET /api/admin/summary?preview=` — 경고 8종 카운트+미리보기(기본 5, 최대 20), 총계.
+  - `GET /api/admin/nodes?only=&building_id=` — 기대 노드(학교 rooms × units) × 상태, `only`로 경고 필터.
+  - `GET /api/admin/outbox/failed?days=&limit=` — 최근 실패 outbox(기본 7일, 관리자 취소 제외).
+  - `GET /api/buildings/{id}/{slots|reservations|exams|outbox}` — 건물 단위 시간표·예약·시험기간·outbox 목록.
+  - 예약·시험기간 등록 POST는 `id` 생략 시 서버가 채번하고 응답 `Enqueued.id`로 알려준다(지정 시 같은 방의 기존 id만 수정).
+- 학생·관리자 예약·일일 작업·분석 API: 설계는 `../docs/specs/2026-09-23-s10-student-analytics-design.md`.
+  - 학생(로그인 필요, 자기 학교의 reservable 방만):
+    - `GET /api/student/rooms/free?at=&building_id=` — 지금(또는 `at`) 비어 있는 방 목록.
+    - `GET /api/student/rooms?building_id=` — 전체 방 현재 상태.
+    - `GET /api/student/rooms/{id}/week?date=` — 그 방 주간 시간표·예약·시험기간.
+    - `POST /api/student/rooms/{id}/reservations` — 예약 신청(하루 10회 초과 시 429).
+    - `GET /api/student/me/reservations?status=` — 내 예약 목록(기본 `requested,approved`).
+    - `POST /api/student/me/reservations/{id}/cancel` — 신청 철회 또는 시작 전 취소.
+    - `POST /api/student/me/reservations/{id}/checkin` — 체크인.
+  - 관리자(자기 학교 스코프):
+    - `GET /api/admin/reservations?status=&building_id=&date_from=&date_to=&limit=` — 예약 목록(기본 `requested`, `limit` 기본 500·최대 1000). 시작이 지난 신청은 승인할 수 없어 빠진다.
+    - `POST /api/admin/reservations/{id}/{approve|reject|cancel}` — 승인·거절·취소.
+    - `GET /api/admin/analytics/allocation?from=&to=&building_id=&group=` — 배정률(방/건물/요일별).
+    - `GET /api/admin/analytics/free-slots?date=&building_id=` — 공강 슬롯.
+    - `GET /api/admin/analytics/reservations?from=&to=&group=` — 예약·No-show 통계. `requested` 는 받은 신청 전체(현재 상태 무관), 나머지는 현재 상태별 수.
+    - `GET /api/admin/analytics/latency?from=&to=&type=` — 갱신 지연 히스토그램(`SLOT_SET`/`RESV_SET`/`all`).
+    - `GET /api/admin/analytics/latency/samples?from=&to=&type=&limit=` — 지연 원본 샘플.
+  - 일일 작업(만료·승격·실패 재동기·정리)은 KST **04:00**에 자동 실행(`daily_loop`), 필요 시 수동 `POST /api/admin/jobs/daily`. 실행 기록은 `GET /api/admin/jobs?name=daily&limit=`. 실패 재동기의 FILE 자체가 실패하면 다음 날 다시 나간다(매일 재시도 — 계속 실패하는 노드는 매일 깨움, 연속 실패 상한은 후속 검토). `errors` 에는 예외 클래스명만 남는다(자세한 내용은 서버 로그).
+  - `.env` 변경 없음.
 - 테스트: `uv run pytest -q`
 
 ## env

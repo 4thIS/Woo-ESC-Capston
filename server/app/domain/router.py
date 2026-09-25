@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import datetime as dt
 import logging
+import threading
 from dataclasses import asdict
+from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Body, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -16,18 +17,24 @@ from app.auth import scope
 from app.auth.deps import AdminUser
 from app.auth.models import User
 from app.deps import _DB
-from app.domain import csv_import
+from app.domain import admin, clock, csv_import, reserve
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
-from app.domain.topology import RESV_HORIZON_DAYS
 from app.lora_service import api
 
 router = APIRouter(prefix="/api", dependencies=[AdminUser])  # 전부 관리자 전용 (S4a §3.3)
 log = logging.getLogger(__name__)
 
 
-def _addr(s: Session, room_id: int, user: User) -> tuple[str, int]:
+def _addr(s: Session, room_id: int, user: User) -> tuple[str, int, str | None]:
     r = scope.get_scoped(s, Room, room_id, user.school_id)
-    return s.get(Building, r.building_id).bld, r.room
+    b = s.get(Building, r.building_id)
+    return b.bld, r.room, b.modem_id
+
+
+def _commit_notify(s: Session, modem_id: str | None) -> None:
+    """커밋을 먼저 끝내고 허브를 깨운다 — 허브가 새 outbox 행을 바로 본다 (#9)."""
+    s.commit()
+    api.notify(modem_id)
 
 
 def _check_building(s: Session, user: User, bld: str | None, modem_id: str | None) -> None:
@@ -46,6 +53,30 @@ def _check_building(s: Session, user: User, bld: str | None, modem_id: str | Non
 
 def _modem_of(s: Session, building_id: int) -> str | None:
     return s.get(Building, building_id).modem_id
+
+
+ID_MAX = 65535  # resvId/examId u16 (v2 §3). 테스트가 monkeypatch 로 낮춘다
+_ID_LOCK = threading.Lock()  # 채번~커밋을 직렬화 — 단일 워커(README)라 프로세스 락으로 충돌이 없다
+
+
+def _free_id(s: Session, model) -> int:
+    """1..ID_MAX 중 비어 있는 최소값 (S4b §2.5). 전역 PK 라 방과 무관."""
+    used = set(s.scalars(select(model.id)))
+    for i in range(1, ID_MAX + 1):
+        if i not in used:
+            return i
+    raise HTTPException(409, "id 소진 — 지난 예약·시험기간을 정리하세요")
+
+
+def _existing_same_room(s: Session, model, obj_id: int, room_id: int):
+    """id 지정 수정은 같은 방의 기존 행만 (S4a §3.3 🔴4a). 다른 방(=다른 학교 포함) 행이면 409.
+    없는 id 지정은 그 id 로 새로 만든다 — 기존 S2 호출·테스트 호환, 탈취 위험은 기존 행에만 있다."""
+    obj = s.get(model, obj_id)
+    if obj is not None and obj.room_id != room_id:
+        raise HTTPException(409, "id 가 다른 방의 것입니다 — 방을 옮기려면 삭제 후 다시 만드세요")
+    if obj is not None and getattr(obj, "status", "approved") != "approved":
+        raise HTTPException(409, "신청 상태 예약은 승인 절차로 처리하세요")
+    return obj
 
 
 # ---- schools / buildings / rooms ----
@@ -97,8 +128,8 @@ def update_building(
     rooms = list(s.scalars(select(Room.room).where(Room.building_id == obj.id)))
     for k, v in data.items():
         setattr(obj, k, v)
-    # FastAPI 는 background task 를 이 의존성의 teardown(커밋) *전에* 실행한다 — 그래서 여기서 직접
-    # commit 해 둔다. teardown 의 with s.begin() 은 이후 남은 트랜잭션이 없으면 조용히 끝난다.
+    # reassign_queued 가 도메인 쓰기 락과 경합하지 않게 여기서 직접 commit 해 둔다.
+    # teardown 의 with s.begin() 은 이후 남은 트랜잭션이 없으면 조용히 끝난다.
     s.commit()
     if obj.modem_id != before:
         # 커밋 뒤에 부른다 — outbox 재지정 트랜잭션이 방금 끝난 도메인 쓰기 락과 경합하지 않도록.
@@ -117,6 +148,54 @@ def delete_building(id: int, bg: BackgroundTasks, user: User = AdminUser, s: Ses
     if mid:
         bg.add_task(api.config_changed, mid)
     return {"ok": True}
+
+
+# ---- 건물 단위 조회 (S4b §2.6, 이슈 #36) — 쓰기는 /rooms/{id}/… 그대로 ----
+
+
+def _rooms_of(s: Session, building_id: int, user: User):
+    scope.get_scoped(s, Building, building_id, user.school_id)
+    return select(Room.id).where(Room.building_id == building_id)
+
+
+@router.get("/buildings/{id}/slots", response_model=list[S.SlotWithRoom])
+def building_slots(id: int, user: User = AdminUser, s: Session = _DB):
+    return s.scalars(
+        select(Slot)
+        .where(Slot.room_id.in_(_rooms_of(s, id, user)))
+        .order_by(Slot.room_id, Slot.day, Slot.s_h, Slot.s_m)
+    ).all()
+
+
+@router.get("/buildings/{id}/reservations", response_model=list[S.ResvWithRoom])
+def building_reservations(id: int, user: User = AdminUser, s: Session = _DB):
+    return admin.resv_with_room_rows(
+        s,
+        select(Reservation)
+        .where(Reservation.room_id.in_(_rooms_of(s, id, user)))
+        .order_by(Reservation.room_id, Reservation.date, Reservation.s_h, Reservation.s_m),
+    )
+
+
+@router.get("/buildings/{id}/exams", response_model=list[S.ExamWithRoom])
+def building_exams(id: int, user: User = AdminUser, s: Session = _DB):
+    return s.scalars(
+        select(ExamPeriod)
+        .where(ExamPeriod.room_id.in_(_rooms_of(s, id, user)))
+        .order_by(ExamPeriod.room_id, ExamPeriod.date_start)
+    ).all()
+
+
+@router.get("/buildings/{id}/outbox", response_model=list[S.FailedOut])
+def building_outbox(
+    id: int,
+    state: Literal["queued", "dispatched", "acked", "failed", "cancelled"] | None = None,
+    limit: int = Query(200, ge=1, le=500),
+    user: User = AdminUser,
+    s: Session = _DB,
+):
+    scope.get_scoped(s, Building, id, user.school_id)
+    return admin.building_outbox(s, id, user.school_id, state, limit)
 
 
 @router.get("/rooms", response_model=list[S.RoomOut])
@@ -176,14 +255,10 @@ def list_slots(id: int, user: User = AdminUser, s: Session = _DB):
     ).all()
 
 
-# 참고: 도메인·outbox 두 세션. 한 트랜잭션으로 묶으려면 api.enqueue_* 에 Session 을 넘기는 시그니처 추가.
-# enqueue_* 를 도메인 write(flush/execute) 보다 먼저 부른다 — SQLite WAL 은 쓰기 락이 하나뿐이라, 도메인
-# 세션이 먼저 쓰고 커밋 전에 outbox 세션이 쓰려 하면 서로 끝나기를 기다리며 busy_timeout 까지 막힌다
-# (도메인 커밋은 이 요청이 끝난 뒤라 절대 안 풀린다). outbox 를 먼저 커밋시키고 도메인은 뒤따르게 한다.
-# 이 순서라 enqueue 뒤 도메인 write 가 실패하면(예: IntegrityError → 500) outbox 행은 이미 커밋된 채 남는다.
+# 버전·outbox·도메인 write 는 같은 세션(#9). 핸들러가 커밋한 뒤 허브에 알린다.
 @router.put("/rooms/{id}/slots", response_model=S.Enqueued)
 def put_slot(id: int, body: S.SlotIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
+    bld, room, mid = _addr(s, id, user)
     obj = s.scalar(
         select(Slot).where(
             Slot.room_id == id, Slot.day == body.day, Slot.s_h == body.s_h, Slot.s_m == body.s_m
@@ -205,71 +280,94 @@ def put_slot(id: int, body: S.SlotIn, user: User = AdminUser, s: Session = _DB):
         body.type,
         body.subject,
         body.professor,
+        session=s,
     )
-    s.flush()
+    _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
 @router.delete("/rooms/{id}/slots/{day}/{s_h}/{s_m}", response_model=S.Enqueued)
 def delete_slot(id: int, day: int, s_h: int, s_m: int, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    ids = api.enqueue_slot_del(bld, room, day, (s_h, s_m))
+    bld, room, mid = _addr(s, id, user)
     s.execute(
         delete(Slot).where(Slot.room_id == id, Slot.day == day, Slot.s_h == s_h, Slot.s_m == s_m)
     )
+    ids = api.enqueue_slot_del(bld, room, day, (s_h, s_m), session=s)
+    _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
 @router.delete("/rooms/{id}/slots", response_model=S.Enqueued)
 def clear_day(id: int, day: int, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    ids = api.enqueue_day_clear(bld, room, day)
+    bld, room, mid = _addr(s, id, user)
     s.execute(delete(Slot).where(Slot.room_id == id, Slot.day == day))
+    ids = api.enqueue_day_clear(bld, room, day, session=s)
+    _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
-@router.get("/rooms/{id}/reservations", response_model=list[S.ResvOut])
+@router.get("/rooms/{id}/reservations", response_model=list[S.ResvWithRoom])
 def list_resv(id: int, user: User = AdminUser, s: Session = _DB):
     scope.get_scoped(s, Room, id, user.school_id)
-    return s.scalars(
-        select(Reservation).where(Reservation.room_id == id).order_by(Reservation.date)
-    ).all()
+    return admin.resv_with_room_rows(
+        s,
+        select(Reservation)
+        .where(Reservation.room_id == id)
+        .order_by(Reservation.date, Reservation.s_h, Reservation.s_m),
+    )
 
 
 @router.post("/rooms/{id}/reservations", response_model=S.Enqueued)
 def put_resv(id: int, body: S.ResvIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    obj = s.get(Reservation, body.id)
-    if obj is not None and obj.room_id != id:
-        raise HTTPException(409, f"예약 id {body.id} 는 다른 방에 있습니다")
-    obj = obj or Reservation(id=body.id)
-    for k, v in body.model_dump().items():
+    bld, room, mid = _addr(s, id, user)
+    with (
+        _ID_LOCK
+    ):  # 확인(채번·같은 방 검사) → insert → 커밋까지 한 덩어리 (다음 요청은 커밋된 행을 본다)
+        if body.id is not None:  # 없는 id 지정 생성도 동시 채번과 겹치지 않게 락 안 (r2 ⚪)
+            return _write_resv(
+                s,
+                id,
+                bld,
+                room,
+                mid,
+                body,
+                body.id,
+                _existing_same_room(s, Reservation, body.id, id),
+            )
+        return _write_resv(s, id, bld, room, mid, body, _free_id(s, Reservation), None)
+
+
+def _write_resv(
+    s, room_id, bld, room, mid, body: S.ResvIn, rid: int, obj: Reservation | None
+) -> dict:
+    obj = obj or Reservation(id=rid, room_id=room_id)
+    old_end = (obj.date, obj.e_h, obj.e_m)  # 노드가 가진 옛 항목의 끝 (새 행이면 None 들)
+    for k, v in body.model_dump(exclude={"id"}).items():
         setattr(obj, k, v)
-    obj.room_id = id
     s.add(obj)
-    today = dt.datetime.now(dt.UTC).date()  # app 전역 naive UTC 관행 (app.db.utcnow)
-    ids = []
-    if today <= body.date <= today + dt.timedelta(days=RESV_HORIZON_DAYS):
-        ids = api.enqueue_resv_set(
-            bld,
-            room,
-            body.id,
-            body.date,
-            (body.s_h, body.s_m),
-            (body.e_h, body.e_m),
-            body.type,
-            body.subject,
-            body.professor,
-        )
-    s.flush()
-    return {"outbox_ids": ids}
+    now = clock.local_now()
+    today = now.date()
+    if reserve.in_window(body.date, today):
+        if reserve.room_full(s, room_id, today, exclude_id=rid):
+            raise HTTPException(409, "이 강의실은 이번 주 예약이 가득 찼습니다(노드 용량 24)")
+        ids = reserve.push_set(s, obj)
+    else:  # 창 밖으로 옮겼으면 노드의 옛 날짜 항목을 지운다 (r3, 리뷰 🔴1c)
+        ids = reserve.push_del(s, obj, now, end=old_end if old_end[0] else None)
+    _commit_notify(s, mid)
+    return {"outbox_ids": ids, "id": rid}
 
 
 @router.delete("/rooms/{id}/reservations/{resv_id}", response_model=S.Enqueued)
 def delete_resv(id: int, resv_id: int, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    ids = api.enqueue_resv_del(bld, room, resv_id)
-    s.execute(delete(Reservation).where(Reservation.id == resv_id, Reservation.room_id == id))
+    *_, mid = _addr(s, id, user)
+    with _ID_LOCK:  # 예약 쓰기는 읽기~커밋 전부 같은 락 — 동시 승인·승격과 엇갈리지 않게
+        r = s.get(Reservation, resv_id)
+        if r is None or r.room_id != id:  # 멱등 — 없는 id 에 RESV_DEL 을 보내지 않는다
+            return {"outbox_ids": []}
+        # 노드로 보낸 적 있는 것만 (r2: 신청·창 밖 예약엔 DEL 없음)
+        ids = reserve.push_del(s, r, clock.local_now())
+        s.delete(r)
+        _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
@@ -283,36 +381,55 @@ def list_exams(id: int, user: User = AdminUser, s: Session = _DB):
 
 @router.post("/rooms/{id}/exams", response_model=S.Enqueued)
 def put_exam(id: int, body: S.ExamIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    obj = s.get(ExamPeriod, body.id)
-    if obj is not None and obj.room_id != id:
-        raise HTTPException(409, f"시험기간 id {body.id} 는 다른 방에 있습니다")
-    obj = obj or ExamPeriod(id=body.id)
-    obj.room_id, obj.date_start, obj.date_end = id, body.date_start, body.date_end
+    bld, room, mid = _addr(s, id, user)
+    with _ID_LOCK:
+        if body.id is not None:
+            return _write_exam(
+                s,
+                id,
+                bld,
+                room,
+                mid,
+                body,
+                body.id,
+                _existing_same_room(s, ExamPeriod, body.id, id),
+            )
+        return _write_exam(s, id, bld, room, mid, body, _free_id(s, ExamPeriod), None)
+
+
+def _write_exam(
+    s, room_id, bld, room, mid, body: S.ExamIn, eid: int, obj: ExamPeriod | None
+) -> dict:
+    obj = obj or ExamPeriod(id=eid, room_id=room_id)
+    obj.date_start, obj.date_end = body.date_start, body.date_end
     s.add(obj)
-    ids = api.enqueue_exam_set(bld, room, body.id, body.date_start, body.date_end)
-    s.flush()
-    return {"outbox_ids": ids}
+    ids = api.enqueue_exam_set(bld, room, eid, body.date_start, body.date_end, session=s)
+    _commit_notify(s, mid)
+    return {"outbox_ids": ids, "id": eid}
 
 
 @router.delete("/rooms/{id}/exams/{exam_id}", response_model=S.Enqueued)
 def delete_exam(id: int, exam_id: int, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    ids = api.enqueue_exam_del(bld, room, exam_id)
-    s.execute(delete(ExamPeriod).where(ExamPeriod.id == exam_id, ExamPeriod.room_id == id))
+    bld, room, mid = _addr(s, id, user)
+    with _ID_LOCK:  # 같은 id 수정(put_exam)의 읽기~커밋 사이에 끼어들면 StaleDataError (#48 🟡2)
+        s.execute(delete(ExamPeriod).where(ExamPeriod.id == exam_id, ExamPeriod.room_id == id))
+        ids = api.enqueue_exam_del(bld, room, exam_id, session=s)
+        _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
 @router.post("/rooms/{id}/sync", response_model=S.Enqueued)
 def sync_room(id: int, body: S.SyncIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
+    bld, room, _mid = _addr(s, id, user)
     return {"outbox_ids": api.enqueue_full_sync(bld, room, tuple(body.kinds))}
 
 
 @router.post("/rooms/{id}/cmd", response_model=S.Enqueued)
 def cmd_room(id: int, body: S.CmdIn, user: User = AdminUser, s: Session = _DB):
-    bld, room = _addr(s, id, user)
-    return {"outbox_ids": api.enqueue_cmd(bld, room, body.cmd, bytes.fromhex(body.args_hex))}
+    bld, room, mid = _addr(s, id, user)
+    ids = api.enqueue_cmd(bld, room, body.cmd, bytes.fromhex(body.args_hex), session=s)
+    _commit_notify(s, mid)
+    return {"outbox_ids": ids}
 
 
 IMPORT_MAX_BYTES = 1024 * 1024

@@ -1,5 +1,5 @@
 """S4a §4.1 공개 흐름 + §4.2 관리자 회원 관리(T6). 상태·존재 여부가 응답으로 새지 않게 202/401 통일.
-메일은 항상 s.commit() 뒤에 BackgroundTasks 로 — BackgroundTasks 는 get_db 커밋보다 먼저 돈다(§3.4)."""
+메일은 항상 s.commit() 뒤에 BackgroundTasks 로 — 쓰기 락을 쥔 채 SMTP 를 돌리지 않게(§3.4)."""
 
 from __future__ import annotations
 

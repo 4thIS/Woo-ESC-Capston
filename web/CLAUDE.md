@@ -49,6 +49,16 @@ web/
 - 서버 계약 소비 로직(`src/api/`)은 응답 픽스처로 테스트한다 — 서버가 필드를 바꾸면 여기가 먼저 빨개져야 한다.
 - 통합 동작은 로컬 실행 환경에서 확인.
 
+## E2E (Playwright)
+
+- `pnpm e2e` — 임시 DB 로 메인Pi 서버(기본 `../server`)와 Vite dev 서버를 띄우고 `e2e/*.spec.ts` 를 돈다. 학교 둘(우송대 id 1 · 타학교 id 2)과 관리자들을 CLI 로 심는다(`e2e/env.json`).
+- **다른 서버 체크아웃으로 돌리기**: `E2E_SERVER_DIR` 에 서버 폴더(web/ 기준 상대 또는 절대 경로). 예: 아직 main 에 없는 API 를 가진 통합 워크트리.
+  - PowerShell: `$env:E2E_SERVER_DIR = 'C:\path\to\server'; pnpm e2e`
+  - bash: `E2E_SERVER_DIR='C:\path\to\server' pnpm e2e` (Windows 에서는 `/c/...` 가 아니라 `C:\...` 로)
+- **다른 포트로 돌리기**(수동으로 띄운 서버가 8000·5173 을 쓰고 있을 때): `E2E_API_PORT`(기본 8000) · `E2E_WEB_PORT`(기본 5173). 예: `$env:E2E_API_PORT = '8100'; $env:E2E_WEB_PORT = '5273'; pnpm e2e`. dev 서버 프록시 대상은 `VITE_API_TARGET`(기본 `http://127.0.0.1:8000`)이고 E2E 는 이것을 자동으로 넘긴다. 기본 포트에서는 5173 에 이미 떠 있는 dev 서버를 재사용하므로(CI 제외) 그 서버의 프록시가 8000 을 가리켜야 한다.
+- `e2e/helpers.ts` 의 `sql()` 은 **테스트 전용** — 무선 트래픽(STATUS·pending·ACK)으로만 생기는 행을 E2E DB 에 직접 넣는다. 관리자 REST 로 만들 수 있는 것(건물·방·모뎀)은 REST 로 만든다.
+- 로그인 상한(IP 당 분당 30회) 때문에 새 spec 파일은 `beforeAll` 에서 컨텍스트·로그인을 한 번만 하고 화면 이동은 사이드 메뉴 클릭으로 한다(`page.goto` 는 새로고침 = 메모리 세션 소실).
+
 ## 계약(Contract) 규칙
 
 - 이 영역은 계약을 **소비**한다. 서버 응답을 임의 변환하지 않는다 — 형태를 바꿔야 하면 `server/`를 바꾸고 계약을 그쪽에 반영한다. (소비 쪽에서 맞추면 계약이 두 곳에 생겨 어긋난다.)

@@ -1,0 +1,24 @@
+[
+  {
+    "id": 9,
+    "date": "2026-10-24",
+    "s_h": 14,
+    "s_m": 0,
+    "e_h": 16,
+    "e_m": 0,
+    "type": 6,
+    "subject": "스터디",
+    "professor": "",
+    "status": "requested",
+    "requested_at": "2026-10-23T05:00:00",
+    "decided_at": null,
+    "reject_reason": null,
+    "checked_in_at": null,
+    "cancelled_at": null,
+    "room_id": 11,
+    "building": "공학관",
+    "room": 401,
+    "requester": { "email": "s1@wsu.ac.kr", "name": "김민준", "student_no": "20231234" },
+    "pushed_at": null
+  }
+]
