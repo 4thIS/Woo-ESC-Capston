@@ -130,7 +130,7 @@ const name = (d: number, b: GridBlock) =>
 }
 .wg__time {
   position: absolute;
-  right: var(--space-1);
+  right: 2px; /* 390 의 시각 열 34px 에 'HH:MM' 이 잘리지 않게 */
   font-size: var(--font-size-xs);
   line-height: 1;
   color: var(--text-3);

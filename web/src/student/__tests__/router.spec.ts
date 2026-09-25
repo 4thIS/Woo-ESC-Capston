@@ -47,6 +47,17 @@ describe('student router', () => {
     expect(r.currentRoute.value.params.room).toBe('401')
   })
 
+  it('/:bld/:room · /:bld/:room/week — 실제 자식 라우트, 소문자 글자는 대문자로', async () => {
+    const room = await at('/e/401')
+    expect(room.path).toBe('/E/401')
+    expect(room.matched.map((m) => m.path)).toEqual(['/:bld([A-Z])', '/:bld([A-Z])/:room(\\d+)'])
+    expect(room.meta.gate).toBe(true)
+    const week = await at('/e/401/week')
+    expect(week.path).toBe('/E/401/week')
+    expect(week.matched[1].path).toBe('/:bld([A-Z])/:room(\\d+)/week')
+    expect((await at('/E/abc')).matched[0].path).toBe('/:pathMatch(.*)*')
+  })
+
   it('/:bld — 대문자 한 글자만, 소문자는 대문자로 보낸다(대소문자 구분 라우트)', async () => {
     const r = await at('/E')
     expect(r.matched[0].path).toBe('/:bld([A-Z])')
