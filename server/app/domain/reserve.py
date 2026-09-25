@@ -45,6 +45,14 @@ def end_local(r: Reservation) -> dt.datetime:
     return clock.local_dt(r.date, r.e_h, r.e_m)
 
 
+def not_started(now_local: dt.datetime):
+    """SQL 조건: start_local(r) > now_local (시작 분의 초는 0). 시작 지난 신청은 승인 불가(409)."""
+    d, m = now_local.date(), now_local.hour * 60 + now_local.minute
+    return (Reservation.date > d) | (
+        (Reservation.date == d) & (Reservation.s_h * 60 + Reservation.s_m > m)
+    )
+
+
 def in_window(date: dt.date, today: dt.date) -> bool:
     """노드에 가 있는(또는 갈) 예약인가 — 오늘~+7 (v2 §12)."""
     return today <= date <= today + dt.timedelta(days=RESV_HORIZON_DAYS)

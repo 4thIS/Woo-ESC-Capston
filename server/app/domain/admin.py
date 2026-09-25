@@ -205,13 +205,17 @@ def pending_reservations(s: Session, school_id: int, now_local: dt.datetime) -> 
         select(Reservation)
         .join(Room, Room.id == Reservation.room_id)
         .join(Building, Building.id == Room.building_id)
-        .where(Building.school_id == school_id, Reservation.status == "requested")
+        .where(
+            Building.school_id == school_id,
+            Reservation.status == "requested",
+            # 시작 지난 신청은 승인할 수 없다(409) — 04:00 만료 전까지 경고에 남기지 않는다
+            reserve.not_started(now_local),
+        )
         .order_by(
             Reservation.requested_at, Reservation.id
         )  # 같은 시각이면 id — SQLite 동순위 순서는 정의되지 않음
     )
-    # 시작 지난 신청은 승인할 수 없다(409) — 04:00 만료 전까지 경고에 남기지 않는다
-    return [resv_admin_out(s, r) for r in s.scalars(q) if reserve.start_local(r) > now_local]
+    return [resv_admin_out(s, r) for r in s.scalars(q)]
 
 
 def summary(

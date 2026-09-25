@@ -32,6 +32,7 @@ def list_reservations(
     building_id: int | None = None,
     date_from: clock.QDate | None = None,
     date_to: clock.QDate | None = None,
+    limit: int = Query(500, ge=1, le=1000),
     user: User = AdminUser,
     s: Session = _DB,
 ):
@@ -42,8 +43,11 @@ def list_reservations(
         .where(
             Building.school_id == user.school_id,
             Reservation.status.in_(reserve.parse_statuses(status)),
+            # 시작 지난 신청은 승인 불가(409) — summary 의 pending_reservations 와 같은 규칙 (#49)
+            (Reservation.status != "requested") | reserve.not_started(clock.local_now()),
         )
         .order_by(Reservation.date, Reservation.s_h, Reservation.s_m, Reservation.id)
+        .limit(limit)
     )
     if building_id is not None:
         q = q.where(Building.id == building_id)
