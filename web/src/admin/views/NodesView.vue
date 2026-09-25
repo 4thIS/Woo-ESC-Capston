@@ -18,9 +18,11 @@ import { useResource } from '@/lib/useResource'
 import { usePolling } from '@/lib/usePolling'
 import { formatKst, relativeKo } from '@/lib/time'
 import LastRefreshed from '../LastRefreshed.vue'
+import ModemPanel from './nodes/ModemPanel.vue'
 import { buildingOptions, roomLabel, sortNodes, unitsByRoom, versions, volts } from '../nodesView'
 
 const router = useRouter()
+const modemPanel = ref<InstanceType<typeof ModemPanel> | null>(null)
 
 // 블록 셋 = 엔드포인트 셋 (admin-nodes.md). 한 번에 읽어 한 시각(refreshedAt)으로 보인다
 const { data, error, loading, refreshedAt, reload } = useResource(async () => {
@@ -160,8 +162,11 @@ async function broadcast() {
         <Button variant="secondary" size="sm" :loading="broadcasting" @click="broadcast"
           >시각 브로드캐스트</Button
         >
+        <Button size="sm" @click="modemPanel?.openRegister()">+ 모뎀Pi 등록</Button>
       </div>
     </header>
+
+    <ModemPanel ref="modemPanel" :modems="data?.modems" :loading="loading" @changed="reload" />
 
     <section class="nodes__block" aria-labelledby="nodes-esp">
       <div class="nodes__block-head">

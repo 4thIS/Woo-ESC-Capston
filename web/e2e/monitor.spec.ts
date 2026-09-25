@@ -17,6 +17,9 @@ import {
   shot,
 } from './helpers'
 
+// e2e 는 node 타입 — page.evaluate 콜백은 브라우저에서 돈다
+declare const navigator: { clipboard: { readText(): Promise<string> } }
+
 // 한 파일 = 한 브라우저 컨텍스트·로그인 한 번 — 서버의 IP 당 분당 로그인 30회 상한 (F1 plan Task 13 메모)
 test.describe.configure({ mode: 'serial' })
 let ctx: BrowserContext
@@ -141,4 +144,42 @@ test('재전송 — 방 단위 동기화 요청', async () => {
   const row = esp().locator('tbody tr', { hasText: '공학관 401' })
   await row.getByRole('button', { name: '재전송' }).click()
   await expect(page.getByText('공학관 401호 재전송을 요청했습니다.')).toBeVisible()
+})
+
+// ---- 모뎀Pi ----
+const modemCard = (id: string) =>
+  page
+    .getByRole('region', { name: '모뎀Pi', exact: true })
+    .getByRole('listitem')
+    .filter({ hasText: id })
+
+test('모뎀Pi — 연결 상태 카드, 등록하면 토큰을 한 번만 보여 준다', async () => {
+  await expect(modemCard(SEED.modem)).toContainText('연결됨')
+  await expect(modemCard(SEED.offlineModem)).toContainText('끊김')
+  await expect(modemCard(SEED.offlineModem)).toContainText('접속 기록 없음')
+  await page.getByRole('button', { name: '+ 모뎀Pi 등록' }).click()
+  await page.getByRole('dialog').getByLabel('모뎀Pi ID').fill('e2e-ui-1')
+  await page.getByRole('dialog').getByRole('button', { name: '등록' }).click()
+  const code = page.getByRole('dialog').locator('code')
+  await expect(code).toBeVisible()
+  const token = (await code.textContent())!.trim()
+  expect(token.length).toBeGreaterThan(20)
+  await expect(page.getByRole('dialog')).toContainText('이 창을 닫으면 다시 볼 수 없습니다.')
+  await page.getByRole('dialog').getByRole('button', { name: '복사' }).click()
+  await expect(page.getByText('복사했습니다.')).toBeVisible()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(token)
+  await shot(page, 'admin-nodes-token-1440')
+  await page.keyboard.press('Escape')
+  await expect(code).toBeVisible()
+  await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click()
+  await expect(modemCard('e2e-ui-1')).toContainText('끊김')
+})
+
+test('토큰 재발급 — 확인 뒤에만, 새 토큰 표시', async () => {
+  await modemCard(SEED.offlineModem).getByRole('button', { name: '토큰 재발급' }).click()
+  await expect(page.getByRole('dialog')).toContainText('끊깁니다')
+  await page.getByRole('dialog').getByRole('button', { name: '재발급', exact: true }).click()
+  await expect(page.getByRole('dialog').locator('code')).toBeVisible()
+  await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })
