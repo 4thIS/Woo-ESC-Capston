@@ -18,6 +18,10 @@ test('학생 로그인 화면 390', async ({ page }) => {
   // 터치 타깃 48px (tokens.md)
   const box = await page.getByRole('button', { name: '로그인' }).boundingBox()
   expect(box!.height).toBeGreaterThanOrEqual(48)
+  for (const name of ['가입 신청', '비밀번호를 잊었어요']) {
+    const link = await page.getByRole('link', { name }).boundingBox()
+    expect(link!.height, name).toBeGreaterThanOrEqual(48)
+  }
   await shot(page, 'student-login-390')
 })
 

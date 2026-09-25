@@ -119,4 +119,11 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
 :slotted(.auth-form__note) a {
   color: var(--brand);
 }
+/* 학생은 폰 — 바닥·안내 문단의 링크도 터치 타깃 48px (tokens.md) */
+.auth--student .auth__footer :deep(a),
+.auth--student :slotted(.auth-form__note) a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-md);
+}
 </style>
