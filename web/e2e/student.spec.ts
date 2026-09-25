@@ -322,8 +322,8 @@ test('건수 상한 — 진행 중 신청 3건이면 버튼을 잠그고 이유�
     if (r.status() === 400) break
     expect(r.status()).toBe(201)
   }
-  // 앞 테스트의 danger Toast 는 스스로 사라지지 않고 헤더를 덮는다 — 사람처럼 닫는다
-  await page.getByRole('alert').getByRole('button', { name: '닫기' }).click()
+  // 앞 테스트의 409 Toast 는 재조회 뒤의 알림이라 8초 뒤 스스로 닫힌다 — 헤더의 ✕ 닫기가 드러날 때까지
+  await expect(page.getByRole('alert')).toHaveCount(0, { timeout: 10_000 })
   // 신청 화면은 폴링하지 않는다 — 한 번 닫았다 연다
   await page.getByRole('link', { name: '닫기' }).click()
   await page.getByRole('link', { name: '이 강의실 예약하기' }).click()

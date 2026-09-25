@@ -52,10 +52,13 @@ async function run(
       if (!(e instanceof ApiError)) throw e
       // 401·403 은 client 가 로그인으로 보낸다 — 부를 것이 없다
       if (e.status === 401 || e.status === 403) return
+      // 서버 원문은 내지 않는다 — 그새 바뀐 상태(409·404, 400 은 방어)는 이 화면의 문장.
+      // 곧 재조회하니 그 문장은 알림일 뿐 — 8초 뒤 닫혀 헤더를 덮어 두지 않는다 (최종 리뷰 I3)
+      const known = [400, 404, 409].includes(e.status)
       showToast({
         tone: 'danger',
-        // 서버 원문은 내지 않는다 — 그새 바뀐 상태(409·404, 400 은 방어)는 이 화면의 문장
-        message: [400, 404, 409].includes(e.status) ? conflict : e.message,
+        message: known ? conflict : e.message,
+        duration: known ? 8000 : undefined,
       })
     }
     await reload()

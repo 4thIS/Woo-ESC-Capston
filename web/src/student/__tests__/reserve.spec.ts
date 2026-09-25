@@ -36,6 +36,8 @@ const THREE = [
   reqResv({ id: 3, s_h: 14, e_h: 15 }),
 ]
 const texts = () => toasts.value.map((t) => t.message)
+/** 재조회 뒤의 danger 문장은 8초 뒤 스스로 닫힌다 — 헤더의 ✕ 닫기를 덮은 채 남지 않게 */
+const autoDismissed = () => vi.mocked(setTimeout).mock.calls.some((c) => c[1] === 8000)
 const submitBtn = (w: VueWrapper) => w.get<HTMLButtonElement>('button[type="submit"]')
 /** 오늘(10-23) 첫 구간 13:00–15:00 → 13:00–14:00, 목적 '스터디' 로 제출 */
 async function fillAndSubmit(w: VueWrapper) {
@@ -48,12 +50,16 @@ async function fillAndSubmit(w: VueWrapper) {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-10-23T01:42:00Z')) // KST 금 10:42
+  vi.spyOn(globalThis, 'setTimeout')
   toasts.value.forEach((t) => dismissToast(t.id))
   api.week.mockReset().mockResolvedValue(WEEK)
   api.mine.mockReset().mockResolvedValue([])
   api.requestResv.mockReset()
 })
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 describe('ReserveView — /:bld/:room/reserve', () => {
   it('신청 — 서버 모양으로 한 번, 성공하면 Toast 와 /me', async () => {
@@ -88,6 +94,7 @@ describe('ReserveView — /:bld/:room/reserve', () => {
     const { w, router } = await mountAt(ReserveView, ...PATH, ROOMS)
     await fillAndSubmit(w)
     expect(texts()).toEqual([TAKEN_TEXT])
+    expect(autoDismissed()).toBe(true)
     expect(api.week).toHaveBeenCalledTimes(2)
     expect(router.currentRoute.value.path).toBe('/E/401/reserve')
     expect(w.findAll('.rs__span .num').map((s) => s.text())).toEqual(['16:00 – 21:00'])
@@ -110,6 +117,7 @@ describe('ReserveView — /:bld/:room/reserve', () => {
     const { w } = await mountAt(ReserveView, ...PATH, ROOMS)
     await fillAndSubmit(w)
     expect(texts()).toEqual([DAILY_TEXT])
+    expect(autoDismissed()).toBe(true)
     expect(w.get('.rs__blocker').text()).toBe(DAILY_TEXT)
     expect(submitBtn(w).element.disabled).toBe(true)
   })
@@ -126,6 +134,7 @@ describe('ReserveView — /:bld/:room/reserve', () => {
     const stale = await mountAt(ReserveView, ...PATH, ROOMS)
     await fillAndSubmit(stale.w)
     expect(texts()).toEqual([STALE_TEXT])
+    expect(autoDismissed()).toBe(true)
   })
 
   it('이미 진행 중 3건이면 처음부터 잠겨 있다', async () => {

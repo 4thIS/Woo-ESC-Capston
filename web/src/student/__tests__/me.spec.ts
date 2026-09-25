@@ -36,6 +36,7 @@ const confirm = async (w: VueWrapper) => {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-10-23T01:42:00Z')) // KST 금 10:42
+  vi.spyOn(globalThis, 'setTimeout')
   localStorage.clear()
   toasts.value.forEach((t) => dismissToast(t.id))
   api.mine.mockReset()
@@ -44,6 +45,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.useRealTimers()
+  vi.restoreAllMocks()
   clearSession()
 })
 
@@ -124,6 +126,8 @@ describe('MyView — /me', () => {
     await cards(w)[0].get('button').trigger('click')
     await flushPromises()
     expect(texts()).toContain(CHECKIN_CLOSED_TEXT)
+    // 재조회한 뒤의 문장 — 8초 뒤 스스로 닫힌다 (헤더를 덮은 채 남지 않게)
+    expect(vi.mocked(setTimeout).mock.calls.some((c) => c[1] === 8000)).toBe(true)
     expect(api.mine).toHaveBeenCalledTimes(2)
     expect((cards(w)[0].get('button').element as HTMLButtonElement).disabled).toBe(false)
   })

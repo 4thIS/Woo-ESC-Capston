@@ -48,21 +48,32 @@ async function submit(body: StudentResvIn) {
   }
 }
 
+/** 재조회를 마친 뒤의 문장은 알림일 뿐 놓친 오류가 아니다 — 8초 뒤 닫혀 헤더의 ✕ 닫기를 덮어 두지 않는다 (최종 리뷰 I3) */
+const SETTLED = 8000
+
 /** 서버 원문 대신 이유를 말하고, 고를 거리를 새로 불러온다 (student-room.md §화면이 거는 제약) */
 async function explain(e: ApiError) {
   // 401·403 은 client 가 로그인으로 보낸다 — 입력은 되살리지 않는다(F1·auth.md)
   if (e.status === 401 || e.status === 403) return
   if (e.status === 429) {
     locked.value = true
-    showToast({ tone: 'danger', message: DAILY_TEXT })
+    showToast({ tone: 'danger', message: DAILY_TEXT, duration: SETTLED })
   } else if (e.status === 409) {
     // 겹침(누가 먼저)과 가득(24건)이 둘 다 409 — 원문 대신 재조회한 full 로 가른다
     await reload()
-    showToast({ tone: 'danger', message: week.value?.full ? FULL_TEXT : TAKEN_TEXT })
+    showToast({
+      tone: 'danger',
+      message: week.value?.full ? FULL_TEXT : TAKEN_TEXT,
+      duration: SETTLED,
+    })
   } else if (e.status === 400) {
     // 창 밖·지난 시각·진행 중 3건이 400 — 3건인지는 내 예약으로 안다
     await Promise.all([reload(), reloadMine()])
-    showToast({ tone: 'danger', message: count.value >= MAX_ACTIVE ? CAP_TEXT : STALE_TEXT })
+    showToast({
+      tone: 'danger',
+      message: count.value >= MAX_ACTIVE ? CAP_TEXT : STALE_TEXT,
+      duration: SETTLED,
+    })
   } else if (e.status === 404) {
     await reload() // 그새 예약을 받지 않게 된 방 — 주간도 404 → 404 화면
   } else {
