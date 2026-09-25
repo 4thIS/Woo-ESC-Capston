@@ -26,7 +26,7 @@ const emit = defineEmits<{ toggleFav: [] }>()
       <span class="row__until num">{{ until }}</span>
       <span class="row__chev" aria-hidden="true">›</span>
     </RouterLink>
-    <FavoriteStar :on="fav" @toggle="emit('toggleFav')" />
+    <FavoriteStar :on="fav" :name="`${room}호`" @toggle="emit('toggleFav')" />
   </li>
 </template>
 

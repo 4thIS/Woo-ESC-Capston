@@ -34,10 +34,11 @@ const bld = computed(() => String(route.params.bld))
 const all = computed(() => data.value ?? [])
 const buildings = computed(() => buildingsOf(all.value))
 const building = computed(() => buildings.value.find((b) => b.bld === bld.value) ?? null)
+// 글자가 바뀔 때만 — 폴링마다 building 객체가 새로 생겨도 다시 적지 않는다
 watch(
-  building,
+  () => building.value?.bld,
   (b) => {
-    if (b) rememberBld(b.bld)
+    if (b) rememberBld(b)
   },
   { immediate: true },
 )
@@ -45,6 +46,10 @@ const rooms = computed(() => all.value.filter((r) => r.bld === bld.value))
 const freeCount = computed(() => rooms.value.filter((r) => r.layout === FREE_LAYOUT).length)
 // '빈 강의실만' 기본 켜짐 — 18개보다 5개가 목적에 맞는다
 const freeOnly = ref(true)
+// 건물을 바꾸면 기본으로 — 앞 건물에서 끈 필터가 따라오지 않게
+watch(bld, () => {
+  freeOnly.value = true
+})
 const shown = computed(() =>
   freeOnly.value ? rooms.value.filter((r) => r.layout === FREE_LAYOUT) : rooms.value,
 )
@@ -103,9 +108,11 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
           </p>
 
           <section v-if="favRooms.length" class="fav" aria-labelledby="fav-h">
-            <h3 id="fav-h" class="list__h">
-              즐겨찾기 <span class="list__hint">★ 을 눌러 모아둡니다</span>
-            </h3>
+            <!-- 안내는 제목 밖 — 제목의 접근 이름은 '즐겨찾기' 만 -->
+            <div class="fav__head">
+              <h3 id="fav-h" class="list__h">즐겨찾기</h3>
+              <span class="list__hint">★ 을 눌러 모아둡니다</span>
+            </div>
             <ul class="fav__chips">
               <li v-for="r in favRooms" :key="favKey(r.bld, r.room)">
                 <RouterLink
@@ -234,6 +241,10 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+.fav__head {
+  display: flex;
+  align-items: baseline;
 }
 .fav__chips {
   display: flex;

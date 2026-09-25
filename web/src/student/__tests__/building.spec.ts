@@ -87,6 +87,30 @@ describe('BuildingLayout — /:bld 강의실 목록', () => {
     await flushPromises()
     expect(w.findAll('a.fav__chip').map((a) => a.attributes('href'))).toEqual(['/E/402', '/K/101'])
     expect(w.findAll('a.fav__chip')[1].attributes('aria-label')).toBe('운영관 101호 특강')
+    // 제목의 이름은 '즐겨찾기' 만 — 안내 문장은 제목 밖
+    expect(w.get('#fav-h').text()).toBe('즐겨찾기')
+    expect(w.get('.fav').text()).toContain('★ 을 눌러 모아둡니다')
+  })
+
+  it('건물을 바꾸면 빈 강의실만 필터가 다시 켜진다', async () => {
+    const { w } = await mountAt(BuildingLayout, '/E', '/:bld')
+    await w.get('input[type="checkbox"]').setValue(false)
+    await w.get('select').setValue('K')
+    await flushPromises()
+    expect((w.get('input[type="checkbox"]').element as HTMLInputElement).checked).toBe(true)
+    expect(w.text()).toContain('지금은 모든 강의실이 사용 중입니다')
+  })
+
+  it('최근 건물은 글자가 바뀔 때만 적는다 — 폴링마다 쓰지 않는다', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    await mountAt(BuildingLayout, '/E', '/:bld')
+    expect(localStorage.getItem('esc.lastBld')).toBe('E')
+    localStorage.removeItem('esc.lastBld')
+    api.rooms.mockResolvedValue([...ROOMS])
+    await vi.advanceTimersByTimeAsync(60_000)
+    await flushPromises()
+    expect(api.rooms).toHaveBeenCalledTimes(2)
+    expect(localStorage.getItem('esc.lastBld')).toBeNull()
   })
 
   it('쉬는시간·휴강·설정 대기는 예약할 수 없다 — 빈 곳으로 세지도, 칠하지도 않는다', async () => {

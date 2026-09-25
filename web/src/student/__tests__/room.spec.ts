@@ -72,7 +72,8 @@ describe('RoomView — /:bld/:room', () => {
     const { w } = await mountAt(RoomView, '/E/401', '/:bld/:room', ROOMS)
     await w.get('.sh button').trigger('click')
     expect(localStorage.getItem('esc.fav')).toBe('["E-401"]')
-    expect(w.get('.sh button').attributes('aria-label')).toBe('즐겨찾기 해제')
+    expect(w.get('.sh button').attributes('aria-label')).toBe('즐겨찾기')
+    expect(w.get('.sh button').attributes('aria-pressed')).toBe('true')
   })
 
   it('넓은 폭 — 다음 비는 시간 카드, 같은 격자(32, 오늘 금), 예약은 헤더 오른쪽 40px', async () => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 저장(localStorage)은 화면이 한다 — 이 컴포넌트는 모양과 이름만 (student-room.md)
-defineProps<{ on: boolean }>()
+// 토글 버튼 패턴 — 이름은 고정, 상태는 aria-pressed. name 으로 줄마다 다른 이름을 준다
+defineProps<{ on: boolean; name?: string }>()
 const emit = defineEmits<{ toggle: [] }>()
 </script>
 
@@ -9,7 +10,7 @@ const emit = defineEmits<{ toggle: [] }>()
     type="button"
     class="star"
     :class="{ 'star--on': on }"
-    :aria-label="on ? '즐겨찾기 해제' : '즐겨찾기 추가'"
+    :aria-label="name ? `${name} 즐겨찾기` : '즐겨찾기'"
     :aria-pressed="on"
     @click="emit('toggle')"
   >

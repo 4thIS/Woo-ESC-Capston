@@ -26,17 +26,24 @@ describe('ResvStatusBadge — 색이 아니라 라벨이 진다, 적색은 승�
 })
 
 describe('FavoriteStar', () => {
-  it('모양과 이름이 함께 바뀐다, 누르면 toggle', async () => {
-    const w = mount(FavoriteStar, { props: { on: false } })
+  it('모양과 aria-pressed 가 바뀌고 이름은 고정(토글 버튼 패턴), 누르면 toggle', async () => {
+    const w = mount(FavoriteStar, { props: { on: false, name: '401호' } })
     const b = w.get('button')
     expect(b.text()).toBe('☆')
-    expect(b.attributes('aria-label')).toBe('즐겨찾기 추가')
+    expect(b.attributes('aria-label')).toBe('401호 즐겨찾기')
+    expect(b.attributes('aria-pressed')).toBe('false')
     await b.trigger('click')
     expect(w.emitted('toggle')).toHaveLength(1)
     await w.setProps({ on: true })
     expect(b.text()).toBe('★')
-    expect(b.attributes('aria-label')).toBe('즐겨찾기 해제')
+    expect(b.attributes('aria-label')).toBe('401호 즐겨찾기')
+    expect(b.attributes('aria-pressed')).toBe('true')
     expect(b.classes()).toContain('star--on')
+  })
+
+  it('이름이 없으면 그냥 즐겨찾기 (강의실 헤더 — 제목이 곧 이름)', () => {
+    const w = mount(FavoriteStar, { props: { on: true } })
+    expect(w.get('button').attributes('aria-label')).toBe('즐겨찾기')
   })
 })
 
@@ -61,7 +68,8 @@ describe('RoomListRow', () => {
     expect(a.get('.row__state .badge').classes()).toContain('badge--busy')
     expect(a.get('.row__until').text()).toBe('10:50 까지')
     expect(a.find('button').exists()).toBe(false)
-    expect(w.get('li > button').attributes('aria-label')).toBe('즐겨찾기 추가')
+    // 줄마다 다른 이름 — 스크린리더 버튼 목록에서 '즐겨찾기' 만 여러 개 나오지 않게
+    expect(w.get('li > button').attributes('aria-label')).toBe('401호 즐겨찾기')
   })
 
   it('비어 있으면 칠하지 않는다 — 라벨만, ★ 을 누르면 toggleFav', async () => {
