@@ -11,6 +11,12 @@ export const routes: RouteRecordRaw[] = [
       { path: '', redirect: '/dashboard' },
       { path: 'master', component: () => import('./views/MasterView.vue') },
       { path: 'rooms', component: () => import('./views/RoomsView.vue') },
+      { path: 'week', component: () => import('./views/WeekView.vue') },
+      {
+        path: 'rooms/:roomId(\\d+)/week',
+        component: () => import('./views/WeekView.vue'),
+        props: true,
+      },
       { path: 'nodes', component: () => import('./views/NodesView.vue') },
       { path: 'dashboard', component: () => import('./views/DashboardView.vue') },
       { path: 'users', component: () => import('./views/UsersView.vue') },

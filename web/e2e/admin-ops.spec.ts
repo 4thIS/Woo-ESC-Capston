@@ -21,6 +21,13 @@ import {
   sql,
 } from './helpers'
 
+// e2e 는 node 타입 — page.evaluate 콜백은 브라우저에서 돈다
+declare const window: {
+  history: { pushState(state: unknown, title: string, url: string): void }
+  dispatchEvent(e: unknown): void
+}
+declare const PopStateEvent: new (type: string) => unknown
+
 // 한 파일 = 컨텍스트 둘(우리 학교·다른 학교), 로그인 각 한 번 — 서버의 IP 당 분당 로그인 30회 상한.
 // 화면 이동은 사이드 메뉴 클릭으로 (page.goto 는 새로고침 = 메모리 세션 소실)
 test.describe.configure({ mode: 'serial' })
@@ -450,4 +457,99 @@ test('선택한 곳 동기화 — 고른 방 수만큼 보내고 결과를 말�
   await expect(page.locator('.toast')).toHaveCount(0, { timeout: 10_000 })
   await page.getByRole('button', { name: '선택한 곳 동기화' }).click()
   await expect(page.getByText('3곳에 다시 보냈습니다.')).toBeVisible()
+})
+
+// ---- 주간 시간표 ----
+test('주간 시간표 — 호수를 누르면 그 강의실의 한 주, 19시 수업이 있으면 야간 켠 채, 예약이 슬롯과 겹치면 그 구간만 표시', async () => {
+  const tomorrow = kstDate(1)
+  const dow = ((new Date(`${tomorrow}T00:00:00Z`).getUTCDay() + 6) % 7) + 1
+  const headers = { authorization: `Bearer ${await apiLogin(api, cfg.ADMINS[0])}` }
+  const room = ops.roomIds[102]
+  const put = (data: object) => api.put(`/api/rooms/${room}/slots`, { headers, data })
+  const base = { day: dow, s_m: 0, type: 1, professor: '최교수', source: 2 }
+  expect((await put({ ...base, s_h: 10, e_h: 12, e_m: 0, subject: '운영체제' })).status()).toBe(200)
+  expect((await put({ ...base, s_h: 19, e_h: 20, e_m: 30, subject: '야간수업' })).status()).toBe(
+    200,
+  )
+  const r = await api.post(`/api/rooms/${room}/reservations`, {
+    headers,
+    data: {
+      date: tomorrow,
+      s_h: 11,
+      s_m: 0,
+      e_h: 12,
+      e_m: 0,
+      type: 5,
+      subject: '초청강연',
+      professor: '학생처',
+    },
+  })
+  expect(r.status()).toBe(200)
+  // API 로 넣은 것은 화면을 다시 열어야 보인다
+  await page.getByRole('link', { name: '건물 · 강의실' }).click()
+  await page.getByRole('link', { name: '강의실 설정' }).click()
+  await page
+    .getByRole('region', { name: '시간표' })
+    .getByRole('link', { name: '102' })
+    .first()
+    .click()
+  await expect(page).toHaveURL(new RegExp(`/admin/rooms/${room}/week$`))
+  await expect(page.locator('.tree__trigger')).toContainText(`${OPS.building} 102호`)
+  await expect(page.getByRole('link', { name: '주간 시간표' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  // 오늘이 일요일이면 내일(월)은 다음 주 — 그 주로 옮겨 본다 (주 이동은 서버를 다시 부르지 않는다)
+  if (dow === 1) await page.getByRole('button', { name: '다음 주' }).click()
+  await expect(page.getByLabel('야간')).toBeChecked()
+  await expect(page.locator('.wk__block').filter({ hasText: '운영체제' })).toContainText('수업중')
+  await expect(page.locator('.wk__block').filter({ hasText: '초청강연' })).toContainText(
+    '예약 · 특강',
+  )
+  await expect(page.locator('.wk__overlap-label')).toHaveText('겹침 11:00–12:00')
+  // 앞 테스트의 Toast 가 상단 바 오른쪽(+ 슬롯 추가)을 가린다 — 걷힌 뒤 찍는다
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 10_000 })
+  await shot(page, 'admin-week-1440')
+})
+
+test('빈 칸을 누르면 그 자리로 슬롯 추가, 주를 옮기고 강의실을 바꿔도 보고 있는 주는 유지', async () => {
+  await page.getByRole('button', { name: '수 14:00 슬롯 추가', exact: true }).click()
+  const d = page.getByRole('dialog', { name: '슬롯 추가' })
+  await expect(d.getByLabel('시작')).toHaveValue('14:00')
+  await expect(d.getByLabel('종료')).toHaveValue('15:00')
+  await d.getByLabel('과목명').fill('자료구조')
+  await d.getByRole('button', { name: '저장' }).click()
+  await expect(d).toHaveCount(0)
+  await expect(page.locator('.wk__block').filter({ hasText: '자료구조' })).toBeVisible()
+  // 저장 Toast 가 상단 바 버튼을 가린다 — 걷힐 때까지
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 10_000 })
+  const range = page.locator('.wk__range')
+  const before = await range.textContent()
+  await page.getByRole('button', { name: '다음 주' }).click()
+  await expect(range).not.toHaveText(before!)
+  await expect(page.locator('.wk__block').filter({ hasText: '자료구조' })).toBeVisible()
+  const after = await range.textContent()
+  await page.locator('.tree__trigger').click()
+  await page
+    .getByRole('group', { name: '강의실 선택' })
+    .getByRole('button', { name: '101호' })
+    .click()
+  await expect(page).toHaveURL(new RegExp(`/admin/rooms/${ops.roomIds[101]}/week$`))
+  await expect(range).toHaveText(after!)
+})
+
+test('다른 학교 관리자 — 우리 강의실 주간 주소는 "찾을 수 없습니다" (404 를 없음으로)', async () => {
+  await otherPage.getByRole('link', { name: '주간 시간표' }).click()
+  await expect(
+    otherPage.getByText('강의실이 없습니다. 건물 · 강의실 화면에서 먼저 만드세요.'),
+  ).toBeVisible()
+  // 새로고침 없이 주소만 바꾼다 — page.goto 는 메모리 세션을 잃는다
+  await otherPage.evaluate((id) => {
+    window.history.pushState({}, '', `/admin/rooms/${id}/week`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, ops.roomIds[101])
+  await expect(
+    otherPage.getByText('강의실을 찾을 수 없습니다. 위에서 다른 강의실을 고르세요.'),
+  ).toBeVisible()
+  await shot(otherPage, 'admin-week-notfound-1440')
 })
