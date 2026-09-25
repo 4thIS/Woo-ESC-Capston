@@ -2,10 +2,24 @@ import {
   expect,
   test,
   type APIRequestContext,
+  type APIResponse,
   type BrowserContext,
   type Page,
 } from '@playwright/test'
-import { STU, SIZES, WEB_URL, createStudent, login, seedStudent, shot } from './helpers'
+import {
+  STU,
+  SIZES,
+  WEB_URL,
+  apiLogin,
+  createStudent,
+  hmOf,
+  kstDate,
+  kstMinutesNow,
+  login,
+  seedStudent,
+  shot,
+} from './helpers'
+import cfg from './env.json' with { type: 'json' }
 
 // e2e 는 node 타입 — page.evaluate 콜백은 브라우저에서 돈다
 declare const localStorage: { getItem(k: string): string | null }
@@ -20,6 +34,37 @@ let A: { email: string }
 let seed: Awaited<ReturnType<typeof seedStudent>>
 const shownRows = () => page.locator('ul.rows > li')
 const DAYS = ['월', '화', '수', '목', '금', '토', '일']
+const room = (n: number) => seed.roomIds[n]
+const card = (text: string) => page.getByRole('article').filter({ hasText: text })
+
+/** 학생으로 신청 (API — 화면 밖 준비). 응답을 그대로 돌려 호출한 쪽이 상태를 본다 */
+async function requestAs(
+  email: string,
+  roomId: number,
+  date: string,
+  from: string,
+  to: string,
+  subject: string,
+) {
+  const [s_h, s_m] = from.split(':').map(Number)
+  const [e_h, e_m] = to.split(':').map(Number)
+  return api.post(`/api/student/rooms/${roomId}/reservations`, {
+    headers: { authorization: `Bearer ${await apiLogin(api, email)}` },
+    data: { date, s_h, s_m, e_h, e_m, subject },
+  })
+}
+async function created(r: APIResponse) {
+  expect(r.status()).toBe(201)
+  return (await r.json()) as { id: number }
+}
+/** 관리자 승인·거절 (F2 신청 대기 화면이 부르는 것과 같은 API) */
+async function adminPost(path: string, data?: unknown) {
+  const r = await api.post(path, {
+    headers: { authorization: `Bearer ${await apiLogin(api, cfg.ADMINS[0])}` },
+    data,
+  })
+  expect(r.status(), path).toBe(200)
+}
 
 test.beforeAll(async ({ browser }) => {
   ctx = await browser.newContext({ baseURL: WEB_URL, locale: 'ko-KR', viewport: SIZES.student })
@@ -153,4 +198,70 @@ test('넓은 폭 — /week 는 강의실로, 목록 340px 상주, 격자는 같�
   await shot(page, 'student-wide-1280')
   await page.setViewportSize(SIZES.student)
   await expect(list).toBeHidden()
+})
+
+test('내 예약 — 승인됨·대기중·거절됨, 신청 취소는 기록이 남지 않는다, 창 안이면 체크인', async () => {
+  const r1 = await created(
+    await requestAs(A.email, room(103), kstDate(2), '10:00', '11:00', '팀 회의'),
+  )
+  const r3 = await created(
+    await requestAs(A.email, room(104), kstDate(3), '14:00', '15:00', '동아리'),
+  )
+  await adminPost(`/api/admin/reservations/${r3.id}/reject`, { reason: '학과 행사와 겹칩니다' })
+  // 체크인 창 안에서 곧 시작하는 오늘 예약 — 자정 가까이는 만들 수 없다(Global Constraints 시간대)
+  const start = Math.ceil((kstMinutesNow() + 2) / 5) * 5
+  const canCheckin = start + 15 <= 23 * 60 + 55
+  if (canCheckin) {
+    const r2 = await created(
+      await requestAs(A.email, room(104), kstDate(0), hmOf(start), hmOf(start + 15), '스터디'),
+    )
+    await adminPost(`/api/admin/reservations/${r2.id}/approve`)
+  }
+  await page.getByRole('link', { name: '강의실 목록' }).click()
+  await page.getByRole('link', { name: '내 예약' }).click()
+  await expect(page).toHaveURL(/\/me$/)
+  await expect(card('팀 회의').getByText('대기중')).toBeVisible()
+  await expect(card('팀 회의')).toContainText(`${STU.building} 103호`)
+  await expect(card('동아리').getByText('거절됨')).toBeVisible()
+  await expect(card('동아리')).toContainText('사유: 학과 행사와 겹칩니다')
+  await expect(card('동아리').getByRole('button')).toHaveCount(0)
+  for (const b of await page.locator('article button').all())
+    expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(48)
+  await shot(page, 'student-me-390')
+  await card('팀 회의').getByRole('button', { name: '신청 취소' }).click()
+  const dlg = page.getByRole('dialog', { name: '신청 취소' })
+  await expect(dlg).toContainText('신청을 거두면 기록이 남지 않습니다')
+  await dlg.getByRole('button', { name: '신청 취소' }).click()
+  await expect(card('팀 회의')).toHaveCount(0)
+  // 철회는 행을 지운다 — 서버에도 남지 않는다
+  const mine = await api.get('/api/student/me/reservations', {
+    headers: { authorization: `Bearer ${await apiLogin(api, A.email)}` },
+    params: { status: 'cancelled' },
+  })
+  expect(((await mine.json()) as { id: number }[]).map((r) => r.id)).not.toContain(r1.id)
+  test.skip(!canCheckin, '자정 가까이는 체크인 창 안의 오늘 예약을 만들 수 없다')
+  await card('스터디').getByRole('button', { name: '체크인' }).click()
+  await expect(card('스터디')).toContainText(/✓ \d\d:\d\d 체크인/)
+  await shot(page, 'student-me-checkin-390')
+})
+
+test('승인된 예약 취소 — 확인 뒤 취소됨으로 남는다 (신청 취소와 다르다)', async () => {
+  const r4 = await created(
+    await requestAs(A.email, room(103), kstDate(4), '10:00', '11:00', '발표 연습'),
+  )
+  await adminPost(`/api/admin/reservations/${r4.id}/approve`)
+  // /me 는 60초마다 — 기다리지 않고 한 번 나갔다 온다
+  await page.getByRole('link', { name: '뒤로' }).click()
+  await expect(page).toHaveURL(new RegExp(`/${STU.bld}$`))
+  await page.getByRole('link', { name: '내 예약' }).click()
+  await expect(card('발표 연습').getByText('승인됨')).toBeVisible()
+  await expect(card('발표 연습').getByRole('button', { name: '체크인' })).toBeDisabled()
+  await expect(card('발표 연습')).toContainText('09:50부터 체크인할 수 있어요')
+  await card('발표 연습').getByRole('button', { name: '취소', exact: true }).click()
+  const dlg = page.getByRole('dialog', { name: '예약 취소' })
+  await expect(dlg).toContainText('취소하면 문 앞 화면에서도 지워져요')
+  await dlg.getByRole('button', { name: '예약 취소' }).click()
+  await expect(card('발표 연습').getByText('취소됨')).toBeVisible()
+  await expect(card('발표 연습').getByRole('button')).toHaveCount(0)
+  await shot(page, 'student-me-cancelled-390')
 })

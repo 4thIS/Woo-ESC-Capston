@@ -23,6 +23,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/verify', component: () => import('@/auth/VerifyView.vue') },
   { path: '/forgot', component: () => import('@/auth/ForgotView.vue') },
   { path: '/reset', component: () => import('@/auth/ResetView.vue') },
+  { path: '/me', component: () => import('./views/MyView.vue'), meta: { gate: true } },
   // 건물 글자는 대문자 한 글자 — sensitive 로 소문자는 여기서 받지 않고 404 라우트가 대문자로 보낸다
   {
     path: '/:bld([A-Z])',
