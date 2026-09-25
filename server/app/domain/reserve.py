@@ -14,14 +14,13 @@ from app import schemas as S
 from app.auth.models import User
 from app.domain import clock, room_state
 from app.domain.models import Building, Reservation, Room, Slot
-from app.domain.topology import NODE_RESV_MAX, RESV_HORIZON_DAYS
+from app.domain.topology import NODE_RESV_MAX, RESV_HORIZON_DAYS, STUDENT_LABEL
 from app.lora_service import api
 
 MAX_ACTIVE = 3
 MIN_MIN, MAX_MIN = 15, 120
 OPEN_MIN, CLOSE_MIN = 9 * 60, 21 * 60  # 운영 시간 KST (S10 §2.6) — analytics 도 이 값을 쓴다
 STEP_MIN = 5  # StudentResvIn 의 s_m·e_m multiple_of=5
-STUDENT_LABEL = "학생 예약"  # 문 앞 e-Paper 는 공개 — 학생이 적은 목적은 싣지 않는다
 CHECKIN_BEFORE, CHECKIN_AFTER = 10, 15  # 분
 STUDENT_TYPE = 6  # 대여
 _LIVE = ("approved", "requested")

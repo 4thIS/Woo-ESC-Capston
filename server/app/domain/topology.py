@@ -15,6 +15,8 @@ from app.lora_service.api import RoomInfo
 
 RESV_HORIZON_DAYS = 7  # v2 §12: 예약은 오늘~7일 이내만 노드로
 NODE_RESV_MAX = 24  # 노드 Resv resv[24] (v2 §5.1). T3 의 reserve.NODE_RESV_MAX 가 이 값을 import
+# 문 앞 e-Paper 는 공개 — 학생이 적은 목적은 싣지 않는다. reserve.STUDENT_LABEL 도 이 값
+STUDENT_LABEL = "학생 예약"
 
 
 def _room_q(bld: str, room: int):
@@ -94,7 +96,7 @@ def record_provider(
                         x.e_h,
                         x.e_m,
                         x.type,
-                        x.subject if x.requested_by is None else "학생 예약",
+                        x.subject if x.requested_by is None else STUDENT_LABEL,
                         x.professor,
                     )
                     for x in s.scalars(
