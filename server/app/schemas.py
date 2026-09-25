@@ -489,12 +489,32 @@ class ResvPublicOut(BaseModel):
     label: str
 
 
+class FreeRange(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class BusySpan(FreeRange):
+    label: str  # 남의 학생 예약·신청은 "예약됨" (room_state.public_label)
+    type: int  # 1~6. 시험기간 안의 정규 슬롯은 2
+    mine: bool
+    # 내 예약만 — 격자가 '내 신청(대기)'과 '내 예약'을 가른다. 남의 것·슬롯은 None
+    status: Literal["requested", "approved"] | None = None
+
+
+class BusyDay(BaseModel):
+    day: int  # 1=월 … 7=일 (SlotOut.day 와 같다)
+    spans: list[BusySpan]
+
+
 class WeekOut(BaseModel):
     room: RoomStateOut
     week_start: dt.date
     slots: list[SlotOut]
     reservations: list[ResvPublicOut]
     exams: list[ExamOut]
+    busy: list[BusyDay] = []  # web A3 — 겹친 구간을 합친 요일별 사용 구간 (room_state.week_busy)
 
 
 class JobRunOut(Out):
@@ -516,12 +536,6 @@ class AllocationOut(BaseModel):
     unused_min: int
     total_min: int
     rate: float
-
-
-class FreeRange(BaseModel):
-    from_: str = Field(alias="from")
-    to: str
-    model_config = ConfigDict(populate_by_name=True)
 
 
 class FreeSlotsOut(BaseModel):

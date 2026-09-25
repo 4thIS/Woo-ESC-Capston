@@ -167,3 +167,26 @@ def test_load_inputs_and_state_of(app, school, students):
         )
         assert RS.state_of(s, rid, dt.datetime(2026, 9, 23, 9, 30)) == (5, M(10, 50))  # noqa: DTZ001
         assert RS.state_of(s, rid, dt.datetime(2026, 9, 25, 9, 30)) == (4, None)  # noqa: DTZ001
+
+
+def test_merge_busy_chains_overlaps_but_keeps_touching_apart():
+    out = RS.merge_busy(
+        [
+            Span(M(11), M(13), 6, "동아리 대관"),
+            Span(M(10), M(12), 1, "알고리즘"),
+            Span(M(12, 30), M(14), 6, "예약됨", mine=True),
+            Span(M(14), M(15), 1, "운영체제"),  # 14:00 에 맞닿기만 — 따로 둔다
+            Span(M(16), M(15), 1, "뒤집힘"),  # 관리자 입력엔 시작<끝 검증이 없다 — 버린다
+        ]
+    )
+    assert [(x.s, x.e, x.type, x.label, x.mine) for x in out] == [
+        (M(10), M(14), 1, "알고리즘 외 2건", True),
+        (M(14), M(15), 1, "운영체제", False),
+    ]
+    same = RS.merge_busy([Span(M(9), M(10), 6, "짧은"), Span(M(9), M(11), 1, "긴")])
+    assert [(x.label, x.e) for x in same] == [("긴 외 1건", M(11))]  # 같은 시작이면 긴 것이 머리
+    mixed = RS.merge_busy(
+        [Span(M(9), M(11), 1, "수업"), Span(M(10), M(12), 6, "스터디", True, status="requested")]
+    )
+    assert [(x.label, x.mine, x.status) for x in mixed] == [("수업 외 1건", True, "requested")]
+    assert RS.merge_busy([]) == []

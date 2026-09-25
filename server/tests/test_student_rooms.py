@@ -178,3 +178,88 @@ def test_week_hides_others_and_scopes(
         client.get(f"/api/student/rooms/{rid}/week", headers=student_hdr_school2).status_code == 404
     )
     assert client.get("/api/student/rooms/999/week", headers=student_hdr).status_code == 404
+
+
+def test_week_busy_merges_and_hides_requesters(
+    client, app, school, student_hdr, other_student_hdr, monkeypatch
+):
+    _fix_clock(monkeypatch)  # KST 수 9/23 10:30 — 주 = 9/21(월)~9/27(일)
+    _, ids = _building(app, 1, "E", rooms=((101, 1), (102, 1)))
+    rid = ids[101]
+    _slot(app, rid, 2, 9, 0, 10, 0, subject="A")
+    _slot(app, rid, 2, 10, 0, 11, 0, subject="B")  # 10:00 에 맞닿기만 — 합치지 않는다
+    _exam(app, rid, 1, dt.date(2026, 9, 22), dt.date(2026, 9, 22))  # 화요일만 시험기간
+    _slot(app, rid, 5, 10, 0, 12, 0, subject="알고리즘")
+    _resv(app, rid, dt.date(2026, 9, 25), 11, 0, 13, 0, id_=1, subject="동아리 대관")
+    thu = dt.date(2026, 9, 24)
+    _resv(
+        app,
+        rid,
+        thu,
+        14,
+        0,
+        15,
+        0,
+        id_=2,
+        status="requested",
+        requested_by="s2@mju.ac.kr",
+        subject="비밀",
+    )
+    _resv(
+        app,
+        rid,
+        thu,
+        16,
+        0,
+        17,
+        0,
+        id_=3,
+        status="requested",
+        requested_by="s1@mju.ac.kr",
+        subject="스터디",
+    )
+    _resv(app, rid, thu, 18, 0, 19, 0, id_=9, requested_by="s1@mju.ac.kr", subject="내 예약")
+    _resv(app, rid, thu, 9, 0, 10, 0, id_=4, status="rejected", requested_by="s2@mju.ac.kr")
+    _resv(app, rid, thu, 10, 0, 11, 0, id_=5, status="cancelled")
+    _resv(app, rid, thu, 11, 0, 12, 0, id_=6, status="expired", requested_by="s2@mju.ac.kr")
+    _resv(app, ids[102], thu, 9, 0, 10, 0, id_=7)  # 다른 방
+    _resv(app, rid, dt.date(2026, 9, 28), 9, 0, 10, 0, id_=8)  # 다음 주
+    r = client.get(f"/api/student/rooms/{rid}/week", headers=student_hdr)
+    assert r.status_code == 200
+    assert [d["day"] for d in r.json()["busy"]] == [1, 2, 3, 4, 5, 6, 7]
+    busy = {
+        d["day"]: [
+            (x["from"], x["to"], x["label"], x["type"], x["mine"], x["status"]) for x in d["spans"]
+        ]
+        for d in r.json()["busy"]
+    }
+    assert busy == {
+        1: [],
+        2: [("09:00", "10:00", "A", 2, False, None), ("10:00", "11:00", "B", 2, False, None)],
+        3: [],
+        4: [
+            ("14:00", "15:00", "예약됨", 6, False, None),  # 남의 신청 — 상태도 숨긴다
+            ("16:00", "17:00", "스터디", 6, True, "requested"),  # 내 신청(대기)
+            ("18:00", "19:00", "내 예약", 6, True, "approved"),
+        ],
+        5: [("10:00", "13:00", "알고리즘 외 1건", 1, False, None)],
+        6: [],
+        7: [],
+    }
+    assert "비밀" not in r.text and "s2@mju.ac.kr" not in r.text  # 남의 신청은 존재만 보인다
+    j2 = client.get(f"/api/student/rooms/{rid}/week", headers=other_student_hdr).json()
+    assert [(x["label"], x["mine"], x["status"]) for x in j2["busy"][3]["spans"]] == [
+        ("비밀", True, "requested"),
+        ("예약됨", False, None),
+        ("예약됨", False, None),  # s1 의 승인 예약도 남에게는 상태 없이
+    ]
+
+
+def test_week_date_upper_bound_is_422_not_500(client, app, school, student_hdr, monkeypatch):
+    _fix_clock(monkeypatch)
+    _, ids = _building(app, 1, "E")
+    url = f"/api/student/rooms/{ids[101]}/week"
+    # 9999-12-27(월) 의 주 끝은 10000년 — 계산하면 OverflowError(500)
+    assert client.get(f"{url}?date=9999-12-27", headers=student_hdr).status_code == 422
+    j = client.get(f"{url}?date=9999-12-26", headers=student_hdr).json()
+    assert j["week_start"] == "9999-12-20" and len(j["busy"]) == 7
