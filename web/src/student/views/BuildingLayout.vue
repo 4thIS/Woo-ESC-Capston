@@ -28,7 +28,7 @@ const router = useRouter()
 const { data, error, refreshedAt, reload } = useResource(() => studentApi.rooms())
 usePolling(reload, POLL_MS)
 const loaded = computed(() => data.value !== undefined)
-provide(BUILDING, { rooms: data, loaded, reload })
+provide(BUILDING, { rooms: data, loaded, error, reload })
 
 const bld = computed(() => String(route.params.bld))
 const all = computed(() => data.value ?? [])

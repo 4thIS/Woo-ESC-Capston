@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { ref, type Component, type DefineComponent } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import type { RoomStateOut } from '@/api/types'
-import { BUILDING } from '@/student/building'
+import { BUILDING, type BuildingCtx } from '@/student/building'
 
 export const blank = { render: () => null }
 export const roomState = (over: Partial<RoomStateOut> = {}): RoomStateOut => ({
@@ -23,6 +23,7 @@ export async function mountAt(
   path: string,
   pattern: string,
   rooms?: RoomStateOut[],
+  ctx: Partial<BuildingCtx> = {},
 ) {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -38,7 +39,9 @@ export async function mountAt(
         [BUILDING as symbol]: {
           rooms: ref(rooms),
           loaded: ref(true),
+          error: ref(null),
           reload: vi.fn(async () => {}),
+          ...ctx,
         },
       }
     : {}

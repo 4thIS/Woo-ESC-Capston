@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { BUSY_TYPES, DAYS, TYPE_LABEL } from '@/components/domain/rules'
 import { ROW_MIN, gridRows, type GridBlock, type GridRange } from './grid'
 import { minToHm } from './rules'
@@ -17,6 +17,11 @@ const props = withDefaults(
   { todayIndex: -1, nowTop: null },
 )
 
+const root = ref<HTMLElement | null>(null)
+// 좁은 폭에서 주말 열(토·일)이 오늘이면 주중 5열 뒤에 숨는다 — 올릴 때 한 번 끝까지 민다
+onMounted(() => {
+  if (props.todayIndex >= 5 && root.value) root.value.scrollLeft = root.value.scrollWidth
+})
 const wide = computed(() => props.rowHeight === 32)
 const height = computed(() => `${gridRows(props.range) * props.rowHeight}px`)
 /** 정시마다 시각 라벨 — 30분 행 두 개에 하나 */
@@ -35,7 +40,12 @@ const name = (d: number, b: GridBlock) =>
 </script>
 
 <template>
-  <div class="wg" :class="{ 'wg--wide': wide }" :style="{ '--wg-row': `${rowHeight}px` }">
+  <div
+    ref="root"
+    class="wg"
+    :class="{ 'wg--wide': wide }"
+    :style="{ '--wg-row': `${rowHeight}px` }"
+  >
     <div
       class="wg__grid"
       :style="{
@@ -81,7 +91,9 @@ const name = (d: number, b: GridBlock) =>
           :aria-label="name(d, b)"
         >
           <span v-if="wide" class="wg__type">{{ TYPE_LABEL[b.type] }}</span>
-          <span class="wg__label">{{ b.label }}</span>
+          <span class="wg__label" :class="{ 'wg__label--off': kind(b) === 'off' }">{{
+            b.label
+          }}</span>
           <span v-if="wide" class="wg__extra num">{{ b.extra }}</span>
         </div>
         <div
@@ -104,7 +116,8 @@ const name = (d: number, b: GridBlock) =>
 }
 .wg--wide {
   --wg-time: 40px;
-  --wg-col: 120px;
+  /* 1280 에서 목록 340 을 빼고 주말까지 7열: 40 + 7 × 116 = 852 ≤ 874 (spec 200px 이상은 mh 판정 대기) */
+  --wg-col: 116px;
 }
 .wg__grid {
   display: grid;
@@ -172,6 +185,9 @@ const name = (d: number, b: GridBlock) =>
   border-style: dashed;
   border-color: var(--room-free-line);
   color: var(--room-free-text);
+}
+/* 취소선은 라벨 자체에 — line-clamp 상자는 원자 요소라 바깥 text-decoration 이 안으로 전해지지 않는다 */
+.wg__label--off {
   text-decoration: line-through;
 }
 /* 내가 잡은 것 — brand 1px, 신청(대기)은 점선 */

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import type { GridBlock } from '../grid'
 import WeekGrid from '../WeekGrid.vue'
@@ -75,7 +75,10 @@ describe('WeekGrid — 요일 가로 × 시간 세로, 겹침은 서버가 합�
     expect(algo.attributes('style')).toContain('top: 48px')
     expect(algo.attributes('style')).toContain('height: 144px')
     expect(algo.classes()).toContain('wg__blk--busy')
-    expect(w.get('[aria-label="화 09:00–10:00 운영체제"]').classes()).toContain('wg__blk--off')
+    const off = w.get('[aria-label="화 09:00–10:00 운영체제"]')
+    expect(off.classes()).toContain('wg__blk--off')
+    // 취소선은 안쪽 라벨에 — line-clamp 상자는 원자 요소라 바깥 text-decoration 이 전해지지 않는다
+    expect(off.get('.wg__label').classes()).toContain('wg__label--off')
     const mine = w.get('[aria-label="금 15:00–16:00 캡스톤 스터디 대기중"]')
     expect(mine.classes()).toEqual(expect.arrayContaining(['wg__blk--mine', 'wg__blk--requested']))
     expect(w.findAll('.wg__col')[4].attributes('aria-label')).toBe('금요일')
@@ -95,5 +98,15 @@ describe('WeekGrid — 요일 가로 × 시간 세로, 겹침은 서버가 합�
     const w = mount(WeekGrid, { props: { ...props, todayIndex: -1 } })
     expect(w.find('.wg__day--today').exists()).toBe(false)
     expect(w.find('.wg__now').exists()).toBe(false)
+  })
+
+  it('오늘이 주말 열이면 올릴 때 격자를 끝까지 가로 스크롤해 오늘이 보이게', () => {
+    const set = vi.spyOn(Element.prototype, 'scrollLeft', 'set')
+    mount(WeekGrid, { props: { ...props, days: [1, 2, 3, 4, 5, 6], todayIndex: 5 } })
+    expect(set).toHaveBeenCalledTimes(1)
+    set.mockClear()
+    mount(WeekGrid, { props })
+    expect(set).not.toHaveBeenCalled()
+    set.mockRestore()
   })
 })

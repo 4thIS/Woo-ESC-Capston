@@ -1,6 +1,7 @@
 import { computed, inject, watch, type InjectionKey, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { studentApi } from '@/api/student'
+import type { ApiError } from '@/api/client'
 import type { RoomStateOut, WeekOut } from '@/api/types'
 import { gridRange, nowTop, visibleDays, weekBlocks } from '@/components/student/grid'
 import { dayOfDate, kstDateStr, kstMinutes, mondayOf } from '@/lib/time'
@@ -12,6 +13,7 @@ import { POLL_MS, useNow } from './composables'
 export interface BuildingCtx {
   rooms: Readonly<Ref<RoomStateOut[] | undefined>>
   loaded: Readonly<Ref<boolean>>
+  error: Readonly<Ref<ApiError | null>>
   reload: () => Promise<void>
 }
 export const BUILDING: InjectionKey<BuildingCtx> = Symbol('building')
@@ -40,7 +42,13 @@ export function useRoomWeek(opts: { poll: boolean }) {
   )
   watch(
     () => room.value?.room_id,
-    (id) => {
+    (id, prev) => {
+      // 다른 방이면 옛 방 시간표·오류·갱신 시각을 지운다 — 402 제목 아래 401 을 보이지 않게
+      if (prev !== undefined) {
+        data.value = undefined
+        error.value = null
+        refreshedAt.value = null
+      }
       if (id !== undefined) void reload()
     },
     { immediate: true },
@@ -49,6 +57,10 @@ export function useRoomWeek(opts: { poll: boolean }) {
     usePolling(async () => {
       if (room.value) await reload()
     }, POLL_MS)
+  // 레이아웃의 방 목록 첫 조회가 실패하면 주간을 부를 수 없다 — 같은 '다시 시도' 자리로, 목록을 다시 부른다
+  const listFailed = computed(() => !ctx.loaded.value && ctx.error.value !== null)
+  const weekError = computed(() => error.value ?? (listFailed.value ? ctx.error.value : null))
+  const retry = () => (listFailed.value ? ctx.reload() : reload())
   const notFound = computed(() => (ctx.loaded.value && !room.value) || error.value?.status === 404)
   const title = computed(() => `${room.value?.building ?? ''} ${roomNo.value}호`.trim())
   return {
@@ -59,9 +71,9 @@ export function useRoomWeek(opts: { poll: boolean }) {
     notFound,
     title,
     week: data,
-    weekError: error,
+    weekError,
     refreshedAt,
-    reload,
+    reload: retry,
   }
 }
 

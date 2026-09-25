@@ -11,7 +11,7 @@ import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
-import { dayOfDate, formatHm, kstDateStr, kstMinutes } from '@/lib/time'
+import { dayOfDate, formatHm, kstDateStr, kstMinutes, mondayOf } from '@/lib/time'
 import CtaLink from '../CtaLink.vue'
 import RefreshedNote from '../RefreshedNote.vue'
 import StudentHeader from '../StudentHeader.vue'
@@ -29,11 +29,14 @@ const { bld, roomNo, now, notFound, title, week, weekError, refreshedAt, reload 
 const { days, blocks, range, todayIndex, nowY } = useWeekGrid(week, now, ROW_PX)
 const today = computed(() => kstDateStr(now.value))
 // '지금' 카드 대신 오늘 목록에서 지금 행을 세운다 — 빈 구간도 행 (student-room.md 화면 2)
+// 서버 주간이 이번 주일 때만(자정 직후 한 번의 폴링 사이 어긋남) — 격자의 '오늘'과 같은 판정
 const rows = computed(() =>
-  todayRows(
-    week.value?.busy.find((d) => d.day === dayOfDate(today.value))?.spans ?? [],
-    kstMinutes(now.value),
-  ),
+  week.value && week.value.week_start === mondayOf(today.value)
+    ? todayRows(
+        week.value.busy.find((d) => d.day === dayOfDate(today.value))?.spans ?? [],
+        kstMinutes(now.value),
+      )
+    : [],
 )
 const fav = computed(() => favorites.value.includes(favKey(bld.value, roomNo.value)))
 const next = computed(() => nextFree(week.value?.free ?? []))
