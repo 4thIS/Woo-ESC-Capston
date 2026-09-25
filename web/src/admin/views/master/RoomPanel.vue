@@ -84,7 +84,7 @@ function openForm(r: RoomOut | null) {
   Object.assign(form, {
     room: r ? String(r.room) : '',
     units: r?.units ?? 1,
-    reservable: r?.reservable ?? false,
+    reservable: r ? reservableOf(r) : false,
   })
   delete errors.room
   delete errors.form

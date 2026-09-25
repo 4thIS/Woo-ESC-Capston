@@ -137,6 +137,15 @@ describe('강의실 패널', () => {
     expect((row(402).get('input[type=checkbox]').element as HTMLInputElement).disabled).toBe(true)
   })
 
+  it('체크 응답을 기다리는 동안 수정을 열면 — 폼도 누른 값(받음)에서 시작한다', async () => {
+    rooms.patchRoom.mockReturnValue(new Promise(() => {}))
+    await mountView()
+    await row(402).get('input[type=checkbox]').setValue(true)
+    await btn(row(402), '수정').trigger('click')
+    const box = dialog('강의실 수정')!.get('input[type=checkbox]').element as HTMLInputElement
+    expect(box.checked).toBe(true)
+  })
+
   it('실패하면 체크를 되돌리고 Toast', async () => {
     rooms.patchRoom.mockRejectedValue(new ApiError(500, MESSAGES[500]))
     await mountView()

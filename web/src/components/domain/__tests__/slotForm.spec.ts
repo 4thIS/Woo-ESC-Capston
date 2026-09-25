@@ -149,7 +149,7 @@ describe('SlotForm', () => {
     expect(w.emitted('stale')).toHaveLength(1)
     expect(toasts.value.at(-1)).toMatchObject({
       tone: 'danger',
-      message: '새 슬롯은 저장했지만 옛 슬롯을 지우지 못했습니다. 표에서 지워 주세요.',
+      message: '새 슬롯은 저장했지만 옛 슬롯을 지우지 못했습니다. 목록에서 지워 주세요.',
     })
   })
 
