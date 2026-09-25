@@ -14,6 +14,7 @@ import {
   layoutLabel,
   minToHm,
   resvWhen,
+  rowState,
   sortMine,
   spanKey,
   startOptions,
@@ -66,6 +67,17 @@ describe('상태 줄', () => {
     ])
     expect(layoutLabel(99)).toBe('확인 중')
     expect([1, 2, 3, 4, 5, 6, 7, 8].filter(isRed)).toEqual([1, 5, 6, 7])
+    // 목록 행 — 4 만 빈 곳, RED 는 사용 중, 나머지(쉬는시간·휴강·설정 대기)는 어느 쪽도 아니다
+    expect([1, 2, 3, 4, 5, 6, 7, 8].map(rowState)).toEqual([
+      'busy',
+      'other',
+      'other',
+      'free',
+      'busy',
+      'busy',
+      'busy',
+      'other',
+    ])
   })
 
   it('until — "비어요"로 단정하지 않는다, null 은 자정까지', () => {

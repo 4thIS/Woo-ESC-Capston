@@ -7,7 +7,7 @@ import FavoriteStar from './FavoriteStar.vue'
 defineProps<{
   to: string
   room: number
-  state: 'busy' | 'free'
+  state: 'busy' | 'free' | 'other'
   label: string
   until: string
   fav: boolean
@@ -21,7 +21,7 @@ const emit = defineEmits<{ toggleFav: [] }>()
       <span class="row__room num">{{ room }}호</span>
       <span class="row__state">
         <Badge v-if="state === 'busy'" tone="busy" size="sm">{{ label }}</Badge>
-        <span v-else class="row__free">{{ label }}</span>
+        <span v-else :class="state === 'free' ? 'row__free' : 'row__other'">{{ label }}</span>
       </span>
       <span class="row__until num">{{ until }}</span>
       <span class="row__chev" aria-hidden="true">›</span>
@@ -69,6 +69,9 @@ const emit = defineEmits<{ toggleFav: [] }>()
 .row__free {
   color: var(--room-free-text);
   font-weight: var(--font-weight-bold);
+}
+.row__other {
+  color: var(--text-2);
 }
 .row__until {
   grid-column: 2;

@@ -23,6 +23,14 @@ export const routes: RouteRecordRaw[] = [
   { path: '/verify', component: () => import('@/auth/VerifyView.vue') },
   { path: '/forgot', component: () => import('@/auth/ForgotView.vue') },
   { path: '/reset', component: () => import('@/auth/ResetView.vue') },
+  // 건물 글자는 대문자 한 글자 — sensitive 로 소문자는 여기서 받지 않고 404 라우트가 대문자로 보낸다
+  {
+    path: '/:bld([A-Z])',
+    sensitive: true,
+    component: () => import('./views/BuildingLayout.vue'),
+    meta: { gate: true },
+    children: [],
+  },
   // 없는 주소 — 벽 없이 404 (보여줄 데이터가 없다)
   {
     path: '/:pathMatch(.*)*',

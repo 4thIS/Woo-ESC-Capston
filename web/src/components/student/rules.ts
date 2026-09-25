@@ -19,6 +19,9 @@ const LAYOUT_LABEL: Record<number, string> = {
 export const layoutLabel = (layout: number) => LAYOUT_LABEL[layout] ?? '확인 중'
 /** 색 — RED(1·5·6·7) 만 room.busy (tokens.md). 가용성(FREE_LAYOUT)과 섞지 않는다 */
 export const isRed = (layout: number) => [1, 5, 6, 7].includes(layout)
+/** 목록 행 모양 — 4 만 빈 곳, 쉬는시간·휴강·설정 대기(2·3·8)는 예약할 수 없으니 빈 곳처럼 칠하지 않는다 */
+export const rowState = (layout: number): 'busy' | 'free' | 'other' =>
+  isRed(layout) ? 'busy' : layout === FREE_LAYOUT ? 'free' : 'other'
 /** until = 다음 상태 변화. '비어요'로 단정하지 않는다 — 수업 뒤는 쉬는시간일 수 있다 */
 export function untilText(layout: number, until: string | null): string {
   if (until) return `${until} 까지`

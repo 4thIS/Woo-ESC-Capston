@@ -46,4 +46,13 @@ describe('student router', () => {
     expect(r.currentRoute.value.fullPath).toBe('/E/401?x=1#top')
     expect(r.currentRoute.value.params.room).toBe('401')
   })
+
+  it('/:bld — 대문자 한 글자만, 소문자는 대문자로 보낸다(대소문자 구분 라우트)', async () => {
+    const r = await at('/E')
+    expect(r.matched[0].path).toBe('/:bld([A-Z])')
+    expect(r.meta.gate).toBe(true)
+    expect((await at('/e')).matched[0].path).toBe('/:bld([A-Z])')
+    expect((await at('/e')).path).toBe('/E')
+    expect((await at('/me')).matched[0].path).not.toBe('/:bld([A-Z])')
+  })
 })

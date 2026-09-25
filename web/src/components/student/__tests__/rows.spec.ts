@@ -74,4 +74,14 @@ describe('RoomListRow', () => {
     await w.get('li > button').trigger('click')
     expect(w.emitted('toggleFav')).toHaveLength(1)
   })
+
+  it('예약할 수 없는 상태(쉬는시간·휴강·설정 대기)는 빈 곳처럼 보이지 않는다', () => {
+    const w = mount(RoomListRow, {
+      props: { ...props, state: 'other', label: '휴강' },
+      global: { plugins: [router] },
+    })
+    expect(w.find('.row__free').exists()).toBe(false)
+    expect(w.find('.row__state .badge').exists()).toBe(false)
+    expect(w.get('.row__other').text()).toBe('휴강')
+  })
 })

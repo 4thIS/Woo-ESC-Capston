@@ -2,8 +2,10 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 import cfg from './env.json' with { type: 'json' }
+// 순수 모듈은 앱 코드를 그대로 쓴다 — E2E 가 시각 계산을 따로 갖지 않게
+import { dayOfDate, hm, kstDateStr, kstMinutes } from '../src/lib/time'
 
 const web = fileURLToPath(new URL('..', import.meta.url))
 // start-server.mjs 와 같은 규칙 — E2E_SERVER_DIR(web/ 기준 상대 또는 절대), 기본 ../server
@@ -141,17 +143,18 @@ export async function fillLogin(page: Page, email: string, pw = PASSWORD) {
 }
 
 /** 전체 실행에서는 앞 파일들이 IP 당 분당 로그인 30회를 채운 채 넘어온다 — 429 면 창이 지난 뒤 한 번 더.
- * email 은 함수로 받는다 — nextAdmin 처럼 매 시도마다 계정을 돌려 쓸 수 있게 */
-export async function login(page: Page, email: () => string) {
+ * email 은 함수로 받는다 — nextAdmin 처럼 매 시도마다 계정을 돌려 쓸 수 있게.
+ * ready = 로그인 뒤 보일 것 (관리자 nav, 학생 header.sh) */
+export async function login(page: Page, email: () => string, ready: Locator = page.locator('nav')) {
   await fillLogin(page, email())
   const limited = page.getByText('잠시 후 다시 시도해 주세요')
-  await expect(page.locator('nav').or(limited)).toBeVisible()
+  await expect(ready.or(limited)).toBeVisible()
   if (await limited.isVisible()) {
     test.setTimeout(120_000)
     await page.waitForTimeout(61_000)
     await fillLogin(page, email())
   }
-  await expect(page.locator('nav')).toBeVisible()
+  await expect(ready).toBeVisible()
 }
 
 // ---- F3 모니터링 시드 ----
@@ -252,5 +255,119 @@ export async function ensureModems(request: APIRequestContext, ids: string[]) {
   for (const modem_id of ids.filter((i) => !have.includes(i))) {
     const m = await request.post('/api/lora/modems', { headers, data: { modem_id } })
     expect(m.status(), modem_id).toBe(200)
+  }
+}
+
+// ---- F4 학생 웹 ----
+
+/** KST 지금의 분(0..1439) — 날짜처럼 시각도 상대로 만든다 (spec §7.2) */
+export const kstMinutesNow = () => kstMinutes(new Date())
+/** 605 → '10:05' */
+export const hmOf = (m: number) => hm(Math.floor(m / 60), m % 60)
+/** KST 오늘 + n일의 요일 1=월 … 7=일 */
+const kstWeekday = (offsetDays = 0) => dayOfDate(kstDateStr(new Date(), offsetDays))
+
+/** 학생 로그인 뒤 첫 화면 — 건물 목록, 또는 최근·하나뿐인 건물로 바로 (student-room.md 미결 3).
+ * 어느 쪽이든 앱 안(`내 예약` 헤더)이고 404 가 아니다. 앞 spec 들이 만든 건물 수에 따라 갈린다 */
+export async function expectStudentLanding(page: Page) {
+  await expect(page).toHaveURL(new RegExp(`^${WEB_URL}/[A-Z]?$`))
+  await expect(page.getByRole('link', { name: '내 예약' })).toBeVisible()
+}
+
+/** 학생 화면 E2E 용 — 인문관(H) 101~105(105 만 예약 불가) + 자연관(J) 301. 한 모뎀이 두 건물을 맡는다 */
+export const STU = {
+  building: '인문관',
+  bld: 'H',
+  modem: 'e2e-m7',
+  rooms: [101, 102, 103, 104, 105],
+  closed: 105,
+  other: { building: '자연관', bld: 'J', room: 301 },
+} as const
+
+/** 멱등(건물 H 가 있으면 방 id 만). 101 = 지금 '세미나'(특강, 오늘 −30~+60분) 로 사용 중 +
+ * 내일 요일에 겹친 두 슬롯(10–12 캡스톤디자인 수업 · 11–13 동아리 대관 특강 → 서버가 '외 1건'으로 합친다)과
+ * 14–15 운영체제 휴강. 102~104 는 비어 있다 */
+export async function seedStudent(
+  request: APIRequestContext,
+): Promise<{ roomIds: Record<number, number>; tomorrowDay: number }> {
+  const headers = { authorization: `Bearer ${await apiLogin(request, cfg.ADMINS[0])}` }
+  const call = async <T>(method: 'get' | 'post' | 'put', p: string, data?: unknown): Promise<T> => {
+    const r = await request[method](p, { headers, data })
+    expect(r.status(), `${method} ${p}`).toBe(200)
+    return (await r.json()) as T
+  }
+  const tomorrowDay = kstWeekday(1)
+  let h = (await call<{ id: number; bld: string }[]>('get', '/api/buildings')).find(
+    (b) => b.bld === STU.bld,
+  )
+  if (!h) {
+    await ensureModems(request, [STU.modem])
+    h = await call<{ id: number; bld: string }>('post', '/api/buildings', {
+      school_id: 1,
+      name: STU.building,
+      bld: STU.bld,
+      modem_id: STU.modem,
+    })
+    const j = await call<{ id: number }>('post', '/api/buildings', {
+      school_id: 1,
+      name: STU.other.building,
+      bld: STU.other.bld,
+      modem_id: STU.modem,
+    })
+    const ids: Record<number, number> = {}
+    for (const room of STU.rooms) {
+      const r = await call<{ id: number }>('post', '/api/rooms', {
+        building_id: h.id,
+        room,
+        units: 1,
+        reservable: room !== STU.closed,
+      })
+      ids[room] = r.id
+    }
+    await call('post', '/api/rooms', {
+      building_id: j.id,
+      room: STU.other.room,
+      units: 1,
+      reservable: true,
+    })
+    const slot = (from: string, to: string, type: number, subject: string, professor: string) => {
+      const [s_h, s_m] = from.split(':').map(Number)
+      const [e_h, e_m] = to.split(':').map(Number)
+      return call('put', `/api/rooms/${ids[101]}/slots`, {
+        day: tomorrowDay,
+        s_h,
+        s_m,
+        e_h,
+        e_m,
+        type,
+        subject,
+        professor,
+        source: 2,
+      })
+    }
+    await slot('10:00', '12:00', 1, '캡스톤디자인', '김교수')
+    await slot('11:00', '13:00', 5, '동아리 대관', '')
+    await slot('14:00', '15:00', 3, '운영체제', '이교수')
+    const t = kstMinutesNow()
+    const s = Math.max(0, Math.floor((t - 30) / 5) * 5)
+    const e = Math.min(23 * 60 + 55, Math.ceil((t + 60) / 5) * 5)
+    await call('post', `/api/rooms/${ids[101]}/reservations`, {
+      date: kstDate(0),
+      s_h: Math.floor(s / 60),
+      s_m: s % 60,
+      e_h: Math.floor(e / 60),
+      e_m: e % 60,
+      type: 5,
+      subject: '세미나',
+      professor: '',
+    })
+  }
+  const hid = h.id
+  const rooms = await call<{ id: number; building_id: number; room: number }[]>('get', '/api/rooms')
+  return {
+    roomIds: Object.fromEntries(
+      rooms.filter((r) => r.building_id === hid).map((r) => [r.room, r.id]),
+    ),
+    tomorrowDay,
   }
 }
