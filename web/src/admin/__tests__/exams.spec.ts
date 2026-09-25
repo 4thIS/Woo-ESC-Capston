@@ -56,6 +56,14 @@ describe('시험기간 블록', () => {
     expect(row.text()).toContain('4곳')
   })
 
+  it('한 방에 같은 기간이 둘이어도 곳 수·호수는 방 기준 — 401 이 두 번 나오지 않는다', async () => {
+    await mountBlock([X(1, 11), X(5, 11), X(2, 12)])
+    const row = w.findAll('tbody tr')[0]
+    expect(row.text()).toContain('401, 402')
+    expect(row.text()).not.toContain('401, 401')
+    expect(row.text()).toContain('2곳')
+  })
+
   it('펼치면 방마다 수정·삭제 — 삭제는 확인 뒤 그 방의 그 id', async () => {
     await mountBlock([X(1, 11), X(2, 12)])
     await w.get('.tbl__toggle').trigger('click')

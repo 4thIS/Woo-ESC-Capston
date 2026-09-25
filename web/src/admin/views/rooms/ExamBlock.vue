@@ -41,6 +41,8 @@ const COLUMNS = [
   { key: 'count', label: '강의실', width: '80px', align: 'right' as const },
 ]
 const asG = (row: Record<string, unknown>) => row as unknown as ExamGroup
+/** 그 기간의 방 id — 한 방에 같은 기간이 둘이어도 한 곳 (items 는 이미 방 순서) */
+const roomIdsOf = (g: ExamGroup) => [...new Set(g.items.map((x) => x.room_id))]
 const roomLabel = (r: RoomOut) => `${props.label(r.id)}호`
 
 // 추가 — 강의실을 고르는 것은 트리. 폼에는 날짜만, 대상은 고른 방 전부 (admin-rooms.md 시험기간)
@@ -102,7 +104,7 @@ async function remove() {
       </template>
       <template #cell-rooms="{ row }"
         ><span class="num">{{
-          roomsLabel(asG(row).items.map((x) => label(x.room_id)))
+          roomsLabel(roomIdsOf(asG(row)).map((id) => label(id)))
         }}</span></template
       >
       <template #cell-date_start="{ row }"
@@ -112,7 +114,7 @@ async function remove() {
         ><span class="num">{{ asG(row).date_end }}</span></template
       >
       <template #cell-count="{ row }"
-        ><span class="num">{{ asG(row).items.length }}곳</span></template
+        ><span class="num">{{ roomIdsOf(asG(row)).length }}곳</span></template
       >
       <template #expanded="{ row }">
         <ul class="blk__items">
