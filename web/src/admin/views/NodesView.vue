@@ -19,6 +19,7 @@ import { usePolling } from '@/lib/usePolling'
 import { formatKst, relativeKo } from '@/lib/time'
 import LastRefreshed from '../LastRefreshed.vue'
 import ModemPanel from './nodes/ModemPanel.vue'
+import PendingPanel from './nodes/PendingPanel.vue'
 import { buildingOptions, roomLabel, sortNodes, unitsByRoom, versions, volts } from '../nodesView'
 
 const router = useRouter()
@@ -216,6 +217,8 @@ async function broadcast() {
         </template>
       </Table>
     </section>
+
+    <PendingPanel :pending="data?.pending" :nodes="nodes" :loading="loading" @changed="reload" />
   </main>
 </template>
 

@@ -183,3 +183,28 @@ test('토큰 재발급 — 확인 뒤에만, 새 토큰 표시', async () => {
   await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
+// ---- 등록 대기 ----
+test('등록 대기 → 강의실 배정', async () => {
+  const row = page
+    .getByRole('region', { name: '등록 대기', exact: true })
+    .locator('tbody tr', { hasText: SEED.mac })
+  await expect(row).toContainText(SEED.modem)
+  await expect(row).toContainText('4.10 V')
+  await expect(row).toContainText('−68 dBm')
+  await row.getByRole('button', { name: '강의실 배정' }).click()
+  const d = page.getByRole('dialog')
+  await d.getByLabel('건물').selectOption({ label: SEED.building })
+  await d.getByLabel('호수').selectOption({ label: '402호' })
+  await expect(d.getByLabel('노드').locator('option')).toHaveText([
+    '노드 선택',
+    '1번 노드 — 사용 중',
+    '2번 노드',
+  ])
+  await d.getByLabel('노드').selectOption({ label: '2번 노드' })
+  await shot(page, 'admin-nodes-provision-1440')
+  await d.getByRole('button', { name: '배정', exact: true }).click()
+  await expect(
+    page.getByText(`${SEED.building} 402호에 배정했습니다. 장치가 다음에 깨어나면 적용됩니다.`),
+  ).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+})
