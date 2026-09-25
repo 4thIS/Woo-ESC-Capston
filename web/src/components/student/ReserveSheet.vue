@@ -143,20 +143,25 @@ function submit() {
     <section class="rs__sec">
       <h2 class="rs__h">날짜 <span class="rs__sub">· 오늘부터 7일까지</span></h2>
       <div class="rs__chips" role="radiogroup" aria-label="날짜">
-        <button
+        <!-- 네이티브 라디오(구간과 같은 모양) — 한 탭 멈춤, 화살표로 옮긴다. 입력은 칩 전체를 덮어 48px 을 그대로 받는다 -->
+        <label
           v-for="(d, i) in days"
           :key="d.date"
-          type="button"
-          role="radio"
           class="rs__chip"
           :class="{ 'rs__chip--on': d.date === date }"
-          :aria-checked="d.date === date"
-          :aria-label="i === 0 ? `오늘 ${dateLabel(d.date)}` : dateLabel(d.date)"
-          @click="pickDay(d.date)"
         >
+          <input
+            type="radio"
+            name="date"
+            class="rs__chip-in"
+            :value="d.date"
+            :checked="d.date === date"
+            :aria-label="i === 0 ? `오늘 ${dateLabel(d.date)}` : dateLabel(d.date)"
+            @change="pickDay(d.date)"
+          />
           <span>{{ i === 0 ? '오늘' : chipDay(d.date) }}</span>
           <span class="rs__chip-num num">{{ Number(d.date.slice(8, 10)) }}</span>
-        </button>
+        </label>
       </div>
     </section>
 
@@ -252,6 +257,7 @@ function submit() {
   overflow-x: auto;
 }
 .rs__chip {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
@@ -267,6 +273,20 @@ function submit() {
   font-size: var(--font-size-sm);
   line-height: var(--leading-tight);
   cursor: pointer;
+}
+.rs__chip-in {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+/* 입력이 투명하니 초점 링은 칩에 — 가로 스크롤 상자가 바깥 링을 자르니 안쪽으로 */
+.rs__chip:has(.rs__chip-in:focus-visible) {
+  outline: var(--border-thick) solid var(--focus);
+  outline-offset: -2px;
 }
 .rs__chip--on {
   border-color: var(--brand);

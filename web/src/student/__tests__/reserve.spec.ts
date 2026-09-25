@@ -49,7 +49,7 @@ const autoDismissed = () => vi.mocked(setTimeout).mock.calls.some((c) => c[1] ==
 const submitBtn = (w: VueWrapper) => w.get<HTMLButtonElement>('button[type="submit"]')
 /** 오늘(10-23) 첫 구간 13:00–15:00 → 13:00–14:00, 목적 '스터디' 로 제출 */
 async function fillAndSubmit(w: VueWrapper) {
-  await w.findAll('input[type="radio"]')[0].setValue()
+  await w.findAll('input[name="span"]')[0].setValue()
   await w.get('.field__control').setValue('스터디')
   await w.get('form').trigger('submit')
   await flushPromises()
