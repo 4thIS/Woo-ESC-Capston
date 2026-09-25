@@ -46,9 +46,10 @@ test('가입 신청 → 링크 → 승인 대기 403 → 승인 → 로그인', 
   await shot(page, 'login-pending-390')
 
   const t = await apiLogin(request, nextAdmin())
-  await request.post(`/api/admin/users/${encodeURIComponent(email)}/approve`, {
+  const r = await request.post(`/api/admin/users/${encodeURIComponent(email)}/approve`, {
     headers: { authorization: `Bearer ${t}` },
   })
+  expect(r.ok()).toBe(true)
   await fillLogin(page, email)
   await expect(page.getByText('강의실 화면은 준비 중입니다')).toBeVisible()
 })

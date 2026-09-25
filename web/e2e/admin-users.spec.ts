@@ -57,9 +57,10 @@ test('다른 곳에서 먼저 승인 → 409 안내 + 새로고침 (Review Focus
   await openUsers(page)
   await expect(row(page, s.email)).toBeVisible()
   const t = await apiLogin(request, nextAdmin())
-  await request.post(`/api/admin/users/${encodeURIComponent(s.email)}/approve`, {
+  const r = await request.post(`/api/admin/users/${encodeURIComponent(s.email)}/approve`, {
     headers: { authorization: `Bearer ${t}` },
   })
+  expect(r.ok()).toBe(true)
   await row(page, s.email).getByRole('button', { name: '승인' }).click()
   await expect(page.getByText('이미 처리된 신청입니다')).toBeVisible()
   await expect(row(page, s.email)).toHaveCount(0)

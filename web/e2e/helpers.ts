@@ -50,6 +50,9 @@ export async function mailToken(to: string, { after = 0 } = {}): Promise<string>
   return tokens.at(-1)!
 }
 
+/** 이메일별 관리자 토큰 캐시 — IP 당 분당 30회 로그인 상한을 아끼려고 (비밀번호가 기본값일 때만) */
+const tokens = new Map<string, string>()
+
 export function cli(args: string[], input?: string) {
   const r = spawnSync('uv', ['run', 'python', '-m', 'app.cli', ...args], {
     cwd: serverDir,
@@ -67,12 +70,19 @@ export function cli(args: string[], input?: string) {
     shell: process.platform === 'win32',
   })
   expect(r.status, r.stderr).toBe(0)
+  // set-user 는 token_version 을 올린다 — 그 사람의 캐시된 토큰은 이제 401
+  const i = args.indexOf('--email')
+  if (args[0] === 'set-user' && i >= 0) tokens.delete(args[i + 1])
 }
 
 export async function apiLogin(request: APIRequestContext, email: string, pw = PASSWORD) {
+  const hit = pw === PASSWORD ? tokens.get(email) : undefined
+  if (hit) return hit
   const r = await request.post('/api/auth/login', { data: { email, password: pw } })
   expect(r.status()).toBe(200)
-  return (await r.json()).token as string
+  const token = (await r.json()).token as string
+  if (pw === PASSWORD) tokens.set(email, token)
+  return token
 }
 
 /** 가입 신청 → 메일 토큰 → verify/open → verify (+ 승인). 화면을 거치지 않는 준비용 */
