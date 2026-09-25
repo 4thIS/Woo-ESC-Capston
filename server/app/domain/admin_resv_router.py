@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import select
@@ -12,7 +13,7 @@ from app import schemas as S
 from app.auth.deps import AdminUser
 from app.auth.models import User
 from app.deps import _DB
-from app.domain import admin, clock, reserve
+from app.domain import admin, analytics, clock, reserve
 from app.domain.models import Building, JobRun, Reservation, Room
 from app.domain.router import _ID_LOCK, _commit_notify
 
@@ -106,3 +107,67 @@ def jobs(name: str = "daily", limit: int = Query(30, ge=1, le=200), s: Session =
     return s.scalars(
         select(JobRun).where(JobRun.name == name).order_by(JobRun.id.desc()).limit(limit)
     ).all()
+
+
+_FROM = Query(None, alias="from")
+_LatencyType = Literal["SLOT_SET", "RESV_SET", "all"]
+
+
+@router.get("/analytics/allocation", response_model=list[S.AllocationOut])
+def analytics_allocation(
+    from_: dt.date | None = _FROM,
+    to: dt.date | None = None,
+    building_id: int | None = None,
+    group: Literal["room", "building", "weekday"] = "room",
+    user: User = AdminUser,
+    s: Session = _DB,
+):
+    d0, d1 = analytics.parse_range(from_, to, clock.local_today())
+    return analytics.allocation(s, user.school_id, d0, d1, building_id, group)
+
+
+@router.get("/analytics/free-slots", response_model=list[S.FreeSlotsOut])
+def analytics_free(
+    date: dt.date | None = None,
+    building_id: int | None = None,
+    user: User = AdminUser,
+    s: Session = _DB,
+):
+    return analytics.free_slots(s, user.school_id, date or clock.local_today(), building_id)
+
+
+@router.get("/analytics/reservations", response_model=S.ResvStatsOut)
+def analytics_resv(
+    from_: dt.date | None = _FROM,
+    to: dt.date | None = None,
+    group: Literal["day", "week"] = "day",
+    user: User = AdminUser,
+    s: Session = _DB,
+):
+    d0, d1 = analytics.parse_range(from_, to, clock.local_today())
+    return analytics.reservation_stats(s, user.school_id, d0, d1, group, clock.local_now())
+
+
+@router.get("/analytics/latency", response_model=S.LatencyOut)
+def analytics_latency(
+    from_: dt.date | None = _FROM,
+    to: dt.date | None = None,
+    type: _LatencyType = "all",
+    user: User = AdminUser,
+    s: Session = _DB,
+):
+    d0, d1 = analytics.parse_range(from_, to, clock.local_today())
+    return analytics.latency(s, user.school_id, d0, d1, type)
+
+
+@router.get("/analytics/latency/samples", response_model=list[S.LatencySampleOut])
+def analytics_samples(
+    from_: dt.date | None = _FROM,
+    to: dt.date | None = None,
+    type: _LatencyType = "all",
+    limit: int = Query(100, ge=1, le=1000),
+    user: User = AdminUser,
+    s: Session = _DB,
+):
+    d0, d1 = analytics.parse_range(from_, to, clock.local_today())
+    return analytics.latency_samples(s, user.school_id, d0, d1, type, limit)

@@ -500,3 +500,71 @@ class JobRunOut(Out):
     @classmethod
     def _r(cls, v):
         return json.loads(v) if isinstance(v, str) else v
+
+
+class AllocationOut(BaseModel):
+    key: int
+    label: str
+    assigned_min: int
+    unused_min: int
+    total_min: int
+    rate: float
+
+
+class FreeRange(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class FreeSlotsOut(BaseModel):
+    room_id: int
+    room: int
+    building: str
+    free: list[FreeRange]
+
+
+class ResvStatsRow(BaseModel):
+    date: str
+    requested: int
+    approved: int
+    rejected: int
+    cancelled: int
+    expired: int
+    no_show: int
+    checked_in: int
+
+
+class ResvStatsOut(BaseModel):
+    series: list[ResvStatsRow]
+    totals: dict[str, int]
+    no_show_rate: float
+    checkin_rate: float
+
+
+class LatencyBin(BaseModel):
+    ge: int
+    lt: int | None
+    count: int
+
+
+class LatencyOut(BaseModel):
+    n: int
+    bins: list[LatencyBin]
+    p50: float | None
+    p95: float | None
+    max: float | None
+    within_30s: float
+    within_90s: float
+
+
+class LatencySampleOut(BaseModel):
+    outbox_id: int
+    room_id: int
+    bld: str
+    room: int
+    unit: int
+    type: str
+    created_at: dt.datetime
+    finished_at: dt.datetime
+    seconds: float
