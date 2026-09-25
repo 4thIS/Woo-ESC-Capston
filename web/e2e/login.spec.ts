@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
 import { SIZES, WEB_URL, createStudent, fillLogin, nextAdmin, shot, uniqEmail } from './helpers'
 
+// e2e 는 node 타입(tsconfig.node.json) — page.evaluate 콜백은 브라우저에서 도는데 DOM lib 이 없다
+declare const document: { documentElement: { scrollHeight: number } }
+declare const window: { innerHeight: number }
+
 // 카드의 윗여백이 바탕(.auth, min-height 100vh) 밖으로 새면 폼 하나짜리 화면이 스크롤된다
 const noScroll = async (page: Page) =>
   expect(
