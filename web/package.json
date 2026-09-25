@@ -9,9 +9,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "vue-tsc --build && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "typecheck": "vue-tsc --build",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

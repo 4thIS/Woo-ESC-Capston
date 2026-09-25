@@ -250,7 +250,7 @@ jobs:
         if: steps.manifest.outputs.ready == 'true'
         run: |
           pnpm exec prettier --check .
-          pnpm exec vue-tsc --noEmit
+          pnpm exec vue-tsc --build
       - name: test
         if: steps.manifest.outputs.ready == 'true'
         run: pnpm test
