@@ -62,9 +62,9 @@ describe('AdminShell', () => {
   it('로그아웃 → 세션을 버리고 로그인으로', async () => {
     const { w, router } = await mountApp()
     await w.get('button.shell__logout').trigger('click')
-    await flushPromises()
     expect(session.value).toBeNull()
-    expect(router.currentRoute.value.path).toBe('/login')
+    // /login 은 지연 로드라 첫 이동은 dynamic import 만큼 걸린다 — 이동이 끝날 때까지 기다린다
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/login'))
   })
 })
 
