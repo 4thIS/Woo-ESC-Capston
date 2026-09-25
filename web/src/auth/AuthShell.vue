@@ -87,6 +87,17 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
 .auth__footer :deep(a) {
   color: var(--text-2);
 }
+/* 결과 화면의 맨 문단·링크 — 브라우저 기본 여백·파랑 대신, 링크는 터치 타깃 48px */
+.auth__card :deep(p) {
+  margin: 0;
+}
+.auth__card > :slotted(a) {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: var(--control-height-md);
+  color: var(--brand);
+}
 :slotted(.auth-form) {
   display: flex;
   flex-direction: column;
@@ -104,5 +115,8 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
   margin: 0;
   font-size: var(--font-size-sm);
   color: var(--text-3);
+}
+:slotted(.auth-form__note) a {
+  color: var(--brand);
 }
 </style>
