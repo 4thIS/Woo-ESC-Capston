@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,7 @@ from app.auth.deps import AdminUser
 from app.auth.models import User
 from app.deps import _DB
 from app.domain import admin, clock, reserve
-from app.domain.models import Building, Reservation, Room
+from app.domain.models import Building, JobRun, Reservation, Room
 from app.domain.router import _ID_LOCK, _commit_notify
 
 router = APIRouter(prefix="/api/admin", dependencies=[AdminUser])
@@ -83,3 +83,26 @@ def cancel(id: int, user: User = AdminUser, s: Session = _DB):
         out = admin.resv_admin_out(s, r)
         _commit_notify(s, reserve.addr(s, r)[2])
     return out
+
+
+@router.post("/jobs/daily", response_model=S.JobRunOut)
+def run_daily_now(request: Request):
+    """전 학교 대상 전역 작업(학교 스코프 없음) — 결과는 멱등(보낸 예약은 다시 안 보냄)이라 어느 관리자가 눌러도 안전.
+    `_DB` 를 쓰지 않는다: run_daily 가 자기 세션들로 쓰고, 조회는 끝난 뒤 새 세션으로."""
+    from app.domain import daily
+
+    Session = request.app.state.Session
+    daily.run_daily(Session)
+    with Session() as s:
+        return S.JobRunOut.model_validate(
+            s.scalar(
+                select(JobRun).where(JobRun.name == "daily").order_by(JobRun.id.desc()).limit(1)
+            )
+        )
+
+
+@router.get("/jobs", response_model=list[S.JobRunOut])
+def jobs(name: str = "daily", limit: int = Query(30, ge=1, le=200), s: Session = _DB):
+    return s.scalars(
+        select(JobRun).where(JobRun.name == name).order_by(JobRun.id.desc()).limit(limit)
+    ).all()

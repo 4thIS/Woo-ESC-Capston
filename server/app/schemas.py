@@ -488,3 +488,15 @@ class WeekOut(BaseModel):
     slots: list[SlotOut]
     reservations: list[ResvPublicOut]
     exams: list[ExamOut]
+
+
+class JobRunOut(Out):
+    id: int
+    name: str
+    ran_at: dt.datetime
+    result: dict
+
+    @field_validator("result", mode="before")
+    @classmethod
+    def _r(cls, v):
+        return json.loads(v) if isinstance(v, str) else v

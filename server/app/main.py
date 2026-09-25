@@ -18,6 +18,7 @@ from app.auth import password
 from app.auth.router import admin as admin_router
 from app.auth.router import router as auth_router
 from app.db import make_engine, make_session_factory
+from app.domain import daily
 from app.domain.admin_resv_router import router as admin_resv_router
 from app.domain.admin_router import router as admin_api_router
 from app.domain.router import router as domain_router
@@ -48,10 +49,12 @@ def create_app(db_path: str | None = None) -> FastAPI:
         api.set_record_provider(record_provider(Session))
         hub.start(asyncio.get_running_loop())
         sweeper = asyncio.ensure_future(hub.sweep_loop(SWEEP_INTERVAL_S))
+        daily_task = asyncio.ensure_future(daily.daily_loop(Session))
         try:
             yield
         finally:
             sweeper.cancel()
+            daily_task.cancel()
             await hub.stop()
 
     # /docs·/openapi.json 은 내부 엔드포인트 목록 — DEBUG 에서만 (S4a §3.2)
