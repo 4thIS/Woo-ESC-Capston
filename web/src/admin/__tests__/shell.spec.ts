@@ -8,6 +8,9 @@ import type { UserOut } from '@/api/types'
 import { clearSession, session, setSession } from '@/lib/session'
 
 vi.mock('@/api/users', () => ({ usersApi: { list: vi.fn() } }))
+vi.mock('@/api/rooms', () => ({
+  roomsApi: { schools: vi.fn(async () => [{ id: 1, name: '우송대', net_id: 75 }]) },
+}))
 const list = vi.mocked(usersApi.list)
 // 회원 화면(Task 13)이 /users 에서 실제로 그린다 — 정렬에 쓰는 필드까지 채운다
 const user = (email: string): UserOut => ({
@@ -48,18 +51,21 @@ beforeEach(() => {
 })
 
 describe('AdminShell', () => {
-  it('/ 는 /dashboard 로, 메뉴 순서(#46) · 전송 현황 활성 · 회원 대기 건수', async () => {
+  it('/ 는 /dashboard 로, 메뉴 순서(#46) · 전송 현황 활성 · 회원 대기 건수 · 학교 읽기 전용', async () => {
     const { w, router } = await mountApp('/')
     expect(router.currentRoute.value.path).toBe('/dashboard')
     expect(list).toHaveBeenCalledWith('pending_approval')
     const links = w.findAll('nav a')
     expect(links.map((a) => a.text().replace(/\d+/g, '').trim())).toEqual([
+      '건물 · 강의실',
       '노드 상태',
       '전송 현황',
       '회원',
     ])
-    expect(links[1].attributes('aria-current')).toBe('page')
-    expect(links[2].text()).toContain('2')
+    expect(links[2].attributes('aria-current')).toBe('page')
+    expect(links[3].text()).toContain('2')
+    expect(w.text()).toContain('우송대 · net_id 75')
+    expect(w.text()).toContain('학교는 CLI 에서만 만든다')
     expect(w.text()).toContain('관리자1')
   })
 

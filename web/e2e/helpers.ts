@@ -236,3 +236,21 @@ export async function seedMonitoring(request: APIRequestContext) {
   }
   sql(SEED_SQL)
 }
+
+// ---- F2 관리자 운영 ----
+
+/** KST 오늘 + n일 'YYYY-MM-DD' — 날짜 흐름은 상대 날짜로 (서버 시계를 고정할 수 없다, spec §7.2) */
+export const kstDate = (offsetDays = 0) =>
+  new Date(Date.now() + 9 * 3_600_000 + offsetDays * 86_400_000).toISOString().slice(0, 10)
+
+/** 우리 학교 모뎀 등록 (이미 있으면 건너뛴다 — 같은 실행 안에서 여러 spec 이 부른다) */
+export async function ensureModems(request: APIRequestContext, ids: string[]) {
+  const headers = { authorization: `Bearer ${await apiLogin(request, cfg.ADMINS[0])}` }
+  const r = await request.get('/api/lora/modems', { headers })
+  expect(r.status()).toBe(200)
+  const have = ((await r.json()) as { modem_id: string }[]).map((m) => m.modem_id)
+  for (const modem_id of ids.filter((i) => !have.includes(i))) {
+    const m = await request.post('/api/lora/modems', { headers, data: { modem_id } })
+    expect(m.status(), modem_id).toBe(200)
+  }
+}

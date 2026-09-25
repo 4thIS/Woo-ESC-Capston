@@ -58,7 +58,11 @@ test('시드 — 노드 4행·경고, 대기 장치 1, 모뎀 2, 지연 표본 8
   const pending = (await get('/api/lora/pending')) as { mac: string }[]
   expect(pending.map((p) => p.mac)).toEqual([SEED.mac])
   const modems = (await get('/api/lora/modems')) as { modem_id: string; connected: boolean }[]
-  expect(modems.map((m) => `${m.modem_id}:${m.connected}`)).toEqual(['e2e-m1:true', 'e2e-m2:false'])
+  // 전체 실행에서는 admin-ops 가 먼저 e2e-m4·m5 를 등록한다 — 시드 모뎀만 본다
+  const seeded: string[] = [SEED.modem, SEED.offlineModem]
+  expect(
+    modems.filter((m) => seeded.includes(m.modem_id)).map((m) => `${m.modem_id}:${m.connected}`),
+  ).toEqual(['e2e-m1:true', 'e2e-m2:false'])
   expect(await get('/api/admin/analytics/latency')).toMatchObject({
     n: 8,
     p50: 25,

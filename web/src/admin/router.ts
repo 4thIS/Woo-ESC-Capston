@@ -9,6 +9,7 @@ export const routes: RouteRecordRaw[] = [
     children: [
       // 관리자 기본 화면은 전송 현황 (spec §5)
       { path: '', redirect: '/dashboard' },
+      { path: 'master', component: () => import('./views/MasterView.vue') },
       { path: 'nodes', component: () => import('./views/NodesView.vue') },
       { path: 'dashboard', component: () => import('./views/DashboardView.vue') },
       { path: 'users', component: () => import('./views/UsersView.vue') },
