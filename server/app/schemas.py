@@ -259,6 +259,36 @@ class StatusOut(Out):
     sync_state: str
 
 
+class NodeOut(BaseModel):
+    """기대 노드(rooms × units) × terminal_status (S4b §2.2). 보고 없는 노드는 상태 null + unseen."""
+
+    room_id: int
+    building_id: int
+    building: str
+    bld: str
+    room: int
+    unit: int
+    modem_id: str | None
+    mac: str | None
+    fw: int | None
+    batt_mv: int | None
+    rssi: int | None
+    snr: float | None
+    sched_ver: int | None
+    resv_ver: int | None
+    exam_ver: int | None
+    ident_ver: int | None
+    layout: int | None
+    clock_stale: bool
+    low_batt: bool
+    uptime_h: int | None
+    last_seen_at: dt.datetime | None
+    last_ack_at: dt.datetime | None
+    last_status_at: dt.datetime | None
+    sync_state: str
+    warnings: list[str]
+
+
 class PendingOut(Out):
     mac: str
     modem_id: str | None

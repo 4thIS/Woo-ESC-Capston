@@ -3,13 +3,16 @@ terminal_status·outbox·modems·pending_devices 는 여기서 ORM 읽기만 한
 
 from __future__ import annotations
 
+import datetime as dt
+
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app import schemas as S
 from app.auth import scope
+from app.db import utcnow
 from app.domain.models import Building, Room
-from app.lora_service.models import Outbox
+from app.lora_service.models import Outbox, TerminalStatus
 
 
 def _outbox_rows(s: Session, q) -> list[dict]:
@@ -36,4 +39,109 @@ def building_outbox(
     )
     if state is not None:
         q = q.where(Outbox.state == state)
+    return _outbox_rows(s, q)
+
+
+UNSEEN_HOURS = 48  # STATUS 는 일 1회 — 24 h 면 오탐 (S4b §2.1)
+FAILED_DAYS_DEFAULT = 7
+WARNING_ORDER = ("unseen", "low_batt", "resync", "clock_stale")
+_TS_FIELDS = (
+    "modem_id",
+    "mac",
+    "fw",
+    "batt_mv",
+    "rssi",
+    "snr",
+    "sched_ver",
+    "resv_ver",
+    "exam_ver",
+    "ident_ver",
+    "layout",
+    "uptime_h",
+    "last_seen_at",
+    "last_ack_at",
+    "last_status_at",
+)
+
+
+def expected_nodes(
+    s: Session, school_id: int, building_id: int | None = None, now: dt.datetime | None = None
+) -> list[dict]:
+    """학교의 기대 노드(rooms × units) 에 terminal_status 를 LEFT JOIN 하고 경고를 판정한다."""
+    now = now or utcnow()
+    cutoff = now - dt.timedelta(hours=UNSEEN_HOURS)
+    q = (
+        select(Room, Building)
+        .join(Building, Room.building_id == Building.id)
+        .where(Building.school_id == school_id)
+        .order_by(Building.bld, Room.room)
+    )
+    if building_id is not None:
+        q = q.where(Building.id == building_id)
+    pairs = s.execute(q).all()
+    blds = {b.bld for _, b in pairs}
+    mids = scope.modem_ids(s, school_id)
+    status = {
+        (t.bld, t.room, t.unit): t
+        for t in s.scalars(
+            select(TerminalStatus).where(
+                TerminalStatus.bld.in_(blds),
+                TerminalStatus.modem_id.is_(None) | TerminalStatus.modem_id.in_(mids),
+            )
+        )
+    }  # bld 재사용 뒤 남은 옛 학교 소유 status 행은 숨긴다 — /api/lora/status 와 같은 규칙
+    out: list[dict] = []
+    for room, b in pairs:
+        for unit in range(1, room.units + 1):
+            t = status.get((b.bld, room.room, unit))
+            unseen = t is None or t.last_seen_at is None or t.last_seen_at < cutoff
+            flags = {
+                "unseen": unseen,
+                "low_batt": bool(t and t.low_batt),
+                "resync": bool(t and t.sync_state == "resync"),
+                "clock_stale": bool(t and t.clock_stale),
+            }
+            out.append(
+                {
+                    "room_id": room.id,
+                    "building_id": b.id,
+                    "building": b.name,
+                    "bld": b.bld,
+                    "room": room.room,
+                    "unit": unit,
+                    **{f: getattr(t, f) if t else None for f in _TS_FIELDS},
+                    "clock_stale": flags["clock_stale"],
+                    "low_batt": flags["low_batt"],
+                    "sync_state": t.sync_state if t else "unknown",
+                    "warnings": [w for w in WARNING_ORDER if flags[w]],
+                }
+            )
+    return out
+
+
+def failed_outbox(
+    s: Session,
+    school_id: int,
+    days: int = FAILED_DAYS_DEFAULT,
+    limit: int | None = None,
+    now: dt.datetime | None = None,
+) -> list[dict]:
+    """최근 days 일 failed outbox 에 방·건물 조인. 방을 못 찾는 행(삭제된 방)은 빠진다."""
+    cutoff = (now or utcnow()) - dt.timedelta(days=days)
+    mids = scope.modem_ids(s, school_id)
+    q = (
+        select(Outbox, Room.id, Building.name)
+        .join(Building, and_(Building.bld == Outbox.bld, Building.school_id == school_id))
+        .join(Room, and_(Room.building_id == Building.id, Room.room == Outbox.room))
+        .where(Outbox.state == "failed", Outbox.finished_at >= cutoff)
+        .where(
+            Outbox.modem_id.is_(None) | Outbox.modem_id.in_(mids)
+        )  # bld 재사용 뒤 옛 학교 행 숨김
+        .where(
+            (Outbox.last_error.is_(None)) | (Outbox.last_error != "cancelled")
+        )  # 관리자 취소분은 실패가 아니다
+        .order_by(Outbox.finished_at.desc(), Outbox.id.desc())
+    )
+    if limit is not None:
+        q = q.limit(limit)
     return _outbox_rows(s, q)
