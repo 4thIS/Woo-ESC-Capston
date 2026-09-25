@@ -70,25 +70,25 @@ describe('WeekGrid — 요일 가로 × 시간 세로, 겹침은 서버가 합�
 
   it('블록 — 위치·높이, 읽는 이름, 사용중·휴강·내 신청 모양', () => {
     const w = mount(WeekGrid, { props })
-    const algo = w.get('[aria-label="금 10:00–13:00 알고리즘 외 1건"]')
+    const algo = w.get('[aria-label="금 10:00–13:00 수업중 알고리즘 외 1건"]')
     expect(algo.attributes('role')).toBe('listitem')
     expect(algo.attributes('style')).toContain('top: 48px')
     expect(algo.attributes('style')).toContain('height: 144px')
     expect(algo.classes()).toContain('wg__blk--busy')
-    const off = w.get('[aria-label="화 09:00–10:00 운영체제"]')
+    const off = w.get('[aria-label="화 09:00–10:00 휴강 운영체제"]')
     expect(off.classes()).toContain('wg__blk--off')
     // 취소선은 안쪽 라벨에 — line-clamp 상자는 원자 요소라 바깥 text-decoration 이 전해지지 않는다
     expect(off.get('.wg__label').classes()).toContain('wg__label--off')
     // 선은 인라인 글자 상자(.wg__text)의 배경으로 그린다 — 줄마다 그어진다
     expect(off.get('.wg__label--off > .wg__text').text()).toBe('운영체제')
-    const mine = w.get('[aria-label="금 15:00–16:00 캡스톤 스터디 대기중"]')
+    const mine = w.get('[aria-label="금 15:00–16:00 대여중 캡스톤 스터디 대기중"]')
     expect(mine.classes()).toEqual(expect.arrayContaining(['wg__blk--mine', 'wg__blk--requested']))
     expect(w.findAll('.wg__col')[4].attributes('aria-label')).toBe('금요일')
   })
 
   it('좁은 폭(24)은 과목명만, 넓은 폭(32)은 유형 + 과목명 + 시각', async () => {
     const w = mount(WeekGrid, { props })
-    const algo = () => w.get('[aria-label="금 10:00–13:00 알고리즘 외 1건"]')
+    const algo = () => w.get('[aria-label="금 10:00–13:00 수업중 알고리즘 외 1건"]')
     expect(algo().text()).toBe('알고리즘 외 1건')
     await w.setProps({ rowHeight: 32 })
     expect(w.classes()).toContain('wg--wide')

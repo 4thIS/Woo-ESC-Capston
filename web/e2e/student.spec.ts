@@ -165,9 +165,9 @@ test('이번 주 — 겹친 사용 블록은 한 덩어리 "외 1건", 휴강은
   await expect(page).toHaveURL(new RegExp(`/${STU.bld}/101/week$`))
   const day = DAYS[seed.tomorrowDay - 1]
   await expect(
-    page.getByRole('listitem', { name: `${day} 10:00–13:00 캡스톤디자인 외 1건` }),
+    page.getByRole('listitem', { name: `${day} 10:00–13:00 수업중 캡스톤디자인 외 1건` }),
   ).toBeVisible()
-  const off = page.getByRole('listitem', { name: `${day} 14:00–15:00 운영체제` })
+  const off = page.getByRole('listitem', { name: `${day} 14:00–15:00 휴강 운영체제` })
   await expect(off).toHaveClass(/wg__blk--off/)
   // 취소선이 실제로 그려지는지 — 계산된 스타일이 아니라 픽셀로. 클래스를 빼면 그림이 달라져야 한다
   const label = off.locator('.wg__label')

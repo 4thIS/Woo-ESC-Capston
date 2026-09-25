@@ -36,7 +36,7 @@ const byDay = computed(() => props.days.map((d) => props.blocks.filter((b) => b.
 const kind = (b: GridBlock) =>
   BUSY_TYPES.includes(b.type) ? 'busy' : b.type === 3 ? 'off' : 'plain'
 const name = (d: number, b: GridBlock) =>
-  `${DAYS[d - 1]} ${b.extra} ${b.label}${b.requested ? ' 대기중' : ''}`
+  `${DAYS[d - 1]} ${b.extra} ${TYPE_LABEL[b.type]} ${b.label}${b.requested ? ' 대기중' : ''}`
 </script>
 
 <template>
