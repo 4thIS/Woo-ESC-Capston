@@ -8,7 +8,7 @@ import Modal from '@/components/ui/Modal.vue'
 import Select from '@/components/ui/Select.vue'
 import Table from '@/components/ui/Table.vue'
 import { showToast } from '@/components/ui/toast'
-import { conflictMessage, detailText } from '@/components/domain/rules'
+import { detailText } from '@/components/domain/rules'
 import { ApiError, MESSAGES } from '@/api/client'
 import { roomsApi } from '@/api/rooms'
 import type { BuildingOut, BuildingPatch, ModemOut, RoomOut } from '@/api/types'
@@ -31,7 +31,10 @@ const props = defineProps<{
   loading: boolean
   selectedId: number | null
 }>()
-const emit = defineEmits<{ select: [id: number]; changed: [] }>()
+const emit = defineEmits<{ select: [id: number]; changed: []; reload: [] }>()
+
+// 첫 불러오기 실패 — 목록이 없는 것이지 건물이 0개인 것이 아니다. 빈 학교(설치 안내)로 보이면 안 된다
+const failed = computed(() => props.buildings === undefined && !props.loading)
 
 const list = computed(() => props.buildings ?? [])
 const full = computed(() => list.value.length >= BLD_MAX)
@@ -135,7 +138,8 @@ async function save() {
     // 다른 학교가 쓰는 글자는 화면이 미리 알 수 없다 — Toast 가 아니라 글자 칸에 붙인다
     if (e.status === 409 && /다른 학교/.test(detailText(e))) errors.bld = OTHER_SCHOOL_BLD
     else if (e.status === 409) {
-      errors.bld = conflictMessage(e)
+      // 같은 학교 글자 경합(다른 탭·관리자가 먼저 만듦) — 건물 문장으로 글자 칸에, 목록을 새로
+      errors.bld = '이미 쓰는 글자입니다. 목록을 새로 불러옵니다.'
       emit('changed')
     } else if (e.status === 404) {
       showToast({
@@ -185,12 +189,22 @@ async function remove() {
       <!-- 26개가 상한 — 남은 수를 모르면 26번째에서야 안다 -->
       <span class="panel__count num">{{ list.length }} / {{ BLD_MAX }}</span>
       <span class="panel__tools" :title="full ? '건물은 26개까지입니다' : undefined">
-        <Button variant="secondary" size="sm" :disabled="full" @click="openForm(null)"
+        <Button
+          variant="secondary"
+          size="sm"
+          :disabled="full || buildings === undefined"
+          @click="openForm(null)"
           >+ 건물</Button
         >
       </span>
     </header>
-    <div v-if="!loading && !list.length" class="panel__empty">
+    <div v-if="failed" class="panel__empty">
+      <EmptyState
+        message="건물 목록을 불러오지 못했습니다"
+        :actions="[{ label: '다시 불러오기', onClick: () => emit('reload') }]"
+      />
+    </div>
+    <div v-else-if="!loading && !list.length" class="panel__empty">
       <EmptyState
         message="건물을 먼저 만드세요"
         :actions="[{ label: '+ 건물', variant: 'primary', onClick: () => openForm(null) }]"
