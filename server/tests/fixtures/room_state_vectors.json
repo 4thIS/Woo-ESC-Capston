@@ -1,0 +1,21 @@
+{
+  "note": "분 = 자정부터의 분. 50분 규칙의 분은 시각의 분(minute-of-hour). tentative 벡터는 PR #38 합의(비수업 슬롯은 typeToLayout)로 잠정.",
+  "slots": [
+    {"s": 540, "e": 650, "type": 1, "label": "수업"},
+    {"s": 660, "e": 720, "type": 3, "label": "휴강"},
+    {"s": 780, "e": 840, "type": 5, "label": "특강"},
+    {"s": 900, "e": 960, "type": 6, "label": "대여"},
+    {"s": 960, "e": 1020, "type": 2, "label": "시험"}
+  ],
+  "vectors": [
+    {"name": "1-resv-beats-slot", "resvs": [{"s": 540, "e": 600, "type": 6}], "in_exam": false, "at": 570, "layout": 7, "until": 600},
+    {"name": "2-exam-period-in-slot", "resvs": [], "in_exam": true, "at": 570, "layout": 5, "until": 650},
+    {"name": "3-class-minute-lt-50", "resvs": [], "in_exam": false, "at": 570, "layout": 1, "until": 590},
+    {"name": "4-class-minute-ge-50", "resvs": [], "in_exam": false, "at": 590, "layout": 2, "until": 600},
+    {"name": "5-cancelled-slot", "tentative": true, "resvs": [], "in_exam": false, "at": 690, "layout": 3, "until": 720},
+    {"name": "6-special-slot", "tentative": true, "resvs": [], "in_exam": false, "at": 810, "layout": 6, "until": 840},
+    {"name": "7-outside-slot-next-start", "resvs": [], "in_exam": false, "at": 750, "layout": 4, "until": 780},
+    {"name": "8-free-until-midnight", "resvs": [], "in_exam": false, "at": 1410, "layout": 4, "until": null},
+    {"name": "9-night-class-45+5", "xfail": "야간 교시(45분+5분, 시각 비정렬) — #14 확정 전", "resvs": [], "in_exam": false, "at": 1085, "layout": 2, "until": 1090}
+  ]
+}
