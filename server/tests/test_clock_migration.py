@@ -300,3 +300,39 @@ def test_record_provider_skips_unpushed_resv(client, app, school, students, monk
     recs = record_provider(app.state.Session)("E", 101, "resv")
     # 9/30 은 창 안이 됐어도 미전송이라 제외
     assert [x.resv_id for x in recs] == [sent.json()["id"]]
+
+
+def test_record_provider_picks_first_24_by_date_start_not_id(app, students):
+    """24 개 초과 시 잘리는 기준은 id 가 아니라 (date, s_h, s_m) — id 를 키 순서와 거꾸로 매겨 검증 (PR #49 리뷰)."""
+    from app.domain.models import Building, Room
+    from app.domain.topology import NODE_RESV_MAX, record_provider
+
+    today = clock.local_today()
+    with app.state.Session() as s, s.begin():
+        b = Building(school_id=1, name="E동", bld="E")
+        s.add(b)
+        s.flush()
+        r = Room(building_id=b.id, room=101, units=1)
+        s.add(r)
+        s.flush()
+        s.add_all(
+            [
+                Reservation(
+                    id=26 - k,  # 키 순서가 빠를수록 id 가 크다
+                    room_id=r.id,
+                    date=today + dt.timedelta(days=k // 9),
+                    s_h=8 + k % 9,
+                    s_m=0,
+                    e_h=8 + k % 9,
+                    e_m=50,
+                    type=6,
+                    subject="x",
+                    professor="",
+                    status="approved",
+                    pushed_at=clock.now_utc(),
+                )
+                for k in range(26)
+            ]
+        )
+    recs = record_provider(app.state.Session)("E", 101, "resv")
+    assert [x.resv_id for x in recs] == list(range(26, 26 - NODE_RESV_MAX, -1))  # 26..3, 1·2 잘림
