@@ -1,0 +1,28 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html {
+  font-family: var(--font-family);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-normal);
+  color: var(--text-1);
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+  word-break: keep-all; /* 한국어를 낱말 가운데서 끊지 않는다 ("로그/인이") */
+}
+html[data-surface='student'] {
+  background: var(--bg-student);
+}
+body {
+  margin: 0;
+}
+:focus-visible {
+  outline: var(--border-thick) solid var(--focus);
+  outline-offset: 2px;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
