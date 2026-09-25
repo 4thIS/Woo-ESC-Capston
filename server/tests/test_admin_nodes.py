@@ -160,3 +160,46 @@ def test_failed_outbox_excludes_other_school_modem_on_bld_reuse(app, school):
         rows = admin.failed_outbox(s, 1, days=7, now=NOW)
     assert [r["id"] for r in rows] == [mine]
     assert stale not in [r["id"] for r in rows]
+
+
+def test_nodes_endpoint_filters_and_scope(client, app, school, other_admin_hdr, monkeypatch):
+    monkeypatch.setattr(admin, "utcnow", lambda: NOW)
+    bid, _ = _building(app, 1, "E", rooms=((101, 1), (102, 1)))
+    bid2, _ = _building(app, 1, "G", rooms=((201, 1),))
+    _building(app, 2, "F", rooms=((101, 1),))
+    _status(app, "E", 101, 1, last_seen_at=NOW, low_batt=True)
+    _status(app, "E", 102, 1, last_seen_at=NOW)
+    _status(app, "G", 201, 1, last_seen_at=NOW, sync_state="resync")
+    r = client.get("/api/admin/nodes")
+    assert r.status_code == 200 and [(x["bld"], x["room"]) for x in r.json()] == [
+        ("E", 101),
+        ("E", 102),
+        ("G", 201),
+    ]
+    assert [x["room"] for x in client.get("/api/admin/nodes?only=warn").json()] == [101, 201]
+    assert [x["room"] for x in client.get("/api/admin/nodes?only=low_batt").json()] == [101]
+    assert [x["room"] for x in client.get(f"/api/admin/nodes?building_id={bid2}").json()] == [201]
+    assert client.get("/api/admin/nodes?only=bogus").status_code == 422
+    assert [x["bld"] for x in client.get("/api/admin/nodes", headers=other_admin_hdr).json()] == [
+        "F"
+    ]
+    assert (
+        client.get(f"/api/admin/nodes?building_id={bid}", headers=other_admin_hdr).status_code
+        == 404
+    )
+
+
+def test_failed_endpoint_params_and_auth(client, client_raw, app, school, monkeypatch):
+    monkeypatch.setattr(admin, "utcnow", lambda: NOW)
+    _building(app, 1, "E")
+    a = _outbox(app, "E", 101, finished_at=NOW - dt.timedelta(days=3))
+    r = client.get("/api/admin/outbox/failed")
+    assert (
+        r.status_code == 200
+        and [x["id"] for x in r.json()] == [a]
+        and r.json()[0]["building"] == "E동"
+    )
+    assert client.get("/api/admin/outbox/failed?days=2").json() == []
+    assert client.get("/api/admin/outbox/failed?days=91").status_code == 422
+    assert client.get("/api/admin/outbox/failed?limit=0").status_code == 422
+    assert client_raw.get("/api/admin/outbox/failed").status_code == 401
