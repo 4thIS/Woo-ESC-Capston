@@ -6,39 +6,42 @@ import datetime as dt
 import logging
 from dataclasses import asdict
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import schemas as S
+from app.auth import scope
+from app.auth.deps import AdminUser
+from app.auth.models import User
+from app.deps import _DB
 from app.domain import csv_import
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
 from app.domain.topology import RESV_HORIZON_DAYS
 from app.lora_service import api
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[AdminUser])  # 전부 관리자 전용 (S4a §3.3)
 log = logging.getLogger(__name__)
 
 
-def get_db(request: Request):
-    with request.app.state.Session() as s, s.begin():
-        yield s
-
-
-_DB = Depends(get_db)  # 참고: B008 회피용 모듈 싱글턴 (ruff 권고)
-
-
-def _get(s: Session, model, id_: int):
-    obj = s.get(model, id_)
-    if obj is None:
-        raise HTTPException(404, f"{model.__tablename__} {id_} 없음")
-    return obj
-
-
-def _addr(s: Session, room_id: int) -> tuple[str, int]:
-    r = _get(s, Room, room_id)
+def _addr(s: Session, room_id: int, user: User) -> tuple[str, int]:
+    r = scope.get_scoped(s, Room, room_id, user.school_id)
     return s.get(Building, r.building_id).bld, r.room
+
+
+def _check_building(s: Session, user: User, bld: str | None, modem_id: str | None) -> None:
+    """modem_id 는 자기 학교 모뎀만, bld 는 다른 학교가 쓰면 409 (S4a §3.3 🔴4b·4c)."""
+    if modem_id is not None and modem_id not in scope.modem_ids(s, user.school_id):
+        raise HTTPException(404, f"modems {modem_id} 없음")
+    if bld is not None:
+        other = s.scalar(
+            select(Building.id)
+            .where(Building.bld == bld, Building.school_id != user.school_id)
+            .limit(1)
+        )
+        if other is not None:
+            raise HTTPException(409, f"bld '{bld}' 는 다른 학교가 쓰고 있습니다 (공중 주소는 전역)")
 
 
 def _modem_of(s: Session, building_id: int) -> str | None:
@@ -49,39 +52,32 @@ def _modem_of(s: Session, building_id: int) -> str | None:
 
 
 @router.get("/schools", response_model=list[S.SchoolOut])
-def list_schools(s: Session = _DB):
-    return s.scalars(select(School).order_by(School.id)).all()
+def list_schools(user: User = AdminUser, s: Session = _DB):
+    return s.scalars(select(School).where(School.id == user.school_id)).all()
 
 
-@router.post("/schools", response_model=S.SchoolOut)
-def create_school(body: S.SchoolIn, s: Session = _DB):
-    obj = School(**body.model_dump())
-    s.add(obj)
+# 학교 생성·삭제는 CLI 전용 (S4a §3.3). PATCH 는 name 만.
+@router.patch("/schools/{id}", response_model=S.SchoolOut)
+def update_school(id: int, body: S.SchoolPatch, user: User = AdminUser, s: Session = _DB):
+    obj = scope.get_scoped(s, School, id, user.school_id)
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(obj, k, v)
     s.flush()
     return obj
 
 
-@router.patch("/schools/{id}", response_model=S.SchoolOut)
-def update_school(id: int, body: S.SchoolIn, s: Session = _DB):
-    obj = _get(s, School, id)
-    for k, v in body.model_dump().items():
-        setattr(obj, k, v)
-    return obj
-
-
-@router.delete("/schools/{id}")
-def delete_school(id: int, s: Session = _DB):
-    s.delete(_get(s, School, id))
-    return {"ok": True}
-
-
 @router.get("/buildings", response_model=list[S.BuildingOut])
-def list_buildings(s: Session = _DB):
-    return s.scalars(select(Building).order_by(Building.id)).all()
+def list_buildings(user: User = AdminUser, s: Session = _DB):
+    return s.scalars(
+        select(Building).where(Building.school_id == user.school_id).order_by(Building.id)
+    ).all()
 
 
 @router.post("/buildings", response_model=S.BuildingOut)
-def create_building(body: S.BuildingIn, s: Session = _DB):
+def create_building(body: S.BuildingIn, user: User = AdminUser, s: Session = _DB):
+    if body.school_id != user.school_id:
+        raise HTTPException(404, f"schools {body.school_id} 없음")
+    _check_building(s, user, body.bld, body.modem_id)
     # 참고: 갓 만든 건물엔 아직 방이 없어 재전송할 config 가 없다 — 모뎀은 최초 연결 때 config 를 받는다.
     obj = Building(**body.model_dump())
     s.add(obj)
@@ -90,12 +86,16 @@ def create_building(body: S.BuildingIn, s: Session = _DB):
 
 
 @router.patch("/buildings/{id}", response_model=S.BuildingOut)
-def update_building(id: int, body: S.BuildingIn, bg: BackgroundTasks, s: Session = _DB):
-    obj = _get(s, Building, id)
+def update_building(
+    id: int, body: S.BuildingPatch, bg: BackgroundTasks, user: User = AdminUser, s: Session = _DB
+):
+    obj = scope.get_scoped(s, Building, id, user.school_id)
+    data = body.model_dump(exclude_unset=True)
+    _check_building(s, user, data.get("bld"), data.get("modem_id"))
     before = obj.modem_id
     bld = obj.bld
     rooms = list(s.scalars(select(Room.room).where(Room.building_id == obj.id)))
-    for k, v in body.model_dump().items():
+    for k, v in data.items():
         setattr(obj, k, v)
     # FastAPI 는 background task 를 이 의존성의 teardown(커밋) *전에* 실행한다 — 그래서 여기서 직접
     # commit 해 둔다. teardown 의 with s.begin() 은 이후 남은 트랜잭션이 없으면 조용히 끝난다.
@@ -109,8 +109,8 @@ def update_building(id: int, body: S.BuildingIn, bg: BackgroundTasks, s: Session
 
 
 @router.delete("/buildings/{id}")
-def delete_building(id: int, bg: BackgroundTasks, s: Session = _DB):
-    obj = _get(s, Building, id)
+def delete_building(id: int, bg: BackgroundTasks, user: User = AdminUser, s: Session = _DB):
+    obj = scope.get_scoped(s, Building, id, user.school_id)
     mid = obj.modem_id
     s.delete(obj)
     s.commit()
@@ -120,13 +120,15 @@ def delete_building(id: int, bg: BackgroundTasks, s: Session = _DB):
 
 
 @router.get("/rooms", response_model=list[S.RoomOut])
-def list_rooms(s: Session = _DB):
-    return s.scalars(select(Room).order_by(Room.id)).all()
+def list_rooms(user: User = AdminUser, s: Session = _DB):
+    return s.scalars(
+        select(Room).join(Building).where(Building.school_id == user.school_id).order_by(Room.id)
+    ).all()
 
 
 @router.post("/rooms", response_model=S.RoomOut)
-def create_room(body: S.RoomIn, bg: BackgroundTasks, s: Session = _DB):
-    _get(s, Building, body.building_id)
+def create_room(body: S.RoomIn, bg: BackgroundTasks, user: User = AdminUser, s: Session = _DB):
+    scope.get_scoped(s, Building, body.building_id, user.school_id)
     obj = Room(**body.model_dump())
     s.add(obj)
     s.flush()
@@ -138,9 +140,11 @@ def create_room(body: S.RoomIn, bg: BackgroundTasks, s: Session = _DB):
 
 
 @router.patch("/rooms/{id}", response_model=S.RoomOut)
-def update_room(id: int, body: S.RoomIn, bg: BackgroundTasks, s: Session = _DB):
-    obj = _get(s, Room, id)
-    for k, v in body.model_dump().items():
+def update_room(
+    id: int, body: S.RoomPatch, bg: BackgroundTasks, user: User = AdminUser, s: Session = _DB
+):
+    obj = scope.get_scoped(s, Room, id, user.school_id)
+    for k, v in body.model_dump(exclude_unset=True).items():
         setattr(obj, k, v)
     s.flush()
     mid = _modem_of(s, obj.building_id)
@@ -151,8 +155,8 @@ def update_room(id: int, body: S.RoomIn, bg: BackgroundTasks, s: Session = _DB):
 
 
 @router.delete("/rooms/{id}")
-def delete_room(id: int, bg: BackgroundTasks, s: Session = _DB):
-    obj = _get(s, Room, id)
+def delete_room(id: int, bg: BackgroundTasks, user: User = AdminUser, s: Session = _DB):
+    obj = scope.get_scoped(s, Room, id, user.school_id)
     mid = _modem_of(s, obj.building_id)
     s.delete(obj)
     s.commit()
@@ -165,8 +169,8 @@ def delete_room(id: int, bg: BackgroundTasks, s: Session = _DB):
 
 
 @router.get("/rooms/{id}/slots", response_model=list[S.SlotOut])
-def list_slots(id: int, s: Session = _DB):
-    _get(s, Room, id)
+def list_slots(id: int, user: User = AdminUser, s: Session = _DB):
+    scope.get_scoped(s, Room, id, user.school_id)
     return s.scalars(
         select(Slot).where(Slot.room_id == id).order_by(Slot.day, Slot.s_h, Slot.s_m)
     ).all()
@@ -178,8 +182,8 @@ def list_slots(id: int, s: Session = _DB):
 # (도메인 커밋은 이 요청이 끝난 뒤라 절대 안 풀린다). outbox 를 먼저 커밋시키고 도메인은 뒤따르게 한다.
 # 이 순서라 enqueue 뒤 도메인 write 가 실패하면(예: IntegrityError → 500) outbox 행은 이미 커밋된 채 남는다.
 @router.put("/rooms/{id}/slots", response_model=S.Enqueued)
-def put_slot(id: int, body: S.SlotIn, s: Session = _DB):
-    bld, room = _addr(s, id)
+def put_slot(id: int, body: S.SlotIn, user: User = AdminUser, s: Session = _DB):
+    bld, room = _addr(s, id, user)
     obj = s.scalar(
         select(Slot).where(
             Slot.room_id == id, Slot.day == body.day, Slot.s_h == body.s_h, Slot.s_m == body.s_m
@@ -207,8 +211,8 @@ def put_slot(id: int, body: S.SlotIn, s: Session = _DB):
 
 
 @router.delete("/rooms/{id}/slots/{day}/{s_h}/{s_m}", response_model=S.Enqueued)
-def delete_slot(id: int, day: int, s_h: int, s_m: int, s: Session = _DB):
-    bld, room = _addr(s, id)
+def delete_slot(id: int, day: int, s_h: int, s_m: int, user: User = AdminUser, s: Session = _DB):
+    bld, room = _addr(s, id, user)
     ids = api.enqueue_slot_del(bld, room, day, (s_h, s_m))
     s.execute(
         delete(Slot).where(Slot.room_id == id, Slot.day == day, Slot.s_h == s_h, Slot.s_m == s_m)
@@ -217,25 +221,28 @@ def delete_slot(id: int, day: int, s_h: int, s_m: int, s: Session = _DB):
 
 
 @router.delete("/rooms/{id}/slots", response_model=S.Enqueued)
-def clear_day(id: int, day: int, s: Session = _DB):
-    bld, room = _addr(s, id)
+def clear_day(id: int, day: int, user: User = AdminUser, s: Session = _DB):
+    bld, room = _addr(s, id, user)
     ids = api.enqueue_day_clear(bld, room, day)
     s.execute(delete(Slot).where(Slot.room_id == id, Slot.day == day))
     return {"outbox_ids": ids}
 
 
 @router.get("/rooms/{id}/reservations", response_model=list[S.ResvOut])
-def list_resv(id: int, s: Session = _DB):
-    _get(s, Room, id)
+def list_resv(id: int, user: User = AdminUser, s: Session = _DB):
+    scope.get_scoped(s, Room, id, user.school_id)
     return s.scalars(
         select(Reservation).where(Reservation.room_id == id).order_by(Reservation.date)
     ).all()
 
 
 @router.post("/rooms/{id}/reservations", response_model=S.Enqueued)
-def put_resv(id: int, body: S.ResvIn, s: Session = _DB):
-    bld, room = _addr(s, id)
-    obj = s.get(Reservation, body.id) or Reservation(id=body.id)
+def put_resv(id: int, body: S.ResvIn, user: User = AdminUser, s: Session = _DB):
+    bld, room = _addr(s, id, user)
+    obj = s.get(Reservation, body.id)
+    if obj is not None and obj.room_id != id:
+        raise HTTPException(409, f"예약 id {body.id} 는 다른 방에 있습니다")
+    obj = obj or Reservation(id=body.id)
     for k, v in body.model_dump().items():
         setattr(obj, k, v)
     obj.room_id = id
@@ -259,25 +266,28 @@ def put_resv(id: int, body: S.ResvIn, s: Session = _DB):
 
 
 @router.delete("/rooms/{id}/reservations/{resv_id}", response_model=S.Enqueued)
-def delete_resv(id: int, resv_id: int, s: Session = _DB):
-    bld, room = _addr(s, id)
+def delete_resv(id: int, resv_id: int, user: User = AdminUser, s: Session = _DB):
+    bld, room = _addr(s, id, user)
     ids = api.enqueue_resv_del(bld, room, resv_id)
     s.execute(delete(Reservation).where(Reservation.id == resv_id, Reservation.room_id == id))
     return {"outbox_ids": ids}
 
 
 @router.get("/rooms/{id}/exams", response_model=list[S.ExamOut])
-def list_exams(id: int, s: Session = _DB):
-    _get(s, Room, id)
+def list_exams(id: int, user: User = AdminUser, s: Session = _DB):
+    scope.get_scoped(s, Room, id, user.school_id)
     return s.scalars(
         select(ExamPeriod).where(ExamPeriod.room_id == id).order_by(ExamPeriod.date_start)
     ).all()
 
 
 @router.post("/rooms/{id}/exams", response_model=S.Enqueued)
-def put_exam(id: int, body: S.ExamIn, s: Session = _DB):
-    bld, room = _addr(s, id)
-    obj = s.get(ExamPeriod, body.id) or ExamPeriod(id=body.id)
+def put_exam(id: int, body: S.ExamIn, user: User = AdminUser, s: Session = _DB):
+    bld, room = _addr(s, id, user)
+    obj = s.get(ExamPeriod, body.id)
+    if obj is not None and obj.room_id != id:
+        raise HTTPException(409, f"시험기간 id {body.id} 는 다른 방에 있습니다")
+    obj = obj or ExamPeriod(id=body.id)
     obj.room_id, obj.date_start, obj.date_end = id, body.date_start, body.date_end
     s.add(obj)
     ids = api.enqueue_exam_set(bld, room, body.id, body.date_start, body.date_end)
@@ -286,22 +296,22 @@ def put_exam(id: int, body: S.ExamIn, s: Session = _DB):
 
 
 @router.delete("/rooms/{id}/exams/{exam_id}", response_model=S.Enqueued)
-def delete_exam(id: int, exam_id: int, s: Session = _DB):
-    bld, room = _addr(s, id)
+def delete_exam(id: int, exam_id: int, user: User = AdminUser, s: Session = _DB):
+    bld, room = _addr(s, id, user)
     ids = api.enqueue_exam_del(bld, room, exam_id)
     s.execute(delete(ExamPeriod).where(ExamPeriod.id == exam_id, ExamPeriod.room_id == id))
     return {"outbox_ids": ids}
 
 
 @router.post("/rooms/{id}/sync", response_model=S.Enqueued)
-def sync_room(id: int, body: S.SyncIn, s: Session = _DB):
-    bld, room = _addr(s, id)
+def sync_room(id: int, body: S.SyncIn, user: User = AdminUser, s: Session = _DB):
+    bld, room = _addr(s, id, user)
     return {"outbox_ids": api.enqueue_full_sync(bld, room, tuple(body.kinds))}
 
 
 @router.post("/rooms/{id}/cmd", response_model=S.Enqueued)
-def cmd_room(id: int, body: S.CmdIn, s: Session = _DB):
-    bld, room = _addr(s, id)
+def cmd_room(id: int, body: S.CmdIn, user: User = AdminUser, s: Session = _DB):
+    bld, room = _addr(s, id, user)
     return {"outbox_ids": api.enqueue_cmd(bld, room, body.cmd, bytes.fromhex(body.args_hex))}
 
 
@@ -314,7 +324,10 @@ IMPORT_MAX_BYTES = 1024 * 1024
     responses={400: {"model": S.ImportErrors}, 413: {}, 500: {}},
 )
 def import_slots(
-    raw: bytes = Body(..., media_type="text/csv"), dry_run: bool = False, s: Session = _DB
+    raw: bytes = Body(..., media_type="text/csv"),
+    dry_run: bool = False,
+    user: User = AdminUser,
+    s: Session = _DB,
 ):
     """시간표 CSV (S2b §4). 본문 = CSV 텍스트(text/csv). 전체 검증 → 적용 → commit → 방마다 콘텐츠 FILE.
     동기 함수 — DB 작업은 threadpool 에서 돌아 같은 프로세스의 asyncio WS 허브를 막지 않는다."""
@@ -324,7 +337,7 @@ def import_slots(
         text = raw.decode("utf-8")
     except UnicodeDecodeError as e:
         raise HTTPException(400, "UTF-8 로 저장하세요 (엑셀: CSV UTF-8)") from e
-    rows, errors = csv_import.parse(text, s)
+    rows, errors = csv_import.parse(text, s, school_id=user.school_id)
     if errors:
         return JSONResponse(status_code=400, content={"errors": [asdict(e) for e in errors]})
     sm = csv_import.apply(rows, s, dry_run=dry_run)
@@ -340,7 +353,6 @@ def import_slots(
             log.exception("FILE 큐잉 실패 %s%s — DB 는 반영됨", bld, room)
             raise HTTPException(
                 500,
-                f"FILE 큐잉 실패 ({bld}{room}: {e}). DB 는 반영됨 — "
-                "POST /api/rooms/{id}/sync 로 재전송",
+                f"FILE 큐잉 실패 ({bld}{room}). DB 는 반영됨 — POST /api/rooms/{{id}}/sync 로 재전송",
             ) from e
     return out | {"outbox_ids": ids}

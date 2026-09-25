@@ -1,11 +1,29 @@
 import pytest
 from fastapi.testclient import TestClient
 
+import app.auth.models
 import app.domain.models
+from app.auth import password, ratelimit, tokens
+from app.auth.models import User
 from app.db import Base
+from app.domain.models import School
 from app.lora_service import api
 from app.lora_service.api import RoomInfo
 from app.main import create_app
+from app.settings import Settings
+
+
+@pytest.fixture(autouse=True)
+def _env(monkeypatch):
+    """Settings() 가 요구하는 env. 테스트마다 같은 값 — DEBUG 는 켠다(정적 페이지·/docs 테스트)."""
+    monkeypatch.setenv("JWT_SECRET", "test-secret-" + "x" * 32)  # 32자 이상 (S4a §2.3)
+    monkeypatch.setenv("STUDENT_WEB_URL", "http://student.test")
+    monkeypatch.setenv("MAIL_BACKEND", "console")
+    monkeypatch.setenv("DEBUG", "1")
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+    ratelimit.reset()  # 테스트 간 카운터 격리
+    # 저장 형식이 파라미터를 담으므로 낮춘 N 으로 만든 해시도 verify 된다 — 운영 값 형식은 test_auth_tokens 가 본다
+    monkeypatch.setattr(password, "N", 2**10)
 
 
 @pytest.fixture
@@ -21,8 +39,65 @@ def app(tmp_path):
 
 
 @pytest.fixture
-def client(app):
+def school(app):
+    """학교 1(명지, E동 관리자 소속) + 학교 2(타교). 관리자 계정 둘."""
+    with app.state.Session() as s, s.begin():
+        s.add_all(
+            [
+                School(id=1, name="명지", net_id=75, email_domain="mju.ac.kr"),
+                School(id=2, name="타교", net_id=76, email_domain="other.ac.kr"),
+            ]
+        )
+        # 부모 먼저 — 안 하면 users 가 schools 보다 먼저 INSERT 돼 FK 위반(relationship() 없음, r2 🔴3)
+        s.flush()
+        s.add_all(
+            [
+                User(
+                    email="admin@mju.ac.kr",
+                    school_id=1,
+                    role="admin",
+                    status="active",
+                    name="관리",
+                    pw_hash=password.hash("adminpass1"),
+                ),
+                User(
+                    email="admin@other.ac.kr",
+                    school_id=2,
+                    role="admin",
+                    status="active",
+                    name="타관리",
+                    pw_hash=password.hash("adminpass1"),
+                ),
+            ]
+        )
+    return 1
+
+
+def _hdr(app, email):
+    with app.state.Session() as s:
+        return {"Authorization": f"Bearer {tokens.jwt_encode(Settings(), s.get(User, email))}"}
+
+
+@pytest.fixture
+def admin_hdr(app, school):
+    return _hdr(app, "admin@mju.ac.kr")
+
+
+@pytest.fixture
+def other_admin_hdr(app, school):
+    return _hdr(app, "admin@other.ac.kr")
+
+
+@pytest.fixture
+def client_raw(app):
     with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture
+def client(app, admin_hdr):
+    """기존 테스트 호환: 학교 1 관리자 Bearer 를 자동으로 붙인다."""
+    with TestClient(app, headers=admin_hdr) as c:
         yield c
 
 

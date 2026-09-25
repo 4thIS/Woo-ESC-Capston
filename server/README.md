@@ -1,11 +1,42 @@
 # server — 메인Pi
 
-- 설계: `../docs/specs/2026-09-14-s2-server-design.md`
-- **메인Pi 배포 = Docker** (2026-09-23 팀 결정): 리포 루트에서 `docker compose up -d --build` → http://<호스트>:8000. 이미지 정의는 `server/Dockerfile`(빌드 컨텍스트는 리포 루트 — `../lora_proto` path 의존), 설정은 루트 `compose.yaml`, DB 는 볼륨 `/data/main.db`. 노트북에서도 같은 명령으로 메인Pi 와 똑같은 서버를 띄울 수 있다(Docker Desktop).
-- 개발용 직접 기동: `uv sync && uv run alembic upgrade head && uv run uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000`
-  (반드시 `--workers 1`, 즉 기본값 그대로 단일 워커로 — WS 연결 레지스트리와 `lora_service/api.py`의 상태가 프로세스 메모리에 있어 워커가 여러 개면 모뎀Pi 연결·outbox 디스패치가 워커마다 따로 놀아 깨진다)
-- 확인: http://localhost:8000/static/index.html · http://localhost:8000/docs
+- 설계: `../docs/specs/2026-09-14-s2-server-design.md` · 인증: `../docs/specs/2026-09-23-s4a-auth-design.md`
+- **메인Pi 배포 = Docker** (2026-09-23 팀 결정) — 리포 루트에서:
+  ```bash
+  cp server/.env.example server/.env        # 값 채우기 (아래 표) — 커밋 금지, 이미지에도 안 들어간다(.dockerignore)
+  docker compose up -d --build              # 빌드 + 기동. DB 는 볼륨 /data/main.db (SERVER_DB 는 compose 가 고정)
+  docker compose exec server python -m app.cli create-school --name 우송대 --net-id 75 --email-domain wsu.ac.kr
+  docker compose exec server python -m app.cli create-admin --school-id 1 --email admin@wsu.ac.kr --name 관리자
+  docker compose logs -f server
+  ```
+  이미지 정의는 `server/Dockerfile`(빌드 컨텍스트는 리포 루트 — `../lora_proto` path 의존), 설정은 루트 `compose.yaml`(`env_file: server/.env`). 노트북에서도 같은 명령으로 메인Pi 와 똑같은 서버를 띄울 수 있다(Docker Desktop). 아래 `uv run …` 기동·CLI 는 **개발용**이다.
+- `.env` 준비: `cp .env.example .env` 후 값 채우기 — `JWT_SECRET`(32자 이상, 예 `python -c "import secrets;print(secrets.token_urlsafe(48))"`), `STUDENT_WEB_URL`(학생 웹 오리진), `MAIL_BACKEND=smtp`면 Gmail **앱 비밀번호**(2단계 인증 켠 계정에서 발급)를 `SMTP_USER`/`SMTP_PASSWORD`에. 개발은 `DEBUG=1 MAIL_BACKEND=console`(메일을 콘솔에 출력, SMTP 불필요).
+- 기동: `uv sync && uv run alembic upgrade head && uv run --env-file .env uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000 --workers 1 --no-server-header`
+  (반드시 `--workers 1` — WS 연결 레지스트리와 `lora_service/api.py`의 상태가 프로세스 메모리에 있어 워커가 여러 개면 모뎀Pi 연결·outbox 디스패치가 워커마다 따로 놀아 깨진다. `--no-server-header`로 응답에 서버 버전 노출 안 함)
+- 초기 설정(CLI, `uv run --env-file .env python -m app.cli <cmd>`):
+  - `create-school --name 우송대 --net-id 75 --email-domain wsu.ac.kr` — 도메인은 학생 웹메일 가입 판별에 쓰인다.
+  - `create-admin --school-id 1 --email admin@wsu.ac.kr --name 관리자` — 비밀번호는 프롬프트(getpass)로 입력, argv엔 안 받는다.
+  - 도메인·이름 변경은 `update-school --id 1 --email-domain ...`. 그 외 `set-user`(관리자 계정 활성/정지·비밀번호 재설정), `assign-modem`(school_id 미배정 모뎀 배정)도 있다.
+- 확인: http://localhost:8000/static/index.html · http://localhost:8000/docs — 이 둘은 **`DEBUG=1`일 때만** 마운트된다(운영에서는 꺼짐). 4주차 Pi↔Pi 통합 확인도 `DEBUG=1`로 띄운 이 페이지로 한다.
+- 인증: `/api/health`·`/api/auth/*`를 뺀 모든 `/api/*`는 `Authorization: Bearer <token>` 필요. 토큰은 `POST /api/auth/login {email, password}` → `{token, role, school_id, name}`. 관리자는 자기 학교 리소스만 보고 고칠 수 있다(타 학교는 404).
+- 학생 가입: 학교 웹메일로 2단계(이메일 제출 → 메일 링크에서 이름·학번·비밀번호 입력) → 관리자 승인 대기. 자세한 흐름·상태 전이는 `../docs/specs/2026-09-23-s4a-auth-design.md` §2 참고.
 - 모뎀Pi 등록: `POST /api/lora/modems {"modem_id": "mjc-eng"}` → 응답의 `token`을 모뎀Pi 설정에 넣는다(평문은 이때 한 번만 보인다).
 - 시간표 CSV: `POST /api/import/slots` 본문에 CSV 텍스트(`text/csv`, UTF-8). 규격·출처 규칙은 `../docs/specs/2026-09-16-s2b-csv-import-design.md` §2. `?dry_run=true`로 미리보기.
-- env: `SERVER_DB`(기본 `main.db`), `STATUS_HOUR_UTC`(기본 18)
+- 시각 필드(`*_at`)는 모두 UTC이며 `Z` 접미사 없이 저장·응답된다.
 - 테스트: `uv run pytest -q`
+
+## env
+
+| 키 | 기본값 | 설명 |
+|---|---|---|
+| `SERVER_DB` | `main.db` | SQLite 파일 경로 |
+| `STATUS_HOUR_UTC` | `18` | 상태 요약 기준 시각(UTC, KST 03:00) |
+| `JWT_SECRET` | (필수) | HS256 서명 키, 32자 이상 아니면 기동 실패 |
+| `JWT_TTL_H` | `24` | 발급 토큰 유효시간(시간) |
+| `STUDENT_WEB_URL` | (필수) | 학생 웹 오리진 — 가입/재설정 메일 링크에 사용 |
+| `MAIL_BACKEND` | `smtp` | `smtp`(Gmail SMTP_SSL) 또는 `console`(개발용, 콘솔 출력 — 토큰이 로그에 남으므로 `DEBUG=1` 일 때만 허용, 아니면 기동 실패) |
+| `SMTP_USER` | (빈 값) | `MAIL_BACKEND=smtp`면 필수 — Gmail 주소 |
+| `SMTP_PASSWORD` | (빈 값) | `MAIL_BACKEND=smtp`면 필수 — Gmail **앱 비밀번호** |
+| `MAIL_FROM` | `SMTP_USER` | 발신자 표시 주소 |
+| `DEBUG` | `0` | `1`이면 `/docs`·`/redoc`·`/openapi.json`·`/static` 마운트 |
+| `CORS_ORIGINS` | (빈 값) | 콤마 구분 허용 오리진. 빈 값 = 전부 차단 |
