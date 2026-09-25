@@ -277,7 +277,10 @@ function submit() {
 .rs__chip-num {
   font-size: var(--font-size-xs);
 }
+/* legend 는 fieldset 테두리 자리에 그려져 padding 이 legend 아래로 간다 — 위 간격은 margin 으로 */
 .rs__spans {
+  margin-top: var(--space-4);
+  padding-top: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);

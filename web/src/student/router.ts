@@ -33,6 +33,7 @@ export const routes: RouteRecordRaw[] = [
     children: [
       { path: ':room(\\d+)', component: () => import('./views/RoomView.vue') },
       { path: ':room(\\d+)/week', component: () => import('./views/WeekView.vue') },
+      { path: ':room(\\d+)/reserve', component: () => import('./views/ReserveView.vue') },
     ],
   },
   // 없는 주소 — 벽 없이 404 (보여줄 데이터가 없다)

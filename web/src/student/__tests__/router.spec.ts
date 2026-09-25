@@ -47,7 +47,7 @@ describe('student router', () => {
     expect(r.currentRoute.value.params.room).toBe('401')
   })
 
-  it('/:bld/:room · /:bld/:room/week — 실제 자식 라우트, 소문자 글자는 대문자로', async () => {
+  it('/:bld/:room · /week · /reserve — 실제 자식 라우트, 소문자 글자는 대문자로', async () => {
     const room = await at('/e/401')
     expect(room.path).toBe('/E/401')
     expect(room.matched.map((m) => m.path)).toEqual(['/:bld([A-Z])', '/:bld([A-Z])/:room(\\d+)'])
@@ -55,6 +55,10 @@ describe('student router', () => {
     const week = await at('/e/401/week')
     expect(week.path).toBe('/E/401/week')
     expect(week.matched[1].path).toBe('/:bld([A-Z])/:room(\\d+)/week')
+    const reserve = await at('/e/401/reserve')
+    expect(reserve.path).toBe('/E/401/reserve')
+    expect(reserve.matched[1].path).toBe('/:bld([A-Z])/:room(\\d+)/reserve')
+    expect(reserve.meta.gate).toBe(true)
     expect((await at('/E/abc')).matched[0].path).toBe('/:pathMatch(.*)*')
   })
 

@@ -32,6 +32,7 @@ let page: Page
 let api: APIRequestContext
 let A: { email: string }
 let seed: Awaited<ReturnType<typeof seedStudent>>
+let B: { email: string }
 const shownRows = () => page.locator('ul.rows > li')
 const DAYS = ['월', '화', '수', '목', '금', '토', '일']
 const room = (n: number) => seed.roomIds[n]
@@ -264,4 +265,69 @@ test('승인된 예약 취소 — 확인 뒤 취소됨으로 남는다 (신청 �
   await expect(card('발표 연습').getByText('취소됨')).toBeVisible()
   await expect(card('발표 연습').getByRole('button')).toHaveCount(0)
   await shot(page, 'student-me-cancelled-390')
+})
+
+test('예약 — 날짜 칩 8개, 서버가 준 빈 구간만, 신청하면 내 예약에 대기중', async () => {
+  await page.getByRole('link', { name: '뒤로' }).click()
+  await shownRows().filter({ hasText: '102호' }).getByRole('link').click() // ★ 칩(102호)과 겹치지 않게 목록 행으로
+  await page.getByRole('link', { name: '이 강의실 예약하기' }).click()
+  await expect(page).toHaveURL(new RegExp(`/${STU.bld}/102/reserve$`))
+  await expect(page.getByRole('link', { name: '닫기' })).toHaveAttribute('href', `/${STU.bld}/102`)
+  const chips = page.getByRole('radiogroup', { name: '날짜' }).getByRole('radio')
+  await expect(chips).toHaveCount(8)
+  await expect(chips.first()).toContainText('오늘')
+  expect((await chips.nth(1).boundingBox())!.height).toBeGreaterThanOrEqual(48)
+  await chips.nth(1).click()
+  await expect(chips.nth(1)).toHaveAttribute('aria-checked', 'true')
+  await page.getByRole('radio', { name: /^09:00 – 21:00/ }).check()
+  await page.getByLabel('시작', { exact: true }).selectOption({ label: '10:00' })
+  await page.getByLabel('끝', { exact: true }).selectOption({ label: '11:00' })
+  await page.getByLabel(/무엇에 쓰나요/).fill('캡스톤 스터디')
+  await expect(page.getByText('19 / 20 B')).toBeVisible()
+  await expect(page.getByText('문 앞 화면에는 "학생 예약"으로만 표시돼요')).toBeVisible()
+  await shot(page, 'student-reserve-390')
+  await page.getByRole('button', { name: '예약하기' }).click()
+  await expect(page).toHaveURL(/\/me$/)
+  await expect(card('캡스톤 스터디').getByText('대기중')).toBeVisible()
+})
+
+test('경합 — 고르는 사이 남이 먼저 신청하면 409 문장 + 빈 구간 새로 고침, 남의 이름은 없다', async () => {
+  B = await createStudent(api, { approve: true, name: '박학생' })
+  await page.getByRole('link', { name: '뒤로' }).click()
+  await shownRows().filter({ hasText: '102호' }).getByRole('link').click() // ★ 칩(102호)과 겹치지 않게 목록 행으로
+  await page.getByRole('link', { name: '이 강의실 예약하기' }).click()
+  await page.getByRole('radiogroup', { name: '날짜' }).getByRole('radio').nth(1).click()
+  await page.getByRole('radio', { name: /^11:00 – 21:00/ }).check()
+  await page.getByLabel('시작', { exact: true }).selectOption({ label: '11:00' })
+  await page.getByLabel('끝', { exact: true }).selectOption({ label: '12:00' })
+  await page.getByLabel(/무엇에 쓰나요/).fill('세미나 준비')
+  await created(await requestAs(B.email, room(102), kstDate(1), '11:00', '12:00', '먼저 온 사람'))
+  await page.getByRole('button', { name: '예약하기' }).click()
+  await expect(
+    page.getByText('방금 다른 사람이 먼저 신청했어요. 비어 있는 시간을 새로 불러왔어요.'),
+  ).toBeVisible()
+  await expect(page).toHaveURL(/\/reserve$/)
+  await expect(page.getByRole('radio', { name: /^12:00 – 21:00/ })).toBeVisible()
+  await expect(page.getByRole('radio', { name: /^11:00 – 21:00/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '예약하기' })).toBeDisabled()
+  await expect(page.getByText('먼저 온 사람')).toHaveCount(0)
+  await expect(page.getByText('박학생')).toHaveCount(0)
+  await shot(page, 'student-reserve-taken-390')
+})
+
+test('건수 상한 — 진행 중 신청 3건이면 버튼을 잠그고 이유를 말한다', async () => {
+  // 서버가 3건째 뒤를 400 으로 막을 때까지 채운다 — 체크인 예약을 건너뛴 날에도 같은 결과
+  for (let i = 5; i <= 7; i++) {
+    const r = await requestAs(A.email, room(103), kstDate(i), '10:00', '11:00', `연습 ${i}`)
+    if (r.status() === 400) break
+    expect(r.status()).toBe(201)
+  }
+  // 앞 테스트의 danger Toast 는 스스로 사라지지 않고 헤더를 덮는다 — 사람처럼 닫는다
+  await page.getByRole('alert').getByRole('button', { name: '닫기' }).click()
+  // 신청 화면은 폴링하지 않는다 — 한 번 닫았다 연다
+  await page.getByRole('link', { name: '닫기' }).click()
+  await page.getByRole('link', { name: '이 강의실 예약하기' }).click()
+  await expect(page.getByText('신청은 3건까지 할 수 있어요')).toBeVisible()
+  await expect(page.getByRole('button', { name: '예약하기' })).toBeDisabled()
+  await shot(page, 'student-reserve-cap-390')
 })
