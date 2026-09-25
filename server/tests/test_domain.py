@@ -51,6 +51,7 @@ def _seed(Session):
                 type=6,
                 subject="대여",
                 professor="",
+                pushed_at=dt.datetime(2026, 9, 14),  # noqa: DTZ001 — 노드로 보낸 예약만 FILE 에 실린다
             )
         )
         s.add(

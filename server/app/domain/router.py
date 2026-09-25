@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import datetime as dt
 import logging
 import threading
 from dataclasses import asdict
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -17,9 +17,8 @@ from app.auth import scope
 from app.auth.deps import AdminUser
 from app.auth.models import User
 from app.deps import _DB
-from app.domain import admin, csv_import
+from app.domain import admin, clock, csv_import, reserve
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
-from app.domain.topology import RESV_HORIZON_DAYS
 from app.lora_service import api
 
 router = APIRouter(prefix="/api", dependencies=[AdminUser])  # 전부 관리자 전용 (S4a §3.3)
@@ -75,6 +74,8 @@ def _existing_same_room(s: Session, model, obj_id: int, room_id: int):
     obj = s.get(model, obj_id)
     if obj is not None and obj.room_id != room_id:
         raise HTTPException(409, "id 가 다른 방의 것입니다 — 방을 옮기려면 삭제 후 다시 만드세요")
+    if obj is not None and getattr(obj, "status", "approved") != "approved":
+        raise HTTPException(409, "신청 상태 예약은 승인 절차로 처리하세요")
     return obj
 
 
@@ -187,7 +188,7 @@ def building_exams(id: int, user: User = AdminUser, s: Session = _DB):
 @router.get("/buildings/{id}/outbox", response_model=list[S.FailedOut])
 def building_outbox(
     id: int,
-    state: str | None = None,
+    state: Literal["queued", "dispatched", "acked", "failed", "cancelled"] | None = None,
     limit: int = Query(200, ge=1, le=500),
     user: User = AdminUser,
     s: Session = _DB,
@@ -336,34 +337,33 @@ def _write_resv(
     s, room_id, bld, room, mid, body: S.ResvIn, rid: int, obj: Reservation | None
 ) -> dict:
     obj = obj or Reservation(id=rid, room_id=room_id)
+    old_end = (obj.date, obj.e_h, obj.e_m)  # 노드가 가진 옛 항목의 끝 (새 행이면 None 들)
     for k, v in body.model_dump(exclude={"id"}).items():
         setattr(obj, k, v)
     s.add(obj)
-    today = dt.datetime.now(dt.UTC).date()  # S10 T1 이 clock.local_today() 로 바꾼다
-    ids = []
-    if today <= body.date <= today + dt.timedelta(days=RESV_HORIZON_DAYS):
-        ids = api.enqueue_resv_set(
-            bld,
-            room,
-            rid,
-            body.date,
-            (body.s_h, body.s_m),
-            (body.e_h, body.e_m),
-            body.type,
-            body.subject,
-            body.professor,
-            session=s,
-        )
+    now = clock.local_now()
+    today = now.date()
+    if reserve.in_window(body.date, today):
+        if reserve.room_full(s, room_id, today, exclude_id=rid):
+            raise HTTPException(409, "이 강의실은 이번 주 예약이 가득 찼습니다(노드 용량 24)")
+        ids = reserve.push_set(s, obj)
+    else:  # 창 밖으로 옮겼으면 노드의 옛 날짜 항목을 지운다 (r3, 리뷰 🔴1c)
+        ids = reserve.push_del(s, obj, now, end=old_end if old_end[0] else None)
     _commit_notify(s, mid)
     return {"outbox_ids": ids, "id": rid}
 
 
 @router.delete("/rooms/{id}/reservations/{resv_id}", response_model=S.Enqueued)
 def delete_resv(id: int, resv_id: int, user: User = AdminUser, s: Session = _DB):
-    bld, room, mid = _addr(s, id, user)
-    s.execute(delete(Reservation).where(Reservation.id == resv_id, Reservation.room_id == id))
-    ids = api.enqueue_resv_del(bld, room, resv_id, session=s)
-    _commit_notify(s, mid)
+    *_, mid = _addr(s, id, user)
+    with _ID_LOCK:  # 예약 쓰기는 읽기~커밋 전부 같은 락 — 동시 승인·승격과 엇갈리지 않게
+        r = s.get(Reservation, resv_id)
+        if r is None or r.room_id != id:  # 멱등 — 없는 id 에 RESV_DEL 을 보내지 않는다
+            return {"outbox_ids": []}
+        # 노드로 보낸 적 있는 것만 (r2: 신청·창 밖 예약엔 DEL 없음)
+        ids = reserve.push_del(s, r, clock.local_now())
+        s.delete(r)
+        _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 
@@ -407,9 +407,10 @@ def _write_exam(
 @router.delete("/rooms/{id}/exams/{exam_id}", response_model=S.Enqueued)
 def delete_exam(id: int, exam_id: int, user: User = AdminUser, s: Session = _DB):
     bld, room, mid = _addr(s, id, user)
-    s.execute(delete(ExamPeriod).where(ExamPeriod.id == exam_id, ExamPeriod.room_id == id))
-    ids = api.enqueue_exam_del(bld, room, exam_id, session=s)
-    _commit_notify(s, mid)
+    with _ID_LOCK:  # 같은 id 수정(put_exam)의 읽기~커밋 사이에 끼어들면 StaleDataError (#48 🟡2)
+        s.execute(delete(ExamPeriod).where(ExamPeriod.id == exam_id, ExamPeriod.room_id == id))
+        ids = api.enqueue_exam_del(bld, room, exam_id, session=s)
+        _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 

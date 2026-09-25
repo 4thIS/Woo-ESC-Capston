@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from pathlib import Path
 
@@ -18,8 +18,11 @@ from app.auth import password
 from app.auth.router import admin as admin_router
 from app.auth.router import router as auth_router
 from app.db import make_engine, make_session_factory
+from app.domain import daily
+from app.domain.admin_resv_router import router as admin_resv_router
 from app.domain.admin_router import router as admin_api_router
 from app.domain.router import router as domain_router
+from app.domain.student_router import router as student_router
 from app.domain.topology import DomainTopology, record_provider
 from app.lora_service import api
 from app.lora_service.hub import Hub
@@ -46,10 +49,16 @@ def create_app(db_path: str | None = None) -> FastAPI:
         api.set_record_provider(record_provider(Session))
         hub.start(asyncio.get_running_loop())
         sweeper = asyncio.ensure_future(hub.sweep_loop(SWEEP_INTERVAL_S))
+        daily_task = asyncio.ensure_future(daily.daily_loop(Session))
         try:
             yield
         finally:
             sweeper.cancel()
+            daily_task.cancel()
+            with suppress(
+                asyncio.CancelledError
+            ):  # 경고만 없앤다 — to_thread 로 도는 실행은 못 멈춘다
+                await daily_task
             await hub.stop()
 
     # /docs·/openapi.json 은 내부 엔드포인트 목록 — DEBUG 에서만 (S4a §3.2)
@@ -76,6 +85,8 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(admin_router)
     app.include_router(admin_api_router)
+    app.include_router(admin_resv_router)
+    app.include_router(student_router)
     if settings.debug:
         app.mount(
             "/static",

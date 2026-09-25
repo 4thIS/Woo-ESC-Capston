@@ -120,8 +120,50 @@ class ResvIn(_Span):
     date: dt.date
 
 
+class StudentResvIn(BaseModel):
+    date: dt.date
+    s_h: int = Field(ge=0, le=23)
+    s_m: int = Field(ge=0, le=59, multiple_of=5)
+    e_h: int = Field(ge=0, le=23)
+    e_m: int = Field(ge=0, le=59, multiple_of=5)
+    subject: str = Field(min_length=1)
+
+    @field_validator("subject")
+    @classmethod
+    def _subj(cls, v: str) -> str:
+        return _bytes_max(v, P.SUBJ_MAX, "subject")
+
+    @model_validator(mode="after")
+    def _order(self):
+        if (self.s_h, self.s_m) >= (self.e_h, self.e_m):
+            raise ValueError("시작 < 끝")
+        return self
+
+
 class ResvOut(ResvIn, Out):
     id: int
+    status: str = "approved"
+
+
+class ResvMineOut(ResvOut):
+    requested_at: dt.datetime | None
+    decided_at: dt.datetime | None
+    reject_reason: str | None
+    checked_in_at: dt.datetime | None
+    cancelled_at: dt.datetime | None
+    room_id: int
+    building: str
+    room: int
+
+
+class RequesterOut(BaseModel):
+    email: str
+    name: str
+    student_no: str | None
+
+
+class ResvAdminOut(ResvMineOut):
+    requester: RequesterOut | None
 
 
 class ExamIn(BaseModel):
@@ -404,3 +446,125 @@ class SummaryOut(BaseModel):
     as_of: dt.datetime
     totals: SummaryTotals
     warnings: dict[str, WarningBucket]
+
+
+# ---- S10 §4.1 학생 조회 ----
+
+
+class RoomStateOut(BaseModel):
+    room_id: int
+    building_id: int
+    building: str
+    bld: str
+    room: int
+    layout: int
+    until: str | None
+
+
+class FreeRoomOut(BaseModel):
+    room_id: int
+    building_id: int
+    building: str
+    bld: str
+    room: int
+    layout: int
+    free_until: str | None
+
+
+class ResvPublicOut(BaseModel):
+    id: int
+    date: dt.date
+    s_h: int
+    s_m: int
+    e_h: int
+    e_m: int
+    mine: bool
+    label: str
+
+
+class WeekOut(BaseModel):
+    room: RoomStateOut
+    week_start: dt.date
+    slots: list[SlotOut]
+    reservations: list[ResvPublicOut]
+    exams: list[ExamOut]
+
+
+class JobRunOut(Out):
+    id: int
+    name: str
+    ran_at: dt.datetime
+    result: dict
+
+    @field_validator("result", mode="before")
+    @classmethod
+    def _r(cls, v):
+        return json.loads(v) if isinstance(v, str) else v
+
+
+class AllocationOut(BaseModel):
+    key: int
+    label: str
+    assigned_min: int
+    unused_min: int
+    total_min: int
+    rate: float
+
+
+class FreeRange(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class FreeSlotsOut(BaseModel):
+    room_id: int
+    room: int
+    building: str
+    free: list[FreeRange]
+
+
+class ResvStatsRow(BaseModel):
+    date: str
+    requested: int
+    approved: int
+    rejected: int
+    cancelled: int
+    expired: int
+    no_show: int
+    checked_in: int
+
+
+class ResvStatsOut(BaseModel):
+    series: list[ResvStatsRow]
+    totals: dict[str, int]
+    no_show_rate: float
+    checkin_rate: float
+
+
+class LatencyBin(BaseModel):
+    ge: int
+    lt: int | None
+    count: int
+
+
+class LatencyOut(BaseModel):
+    n: int
+    bins: list[LatencyBin]
+    p50: float | None
+    p95: float | None
+    max: float | None
+    within_30s: float
+    within_90s: float
+
+
+class LatencySampleOut(BaseModel):
+    outbox_id: int
+    room_id: int
+    bld: str
+    room: int
+    unit: int
+    type: str
+    created_at: dt.datetime
+    finished_at: dt.datetime
+    seconds: float
