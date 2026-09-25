@@ -96,3 +96,26 @@ def test_explicit_id_still_validated(client, app, school):
         client.post(f"/api/rooms/{ids[101]}/reservations", json={**RESV, "id": 65536}).status_code
         == 422
     )
+
+
+def test_concurrent_auto_ids_serialized_by_lock(client, app, school, monkeypatch):
+    """채번~커밋을 _ID_LOCK 이 직렬화 — 없으면 동시 요청이 같은 최소값을 골라 PK 충돌(500) (#48 🟡1)."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    _, ids = _building(app, 1, "E")
+    rid = ids[101]
+    orig = R._free_id
+
+    def slow_free_id(s, model):
+        i = orig(s, model)
+        time.sleep(0.05)  # 채번과 커밋 사이를 벌려 경합을 확정적으로 만든다
+        return i
+
+    monkeypatch.setattr(R, "_free_id", slow_free_id)
+    with ThreadPoolExecutor(12) as ex:
+        res = list(
+            ex.map(lambda _: client.post(f"/api/rooms/{rid}/reservations", json=RESV), range(12))
+        )
+    assert [r.status_code for r in res] == [200] * 12
+    assert sorted(r.json()["id"] for r in res) == list(range(1, 13))
