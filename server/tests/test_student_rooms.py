@@ -332,6 +332,21 @@ def test_week_free_uses_kst_today_and_operating_hours(
     assert j[1]["spans"] == [{"from": "09:00", "to": "21:00"}]
 
 
+def test_week_does_not_straddle_midnight_across_two_clock_reads(
+    client, app, school, student_hdr, monkeypatch
+):
+    """/week 가 시계를 두 번 읽으면(local_now·local_today 각각) 그 사이 자정이 지나 week_start 와
+    room 상태가 다른 날 기준으로 계산될 수 있다 — 한 번 읽은 now 를 끝까지 써야 한다."""
+    _, ids = _building(app, 1, "E")
+    # KST 9/27(일) 23:59:59.5 → 다음 호출부터는 9/28(월) 00:00:00.5 로 자정 + 주 경계를 같이 넘긴다
+    before = dt.datetime(2026, 9, 27, 14, 59, 59, 500000)  # noqa: DTZ001 — UTC, KST 일 23:59:59.5
+    after = dt.datetime(2026, 9, 27, 15, 0, 0, 500000)  # noqa: DTZ001 — UTC, KST 월 00:00:00.5
+    calls = iter([before, after, after, after, after])
+    monkeypatch.setattr(clock, "now_utc", lambda: next(calls, after))
+    j = client.get(f"/api/student/rooms/{ids[101]}/week", headers=student_hdr).json()
+    assert j["week_start"] == "2026-09-21"  # 첫 읽음(일, 9/27)이 속한 주 — 9/28(월)치면 버그
+
+
 def test_week_full_flag_empties_free(client, app, school, student_hdr, monkeypatch):
     _fix_clock(monkeypatch)
     monkeypatch.setattr(reserve, "NODE_RESV_MAX", 1)  # 창 안 1건이면 가득 — 신청은 409

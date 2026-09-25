@@ -86,7 +86,7 @@ def week(id: int, date: dt.date | None = _WEEK_DATE, user: User = StudentUser, s
     room, b = _student_room(s, user, id)
     now = clock.local_now()
     full = reserve.room_full(s, id, now.date())  # 신청 검사와 같은 규칙 — 창 안 live 24건
-    start = clock.week_start(date or clock.local_today())
+    start = clock.week_start(date or now.date())
     end = start + dt.timedelta(days=6)
     resvs = []
     for r in s.scalars(
@@ -112,7 +112,7 @@ def week(id: int, date: dt.date | None = _WEEK_DATE, user: User = StudentUser, s
             }
         )
     return {
-        "room": _state_out(s, room, b, clock.local_now()),
+        "room": _state_out(s, room, b, now),
         "week_start": start,
         "slots": s.scalars(
             select(Slot).where(Slot.room_id == id).order_by(Slot.day, Slot.s_h, Slot.s_m)
