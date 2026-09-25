@@ -71,7 +71,13 @@ const CHANGED: Record<Kind, string> = {
 }
 const busy = ref<string | null>(null) // 처리 중인 행 — 연타 방지
 
-async function act(user: UserOut, kind: Kind, call: () => Promise<unknown>): Promise<boolean> {
+// retry: Toast 재시도 — Modal 로 여는 작업은 submit* 을 다시 불러 성공 시 Modal 을 닫게 한다
+async function act(
+  user: UserOut,
+  kind: Kind,
+  call: () => Promise<unknown>,
+  retry: () => unknown = () => act(user, kind, call),
+): Promise<boolean> {
   if (busy.value) return false
   busy.value = user.email
   try {
@@ -85,12 +91,16 @@ async function act(user: UserOut, kind: Kind, call: () => Promise<unknown>): Pro
       showToast({
         tone: 'danger',
         message: e.message,
-        action: { label: '재시도', onClick: () => void act(user, kind, call) },
+        action: { label: '재시도', onClick: () => void retry() },
       })
     return e.status === 409 || e.status === 404 // 모달은 닫는다 — 대상이 이미 바뀌었다
   } finally {
-    busy.value = null
-    await Promise.all([reload(), refreshPending()])
+    // 새 목록이 올 때까지 잠가 둔다 — 옛 행을 또 누르면 409 만 는다
+    try {
+      await Promise.all([reload(), refreshPending()])
+    } finally {
+      busy.value = null
+    }
   }
 }
 
@@ -105,7 +115,8 @@ async function submitReject() {
   const user = rejecting.value
   const r = reason.value.trim()
   if (!user || !r) return
-  if (await act(user, 'reject', () => usersApi.reject(user.email, r))) rejecting.value = null
+  if (await act(user, 'reject', () => usersApi.reject(user.email, r), submitReject))
+    rejecting.value = null
 }
 
 // 정지 — token_version 이 올라 그 사람의 세션이 즉시 끊긴다
@@ -113,9 +124,12 @@ const disabling = ref<UserOut | null>(null)
 async function submitDisable() {
   const user = disabling.value
   if (!user) return
-  if (await act(user, 'disable', () => usersApi.disable(user.email))) disabling.value = null
+  if (await act(user, 'disable', () => usersApi.disable(user.email), submitDisable))
+    disabling.value = null
 }
 
+// 필터를 바꿔 옛 행이 남아 있는 동안에도 잠근다
+const locked = computed(() => !!busy.value || loading.value)
 const asUser = (row: Record<string, unknown>) => row as unknown as UserOut
 </script>
 
@@ -172,11 +186,11 @@ const asUser = (row: Record<string, unknown>) => row as unknown as UserOut
             <Button
               size="sm"
               :loading="busy === asUser(row).email"
-              :disabled="!!busy && busy !== asUser(row).email"
+              :disabled="locked && busy !== asUser(row).email"
               @click="act(asUser(row), 'approve', () => usersApi.approve(asUser(row).email))"
               >승인</Button
             >
-            <Button variant="ghost" size="sm" :disabled="!!busy" @click="openReject(asUser(row))"
+            <Button variant="ghost" size="sm" :disabled="locked" @click="openReject(asUser(row))"
               >거절</Button
             >
           </template>
@@ -184,7 +198,7 @@ const asUser = (row: Record<string, unknown>) => row as unknown as UserOut
             v-else-if="asUser(row).status === 'active'"
             variant="ghost"
             size="sm"
-            :disabled="!!busy"
+            :disabled="locked"
             @click="disabling = asUser(row)"
             >정지</Button
           >
@@ -193,7 +207,7 @@ const asUser = (row: Record<string, unknown>) => row as unknown as UserOut
             variant="ghost"
             size="sm"
             :loading="busy === asUser(row).email"
-            :disabled="!!busy && busy !== asUser(row).email"
+            :disabled="locked && busy !== asUser(row).email"
             @click="act(asUser(row), 'enable', () => usersApi.enable(asUser(row).email))"
             >해제</Button
           >

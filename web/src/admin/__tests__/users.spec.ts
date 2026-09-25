@@ -171,4 +171,88 @@ describe('UsersView', () => {
     expect(w.text()).toContain('승인을 기다리는 신청이 없습니다')
     expect(w.find('.empty button').exists()).toBe(false)
   })
+
+  async function openRejectWith(reason: string) {
+    api.list.mockResolvedValue([u({})])
+    const w = await mountView()
+    await buttonByText(w, '거절').trigger('click')
+    if (reason) await w.get('[role="dialog"] textarea').setValue(reason)
+    return w
+  }
+  const dialogButton = (w: ReturnType<typeof mount>, text: string) =>
+    w
+      .get('[role="dialog"]')
+      .findAll('button')
+      .find((b) => b.text() === text)!
+
+  it('거절 — 409·404 가 아닌 오류면 Modal 이 남는다', async () => {
+    api.reject.mockRejectedValue(new ApiError(0, MESSAGES[0]))
+    const w = await openRejectWith('사유')
+    await dialogButton(w, '거절').trigger('click')
+    await flushPromises()
+    expect(w.find('[role="dialog"]').exists()).toBe(true)
+    expect(toasts.value.at(-1)?.tone).toBe('danger')
+  })
+
+  it.each([409, 404])('거절 — %i 이면 Modal 을 닫는다', async (status) => {
+    api.reject.mockRejectedValue(new ApiError(status, MESSAGES[status] ?? 'x'))
+    const w = await openRejectWith('사유')
+    await dialogButton(w, '거절').trigger('click')
+    await flushPromises()
+    expect(w.find('[role="dialog"]').exists()).toBe(false)
+  })
+
+  it('거절 — 사유를 쓴 뒤에는 배경·Esc 로 닫히지 않는다', async () => {
+    const w = await openRejectWith('사유')
+    await w.get('.modal__backdrop').trigger('mousedown')
+    await w.get('[role="dialog"]').trigger('keydown', { key: 'Escape' })
+    expect(w.find('[role="dialog"]').exists()).toBe(true)
+    expect((w.get('[role="dialog"] textarea').element as HTMLTextAreaElement).value).toBe('사유')
+  })
+
+  it('거절 실패 Toast 의 재시도는 성공하면 Modal 을 닫는다', async () => {
+    api.reject.mockRejectedValueOnce(new ApiError(0, MESSAGES[0]))
+    api.reject.mockResolvedValueOnce(u({ status: 'rejected' }))
+    const w = await openRejectWith('사유')
+    await dialogButton(w, '거절').trigger('click')
+    await flushPromises()
+    toasts.value.at(-1)!.action!.onClick()
+    await flushPromises()
+    expect(api.reject).toHaveBeenCalledTimes(2)
+    expect(w.find('[role="dialog"]').exists()).toBe(false)
+  })
+
+  it('정지 — 성공하면 Modal 을 닫는다', async () => {
+    api.list.mockResolvedValue([u({ status: 'active' })])
+    api.disable.mockResolvedValue(u({ status: 'disabled' }))
+    const w = await mountView()
+    await buttonByText(w, '정지').trigger('click')
+    await dialogButton(w, '정지').trigger('click')
+    await flushPromises()
+    expect(w.find('[role="dialog"]').exists()).toBe(false)
+  })
+
+  it('승인 뒤 새 목록이 올 때까지 행 버튼이 잠겨 있다', async () => {
+    let land!: (v: UserOut[]) => void
+    api.list.mockResolvedValueOnce([u({})])
+    api.list.mockReturnValueOnce(new Promise<UserOut[]>((r) => (land = r)))
+    api.approve.mockResolvedValue(u({ status: 'active' }))
+    const w = await mountView()
+    await buttonByText(w, '승인').trigger('click')
+    await flushPromises()
+    expect((buttonByText(w, '승인').element as HTMLButtonElement).disabled).toBe(true)
+    expect((buttonByText(w, '거절').element as HTMLButtonElement).disabled).toBe(true)
+    land([u({ email: 'o@wsu.ac.kr' })])
+    await flushPromises()
+    expect((buttonByText(w, '승인').element as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('필터를 바꿔 새 목록을 부르는 동안 옛 행의 버튼은 잠긴다', async () => {
+    api.list.mockResolvedValueOnce([u({})])
+    api.list.mockReturnValueOnce(new Promise<UserOut[]>(() => {}))
+    const w = await mountView()
+    await w.get('select').setValue('')
+    await flushPromises()
+    expect((buttonByText(w, '승인').element as HTMLButtonElement).disabled).toBe(true)
+  })
 })
