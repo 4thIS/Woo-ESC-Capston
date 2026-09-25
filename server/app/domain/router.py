@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import asdict
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -187,7 +188,7 @@ def building_exams(id: int, user: User = AdminUser, s: Session = _DB):
 @router.get("/buildings/{id}/outbox", response_model=list[S.FailedOut])
 def building_outbox(
     id: int,
-    state: str | None = None,
+    state: Literal["queued", "dispatched", "acked", "failed", "cancelled"] | None = None,
     limit: int = Query(200, ge=1, le=500),
     user: User = AdminUser,
     s: Session = _DB,

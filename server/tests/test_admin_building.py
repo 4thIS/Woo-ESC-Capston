@@ -146,6 +146,7 @@ def test_building_outbox_filters_state_and_joins(client, app, school):
     r = client.get(f"/api/buildings/{bid}/outbox?state=queued&limit=1")
     assert [x["id"] for x in r.json()] == [a]
     assert client.get(f"/api/buildings/{bid}/outbox?limit=501").status_code == 422
+    assert client.get(f"/api/buildings/{bid}/outbox?state=bogus").status_code == 422  # #48 🟡3
 
 
 def test_building_outbox_excludes_other_school_modem_on_bld_reuse(client, app, school):
