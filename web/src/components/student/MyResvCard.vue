@@ -16,11 +16,7 @@ const cancel = computed(() => cancelKind(props.resv, props.now))
 </script>
 
 <template>
-  <article
-    class="mc"
-    :class="`mc--${resv.status}`"
-    :aria-label="`${resv.building} ${resv.room}호 ${resvWhen(resv)}`"
-  >
+  <article class="mc" :aria-label="`${resv.building} ${resv.room}호 ${resvWhen(resv)}`">
     <p class="mc__head">
       <ResvStatusBadge :status="resv.status" />
       <span class="mc__room num">{{ resv.building }} {{ resv.room }}호</span>
