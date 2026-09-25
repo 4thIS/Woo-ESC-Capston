@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import cfg from './env.json' with { type: 'json' }
 
 const web = fileURLToPath(new URL('..', import.meta.url))
@@ -140,6 +140,20 @@ export async function fillLogin(page: Page, email: string, pw = PASSWORD) {
   await page.getByRole('button', { name: '로그인' }).click()
 }
 
+/** 전체 실행에서는 앞 파일들이 IP 당 분당 로그인 30회를 채운 채 넘어온다 — 429 면 창이 지난 뒤 한 번 더.
+ * email 은 함수로 받는다 — nextAdmin 처럼 매 시도마다 계정을 돌려 쓸 수 있게 */
+export async function login(page: Page, email: () => string) {
+  await fillLogin(page, email())
+  const limited = page.getByText('잠시 후 다시 시도해 주세요')
+  await expect(page.locator('nav').or(limited)).toBeVisible()
+  if (await limited.isVisible()) {
+    test.setTimeout(120_000)
+    await page.waitForTimeout(61_000)
+    await fillLogin(page, email())
+  }
+  await expect(page.locator('nav')).toBeVisible()
+}
+
 // ---- F3 모니터링 시드 ----
 
 export const SEED = {
@@ -157,6 +171,8 @@ const acked = (type: string, ago: number, secs: number) =>
   `('e2e-m1', 'E', 401, 1, '${type}', '{}', 5, NULL, 'acked', 1, ${at(`-${ago} minutes`)}, ` +
   `${at(`-${ago} minutes`)}, ${at(`-${ago} minutes`, `+${secs} seconds`)}, NULL)`
 
+// ponytail: 이 문자열은 리터럴에서만 만든다(변수 보간 금지) — sql() 은 executescript 로 그대로 실행한다.
+// 멱등성은 값 이스케이프가 아니라 seedMonitoring 의 건물 E 존재 검사(가드)에 기대고 있다.
 const SEED_SQL = `
 UPDATE modems SET connected = 1, agent_ver = '0.4.1', modem_fw = '1.2.0', last_seen_at = ${at()}
   WHERE modem_id = 'e2e-m1';

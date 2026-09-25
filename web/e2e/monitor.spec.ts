@@ -6,16 +6,7 @@ import {
   type Page,
 } from '@playwright/test'
 import cfg from './env.json' with { type: 'json' }
-import {
-  SEED,
-  SIZES,
-  WEB_URL,
-  apiLogin,
-  fillLogin,
-  nextAdmin,
-  seedMonitoring,
-  shot,
-} from './helpers'
+import { SEED, SIZES, WEB_URL, apiLogin, login, nextAdmin, seedMonitoring, shot } from './helpers'
 
 // e2e 는 node 타입 — page.evaluate 콜백은 브라우저에서 돈다
 declare const navigator: { clipboard: { readText(): Promise<string> } }
@@ -26,19 +17,6 @@ test.describe.configure({ mode: 'serial' })
 let ctx: BrowserContext
 let api: APIRequestContext
 let page: Page
-
-/** 전체 실행에서는 앞 파일들이 IP 당 분당 로그인 30회를 채운 채 넘어온다 — 429 면 창이 지난 뒤 한 번 더 */
-async function login(p: Page, email: () => string) {
-  await fillLogin(p, email())
-  const limited = p.getByText('잠시 후 다시 시도해 주세요')
-  await expect(p.locator('nav').or(limited)).toBeVisible()
-  if (await limited.isVisible()) {
-    test.setTimeout(120_000)
-    await p.waitForTimeout(61_000)
-    await fillLogin(p, email())
-  }
-  await expect(p.locator('nav')).toBeVisible()
-}
 
 test.beforeAll(async ({ browser }) => {
   ctx = await browser.newContext({
