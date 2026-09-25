@@ -84,7 +84,7 @@ test('시드 — 노드 4행·경고, 대기 장치 1, 모뎀 2, 지연 표본 8
   expect(await get('/api/admin/analytics/latency')).toMatchObject({
     n: 8,
     p50: 25,
-    p95: 50,
+    p95: 95, // nearest-rank: ceil(0.95·8)=8번째 = 최대 (서버 #49 후속)
     max: 95,
     within_30s: 0.625,
     within_90s: 0.875,
@@ -97,7 +97,7 @@ test('전송 현황 — KPI·분포·최근 전송이 1440×900 한 화면에', 
   await expect(page).toHaveURL(/\/admin\/dashboard$/)
   const tiles = page.locator('.stat')
   await expect(tiles.nth(0)).toContainText('25초')
-  await expect(tiles.nth(0)).toContainText('p95 50초 · 최대 95초')
+  await expect(tiles.nth(0)).toContainText('p95 95초 · 최대 95초')
   await expect(tiles.nth(1)).toContainText('62.5%')
   await expect(tiles.nth(1)).toContainText('목표 95% · 미달')
   await expect(tiles.nth(2)).toContainText('87.5%')
