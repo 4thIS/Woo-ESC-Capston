@@ -508,6 +508,11 @@ class BusyDay(BaseModel):
     spans: list[BusySpan]
 
 
+class FreeDay(BaseModel):
+    date: dt.date
+    spans: list[FreeRange]
+
+
 class WeekOut(BaseModel):
     room: RoomStateOut
     week_start: dt.date
@@ -515,6 +520,10 @@ class WeekOut(BaseModel):
     reservations: list[ResvPublicOut]
     exams: list[ExamOut]
     busy: list[BusyDay] = []  # web A3 — 겹친 구간을 합친 요일별 사용 구간 (room_state.week_busy)
+    # web A3 — KST 오늘~+7 신청 가능 구간 (reserve.free_days). date 파라미터와 무관
+    free: list[FreeDay] = []
+    # web A3 — 창(오늘~+7) 안 approved+requested 가 노드 용량(24)에 찼다 (reserve.room_full). 그러면 free 는 전부 빈 목록
+    full: bool = False
 
 
 class JobRunOut(Out):

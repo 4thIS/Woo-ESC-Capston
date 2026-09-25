@@ -84,6 +84,8 @@ _WEEK_DATE = Query(None, le=dt.date(9999, 12, 26))
 @router.get("/rooms/{id}/week", response_model=S.WeekOut)
 def week(id: int, date: dt.date | None = _WEEK_DATE, user: User = StudentUser, s: Session = _DB):
     room, b = _student_room(s, user, id)
+    now = clock.local_now()
+    full = reserve.room_full(s, id, now.date())  # 신청 검사와 같은 규칙 — 창 안 live 24건
     start = clock.week_start(date or clock.local_today())
     end = start + dt.timedelta(days=6)
     resvs = []
@@ -126,6 +128,8 @@ def week(id: int, date: dt.date | None = _WEEK_DATE, user: User = StudentUser, s
             .order_by(ExamPeriod.date_start)
         ).all(),
         "busy": room_state.week_busy(s, id, start, user.email),
+        "free": reserve.free_days(s, id, now, full),
+        "full": full,
     }
 
 

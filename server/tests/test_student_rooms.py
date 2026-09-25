@@ -1,6 +1,6 @@
 import datetime as dt
 
-from app.domain import clock
+from app.domain import clock, reserve
 from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
 
 UTC_NOW = dt.datetime(2026, 9, 23, 1, 30)  # noqa: DTZ001 — KST 9/23(수) 10:30
@@ -263,3 +263,80 @@ def test_week_date_upper_bound_is_422_not_500(client, app, school, student_hdr, 
     assert client.get(f"{url}?date=9999-12-27", headers=student_hdr).status_code == 422
     j = client.get(f"{url}?date=9999-12-26", headers=student_hdr).json()
     assert j["week_start"] == "9999-12-20" and len(j["busy"]) == 7
+
+
+def test_week_free_spans_match_what_request_accepts(client, app, school, student_hdr, monkeypatch):
+    _fix_clock(monkeypatch)  # KST 수 9/23 10:30
+    _, ids = _building(app, 1, "E")
+    rid = ids[101]
+    _slot(app, rid, 3, 13, 0, 14, 0)  # 수 — 오늘과 다음 주 수요일
+    _slot(app, rid, 4, 9, 0, 12, 0, type=4, subject="빈강의실")  # type 무관하게 신청을 막는다
+    fri = dt.date(2026, 9, 25)
+    _resv(app, rid, fri, 15, 0, 16, 0, id_=1, status="requested", requested_by="s2@mju.ac.kr")
+    _resv(app, rid, fri, 17, 0, 18, 0, id_=2, status="cancelled")  # 취소는 막지 않는다
+    _slot(app, rid, 6, 9, 0, 10, 2)  # 토 — 끝이 5분 격자 밖
+    _slot(app, rid, 6, 10, 12, 11, 0)  # 틈 10:02~10:12 → 격자 안쪽 10:05~10:10 = 5분 < 15분 → 버림
+    _slot(app, rid, 7, 7, 0, 9, 30)  # 일 — 운영 시작 전부터
+    _slot(app, rid, 1, 20, 0, 22, 0)  # 월 — 운영 끝 뒤까지
+    # 화 — 슬롯 없는 시험기간은 신청을 막지 않는다 (reserve.overlaps 와 같다)
+    _exam(app, rid, 1, dt.date(2026, 9, 29), dt.date(2026, 9, 29))
+    url = f"/api/student/rooms/{rid}/week"
+
+    def free():
+        j = client.get(url, headers=student_hdr).json()
+        return [(d["date"], [(x["from"], x["to"]) for x in d["spans"]]) for d in j["free"]]
+
+    assert free() == [
+        ("2026-09-23", [("10:35", "13:00"), ("14:00", "21:00")]),  # 10:30 지남 → 10:31 뒤 첫 5분
+        ("2026-09-24", [("12:00", "21:00")]),
+        ("2026-09-25", [("09:00", "15:00"), ("16:00", "21:00")]),  # 남의 신청도 막는다
+        ("2026-09-26", [("11:00", "21:00")]),
+        ("2026-09-27", [("09:30", "21:00")]),
+        ("2026-09-28", [("09:00", "20:00")]),
+        ("2026-09-29", [("09:00", "21:00")]),
+        ("2026-09-30", [("09:00", "13:00"), ("14:00", "21:00")]),
+    ]
+    # free 의 경계가 곧 신청이 받아들이는 경계다
+    post = f"/api/student/rooms/{rid}/reservations"
+    body = {"date": "2026-09-25", "subject": "스터디"}
+    t1 = {"s_h": 15, "s_m": 55, "e_h": 16, "e_m": 10}
+    t2 = {"s_h": 16, "s_m": 0, "e_h": 16, "e_m": 15}
+    assert client.post(post, json=body | t1, headers=student_hdr).status_code == 409
+    assert client.post(post, json=body | t2, headers=student_hdr).status_code == 201
+    assert free()[2] == ("2026-09-25", [("09:00", "15:00"), ("16:15", "21:00")])  # 내 신청도 뺀다
+    # 다른 주를 봐도 free 는 오늘~+7 그대로
+    j = client.get(f"{url}?date=2026-10-20", headers=student_hdr).json()
+    assert j["week_start"] == "2026-10-19" and j["free"][0]["date"] == "2026-09-23"
+    assert j["full"] is False
+
+
+def test_week_free_uses_kst_today_and_operating_hours(
+    client, app, school, student_hdr, monkeypatch
+):
+    _, ids = _building(app, 1, "E")
+    url = f"/api/student/rooms/{ids[101]}/week"
+
+    def at(utc):
+        monkeypatch.setattr(clock, "now_utc", lambda: utc)
+        return client.get(url, headers=student_hdr).json()["free"]
+
+    j = at(dt.datetime(2026, 9, 23, 15, 10))  # noqa: DTZ001 — KST 9/24(목) 00:10
+    assert [d["date"] for d in j] == [
+        str(dt.date(2026, 9, 24) + dt.timedelta(days=i)) for i in range(8)
+    ]
+    assert j[0]["spans"] == [{"from": "09:00", "to": "21:00"}]  # 새벽 — 운영 시작부터
+    j = at(dt.datetime(2026, 9, 23, 11, 40))  # noqa: DTZ001 — KST 20:40
+    assert j[0]["spans"] == [{"from": "20:45", "to": "21:00"}]  # 딱 15분
+    j = at(dt.datetime(2026, 9, 23, 11, 50))  # noqa: DTZ001 — KST 20:50
+    assert j[0] == {"date": "2026-09-23", "spans": []}  # 20:55~21:00 은 15분 미만
+    assert j[1]["spans"] == [{"from": "09:00", "to": "21:00"}]
+
+
+def test_week_full_flag_empties_free(client, app, school, student_hdr, monkeypatch):
+    _fix_clock(monkeypatch)
+    monkeypatch.setattr(reserve, "NODE_RESV_MAX", 1)  # 창 안 1건이면 가득 — 신청은 409
+    _, ids = _building(app, 1, "E")
+    _resv(app, ids[101], dt.date(2026, 9, 26), 9, 0, 10, 0, id_=1)
+    j = client.get(f"/api/student/rooms/{ids[101]}/week", headers=student_hdr).json()
+    assert j["full"] is True  # 화면은 '예약이 가득 찼어요' — '빈 시간 없음' 이 아니라
+    assert len(j["free"]) == 8 and all(d["spans"] == [] for d in j["free"])
