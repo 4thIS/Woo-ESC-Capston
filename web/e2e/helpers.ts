@@ -186,8 +186,10 @@ VALUES
     acked('RESV_SET', 60, 50),
     acked('SLOT_SET', 55, 95),
   ].join(',\n  ')},
-  ('e2e-m1', 'E', 401, 1, 'SLOT_SET', '{}', 5, NULL, 'failed', 5, ${at('-20 minutes')},
-   ${at('-20 minutes')}, ${at('-15 minutes')}, 'max_retries'),
+  -- 실패는 25시간 전 — 서버 기동 60초 뒤 도는 일일 작업의 '24시간 내 실패 재동기'가 FILE 행을
+  -- 더하면 최근 전송 7행이 시드 시각과 경합한다. 7일 실패 타일에는 그대로 잡힌다
+  ('e2e-m1', 'E', 401, 1, 'SLOT_SET', '{}', 5, NULL, 'failed', 5, ${at('-26 hours')},
+   ${at('-26 hours')}, ${at('-25 hours')}, 'max_retries'),
   ('e2e-m1', 'E', 402, 1, 'RESV_SET', '{}', 5, NULL, 'queued', 0, ${at('-1 minutes')}, NULL, NULL, NULL);
 `
 

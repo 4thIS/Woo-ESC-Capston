@@ -13,6 +13,7 @@ const me = computed(() => session.value?.name ?? '')
 // #46 admin-master.md 순서: 건물 · 강의실 · 강의실 설정 · 주간 시간표(F2) · 노드 상태 · 전송 현황 · 회원
 const nav = computed(() => [
   { to: '/nodes', label: '노드 상태' },
+  { to: '/dashboard', label: '전송 현황' },
   { to: '/users', label: '회원', badge: pendingCount.value },
 ])
 

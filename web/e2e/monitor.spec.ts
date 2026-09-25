@@ -19,12 +19,26 @@ import {
 
 // e2e 는 node 타입 — page.evaluate 콜백은 브라우저에서 돈다
 declare const navigator: { clipboard: { readText(): Promise<string> } }
+declare const document: { documentElement: { scrollHeight: number } }
 
 // 한 파일 = 한 브라우저 컨텍스트·로그인 한 번 — 서버의 IP 당 분당 로그인 30회 상한 (F1 plan Task 13 메모)
 test.describe.configure({ mode: 'serial' })
 let ctx: BrowserContext
 let api: APIRequestContext
 let page: Page
+
+/** 전체 실행에서는 앞 파일들이 IP 당 분당 로그인 30회를 채운 채 넘어온다 — 429 면 창이 지난 뒤 한 번 더 */
+async function login(p: Page, email: () => string) {
+  await fillLogin(p, email())
+  const limited = p.getByText('잠시 후 다시 시도해 주세요')
+  await expect(p.locator('nav').or(limited)).toBeVisible()
+  if (await limited.isVisible()) {
+    test.setTimeout(120_000)
+    await p.waitForTimeout(61_000)
+    await fillLogin(p, email())
+  }
+  await expect(p.locator('nav')).toBeVisible()
+}
 
 test.beforeAll(async ({ browser }) => {
   ctx = await browser.newContext({
@@ -37,17 +51,7 @@ test.beforeAll(async ({ browser }) => {
   await seedMonitoring(api)
   page = await ctx.newPage()
   await page.goto('/admin/nodes')
-  await fillLogin(page, nextAdmin())
-  // 전체 실행에서는 앞 파일들이 IP 당 분당 로그인 30회를 채운 채 넘어온다 — 429 면 창이 지난 뒤 한 번 더
-  const limited = page.getByText('잠시 후 다시 시도해 주세요')
-  await expect(
-    page.getByRole('heading', { name: 'ESP노드', exact: true }).or(limited),
-  ).toBeVisible()
-  if (await limited.isVisible()) {
-    test.setTimeout(120_000)
-    await page.waitForTimeout(61_000)
-    await fillLogin(page, nextAdmin())
-  }
+  await login(page, nextAdmin)
   await expect(page).toHaveURL(/\/admin\/nodes$/)
 })
 test.afterAll(async () => {
@@ -85,6 +89,52 @@ test('시드 — 노드 4행·경고, 대기 장치 1, 모뎀 2, 지연 표본 8
     within_30s: 0.625,
     within_90s: 0.875,
   })
+})
+
+// ---- 전송 현황 (노드 화면 조작보다 먼저 — 재전송·배정이 outbox 를 더 만든다) ----
+test('전송 현황 — KPI·분포·최근 전송이 1440×900 한 화면에', async () => {
+  await page.getByRole('link', { name: '전송 현황' }).click()
+  await expect(page).toHaveURL(/\/admin\/dashboard$/)
+  const tiles = page.locator('.stat')
+  await expect(tiles.nth(0)).toContainText('25초')
+  await expect(tiles.nth(0)).toContainText('p95 50초 · 최대 95초')
+  await expect(tiles.nth(1)).toContainText('62.5%')
+  await expect(tiles.nth(1)).toContainText('목표 95% · 미달')
+  await expect(tiles.nth(2)).toContainText('87.5%')
+  await expect(tiles.nth(2)).toContainText('목표 전부 · 미달')
+  await expect(tiles.nth(3)).toContainText('1건')
+  const hist = page.locator('svg.hist')
+  await expect(hist.locator('path')).toHaveCount(7)
+  await expect(hist.locator('.hist__value')).toHaveText(['1', '2'])
+  await expect(hist.locator('.hist__marker text')).toHaveText('SLA 30초')
+  const recent = page.getByRole('region', { name: '최근 전송' }).locator('tbody tr')
+  await expect(recent.locator('td:nth-child(3)')).toHaveText([
+    '대기',
+    '실패',
+    '95초',
+    '50초',
+    '35초',
+    '12초',
+    '28초',
+  ])
+  await expect(recent.nth(0)).toContainText('E 402 · 예약')
+  await expect(recent.locator('.dash__slow')).toHaveCount(3)
+  await expect(recent.nth(1).locator('.dash__failed')).toHaveText('실패')
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(900)
+  await shot(page, 'admin-dashboard-1440')
+})
+
+test('기간 30일 — from 이 to 보다 29일 앞 (KST 날짜)', async () => {
+  const req = page.waitForRequest(
+    (r) => r.url().includes('/api/admin/analytics/latency') && r.url().includes('type=all'),
+  )
+  await page.getByLabel('기간').selectOption({ label: '최근 30일' })
+  const q = new URL((await req).url()).searchParams
+  expect((Date.parse(q.get('to')!) - Date.parse(q.get('from')!)) / 86_400_000).toBe(29)
+  await expect(page.locator('.stat').nth(0)).toContainText('25초')
+  await page.getByLabel('기간').selectOption({ label: '최근 7일' })
+  await page.getByRole('link', { name: '노드 상태' }).click()
+  await expect(page).toHaveURL(/\/admin\/nodes$/)
 })
 
 // ---- 노드 상태 ----
@@ -207,4 +257,28 @@ test('등록 대기 → 강의실 배정', async () => {
     page.getByText(`${SEED.building} 402호에 배정했습니다. 장치가 다음에 깨어나면 적용됩니다.`),
   ).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(0)
+})
+
+// ---- 다른 학교 — 학교 스코프 · 빈 상태 ----
+test('다른 학교 관리자 — 우리 학교 장비·전송이 보이지 않고 빈 상태', async ({ browser }) => {
+  const other = await browser.newContext({
+    baseURL: WEB_URL,
+    locale: 'ko-KR',
+    viewport: SIZES.admin,
+  })
+  const p = await other.newPage()
+  await p.goto('/admin/')
+  await login(p, () => cfg.OTHER_ADMIN)
+  await expect(p).toHaveURL(/\/admin\/dashboard$/)
+  await expect(p.getByText('아직 전송된 작업이 없습니다').first()).toBeVisible()
+  await expect(p.locator('.stat__value')).toHaveText(['—', '—', '—', '0건'])
+  await expect(p.locator('svg.hist')).toHaveCount(0)
+  await shot(p, 'admin-dashboard-empty-1440')
+  await p.getByRole('link', { name: '노드 상태' }).click()
+  await expect(p.getByText('등록된 모뎀Pi가 없습니다')).toBeVisible()
+  await expect(p.getByText('이 건물에 강의실이 없습니다')).toBeVisible()
+  await expect(p.getByText('등록을 기다리는 장치가 없습니다.')).toBeVisible()
+  await expect(p.getByText(SEED.modem)).toHaveCount(0)
+  await shot(p, 'admin-nodes-empty-1440')
+  await other.close()
 })

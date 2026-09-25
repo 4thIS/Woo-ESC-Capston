@@ -8,7 +8,7 @@ test('관리자 — 가드가 로그인으로 보내고, 로그인하면 돌아�
   await expect(page.getByRole('link', { name: '가입 신청' })).toHaveCount(0)
   await shot(page, 'admin-login-1440')
   await fillLogin(page, nextAdmin())
-  await expect(page).toHaveURL(/\/admin\/users$/)
+  await expect(page).toHaveURL(/\/admin\/dashboard$/)
 })
 
 test('학생 로그인 화면 390', async ({ page }) => {
