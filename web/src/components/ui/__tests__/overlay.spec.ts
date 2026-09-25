@@ -30,6 +30,28 @@ describe('Modal', () => {
     expect(w.emitted('close')).toHaveLength(1)
   })
 
+  it('closeOnBackdrop 이 false 면 Esc 로도 닫지 않는다 (입력 중인 사유를 지키려고)', async () => {
+    const w = mount(Modal, {
+      props: { open: true, title: 't', closeOnBackdrop: false },
+      global: { stubs },
+    })
+    await w.get('[role="dialog"]').trigger('keydown', { key: 'Escape' })
+    expect(w.emitted('close')).toBeUndefined()
+  })
+
+  it('첫 포커스는 비활성 입력을 건너뛴다', async () => {
+    const w = mount(Modal, {
+      props: { open: false, title: 't' },
+      slots: { default: '<input id="off" disabled /><input id="on" />' },
+      global: { stubs },
+      attachTo: document.body,
+    })
+    await w.setProps({ open: true })
+    await new Promise((r) => setTimeout(r))
+    expect(document.activeElement?.id).toBe('on')
+    w.unmount()
+  })
+
   it('배경 클릭 — closeOnBackdrop 이 false 면 닫지 않는다', async () => {
     const a = mount(Modal, { props: { open: true, title: 't' }, global: { stubs } })
     await a.get('.modal__backdrop').trigger('mousedown')

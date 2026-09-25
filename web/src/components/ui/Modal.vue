@@ -27,7 +27,9 @@ watch(
       await nextTick()
       // 첫 입력 → 없으면 첫 포커스 대상 (components.md)
       const first =
-        panel.value?.querySelector<HTMLElement>('input,select,textarea') ?? focusables()[0]
+        panel.value?.querySelector<HTMLElement>(
+          'input:not([disabled]),select:not([disabled]),textarea:not([disabled])',
+        ) ?? focusables()[0]
       ;(first ?? panel.value)?.focus()
     } else {
       await nextTick()
@@ -41,7 +43,7 @@ watch(
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     e.stopPropagation()
-    emit('close')
+    if (props.closeOnBackdrop) emit('close') // false = 폼이 더럽다 — Esc 로도 버리지 않는다
   } else if (e.key === 'Tab') {
     const f = focusables()
     if (!f.length) return
