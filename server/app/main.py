@@ -20,6 +20,7 @@ from app.auth.router import router as auth_router
 from app.db import make_engine, make_session_factory
 from app.domain.admin_router import router as admin_api_router
 from app.domain.router import router as domain_router
+from app.domain.student_router import router as student_router
 from app.domain.topology import DomainTopology, record_provider
 from app.lora_service import api
 from app.lora_service.hub import Hub
@@ -76,6 +77,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(admin_router)
     app.include_router(admin_api_router)
+    app.include_router(student_router)
     if settings.debug:
         app.mount(
             "/static",

@@ -425,3 +425,45 @@ class SummaryOut(BaseModel):
     as_of: dt.datetime
     totals: SummaryTotals
     warnings: dict[str, WarningBucket]
+
+
+# ---- S10 §4.1 학생 조회 ----
+
+
+class RoomStateOut(BaseModel):
+    room_id: int
+    building_id: int
+    building: str
+    bld: str
+    room: int
+    layout: int
+    until: str | None
+
+
+class FreeRoomOut(BaseModel):
+    room_id: int
+    building_id: int
+    building: str
+    bld: str
+    room: int
+    layout: int
+    free_until: str | None
+
+
+class ResvPublicOut(BaseModel):
+    id: int
+    date: dt.date
+    s_h: int
+    s_m: int
+    e_h: int
+    e_m: int
+    mine: bool
+    label: str
+
+
+class WeekOut(BaseModel):
+    room: RoomStateOut
+    week_start: dt.date
+    slots: list[SlotOut]
+    reservations: list[ResvPublicOut]
+    exams: list[ExamOut]
