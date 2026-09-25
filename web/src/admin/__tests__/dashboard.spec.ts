@@ -33,6 +33,7 @@ const lat = (over: Partial<LatencyOut> = {}): LatencyOut => ({
   ...over,
 })
 const counts = (c: number[]) => lat({ bins: BINS.map((b, i) => ({ ...b, count: c[i] ?? 0 })) })
+const TODAY = new Date('2026-09-25T03:00:00Z') // KST 9/25 12:00
 const EMPTY = lat({ n: 0, p50: null, p95: null, max: null, within_30s: 0, within_90s: 0 })
 const o = (over: Partial<OutboxOut> = {}): OutboxOut => ({
   id: 1,
@@ -130,6 +131,15 @@ describe('dashboardView', () => {
     expect(kpis(lat(), 500, 90)[3].value).toBe('500+')
   })
 
+  it('kpis — 비율은 버림: 표시값이 참값을 넘지 않아 판정과 모순되지 않는다', () => {
+    const near = kpis(lat({ within_30s: 0.9496, within_90s: 0.9996 }), 0, 7)
+    expect([near[1].value, near[1].sub]).toEqual(['94.9', '목표 95% · 미달'])
+    expect([near[2].value, near[2].sub]).toEqual(['99.9', '목표 전부 · 미달'])
+    const exact = kpis(lat({ within_30s: 0.95, within_90s: 1 }), 0, 7)
+    expect([exact[1].value, exact[1].sub]).toEqual(['95', '목표 95% · 충족'])
+    expect([exact[2].value, exact[2].sub]).toEqual(['100', '목표 전부 · 충족'])
+  })
+
   it('binLabel · histogram — 서버 구간 그대로, SLA 선은 ge=30 경계', () => {
     expect(binLabel({ ge: 20, lt: 30, count: 0 })).toBe('20–30')
     expect(binLabel({ ge: 120, lt: null, count: 0 })).toBe('120+')
@@ -143,12 +153,15 @@ describe('dashboardView', () => {
   })
 
   it('recentRows — 최신이 위, 지연·대기·실패 문구, 30초 초과만 slow, 시각은 KST', () => {
-    const rows = recentRows([
-      o({ id: 1 }),
-      o({ id: 2, state: 'failed' }),
-      o({ id: 3, type: 'RESV_SET', room: 402, state: 'queued', finished_at: null }),
-      o({ id: 4, type: 'SET_ROOM', state: 'cancelled', finished_at: null }),
-    ])
+    const rows = recentRows(
+      [
+        o({ id: 1 }),
+        o({ id: 2, state: 'failed' }),
+        o({ id: 3, type: 'RESV_SET', room: 402, state: 'queued', finished_at: null }),
+        o({ id: 4, type: 'SET_ROOM', state: 'cancelled', finished_at: null }),
+      ],
+      TODAY,
+    )
     expect(rows.map((r) => [r.id, r.room, r.kind, r.delay, r.slow, r.failed])).toEqual([
       [4, 'E 401', '강의실 배정', '취소', false, false],
       [3, 'E 402', '예약', '대기', false, false],
@@ -156,6 +169,20 @@ describe('dashboardView', () => {
       [1, 'E 401', '시간표', '31.5초', true, false],
     ])
     expect(rows[3]).toMatchObject({ time: '09:00', when: '2026-09-25 09:00', state: 'acked' })
+  })
+
+  it('recentRows — 오늘(KST)이 아닌 행은 M/D HH:MM', () => {
+    // KST 9/25 01:00 기준 — UTC 9/24 15:00 이후는 KST 로 오늘
+    const now = new Date('2026-09-24T16:00:00Z')
+    const [today, yday] = recentRows(
+      [
+        o({ id: 1, created_at: new Date('2026-09-24T10:19:00Z') }), // KST 9/24 19:19
+        o({ id: 2, created_at: new Date('2026-09-24T15:30:00Z') }), // KST 9/25 00:30
+      ],
+      now,
+    )
+    expect(today.time).toBe('00:30')
+    expect(yday.time).toBe('9/24 19:19')
   })
 })
 

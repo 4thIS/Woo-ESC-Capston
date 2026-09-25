@@ -1,7 +1,7 @@
 import { FAILED_LIMIT } from '@/api/admin'
 import type { LatencyBin, LatencyOut, OutboxOut, OutboxState } from '@/api/types'
 import type { HistogramBucket } from '@/components/chart/Histogram.vue'
-import { formatHm, formatKst } from '@/lib/time'
+import { formatHm, formatKst, kstDateStr } from '@/lib/time'
 
 /** 기간 — 기본은 시안의 최근 7일. 서버 상한 90일 (S10 §4.3) */
 export const PERIODS = [
@@ -29,7 +29,8 @@ export interface Kpi {
 /** KPI 4 — 추세 화살표 없이 목표와 판정을 문장으로. 전송 0건이면 — (0건과 0%는 다른 말이다) */
 export function kpis(l: LatencyOut, failed: number, days: number): Kpi[] {
   const has = l.n > 0
-  const pct = (r: number) => fmt1(r * 100)
+  // 버림 — 0.9496 을 95 로 올리면 '목표 95% · 미달' 옆에 95 가 선다. 서버 비율은 소수 4자리라 r*1000 이 정확하다
+  const pct = (r: number) => fmt1(Math.floor(r * 1000) / 10)
   return [
     has
       ? {
@@ -92,6 +93,12 @@ const TYPE_LABEL: Record<string, string> = {
   SET_ROOM: '강의실 배정',
 }
 
+/** 'M/D' (KST) — kstDateStr 'YYYY-MM-DD' 에서 */
+const kstMd = (d: Date) => {
+  const [, m, day] = kstDateStr(d).split('-')
+  return `${Number(m)}/${Number(day)}`
+}
+
 export interface RecentRow {
   id: number
   time: string
@@ -105,7 +112,8 @@ export interface RecentRow {
 }
 
 /** 최근 전송 — 서버는 id 오름차순, 화면은 최신이 위. 지연은 acked 만(서버 analytics 와 같은 식: finished − created, 음수 0) */
-export function recentRows(list: OutboxOut[]): RecentRow[] {
+export function recentRows(list: OutboxOut[], now: Date = new Date()): RecentRow[] {
+  const today = kstDateStr(now)
   return [...list].reverse().map((o) => {
     const secs =
       o.state === 'acked' && o.finished_at
@@ -113,7 +121,11 @@ export function recentRows(list: OutboxOut[]): RecentRow[] {
         : null
     return {
       id: o.id,
-      time: formatHm(o.created_at),
+      // 오늘이 아니면 날짜를 붙인다 — 어제 19:19 가 오늘 시각들 사이에서 정렬 오류처럼 보이지 않게
+      time:
+        kstDateStr(o.created_at) === today
+          ? formatHm(o.created_at)
+          : `${kstMd(o.created_at)} ${formatHm(o.created_at)}`,
       when: formatKst(o.created_at),
       room: `${o.bld} ${o.room}`,
       kind: TYPE_LABEL[o.type] ?? o.type,

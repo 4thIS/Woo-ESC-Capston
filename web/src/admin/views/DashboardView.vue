@@ -67,7 +67,7 @@ const hist = computed(() => (data.value ? histogram(data.value.slot, data.value.
 const recent = computed(() => (data.value ? recentRows(data.value.recent) : []))
 const r = (row: Record<string, unknown>) => row as unknown as RecentRow
 const COLUMNS = [
-  { key: 'time', label: '시각', width: '64px' },
+  { key: 'time', label: '시각', width: '88px' },
   { key: 'room', label: '강의실' },
   { key: 'delay', label: '지연', width: '72px', align: 'right' as const },
   { key: 'state', label: '상태', width: '48px', align: 'center' as const },
