@@ -247,6 +247,18 @@ describe('DashboardView', () => {
     expect(failedApi).toHaveBeenCalledTimes(2)
   })
 
+  it('첫 조회 실패 — "전송 없음"으로 오독되지 않게 불러오지 못했다고 말한다', async () => {
+    latencyApi.mockRejectedValue(new ApiError(500, MESSAGES[500]))
+    failedApi.mockRejectedValue(new ApiError(500, MESSAGES[500]))
+    recentApi.mockRejectedValue(new ApiError(500, MESSAGES[500]))
+    const w = mount(DashboardView)
+    await flushPromises()
+    expect(w.text()).toContain('전송 현황을 불러오지 못했습니다')
+    expect(w.text()).not.toContain('아직 전송된 작업이 없습니다')
+    expect(w.find('.sk').exists()).toBe(false)
+    w.unmount()
+  })
+
   it('갱신 실패 — 숫자를 지우지 않고 Toast 는 한 번 (Review Focus 1)', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     const w = mount(DashboardView)

@@ -57,6 +57,12 @@ describe('ModemPanel', () => {
     expect(w.findAll('.sk')).toHaveLength(2)
   })
 
+  it('첫 조회 실패(로딩 아님, modems undefined) — "없음"으로 오독되지 않게', () => {
+    const w = mountPanel(undefined, false)
+    expect(w.text()).toContain('불러오지 못했습니다')
+    expect(w.text()).not.toContain('등록된 모뎀Pi가 없습니다')
+  })
+
   it('0대면 빈 상태 + 등록 버튼이 등록 Modal 을 연다', async () => {
     const w = mountPanel([])
     expect(w.text()).toContain('등록된 모뎀Pi가 없습니다')
@@ -104,6 +110,8 @@ describe('ModemPanel', () => {
     await flushPromises()
     expect(lora.rotateToken).toHaveBeenCalledWith('gonghak-01')
     expect(w.get('code.token').text()).toBe('tok-new')
+    // 재발급은 기존 토큰을 즉시 끊는다 — 부모가 다시 읽지 않으면 연결됨이 30초간 거짓으로 남는다
+    expect(w.emitted('changed')).toHaveLength(1)
   })
 
   it('재발급 404 — 안내 + changed, Modal 닫힘', async () => {

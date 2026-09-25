@@ -12,8 +12,10 @@ import { ApiError } from '@/api/client'
 import type { ModemOut, TokenOut } from '@/api/types'
 import { formatKst, relativeKo } from '@/lib/time'
 
-defineProps<{ modems?: ModemOut[]; loading: boolean }>()
+const props = defineProps<{ modems?: ModemOut[]; loading: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
+// 첫 조회가 실패하면(로딩도 아니고 데이터도 없음) "없음"이 아니라 "불러오지 못했다"
+const failed = computed(() => !props.loading && props.modems === undefined)
 
 // 서버 ModemIn 과 같은 규칙 — 소문자·숫자·하이픈, 1~32자
 const MODEM_ID = /^[a-z0-9-]{1,32}$/
@@ -66,6 +68,8 @@ async function submitRotate() {
   try {
     issued.value = await loraApi.rotateToken(id)
     rotating.value = null
+    // 기존 토큰이 즉시 무효가 되어 이 모뎀Pi 는 끊긴다 — 부모가 다시 읽지 않으면 카드가 30초 동안 연결됨으로 남는다
+    emit('changed')
   } catch (e) {
     if (!(e instanceof ApiError)) throw e
     if (e.status === 404) {
@@ -96,6 +100,7 @@ async function copy() {
     <div v-if="loading && !modems" class="modems">
       <Skeleton v-for="i in 2" :key="i" variant="block" width="260px" />
     </div>
+    <EmptyState v-else-if="failed" message="모뎀Pi 목록을 불러오지 못했습니다" />
     <EmptyState
       v-else-if="modems && modems.length === 0"
       message="등록된 모뎀Pi가 없습니다"

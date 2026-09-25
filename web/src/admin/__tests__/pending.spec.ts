@@ -86,6 +86,15 @@ describe('PendingPanel', () => {
     expect(mountPanel([]).text()).toContain('등록을 기다리는 장치가 없습니다.')
   })
 
+  it('첫 조회 실패(로딩 아님, pending undefined) — "없음"으로 오독되지 않게', () => {
+    const w = mount(PendingPanel, {
+      props: { pending: undefined, nodes: NODES, loading: false },
+      global: { stubs: { teleport: true } },
+    })
+    expect(w.text()).toContain('불러오지 못했습니다')
+    expect(w.text()).not.toContain('등록을 기다리는 장치가 없습니다.')
+  })
+
   it('배정 — 건물 → 호수 → 노드, 1대뿐인 방은 자동 선택, 사용 중 표시, 제출', async () => {
     const w = mountPanel([p()])
     await button(w, '강의실 배정').trigger('click')

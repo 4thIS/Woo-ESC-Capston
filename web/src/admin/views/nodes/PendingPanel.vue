@@ -15,6 +15,8 @@ import { provisionChoices, volts } from '../../nodesView'
 
 const props = defineProps<{ pending?: PendingOut[]; nodes: NodeOut[]; loading: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
+// 첫 조회가 실패하면(로딩도 아니고 데이터도 없음) "없음"이 아니라 "불러오지 못했다"
+const failed = computed(() => !props.loading && props.pending === undefined)
 
 const COLUMNS: {
   key: string
@@ -95,7 +97,13 @@ async function submit() {
       row-key="mac"
       :loading="loading && !pending"
     >
-      <template #empty><EmptyState message="등록을 기다리는 장치가 없습니다." /></template>
+      <template #empty>
+        <EmptyState
+          :message="
+            failed ? '등록 대기 장치를 불러오지 못했습니다' : '등록을 기다리는 장치가 없습니다.'
+          "
+        />
+      </template>
       <template #cell-batt="{ row }"
         ><span class="num">{{ volts(asP(row).batt_mv) }}</span></template
       >

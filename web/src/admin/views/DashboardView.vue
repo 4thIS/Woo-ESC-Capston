@@ -60,6 +60,7 @@ watch(error, (e, prev) => {
     })
 })
 
+const failed = computed(() => !data.value && !!error.value)
 const tiles = computed(() =>
   data.value ? kpis(data.value.all, data.value.failed, data.value.days) : [],
 )
@@ -89,12 +90,17 @@ const COLUMNS = [
       <template v-if="data">
         <StatTile v-for="k in tiles" :key="k.label" v-bind="k" />
       </template>
-      <template v-else>
+      <template v-else-if="!failed">
         <Skeleton v-for="i in 4" :key="i" variant="block" />
       </template>
     </div>
 
-    <div class="dash__body">
+    <EmptyState
+      v-if="failed"
+      message="전송 현황을 불러오지 못했습니다"
+      :actions="[{ label: '다시 불러오기', onClick: reload }]"
+    />
+    <div v-else class="dash__body">
       <section class="card" aria-labelledby="dash-hist">
         <div class="card__head">
           <h2 id="dash-hist" class="card__title">반영 지연 분포</h2>
