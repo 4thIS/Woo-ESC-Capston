@@ -1,0 +1,90 @@
+/* 원본: docs/design/tokens.md v2. 값을 바꾸려면 mh 의 docs/design PR 이 먼저다 (lockstep). */
+:root {
+  /* 1층 — 원시 팔레트. 이 파일 밖에서 직접 쓰지 않는다 */
+  --gray-0: #ffffff;
+  --gray-25: #fafafa;
+  --gray-50: #f4f4f4;
+  --gray-100: #ededed;
+  --gray-200: #e3e3e3;
+  --gray-300: #d4d4d4;
+  --gray-400: #a6a6a6;
+  --gray-500: #707070;
+  --gray-600: #595959;
+  --gray-800: #262626;
+  --blue-600: #0b5ed7;
+  --blue-50: #edf4fd;
+  --red-700: #b42318;
+  --red-100: #f6d4d0;
+  --red-50: #fdf0ef;
+  --teal-600: #0d9488;
+  --gold-600: #ca8a04;
+
+  /* 2층 — 시맨틱 */
+  --bg: var(--gray-0);
+  --bg-student: var(--gray-25);
+  --surface: var(--gray-0);
+  --sunken: var(--gray-25);
+  --line-1: var(--gray-100);
+  --line-2: var(--gray-200);
+  --line-3: var(--gray-300);
+  --text-1: var(--gray-800);
+  --text-2: var(--gray-600);
+  --text-3: var(--gray-500);
+  --text-disabled: var(--gray-400);
+  --brand: var(--blue-600);
+  --brand-tint: var(--blue-50);
+  --danger: var(--red-700);
+  --focus: var(--blue-600);
+
+  /* 3층 — 도메인 */
+  --room-busy-fill: var(--red-50);
+  --room-busy-line: var(--red-100);
+  --room-busy-label: var(--red-700);
+  --room-free-text: var(--text-3);
+  --room-free-line: var(--line-3);
+  --chart-series-1: var(--blue-600);
+  --chart-series-2: var(--teal-600);
+  --chart-series-3: var(--gold-600);
+  --chart-grid: var(--line-1);
+  --chart-axis: var(--line-3);
+  --chart-text: var(--text-3);
+
+  /* 구현 별칭 — components.md 가 원시 값을 직접 부르는 자리 (값은 위 1층 그대로) */
+  --on-brand: var(--gray-0); /* brand·danger 채움 위 글자, 체크 표시 */
+  --modal-backdrop: color-mix(in srgb, var(--gray-800) 45%, transparent); /* Modal 배경 .45 */
+  --skeleton-a: var(--gray-50);
+  --skeleton-b: var(--gray-100);
+  --nav-hover: var(--gray-50); /* SidebarNav hover */
+
+  /* 타이포 */
+  --font-family: 'Pretendard Variable', Pretendard, system-ui, -apple-system, sans-serif;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+
+  /* 치수 — admin 값. 학생 값은 surface-student.css */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-lg: 16px;
+  --font-size-xl: 22px;
+  --control-height-sm: 28px;
+  --control-height-md: 32px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 999px;
+
+  /* 간격 · 보더 — 두 웹 공용 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --border-thin: 1px;
+  --border-thick: 2px;
+}

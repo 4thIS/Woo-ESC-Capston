@@ -1,0 +1,32 @@
+[
+  {
+    "id": 7,
+    "date": "2026-10-24",
+    "s_h": 10,
+    "s_m": 0,
+    "e_h": 12,
+    "e_m": 0,
+    "type": 6,
+    "subject": "캡스톤 스터디",
+    "professor": "",
+    "status": "approved",
+    "room_id": 11,
+    "requester": { "email": "s1@wsu.ac.kr", "name": "김민준", "student_no": "20231234" },
+    "pushed_at": "2026-10-20T01:00:00.500000"
+  },
+  {
+    "id": 8,
+    "date": "2026-11-20",
+    "s_h": 13,
+    "s_m": 0,
+    "e_h": 15,
+    "e_m": 0,
+    "type": 5,
+    "subject": "신입생 오리엔테이션",
+    "professor": "학생처",
+    "status": "approved",
+    "room_id": 12,
+    "requester": null,
+    "pushed_at": null
+  }
+]
