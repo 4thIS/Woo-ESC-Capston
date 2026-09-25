@@ -32,6 +32,8 @@ export interface RequestOpts {
   auth?: boolean
   dates?: readonly string[]
   signal?: AbortSignal
+  /** 본문을 JSON 으로 바꾸지 않고 그대로 보낸다 — CSV 업로드(`text/csv`) */
+  contentType?: string
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -65,7 +67,7 @@ export async function request<T>(
 ): Promise<T> {
   const token = opts.auth === false ? null : (session.value?.token ?? null)
   const headers: Record<string, string> = {}
-  if (body !== undefined) headers['content-type'] = 'application/json'
+  if (body !== undefined) headers['content-type'] = opts.contentType ?? 'application/json'
   if (token) headers.authorization = `Bearer ${token}`
 
   let res: Response
@@ -74,7 +76,12 @@ export async function request<T>(
       res = await fetch(path, {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body:
+          body === undefined
+            ? undefined
+            : opts.contentType
+              ? (body as BodyInit)
+              : JSON.stringify(body),
         signal: opts.signal,
       })
     } catch (e) {

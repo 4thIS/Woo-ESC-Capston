@@ -129,3 +129,141 @@ export interface LatencyOut {
   within_90s: number
 }
 export type LatencyType = 'SLOT_SET' | 'RESV_SET' | 'all'
+
+// ---- F2 관리자 운영 — S2(건물·강의실·시간표), S4b(건물 단위 조회·서버 채번), S10(신청), web A2 ----
+
+export interface SchoolOut {
+  id: number
+  name: string
+  net_id: number
+}
+export interface BuildingIn {
+  school_id: number
+  name: string
+  /** 대문자 한 글자 — 무선 주소라 학교가 달라도 겹칠 수 없다 (409) */
+  bld: string
+  modem_id: string | null
+}
+export interface BuildingOut extends BuildingIn {
+  id: number
+}
+/** 부분 수정 — 보낸 필드만 바뀐다. modem_id: null = 배정 해제 */
+export interface BuildingPatch {
+  name?: string
+  bld?: string
+  modem_id?: string | null
+}
+export interface RoomIn {
+  building_id: number
+  room: number
+  units: number
+  reservable: boolean
+}
+export interface RoomOut extends RoomIn {
+  id: number
+}
+/** 호수(room)는 무선 주소라 화면이 보내지 않는다 (admin-master.md — 수정 폼에서 잠금) */
+export interface RoomPatch {
+  units?: number
+  reservable?: boolean
+}
+/** 1 수업 · 2 시험 · 3 휴강 · 4 빈강의실 · 5 특강 · 6 대여 (lora_proto LP_SLOTTYPE_*) */
+export type SlotType = 1 | 2 | 3 | 4 | 5 | 6
+/** 1 포털(CSV) · 2 수동(웹) · 3 긴급 — 낮은 출처는 높은 출처를 덮지 못한다 (409) */
+export type SlotSource = 1 | 2 | 3
+export interface SlotIn {
+  day: number
+  s_h: number
+  s_m: number
+  e_h: number
+  e_m: number
+  type: SlotType
+  subject: string
+  professor: string
+  source: SlotSource
+}
+export interface SlotOut extends SlotIn {
+  id: number
+}
+export interface SlotWithRoom extends SlotOut {
+  room_id: number
+}
+export type ResvStatus = 'requested' | 'approved' | 'rejected' | 'cancelled' | 'expired'
+/** id 를 빼면 서버가 채번한다 (S4b §2.5). date 는 KST 달력 'YYYY-MM-DD' — Date 로 바꾸지 않는다 */
+export interface ResvIn {
+  id?: number
+  date: string
+  s_h: number
+  s_m: number
+  e_h: number
+  e_m: number
+  type: SlotType
+  subject: string
+  professor: string
+}
+export interface ResvOut extends ResvIn {
+  id: number
+  status: ResvStatus
+}
+export interface RequesterOut {
+  email: string
+  name: string
+  student_no: string | null
+}
+/** 건물·방 예약 목록 (web A2) — requester 는 학생 신청만, pushed_at null = 노드에 없음 */
+export interface ResvWithRoom extends ResvOut {
+  room_id: number
+  requester: RequesterOut | null
+  pushed_at: Date | null
+}
+export const RESV_DATES = ['pushed_at'] as const
+/** 관리자 신청 목록·승인·거절·취소 응답 (S10 §4.2 + web A2) */
+export interface ResvAdminOut extends ResvOut {
+  requested_at: Date | null
+  decided_at: Date | null
+  reject_reason: string | null
+  checked_in_at: Date | null
+  cancelled_at: Date | null
+  room_id: number
+  building: string
+  room: number
+  requester: RequesterOut | null
+  pushed_at: Date | null
+}
+export const RESV_ADMIN_DATES = [
+  'requested_at',
+  'decided_at',
+  'checked_in_at',
+  'cancelled_at',
+  'pushed_at',
+] as const
+export interface ExamIn {
+  id?: number
+  date_start: string
+  date_end: string
+}
+export interface ExamOut extends ExamIn {
+  id: number
+}
+export interface ExamWithRoom extends ExamOut {
+  room_id: number
+}
+export interface ImportSkipped {
+  row: number
+  reason: string
+}
+export interface ImportSummary {
+  rooms: number
+  added: number
+  updated: number
+  deleted: number
+  skipped: ImportSkipped[]
+  outbox_ids: number[]
+}
+export interface ImportRowError {
+  row: number
+  error: string
+}
+export interface ImportErrors {
+  errors: ImportRowError[]
+}
