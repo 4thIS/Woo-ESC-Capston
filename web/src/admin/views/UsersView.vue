@@ -71,7 +71,7 @@ const CHANGED: Record<Kind, string> = {
 }
 const busy = ref<string | null>(null) // 처리 중인 행 — 연타 방지
 
-// retry: Toast 재시도 — Modal 로 여는 작업은 submit* 을 다시 불러 성공 시 Modal 을 닫게 한다
+// retry: Toast 재시도 — 기본은 같은 회원·같은 호출을 다시 (submit* 이 Modal 경로를 넘긴다)
 async function act(
   user: UserOut,
   kind: Kind,
@@ -115,8 +115,12 @@ async function submitReject() {
   const user = rejecting.value
   const r = reason.value.trim()
   if (!user || !r) return
-  if (await act(user, 'reject', () => usersApi.reject(user.email, r), submitReject))
-    rejecting.value = null
+  const call = () => usersApi.reject(user.email, r)
+  // 재시도는 실패한 그 회원만 — 그 사람 Modal 이 아직 열려 있으면 거기서(고친 사유로, 성공 시 닫힘),
+  // 아니면 그때의 사유로 조용히. 다른 회원의 열린 Modal 을 건드리지 않는다
+  const retry = () =>
+    rejecting.value?.email === user.email ? submitReject() : act(user, 'reject', call)
+  if (await act(user, 'reject', call, retry)) rejecting.value = null
 }
 
 // 정지 — token_version 이 올라 그 사람의 세션이 즉시 끊긴다
@@ -124,8 +128,10 @@ const disabling = ref<UserOut | null>(null)
 async function submitDisable() {
   const user = disabling.value
   if (!user) return
-  if (await act(user, 'disable', () => usersApi.disable(user.email), submitDisable))
-    disabling.value = null
+  const call = () => usersApi.disable(user.email)
+  const retry = () =>
+    disabling.value?.email === user.email ? submitDisable() : act(user, 'disable', call)
+  if (await act(user, 'disable', call, retry)) disabling.value = null
 }
 
 // 필터를 바꿔 옛 행이 남아 있는 동안에도 잠근다

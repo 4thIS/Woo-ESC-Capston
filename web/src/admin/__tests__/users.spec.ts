@@ -255,4 +255,70 @@ describe('UsersView', () => {
     await flushPromises()
     expect((buttonByText(w, '승인').element as HTMLButtonElement).disabled).toBe(true)
   })
+
+  describe('재시도는 실패한 그 회원만', () => {
+    const A = 'a@wsu.ac.kr'
+    const B = 'b@wsu.ac.kr'
+    const rowButton = (w: ReturnType<typeof mount>, email: string, text: string) =>
+      w
+        .findAll('tr')
+        .find((r) => r.text().includes(email))!
+        .findAll('button')
+        .find((b) => b.text() === text)!
+    const retry = () => toasts.value[toasts.value.length - 1].action!.onClick()
+
+    it('정지 A 실패 → 취소 → B 의 정지 Modal 이 열려 있어도 재시도는 A', async () => {
+      api.list.mockResolvedValue([
+        u({ email: A, status: 'active' }),
+        u({ email: B, status: 'active', name: '박서연' }),
+      ])
+      api.disable.mockRejectedValueOnce(new ApiError(0, MESSAGES[0]))
+      api.disable.mockResolvedValue(u({ status: 'disabled' }))
+      const w = await mountView()
+      await rowButton(w, A, '정지').trigger('click')
+      await dialogButton(w, '정지').trigger('click')
+      await flushPromises()
+      await dialogButton(w, '취소').trigger('click')
+      await rowButton(w, B, '정지').trigger('click')
+      retry()
+      await flushPromises()
+      expect(api.disable).toHaveBeenCalledTimes(2)
+      expect(api.disable).toHaveBeenLastCalledWith(A)
+      expect(w.get('[role="dialog"]').text()).toContain(B)
+    })
+
+    it('거절 A 실패 → 취소 → B 의 거절 Modal 에 사유를 써도 재시도는 A 와 A 의 사유', async () => {
+      api.list.mockResolvedValue([u({ email: A }), u({ email: B, name: '박서연' })])
+      api.reject.mockRejectedValueOnce(new ApiError(0, MESSAGES[0]))
+      api.reject.mockResolvedValue(u({ status: 'rejected' }))
+      const w = await mountView()
+      await rowButton(w, A, '거절').trigger('click')
+      await w.get('[role="dialog"] textarea').setValue('A 사유')
+      await dialogButton(w, '거절').trigger('click')
+      await flushPromises()
+      await dialogButton(w, '취소').trigger('click')
+      await rowButton(w, B, '거절').trigger('click')
+      await w.get('[role="dialog"] textarea').setValue('B 사유')
+      retry()
+      await flushPromises()
+      expect(api.reject).toHaveBeenCalledTimes(2)
+      expect(api.reject).toHaveBeenLastCalledWith(A, 'A 사유')
+      expect(w.get('[role="dialog"]').text()).toContain(B)
+    })
+
+    it('Modal 을 취소한 뒤의 재시도도 A 를 다시 부른다', async () => {
+      api.list.mockResolvedValue([u({ email: A, status: 'active' })])
+      api.disable.mockRejectedValueOnce(new ApiError(0, MESSAGES[0]))
+      api.disable.mockResolvedValue(u({ status: 'disabled' }))
+      const w = await mountView()
+      await rowButton(w, A, '정지').trigger('click')
+      await dialogButton(w, '정지').trigger('click')
+      await flushPromises()
+      await dialogButton(w, '취소').trigger('click')
+      retry()
+      await flushPromises()
+      expect(api.disable).toHaveBeenCalledTimes(2)
+      expect(api.disable).toHaveBeenLastCalledWith(A)
+    })
+  })
 })
