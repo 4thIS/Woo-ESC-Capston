@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import { safeNext } from '@/auth/next'
@@ -47,6 +47,7 @@ beforeEach(() => {
   clearSession()
   authNotice.value = null
 })
+afterEach(() => vi.useRealTimers())
 
 describe('safeNext (Review Focus 1)', () => {
   it.each([
