@@ -4,11 +4,22 @@ import { createMemoryHistory } from 'vue-router'
 import AdminApp from '@/admin/AdminApp.vue'
 import { makeRouter } from '@/admin/router'
 import { usersApi } from '@/api/users'
+import type { UserOut } from '@/api/types'
 import { clearSession, session, setSession } from '@/lib/session'
 
 vi.mock('@/api/users', () => ({ usersApi: { list: vi.fn() } }))
 const list = vi.mocked(usersApi.list)
-const user = (email: string) => ({ email }) as never
+// 회원 화면(Task 13)이 /users 에서 실제로 그린다 — 정렬에 쓰는 필드까지 채운다
+const user = (email: string): UserOut => ({
+  email,
+  school_id: 1,
+  role: 'student',
+  status: 'pending_approval',
+  name: email,
+  student_no: null,
+  created_at: new Date(),
+  approved_at: null,
+})
 
 function mockWidth(narrow: boolean) {
   vi.stubGlobal(
