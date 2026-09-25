@@ -56,9 +56,8 @@ def free_rooms(
     user: User = StudentUser,
     s: Session = _DB,
 ):
-    if (
-        at is not None and at.tzinfo is not None
-    ):  # 브라우저 toISOString() = "...Z" — 그대로 쓰면 9 시간 어긋난다
+    # 브라우저 toISOString() = "...Z" — 그대로 쓰면 9 시간 어긋난다
+    if at is not None and at.tzinfo is not None:
         at = at.astimezone(clock.SCHOOL_TZ).replace(tzinfo=None)
     at_local = at or clock.local_now()
     out = []
@@ -90,7 +89,7 @@ def week(id: int, date: dt.date | None = None, user: User = StudentUser, s: Sess
         )
         .order_by(Reservation.date, Reservation.s_h, Reservation.s_m)
     ):
-        mine = r.requested_by is not None and r.requested_by == user.email
+        mine, label = room_state.public_label(r, user.email)
         resvs.append(
             {
                 "id": r.id,
@@ -100,7 +99,7 @@ def week(id: int, date: dt.date | None = None, user: User = StudentUser, s: Sess
                 "e_h": r.e_h,
                 "e_m": r.e_m,
                 "mine": mine,
-                "label": r.subject if (mine or r.requested_by is None) else "예약됨",
+                "label": label,
             }
         )
     return {

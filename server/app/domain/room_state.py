@@ -67,6 +67,13 @@ def room_state(
     return layout, until
 
 
+def public_label(r, viewer_email: str | None) -> tuple[bool, str]:
+    """남의 예약은 (False, "예약됨"). r 은 requested_by·subject 를 가진 예약 행(Reservation)."""
+    mine = r.requested_by is not None and r.requested_by == viewer_email
+    label = r.subject if (mine or r.requested_by is None) else "예약됨"
+    return mine, label
+
+
 def load_inputs(
     s: Session, room_id: int, date: dt.date, viewer_email: str | None = None
 ) -> tuple[list[Span], list[Span], bool]:
@@ -90,14 +97,13 @@ def load_inputs(
         )
         .order_by(Reservation.s_h, Reservation.s_m)
     ):
-        mine = r.requested_by is not None and r.requested_by == viewer_email
-        public = r.requested_by is None or mine
+        mine, label = public_label(r, viewer_email)
         resvs.append(
             Span(
                 r.s_h * 60 + r.s_m,
                 r.e_h * 60 + r.e_m,
                 r.type,
-                r.subject if public else "예약됨",
+                label,
                 mine,
                 r.id,
             )

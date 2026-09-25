@@ -99,9 +99,9 @@ def test_free_rooms_now_and_at(client, client_raw, app, school, student_hdr, mon
     r = client.get("/api/student/rooms/free?at=2026-09-23T11:00:00", headers=student_hdr)
     assert [x["room"] for x in r.json()] == [101, 102, 103]
     r = client.get(
-        "/api/student/rooms/free?at=2026-09-23T02:00:00Z", headers=student_hdr
-    )  # = KST 11:00
-    assert [x["room"] for x in r.json()] == [101, 102, 103]
+        "/api/student/rooms/free?at=2026-09-23T01:30:00Z", headers=student_hdr
+    )  # = KST 10:30 — now 과 같은 순간, 변환 없으면 달라진다
+    assert [(x["room"], x["layout"], x["free_until"]) for x in r.json()] == [(103, 4, "13:00")]
     assert (
         client_raw.get("/api/student/rooms/free").status_code == 401
     )  # client 는 관리자 Bearer 가 붙어 403 이 된다
