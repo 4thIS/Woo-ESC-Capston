@@ -44,10 +44,11 @@ test('429 뒤 10초 잠금이 풀린다 (Review Focus 5)', async ({ page }) => {
   const email = uniqEmail('nobody')
   await page.goto('/login')
   for (let i = 0; i < 5; i++) {
-    await fillLogin(page, email, 'wrongpass1')
+    // IP 상한에 걸려 기다렸다 다시 냈으면 이메일 창도 새로 시작했다 — 그 제출이 첫 번째
+    if (await fillLogin(page, email, 'wrongpass1')) i = 0
     await expect(page.getByText('이메일 또는 비밀번호가 틀립니다')).toBeVisible()
   }
-  await fillLogin(page, email, 'wrongpass1')
+  await fillLogin(page, email, 'wrongpass1', { retry429: false })
   await expect(page.getByText('잠시 후 다시 시도해 주세요')).toBeVisible()
   const btn = page.getByRole('button', { name: '로그인' })
   await expect(btn).toBeDisabled()

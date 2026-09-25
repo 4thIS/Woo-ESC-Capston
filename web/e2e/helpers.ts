@@ -99,10 +99,24 @@ export function sql(script: string) {
   expect(r.status, r.stderr).toBe(0)
 }
 
+/** 로그인 상한(IP 당 분당 30회)은 슬라이딩 60초 — 그만큼 기다리면 이메일·IP 창이 모두 비어 있다 */
+const LIMIT_WAIT_MS = 61_000
+async function waitOutLimit(page?: Page) {
+  test.setTimeout(test.info().timeout + LIMIT_WAIT_MS + 5_000)
+  if (page) await page.waitForTimeout(LIMIT_WAIT_MS)
+  else await new Promise((r) => setTimeout(r, LIMIT_WAIT_MS))
+}
+
 export async function apiLogin(request: APIRequestContext, email: string, pw = PASSWORD) {
   const hit = pw === PASSWORD ? tokens.get(email) : undefined
   if (hit) return hit
-  const r = await request.post('/api/auth/login', { data: { email, password: pw } })
+  const post = () => request.post('/api/auth/login', { data: { email, password: pw } })
+  let r = await post()
+  // 전체 실행은 IP 당 분당 30회 상한에 걸려 있다 — 429 면 창이 지난 뒤 한 번 더
+  if (r.status() === 429) {
+    await waitOutLimit()
+    r = await post()
+  }
   expect(r.status()).toBe(200)
   const token = (await r.json()).token as string
   if (pw === PASSWORD) tokens.set(email, token)
@@ -134,23 +148,28 @@ export async function createStudent(
   return { email, studentNo, password: PASSWORD }
 }
 
-export async function fillLogin(page: Page, email: string, pw = PASSWORD) {
+/** 로그인 폼 제출. 응답이 429(IP 당 분당 30회 상한 — 전체 실행이 그 언저리에 있다)면 창이 지난 뒤 한 번 더 내고
+ * true 를 돌려준다(그 사이 이메일 상한 창도 비었다). 429 자체를 보려는 테스트는 `retry429: false` */
+export async function fillLogin(
+  page: Page,
+  email: string,
+  pw = PASSWORD,
+  { retry429 = true } = {},
+): Promise<boolean> {
   await page.getByLabel(/웹메일|이메일/).fill(email)
   await page.getByLabel('비밀번호').fill(pw)
+  const res = page.waitForResponse((r) => r.url().includes('/api/auth/login'))
   await page.getByRole('button', { name: '로그인' }).click()
+  if (!retry429 || (await res).status() !== 429) return false
+  await waitOutLimit(page)
+  await fillLogin(page, email, pw, { retry429: false })
+  return true
 }
 
 /** 전체 실행에서는 앞 파일들이 IP 당 분당 로그인 30회를 채운 채 넘어온다 — 429 면 창이 지난 뒤 한 번 더.
  * email 은 함수로 받는다 — nextAdmin 처럼 매 시도마다 계정을 돌려 쓸 수 있게 */
 export async function login(page: Page, email: () => string) {
   await fillLogin(page, email())
-  const limited = page.getByText('잠시 후 다시 시도해 주세요')
-  await expect(page.locator('nav').or(limited)).toBeVisible()
-  if (await limited.isVisible()) {
-    test.setTimeout(120_000)
-    await page.waitForTimeout(61_000)
-    await fillLogin(page, email())
-  }
   await expect(page.locator('nav')).toBeVisible()
 }
 
