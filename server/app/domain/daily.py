@@ -8,7 +8,7 @@ import json
 import logging
 import threading
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth.models import EmailToken
@@ -40,12 +40,21 @@ def _kind_of(o: Outbox) -> str | None:
 
 
 def _expire(s: Session, now_local: dt.datetime) -> int:
-    n = 0
-    for r in s.scalars(select(Reservation).where(Reservation.status == "requested")):
-        if reserve.start_local(r) < now_local:
-            r.status = "expired"
-            n += 1
-    return n
+    ids = [
+        r.id
+        for r in s.scalars(select(Reservation).where(Reservation.status == "requested"))
+        if reserve.start_local(r) < now_local
+    ]
+    if not ids:
+        return 0
+    # 조건부 UPDATE — 선택 뒤 그 사이 승인·철회된 행은 덮지 않는다 (승인을 expired 로 덮으면 유령 예약)
+    q = (
+        update(Reservation)
+        .where(Reservation.id.in_(ids), Reservation.status == "requested")
+        .values(status="expired")
+        .execution_options(synchronize_session=False)
+    )
+    return s.execute(q).rowcount
 
 
 def _pushed_in_window(s: Session, room_id: int, today: dt.date) -> int:
@@ -105,9 +114,13 @@ def _promote(Session: sessionmaker, now_local: dt.datetime, errors: list[str]) -
 
 
 def _resync_failed(s: Session, now_utc: dt.datetime, errors: list[str]) -> list[list]:
-    """지난 24 h 실패한 (bld, room, unit) 마다 실패한 kind 들로 FILE 재동기 1회.
+    """지난 24 h(직전 실행 이후만) 실패한 (bld, room, unit) 마다 실패한 kind 들로 FILE 재동기 1회.
+    직전 실행이 이미 보낸 실패를 24 h 안의 수동 실행이 다시 FILE 로 보내지 않게 한다 (FILE 은 가장 비싼 프레임).
     관리자 취소분·CMD·SET_ROOM·TIME 제외. 방 하나가 실패해도 나머지는 계속한다."""
     since = now_utc - dt.timedelta(hours=RESYNC_WINDOW_H)
+    last = s.scalar(select(func.max(JobRun.ran_at)).where(JobRun.name == "daily"))
+    if last is not None:
+        since = max(since, last)
     kinds: dict[tuple[str, int, int], set[str]] = {}
     for o in s.scalars(select(Outbox).where(Outbox.state == "failed", Outbox.finished_at >= since)):
         if o.last_error == "cancelled":
@@ -144,12 +157,21 @@ def _prune(s: Session, now_utc: dt.datetime, now_local: dt.datetime) -> dict:
     }
 
 
-def run_daily(Session: sessionmaker, now_utc: dt.datetime | None = None) -> dict:
+def run_daily(
+    Session: sessionmaker, now_utc: dt.datetime | None = None, *, skip_if_ran: bool = False
+) -> int | None:
+    """이번 실행의 JobRun id 를 돌려준다. skip_if_ran 이면 락 안에서 오늘 실행 여부를 다시 보고
+    이미 돌았으면 None — 수동 실행 중에 락을 기다린 tick 이 한 번 더 돌지 않게."""
+    now_utc = now_utc or clock.now_utc()
     with _RUN_LOCK:
+        if skip_if_ran:
+            with Session() as s:
+                if already_ran_today(s, clock.to_local(now_utc)):
+                    return None
         return _run_daily(Session, now_utc)
 
 
-def _run_daily(Session: sessionmaker, now_utc: dt.datetime | None) -> dict:
+def _run_daily(Session: sessionmaker, now_utc: dt.datetime | None) -> int:
     now_utc = now_utc or clock.now_utc()
     now_local = clock.to_local(now_utc)
     res: dict = {"expired": 0, "promoted": 0, "resynced": [], "pruned": {}, "errors": []}
@@ -167,8 +189,10 @@ def _run_daily(Session: sessionmaker, now_utc: dt.datetime | None) -> dict:
     step("resynced", lambda s: _resync_failed(s, now_utc, res["errors"]))
     step("pruned", lambda s: _prune(s, now_utc, now_local))
     with Session() as s, s.begin():
-        s.add(JobRun(name="daily", ran_at=now_utc, result=json.dumps(res, ensure_ascii=False)))
-    return res
+        run = JobRun(name="daily", ran_at=now_utc, result=json.dumps(res, ensure_ascii=False))
+        s.add(run)
+        s.flush()
+        return run.id
 
 
 def already_ran_today(s: Session, now_local: dt.datetime) -> bool:
@@ -184,11 +208,7 @@ def tick(Session: sessionmaker) -> bool:
     now_local = clock.to_local(now_utc)
     if now_local.hour < clock.DAILY_HOUR_LOCAL:
         return False
-    with Session() as s:
-        if already_ran_today(s, now_local):
-            return False
-    run_daily(Session, now_utc)
-    return True
+    return run_daily(Session, now_utc, skip_if_ran=True) is not None
 
 
 async def daily_loop(Session: sessionmaker, interval_s: float = 60.0) -> None:

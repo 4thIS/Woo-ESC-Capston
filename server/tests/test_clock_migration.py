@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 
 from sqlalchemy import create_engine, inspect
 
@@ -252,14 +253,17 @@ def test_backfill_pushed_at_needs_resv_set_history(tmp_path):
             ),
             {"d": today},
         )
-        # id=1 만 RESV_SET 으로 이미 나간 이력이 있다 (id=2 는 없음 — 창 밖에서 만들어졌던 예약)
-        c.execute(
-            text(
-                "INSERT INTO outbox (bld, room, unit, type, payload, priority, state, attempts,"
-                " created_at) VALUES ('E', 101, 1, 'RESV_SET', '{\"resv_id\": 1}', 1, 'queued', 0,"
-                " CURRENT_TIMESTAMP)"
-            )
+        # id=1 만 RESV_SET 으로 이미 나간 이력이 있다 (id=2 는 없음 — 창 밖에서 만들어졌던 예약).
+        # id=2 의 RESV_SET 은 같은 id 를 쓰던 옛(다른 날짜) 예약의 것 — id 재사용에 속지 않는다
+        y, m, d = map(int, today.split("-"))
+        old = dt.date(y, m, d) - dt.timedelta(days=30)
+        ins = text(
+            "INSERT INTO outbox (bld, room, unit, type, payload, priority, state, attempts,"
+            " created_at) VALUES ('E', 101, 1, 'RESV_SET', :p, 1, 'queued', 0, CURRENT_TIMESTAMP)"
         )
+        for rid, day in ((1, dt.date(y, m, d)), (2, old)):
+            p = {"resv_id": rid, "year": day.year, "month": day.month, "day": day.day}
+            c.execute(ins, {"p": json.dumps(p)})
     command.upgrade(_cfg(db), "head")
     with create_engine(f"sqlite:///{db}").connect() as c:
         rows = dict(c.execute(text("SELECT id, pushed_at FROM reservations")).fetchall())

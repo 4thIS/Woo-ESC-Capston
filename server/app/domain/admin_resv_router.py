@@ -93,13 +93,9 @@ def run_daily_now(request: Request):
     from app.domain import daily
 
     Session = request.app.state.Session
-    daily.run_daily(Session)
+    jid = daily.run_daily(Session)
     with Session() as s:
-        return S.JobRunOut.model_validate(
-            s.scalar(
-                select(JobRun).where(JobRun.name == "daily").order_by(JobRun.id.desc()).limit(1)
-            )
-        )
+        return S.JobRunOut.model_validate(s.get(JobRun, jid))
 
 
 @router.get("/jobs", response_model=list[S.JobRunOut])

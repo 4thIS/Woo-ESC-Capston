@@ -67,6 +67,10 @@ def upgrade() -> None:
         "   WHERE outbox.bld = buildings.bld AND outbox.room = rooms.room"
         "     AND outbox.type = 'RESV_SET' AND outbox.state != 'cancelled'"
         "     AND json_extract(outbox.payload, '$.resv_id') = reservations.id"
+        # _free_id 가 가장 작은 빈 id 를 재사용한다 — 같은 id 의 옛 예약 이력에 속지 않게 날짜도 맞춘다
+        "     AND printf('%04d-%02d-%02d', json_extract(outbox.payload, '$.year'),"
+        "         json_extract(outbox.payload, '$.month'),"
+        "         json_extract(outbox.payload, '$.day')) = reservations.date"
         " )"
     )
 

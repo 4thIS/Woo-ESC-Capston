@@ -84,6 +84,12 @@ def _outbox(app, bld, room, type_, state, finished_at, payload="{}", unit=1, las
         return o.id
 
 
+def _run(app) -> dict:
+    """run_daily 는 이번 실행의 JobRun id 를 돌려준다 — 결과 dict 는 그 행의 result."""
+    with app.state.Session() as s:
+        return json.loads(s.get(JobRun, daily.run_daily(app.state.Session)).result)
+
+
 def test_run_daily_five_steps(db, hub, app, school, students, monkeypatch):
     _fix_clock(monkeypatch)  # KST 9/23 10:30 → 오늘+7 = 9/30
     _, ids = _building(app, 1, "E", rooms=((301, 2), (302, 1)))
@@ -161,7 +167,7 @@ def test_run_daily_five_steps(db, hub, app, school, students, monkeypatch):
                 expires_at=UTC_NOW - dt.timedelta(days=6),
             )
         )
-    res = daily.run_daily(app.state.Session)
+    res = _run(app)
     assert res["errors"] == []
     assert res["expired"] == 1 and res["promoted"] == 2
     assert res["resynced"] == [["E", 301, 2, ["resv"]], ["E", 302, 1, ["schedule"]]]
@@ -182,7 +188,7 @@ def test_run_daily_five_steps(db, hub, app, school, students, monkeypatch):
         assert s.scalar(select(EmailToken.token_hash).where(EmailToken.token_hash == "y")) == "y"
         runs = s.scalars(select(JobRun).order_by(JobRun.id)).all()
         assert len(runs) == 1 and json.loads(runs[0].result)["promoted"] == 2
-    assert daily.run_daily(app.state.Session)["promoted"] == 0  # 이미 보낸 건 안 보낸다
+    assert _run(app)["promoted"] == 0  # 이미 보낸 건 안 보낸다
 
 
 def test_promote_skips_ended_and_full_room(db, hub, app, school, monkeypatch):
@@ -192,7 +198,7 @@ def test_promote_skips_ended_and_full_room(db, hub, app, school, monkeypatch):
     for i in range(24):  # 302 는 창 안 보낸 예약이 노드 용량만큼
         _resv(app, ids[302], dt.date(2026, 9, 24), 0, 0, 0, 5, id_=100 + i, pushed_at=UTC_NOW)
     _resv(app, ids[302], dt.date(2026, 9, 25), 13, 0, 14, 0, id_=2)
-    res = daily.run_daily(app.state.Session)
+    res = _run(app)
     assert res["promoted"] == 0 and len(res["errors"]) == 1 and "resv 2" in res["errors"][0]
     with app.state.Session() as s:
         assert s.get(Reservation, 1).pushed_at is None and s.get(Reservation, 2).pushed_at is None
@@ -212,7 +218,7 @@ def test_promote_one_failure_does_not_stop_others(db, hub, app, school, monkeypa
         return real(bld, room, *a, **kw)
 
     monkeypatch.setattr(daily.api, "enqueue_resv_set", flaky)
-    res = daily.run_daily(app.state.Session)
+    res = _run(app)
     assert res["promoted"] == 1 and any("resv 1" in e for e in res["errors"])
     with app.state.Session() as s:
         assert s.get(Reservation, 1).pushed_at is None
@@ -232,7 +238,7 @@ def test_resync_one_room_failure_does_not_stop_others(db, hub, app, school, monk
         return real(bld, room, kinds, unit=unit)
 
     monkeypatch.setattr(daily.api, "enqueue_full_sync", flaky)
-    res = daily.run_daily(app.state.Session)
+    res = _run(app)
     assert res["resynced"] == [["E", 302, 1, ["schedule"]]]
     assert any("E301" in e for e in res["errors"])
 
@@ -244,7 +250,7 @@ def test_step_failure_continues(db, hub, app, school, monkeypatch):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(daily, "_promote", boom)
-    res = daily.run_daily(app.state.Session)
+    res = _run(app)
     assert res["promoted"] == 0 and res["errors"] == ["promoted: boom"] and "pruned" in res
 
 
@@ -274,3 +280,61 @@ def test_jobs_endpoints(client, live, app, school, monkeypatch):
     assert r.status_code == 200
     assert len(client.get("/api/admin/jobs?name=daily").json()) == 2
     assert client.get("/api/admin/jobs?name=daily&limit=1").json()[0]["id"] == r.json()["id"]
+
+
+def test_expire_does_not_overwrite_concurrent_approve(db, hub, app, school, students, monkeypatch):
+    """만료 대상 선택 뒤·UPDATE 전에 관리자가 승인하면 승인이 이긴다 — expired 로 덮이면 RESV_SET 이
+    이미 나간 행을 아무도 DEL 하지 않는 유령 예약이 된다 (final review #1)."""
+    _fix_clock(monkeypatch)
+    _, ids = _building(app, 1, "E")
+    _resv(
+        app, ids[101], dt.date(2026, 9, 23), 9, 0, 10, 0, id_=1, status="requested",
+        requested_by="s1@mju.ac.kr",
+    )  # fmt: skip
+    real = daily.reserve.start_local
+
+    def approve_meanwhile(r):
+        with app.state.Session() as s2, s2.begin():
+            s2.get(Reservation, 1).status = "approved"
+        return real(r)
+
+    monkeypatch.setattr(daily.reserve, "start_local", approve_meanwhile)
+    res = _run(app)
+    assert res["expired"] == 0
+    with app.state.Session() as s:
+        assert s.get(Reservation, 1).status == "approved"
+
+
+def test_resync_not_repeated_within_24h(db, hub, app, school, monkeypatch):
+    """직전 실행이 이미 재동기한 실패는 24 h 안의 다음 실행(수동 포함)이 다시 FILE 로 보내지 않는다 (#3)."""
+    _fix_clock(monkeypatch)
+    _building(app, 1, "E", rooms=((302, 1),))
+    _outbox(app, "E", 302, "SLOT_SET", "failed", UTC_NOW - dt.timedelta(hours=1))
+    assert _run(app)["resynced"] == [["E", 302, 1, ["schedule"]]]
+    later = UTC_NOW + dt.timedelta(hours=1)
+    _fix_clock(monkeypatch, later)
+    assert _run(app)["resynced"] == []
+    _outbox(app, "E", 302, "EXAM_SET", "failed", later + dt.timedelta(minutes=1))  # 그 뒤 새 실패
+    _fix_clock(monkeypatch, later + dt.timedelta(hours=1))
+    assert _run(app)["resynced"] == [["E", 302, 1, ["exam"]]]
+
+
+def test_run_daily_skip_if_ran(db, hub, app, school, monkeypatch):
+    _fix_clock(monkeypatch, dt.datetime(2026, 9, 22, 19, 0))  # noqa: DTZ001 — KST 04:00
+    assert daily.run_daily(app.state.Session, skip_if_ran=True) is not None
+    assert daily.run_daily(app.state.Session, skip_if_ran=True) is None
+
+
+def test_manual_daily_returns_its_own_jobrun(client, live, app, school, monkeypatch):
+    _fix_clock(monkeypatch)
+    real = daily._run_daily
+
+    def then_another(Session, now_utc):
+        jid = real(Session, now_utc)
+        with Session() as s, s.begin():  # 커밋 직후 다른 실행 기록이 끼어든다
+            s.add(JobRun(name="daily", ran_at=UTC_NOW, result="{}"))
+        return jid
+
+    monkeypatch.setattr(daily, "_run_daily", then_another)
+    body = client.post("/api/admin/jobs/daily").json()
+    assert body["result"] != {} and body["id"] == 1
