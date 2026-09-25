@@ -37,6 +37,17 @@ const { data, error, loading, refreshedAt, reload } = useResource(async () => {
 // 노드를 켜 놓고 이 화면을 보는 일이 잦다 — 30초 (숨김이면 정지, 떠나면 해제)
 usePolling(reload, 30_000)
 
+// 배경 폴링에서는 새로고침 버튼이 spin/disable 되지 않는다 — 수동 클릭에만 반응
+const manual = ref(false)
+async function refresh() {
+  manual.value = true
+  try {
+    await reload()
+  } finally {
+    manual.value = false
+  }
+}
+
 // 끊긴 동안 Toast 는 한 번 — 30초마다 쌓이지 않게. 이전 표는 그대로 둔다(빈 표 = "전부 죽었다"로 오독)
 watch(error, (e, prev) => {
   if (e && !prev && e.status !== 401 && e.status !== 403)
@@ -66,8 +77,9 @@ const rows = computed(() =>
   ).map((n) => ({ ...n, key: `${n.room_id}-${n.unit}` })),
 )
 
-// master 화면(F2)이 있을 때만 링크 — 라우트가 없으면 버튼을 두지 않는다
-const hasMaster = router.resolve('/master').matched.length > 0
+// master 화면(F2)이 있을 때만 링크 — 라우트가 없으면 버튼을 두지 않는다.
+// router.resolve('/master') 는 라우트가 없으면 "No match found" 경고를 매번 찍는다 — getRoutes 로 조용히 확인
+const hasMaster = router.getRoutes().some((r) => r.path === '/master')
 const empty = computed(() => {
   if (!data.value)
     return {
@@ -159,7 +171,7 @@ async function broadcast() {
           <span>건물</span>
           <Select v-model="buildingId" :options="buildingOpts" size="sm" />
         </label>
-        <Button variant="ghost" size="sm" :loading="loading" @click="reload">새로고침</Button>
+        <Button variant="ghost" size="sm" :loading="manual" @click="refresh">새로고침</Button>
         <Button variant="secondary" size="sm" :loading="broadcasting" @click="broadcast"
           >시각 브로드캐스트</Button
         >

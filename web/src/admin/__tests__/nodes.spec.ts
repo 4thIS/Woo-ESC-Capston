@@ -192,6 +192,35 @@ describe('NodesView', () => {
     expect(esp(w).text()).not.toContain('이 건물에 강의실이 없습니다')
   })
 
+  it('새로고침 버튼 — 배경 폴링 중엔 spin/disable 안 되고, 수동 클릭 때만', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    let resolve!: () => void
+    nodesApi.mockReset().mockReturnValueOnce(
+      new Promise((r) => {
+        resolve = () => r([node()])
+      }),
+    )
+    const w = await mountView()
+    resolve()
+    await flushPromises()
+    nodesApi.mockReturnValueOnce(new Promise(() => {})) // 배경 폴링은 응답이 안 와도
+    vi.advanceTimersByTime(30_000)
+    await flushPromises()
+    expect(button(w, '새로고침').attributes('disabled')).toBeUndefined()
+    let manualResolve!: () => void
+    nodesApi.mockReturnValueOnce(
+      new Promise((r) => {
+        manualResolve = () => r([node()])
+      }),
+    )
+    await button(w, '새로고침').trigger('click')
+    expect(button(w, '새로고침').attributes('disabled')).toBeDefined()
+    manualResolve()
+    await flushPromises()
+    expect(button(w, '새로고침').attributes('disabled')).toBeUndefined()
+    w.unmount()
+  })
+
   it('30초마다 다시 읽고, 화면을 떠나면 멈춘다', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     const w = await mountView()
@@ -247,6 +276,35 @@ describe('NodesView', () => {
     resolve({ outbox_ids: [9], id: null })
     await flushPromises()
     expect(toasts.value.at(-1)?.message).toBe('공학관 401호 재전송을 요청했습니다.')
+  })
+
+  it('재전송 404(강의실 삭제됨) — 안내 문구 + 목록을 다시 읽는다', async () => {
+    lora.syncRoom.mockRejectedValueOnce(new ApiError(404, MESSAGES[404]))
+    const w = await mountView()
+    await esp(w).findAll('tbody tr')[1].get('button').trigger('click')
+    await flushPromises()
+    expect(toasts.value.at(-1)?.message).toBe(
+      '강의실이 이미 삭제되었습니다. 목록을 새로 불러옵니다.',
+    )
+    expect(toasts.value.at(-1)?.tone).not.toBe('danger')
+    expect(nodesApi).toHaveBeenCalledTimes(2)
+    w.unmount()
+  })
+
+  it('재전송 5xx — danger Toast + 재시도 액션', async () => {
+    lora.syncRoom.mockRejectedValueOnce(new ApiError(500, MESSAGES[500]))
+    const w = await mountView()
+    await esp(w).findAll('tbody tr')[1].get('button').trigger('click')
+    await flushPromises()
+    const t = toasts.value.at(-1)!
+    expect(t.tone).toBe('danger')
+    expect(t.message).toBe(MESSAGES[500])
+    expect(t.action?.label).toBe('재시도')
+    lora.syncRoom.mockResolvedValueOnce({ outbox_ids: [9], id: null })
+    t.action!.onClick()
+    await flushPromises()
+    expect(toasts.value.at(-1)?.message).toBe('공학관 401호 재전송을 요청했습니다.')
+    w.unmount()
   })
 
   it('시각 브로드캐스트 — 0대 · 429 · 성공 문구', async () => {
