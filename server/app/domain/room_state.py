@@ -38,26 +38,33 @@ def _next_start(spans: list[Span], at: int) -> int | None:
 def room_state(
     slots: list[Span], resvs: list[Span], in_exam: bool, at_min: int
 ) -> tuple[int, int | None]:
-    """(layout, until_min). until 은 다음 상태 변화 분; 자정까지 그대로면 None."""
+    """(layout, until_min). until 은 다음 상태 변화 분; 자정 이후로 넘어가면 None."""
     nxt = min(
         (x for x in (_next_start(slots, at_min), _next_start(resvs, at_min)) if x is not None),
         default=None,
     )
-    r = _inside(resvs, at_min)
+    r = _inside(resvs, at_min)  # 예약(approved) > 시험기간 > 기본 (global.md 우선순위)
     if r is not None:
-        return TYPE_TO_LAYOUT[r.type], r.e
-    sl = _inside(slots, at_min)
-    if sl is None:
-        return FREE, nxt
-    end = sl.e if nxt is None else min(sl.e, nxt)  # 슬롯 도중 예약이 시작될 수 있다
-    if in_exam:
-        return 5, end
-    if sl.type == 1:
-        minute = at_min % 60
-        if minute < 50:
-            return 1, min(end, at_min - minute + 50)
-        return 2, min(end, at_min - minute + 60)
-    return TYPE_TO_LAYOUT[sl.type], end
+        layout, until = TYPE_TO_LAYOUT.get(r.type, FREE), r.e
+    else:
+        sl = _inside(slots, at_min)
+        if sl is None:
+            layout, until = FREE, nxt
+        else:
+            end = sl.e if nxt is None else min(sl.e, nxt)  # 슬롯 도중 예약이 시작될 수 있다
+            if in_exam:
+                layout, until = 5, end
+            elif sl.type == 1:
+                minute = at_min % 60
+                if minute < 50:
+                    layout, until = 1, min(end, at_min - minute + 50)
+                else:
+                    layout, until = 2, min(end, at_min - minute + 60)
+            else:
+                layout, until = TYPE_TO_LAYOUT.get(sl.type, FREE), end
+    if until is not None and until >= DAY_MIN:  # "24:00" 은 없다 — 자정 이후는 다음 날 판정
+        until = None
+    return layout, until
 
 
 def load_inputs(

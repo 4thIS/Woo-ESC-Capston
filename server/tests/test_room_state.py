@@ -101,10 +101,16 @@ def _exam(app, room_id, id_, date_start, date_end):
         s.add(ExamPeriod(id=id_, room_id=room_id, date_start=date_start, date_end=date_end))
 
 
-@pytest.mark.parametrize("v", VECTORS["vectors"], ids=[v["name"] for v in VECTORS["vectors"]])
+def _vector_params():
+    params = []
+    for v in VECTORS["vectors"]:
+        marks = [pytest.mark.xfail(strict=True, reason=v["xfail"])] if v.get("xfail") else []
+        params.append(pytest.param(v, id=v["name"], marks=marks))
+    return params
+
+
+@pytest.mark.parametrize("v", _vector_params())
 def test_room_state_vectors(v):
-    if v.get("xfail"):
-        pytest.xfail(v["xfail"])
     got = RS.room_state(_spans(VECTORS["slots"]), _spans(v["resvs"]), v["in_exam"], v["at"])
     assert got == (v["layout"], v["until"])
 
@@ -117,6 +123,12 @@ def test_room_state_exam_only_during_slots_and_resv_beats_exam():
         2,
         M(10),
     )  # 쉬는시간 → 정각 수업
+
+
+def test_midnight_never_returned_as_until():
+    # 슬롯·예약이 자정에 정확히 끝나면 "24:00" 을 만들지 않고 None (자정 이후 변화 없음) 으로 정규화한다.
+    assert RS.room_state([Span(M(23), RS.DAY_MIN, 6, "x")], [], False, M(23, 30)) == (7, None)
+    assert RS.room_state([], [Span(M(23), RS.DAY_MIN, 6, "x")], False, M(23, 30)) == (7, None)
 
 
 def test_type_map_and_fmt():

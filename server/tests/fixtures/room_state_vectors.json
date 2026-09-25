@@ -9,9 +9,12 @@
   ],
   "vectors": [
     {"name": "1-resv-beats-slot", "resvs": [{"s": 540, "e": 600, "type": 6}], "in_exam": false, "at": 570, "layout": 7, "until": 600},
+    {"name": "resv-beats-exam-in-slot", "resvs": [{"s": 540, "e": 600, "type": 6}], "in_exam": true, "at": 570, "layout": 7, "until": 600},
     {"name": "2-exam-period-in-slot", "resvs": [], "in_exam": true, "at": 570, "layout": 5, "until": 650},
     {"name": "3-class-minute-lt-50", "resvs": [], "in_exam": false, "at": 570, "layout": 1, "until": 590},
+    {"name": "3b-class-minute-49-boundary", "resvs": [], "in_exam": false, "at": 589, "layout": 1, "until": 590},
     {"name": "4-class-minute-ge-50", "resvs": [], "in_exam": false, "at": 590, "layout": 2, "until": 600},
+    {"name": "exam-slot-clipped-by-future-resv", "resvs": [{"s": 600, "e": 660, "type": 6}], "in_exam": true, "at": 570, "layout": 5, "until": 600},
     {"name": "5-cancelled-slot", "tentative": true, "resvs": [], "in_exam": false, "at": 690, "layout": 3, "until": 720},
     {"name": "6-special-slot", "tentative": true, "resvs": [], "in_exam": false, "at": 810, "layout": 6, "until": 840},
     {"name": "7-outside-slot-next-start", "resvs": [], "in_exam": false, "at": 750, "layout": 4, "until": 780},
