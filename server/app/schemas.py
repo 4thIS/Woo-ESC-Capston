@@ -145,6 +145,17 @@ class ResvOut(ResvIn, Out):
     status: str = "approved"
 
 
+class ResvMineOut(ResvOut):
+    requested_at: dt.datetime | None
+    decided_at: dt.datetime | None
+    reject_reason: str | None
+    checked_in_at: dt.datetime | None
+    cancelled_at: dt.datetime | None
+    room_id: int
+    building: str
+    room: int
+
+
 class ExamIn(BaseModel):
     id: int | None = Field(None, ge=1, le=65535)
     date_start: dt.date
