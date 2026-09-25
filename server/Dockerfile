@@ -37,6 +37,7 @@ EXPOSE 8000
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4)"]
-# 마이그레이션 → 서버. 워커는 반드시 1개(uvicorn 기본값) — WS 연결 레지스트리와 outbox 디스패치 상태가
+# 설정·비밀값은 이미지에 넣지 않는다 — 실행 때 compose 의 env_file(server/.env)로 들어온다(S4a §6).
+# 마이그레이션 → 서버. 워커는 반드시 1개 — WS 연결 레지스트리와 outbox 디스패치 상태가
 # 프로세스 메모리에 있어 워커가 여럿이면 깨진다(server/README.md). --workers 를 붙이지 말 것.
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000 --workers 1 --no-server-header"]

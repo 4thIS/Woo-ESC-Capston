@@ -3,7 +3,10 @@
 !server/
 !lora_proto/
 
-# 그 안에서도 빼는 것
+# 그 안에서도 빼는 것 — 특히 비밀값(.env)은 절대 이미지 레이어에 들어가면 안 된다
+**/.env
+**/.env.*
+!**/.env.example
 **/.venv
 **/__pycache__
 **/*.py[cod]

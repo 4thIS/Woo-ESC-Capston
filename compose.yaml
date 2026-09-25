@@ -6,7 +6,10 @@
 #   docker compose logs -f server    # 로그
 #   docker compose down              # 정지 (데이터는 볼륨에 남는다)
 #
-# 노트북에서도 같은 명령으로 메인Pi 와 똑같은 서버를 띄울 수 있다 → http://localhost:8000/docs
+# 처음 한 번: cp server/.env.example server/.env 후 값을 채운다(JWT_SECRET·STUDENT_WEB_URL·메일 — server/README.md).
+#   그다음 학교·관리자 계정: docker compose exec server python -m app.cli create-school … / create-admin …
+# 노트북에서도 같은 명령으로 메인Pi 와 똑같은 서버를 띄울 수 있다.
+# /docs·/static(통신 확인 페이지)은 server/.env 에 DEBUG=1 일 때만 열린다(운영에서는 끈다).
 name: woo-esc
 
 services:
@@ -18,9 +21,11 @@ services:
     container_name: esc-server
     ports:
       - "8000:8000"
+    env_file:
+      - path: server/.env          # 비밀값(JWT_SECRET·SMTP) — 커밋 금지, 이미지에도 안 들어간다(.dockerignore)
+        required: true             # 없으면 up 이 바로 실패한다(서버가 재시작만 반복하는 대신)
     environment:
-      SERVER_DB: /data/main.db
-      STATUS_HOUR_UTC: ${STATUS_HOUR_UTC:-18}
+      SERVER_DB: /data/main.db     # .env 의 SERVER_DB 보다 우선 — DB 는 항상 볼륨에
     volumes:
       - server-data:/data          # SQLite DB — 컨테이너를 지우고 다시 빌드해도 남는다
     restart: unless-stopped         # Pi 재부팅·크래시 뒤 자동 기동 (systemd 유닛 불필요)
