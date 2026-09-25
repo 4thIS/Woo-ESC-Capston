@@ -21,12 +21,22 @@ describe('Button', () => {
     expect(w.find('.btn__spin').exists()).toBe(true)
   })
 
-  it('loadingLabel 이 있으면 진행도로 바꾼다', () => {
+  it('loadingLabel — 진행도를 보이고, 숫자를 가장 긴 자릿수로 채운 문자열로 폭을 미리 잡는다', async () => {
     const w = mount(Button, {
-      props: { loading: true, loadingLabel: '3/7 적용 중' },
-      slots: { default: '적용' },
+      props: { loading: false, loadingLabel: '0/12 적용 중' },
+      slots: { default: '선택한 12곳에 기간 추가' },
     })
-    expect(w.get('button').text()).toBe('3/7 적용 중')
+    // 평소 — 기본 라벨이 보이고, 폭 잡이만 숨어 있다
+    expect(w.find('.btn__progress').exists()).toBe(false)
+    expect(w.findAll('.btn__ghost').map((g) => g.text())).toEqual(['00/00 적용 중'])
+    // 진행 중 — 진행도가 보이고 기본 라벨은 숨은 채 폭을 지킨다 ("3/12" 와 "10/12" 폭이 같다)
+    await w.setProps({ loading: true, loadingLabel: '3/12 적용 중' })
+    expect(w.get('.btn__progress').text()).toBe('3/12 적용 중')
+    expect(w.findAll('.btn__ghost').map((g) => g.text())).toEqual([
+      '선택한 12곳에 기간 추가',
+      '00/00 적용 중',
+    ])
+    expect(w.get('button').element.disabled).toBe(true)
   })
 
   it('disabled 면 click 이 나가지 않는다', async () => {

@@ -66,4 +66,11 @@ describe('Table', () => {
     expect(toggle.attributes('aria-expanded')).toBe('true')
     expect(w.get('i').text()).toBe('김민준 상세')
   })
+
+  it('tall — 두 줄 셀이 있는 표는 행 44px', () => {
+    const w = mount(Table, { props: { columns, rows, tall: true } })
+    expect(w.get('table').classes()).toContain('tbl--tall')
+    const plain = mount(Table, { props: { columns, rows } })
+    expect(plain.get('table').classes()).not.toContain('tbl--tall')
+  })
 })

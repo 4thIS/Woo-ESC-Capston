@@ -52,7 +52,7 @@ describe('OutboxDot', () => {
     ['dispatched', '전송 중'],
     ['acked', '반영됨'],
     ['failed', '실패'],
-    ['cancelled', '취소됨'],
+    ['cancelled', '취소됨 — 노드에 반영 안 됨'],
   ] as const)('%s — 점 + 툴팁 %s', (state, label) => {
     const w = mount(OutboxDot, { props: { state } })
     expect(w.classes()).toContain(`dot--${state}`)
