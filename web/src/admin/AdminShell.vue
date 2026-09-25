@@ -10,8 +10,12 @@ import { pendingCount, refreshPending } from './pending'
 
 const router = useRouter()
 const me = computed(() => session.value?.name ?? '')
-// F2·F3 가 위쪽에 항목을 더한다 — 순서는 #46 admin-master.md 확정본
-const nav = computed(() => [{ to: '/users', label: '회원', badge: pendingCount.value }])
+// #46 admin-master.md 순서: 건물 · 강의실 · 강의실 설정 · 주간 시간표(F2) · 노드 상태 · 전송 현황 · 회원
+const nav = computed(() => [
+  { to: '/nodes', label: '노드 상태' },
+  { to: '/dashboard', label: '전송 현황' },
+  { to: '/users', label: '회원', badge: pendingCount.value },
+])
 
 onMounted(refreshPending)
 usePolling(refreshPending, 60_000)

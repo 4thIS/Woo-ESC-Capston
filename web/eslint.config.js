@@ -28,9 +28,9 @@ export default defineConfigWithVueTs(
     },
   },
   {
-    // ui 디자인 시스템 컴포넌트는 components.md 표의 단어 그대로 (Button·Badge·Skeleton) 쓴다
+    // ui·chart 컴포넌트는 components.md 표의 단어 그대로 (Button·Badge·Histogram) 쓴다
     name: 'app/ui-component-names',
-    files: ['src/components/ui/**'],
+    files: ['src/components/ui/**', 'src/components/chart/**'],
     rules: { 'vue/multi-word-component-names': 'off' },
   },
   skipFormatting,

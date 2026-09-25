@@ -37,6 +37,10 @@ async function mountApp(path = '/users') {
 }
 
 beforeEach(() => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise<Response>(() => {})),
+  )
   localStorage.clear()
   list.mockReset().mockResolvedValue([user('a'), user('b')])
   setSession({ token: 't', role: 'admin', school_id: 1, name: '관리자1' })
@@ -44,14 +48,18 @@ beforeEach(() => {
 })
 
 describe('AdminShell', () => {
-  it('/ 는 /users 로, 회원 메뉴가 활성이고 대기 건수 배지', async () => {
+  it('/ 는 /dashboard 로, 메뉴 순서(#46) · 전송 현황 활성 · 회원 대기 건수', async () => {
     const { w, router } = await mountApp('/')
-    expect(router.currentRoute.value.path).toBe('/users')
+    expect(router.currentRoute.value.path).toBe('/dashboard')
     expect(list).toHaveBeenCalledWith('pending_approval')
-    const link = w.get('nav a')
-    expect(link.text()).toContain('회원')
-    expect(link.text()).toContain('2')
-    expect(link.attributes('aria-current')).toBe('page')
+    const links = w.findAll('nav a')
+    expect(links.map((a) => a.text().replace(/\d+/g, '').trim())).toEqual([
+      '노드 상태',
+      '전송 현황',
+      '회원',
+    ])
+    expect(links[1].attributes('aria-current')).toBe('page')
+    expect(links[2].text()).toContain('2')
     expect(w.text()).toContain('관리자1')
   })
 

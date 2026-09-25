@@ -7,7 +7,10 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('./AdminShell.vue'),
     meta: { auth: true },
     children: [
-      { path: '', redirect: '/users' },
+      // 관리자 기본 화면은 전송 현황 (spec §5)
+      { path: '', redirect: '/dashboard' },
+      { path: 'nodes', component: () => import('./views/NodesView.vue') },
+      { path: 'dashboard', component: () => import('./views/DashboardView.vue') },
       { path: 'users', component: () => import('./views/UsersView.vue') },
     ],
   },

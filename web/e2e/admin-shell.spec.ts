@@ -4,15 +4,17 @@ import { SIZES, createStudent, fillLogin, nextAdmin, shot } from './helpers'
 // e2e 는 node 타입(tsconfig.node.json) — page.evaluate 콜백은 브라우저에서 도는데 DOM lib 이 없다
 declare const document: { documentElement: { scrollWidth: number } }
 
-test('로그인 → 회원 화면, 사이드바 활성 + 대기 건수', async ({ page, request }) => {
+test('로그인 → 전송 현황, 사이드바 순서·활성 + 회원 대기 건수', async ({ page, request }) => {
   await createStudent(request) // 승인 대기 1건 이상
   await page.setViewportSize(SIZES.admin)
   await page.goto('/admin/')
   await fillLogin(page, nextAdmin())
-  await expect(page).toHaveURL(/\/admin\/users$/)
-  const link = page.getByRole('link', { name: /회원/ })
-  await expect(link).toHaveAttribute('aria-current', 'page')
-  await expect(link).toContainText(/\d+/)
+  await expect(page).toHaveURL(/\/admin\/dashboard$/)
+  await expect(page.locator('nav a')).toHaveText([/^노드 상태$/, /^전송 현황$/, /^회원\s*\d+$/])
+  await expect(page.getByRole('link', { name: '전송 현황' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
   const nav = await page.locator('nav').boundingBox()
   expect(Math.round(nav!.width)).toBe(220)
   await shot(page, 'admin-shell-1440')
@@ -32,6 +34,6 @@ test('1024px 미만 — 가로 스크롤 + 한 번만 뜨는 Banner', async ({ p
   // 새로고침하면 메모리 세션이라 다시 로그인 — Banner 는 localStorage 로 기억
   await page.reload()
   await fillLogin(page, nextAdmin())
-  await expect(page).toHaveURL(/\/admin\/users$/)
+  await expect(page).toHaveURL(/\/admin\/dashboard$/)
   await expect(banner).toHaveCount(0)
 })

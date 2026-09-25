@@ -17,7 +17,9 @@ function adminPages(): Plugin {
   }
 }
 
-// 개발 중에는 메인Pi 서버(uvicorn :8000)로 /api·/ws 를 프록시한다. 빌드 산출물은 같은 오리진에서 서빙된다.
+// 개발 중에는 메인Pi 서버(uvicorn, 기본 :8000 — VITE_API_TARGET 으로 바꾼다)로 /api·/ws 를 프록시한다.
+// 빌드 산출물은 같은 오리진에서 서빙된다.
+const API = process.env.VITE_API_TARGET ?? 'http://127.0.0.1:8000'
 export default defineConfig({
   plugins: [vue(), adminPages()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
@@ -31,8 +33,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://127.0.0.1:8000',
-      '/ws': { target: 'ws://127.0.0.1:8000', ws: true },
+      '/api': API,
+      '/ws': { target: API.replace(/^http/, 'ws'), ws: true },
     },
   },
   test: { environment: 'jsdom', include: ['src/**/*.spec.ts'] },
