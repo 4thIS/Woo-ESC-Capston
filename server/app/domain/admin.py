@@ -12,7 +12,8 @@ from app import schemas as S
 from app.auth import scope
 from app.auth.models import User
 from app.db import utcnow
-from app.domain.models import Building, Room
+from app.domain import clock, reserve
+from app.domain.models import Building, Reservation, Room
 from app.lora_service.models import Modem, Outbox, PendingDevice, TerminalStatus
 
 
@@ -157,6 +158,44 @@ def _bucket(items: list, preview: int) -> dict:
     return {"count": len(items), "items": items[:preview]}
 
 
+def _mine_out(s: Session, r: Reservation) -> dict:
+    """S10 §4.1/§4.2 학생·관리자 예약 응답 공용 (student_router 도 이걸 쓴다 — 순환 회피용 위치)."""
+    room = s.get(Room, r.room_id)
+    b = s.get(Building, room.building_id)
+    return {
+        **S.ResvOut.model_validate(r).model_dump(),
+        "requested_at": r.requested_at,
+        "decided_at": r.decided_at,
+        "reject_reason": r.reject_reason,
+        "checked_in_at": r.checked_in_at,
+        "cancelled_at": r.cancelled_at,
+        "room_id": room.id,
+        "building": b.name,
+        "room": room.room,
+    }
+
+
+def resv_admin_out(s: Session, r: Reservation) -> dict:
+    u = s.get(User, r.requested_by) if r.requested_by else None
+    requester = {"email": u.email, "name": u.name, "student_no": u.student_no} if u else None
+    return {**_mine_out(s, r), "requester": requester}
+
+
+def pending_reservations(s: Session, school_id: int) -> list[dict]:
+    q = (
+        select(Reservation)
+        .join(Room, Room.id == Reservation.room_id)
+        .join(Building, Building.id == Room.building_id)
+        .where(Building.school_id == school_id, Reservation.status == "requested")
+        .order_by(
+            Reservation.requested_at, Reservation.id
+        )  # 같은 시각이면 id — SQLite 동순위 순서는 정의되지 않음
+    )
+    now = clock.local_now()
+    # 시작 지난 신청은 승인할 수 없다(409) — 04:00 만료 전까지 경고에 남기지 않는다
+    return [resv_admin_out(s, r) for r in s.scalars(q) if reserve.start_local(r) > now]
+
+
 def summary(
     s: Session, school_id: int, preview: int = PREVIEW_DEFAULT, now: dt.datetime | None = None
 ) -> dict:
@@ -220,5 +259,6 @@ def summary(
             "failed": _bucket(failed, preview),
             "pending_devices": _bucket(pending, preview),
             "pending_approval": _bucket(approvals, preview),
+            "pending_reservations": _bucket(pending_reservations(s, school_id), preview),
         },
     }

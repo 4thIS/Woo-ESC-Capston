@@ -14,6 +14,7 @@ from app.auth.deps import StudentUser
 from app.auth.models import User
 from app.deps import _DB
 from app.domain import clock, reserve, room_state
+from app.domain.admin import _mine_out
 from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
 from app.domain.router import _ID_LOCK, _commit_notify, _free_id
 
@@ -120,22 +121,6 @@ def week(id: int, date: dt.date | None = None, user: User = StudentUser, s: Sess
             )
             .order_by(ExamPeriod.date_start)
         ).all(),
-    }
-
-
-def _mine_out(s: Session, r: Reservation) -> dict:
-    room = s.get(Room, r.room_id)
-    b = s.get(Building, room.building_id)
-    return {
-        **S.ResvOut.model_validate(r).model_dump(),
-        "requested_at": r.requested_at,
-        "decided_at": r.decided_at,
-        "reject_reason": r.reject_reason,
-        "checked_in_at": r.checked_in_at,
-        "cancelled_at": r.cancelled_at,
-        "room_id": room.id,
-        "building": b.name,
-        "room": room.room,
     }
 
 

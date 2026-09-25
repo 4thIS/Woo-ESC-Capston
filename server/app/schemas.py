@@ -156,6 +156,16 @@ class ResvMineOut(ResvOut):
     room: int
 
 
+class RequesterOut(BaseModel):
+    email: str
+    name: str
+    student_no: str | None
+
+
+class ResvAdminOut(ResvMineOut):
+    requester: RequesterOut | None
+
+
 class ExamIn(BaseModel):
     id: int | None = Field(None, ge=1, le=65535)
     date_start: dt.date
