@@ -161,9 +161,9 @@ describe('WeekView — /:bld/:room/week', () => {
     expect(w.get('h1').text()).toBe('공학관 401호 · 이번 주')
     expect(w.get('a.sh__back').attributes('href')).toBe('/E/401')
     expect(w.find('.wg--wide').exists()).toBe(false)
-    expect(w.get('[aria-label="금 10:00–13:00 알고리즘 외 1건"]').attributes('style')).toContain(
-      'height: 144px',
-    )
+    expect(
+      w.get('[aria-label="금 10:00–13:00 수업중 알고리즘 외 1건"]').attributes('style'),
+    ).toContain('height: 144px')
     expect(w.get('.wg__day--today').text()).toBe('금')
   })
 
