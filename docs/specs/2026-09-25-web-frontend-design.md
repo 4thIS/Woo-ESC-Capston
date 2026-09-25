@@ -46,7 +46,7 @@ web/src/
 │   ├── student/   학생 전용 (RoomListRow·FavoriteStar·ReserveSheet·ResvStatusBadge·MyResvCard·WeekGrid) — student-room.md 기준
 │   └── chart/     Histogram (SVG 직접)
 ├── api/           client.ts · types.ts · auth.ts · admin.ts · rooms.ts · lora.ts · student.ts
-├── lib/           session.ts · useResource.ts · usePolling.ts · time.ts · draft.ts
+├── lib/           session.ts · useResource.ts · usePolling.ts · time.ts
 ├── auth/          AuthShell · LoginView · SignupView · VerifyView · ForgotView · ResetView
 ├── admin/         main.ts · router.ts · AdminShell.vue · views/
 └── student/       main.ts · router.ts · StudentShell.vue · views/
@@ -55,7 +55,7 @@ web/e2e/           Playwright 테스트 (§7.2)
 
 ### 2.3 인증 화면의 배치
 - 학생 앱: `/login`·`/signup`·`/verify`·`/forgot`·`/reset` 전부.
-- 관리자 앱: `/admin/login`·`/admin/forgot`·`/admin/reset`(관리자 가입 화면 없음 — 계정은 CLI).
+- 관리자 앱: `/admin/login` 만(관리자 가입 화면 없음 — 계정은 CLI). `비밀번호를 잊었어요` 는 **학생 앱 `/forgot`** 으로 보낸다(#46 `auth.md` — 재설정 메일도 학생 앱 `/reset` 으로 오므로 관리자 앱에 같은 화면을 두지 않는다).
 - 메일 링크는 `STUDENT_WEB_URL` 기준(`/verify#token=`·`/reset#token=`). 관리자가 재설정 메일을 받으면 학생 앱의 `/reset` 이 열린다 — 재설정 자체는 역할 무관이라 그대로 두고, 완료 문구에 "관리자는 관리자 화면에서 로그인" 링크를 둔다.
 
 ## 3. 토큰 · 컴포넌트
@@ -87,8 +87,8 @@ web/e2e/           Playwright 테스트 (§7.2)
 
 | 상태 | 처리 |
 |---|---|
-| 401 | 세션 폐기 → 로그인 화면으로(`?next=` 현재 경로) + Banner "다시 로그인해 주세요". **작성 중 폼 초안**을 `lib/draft.ts` 가 `sessionStorage` 에 보관했다가 로그인 뒤 같은 화면에서 복원(비밀번호 필드는 저장하지 않음) |
-| 403 | 역할 불일치 — 세션 폐기 + danger Banner(정상 흐름에선 로그인 시 사전 차단되므로 버그 취급, 콘솔에 남김) |
+| 401 | 세션 폐기 → 로그인 화면으로(`?next=` 현재 경로) + `neutral` Banner "다시 로그인해 주세요." 이유는 구분하지 않는다. **작성 중 폼은 되살리지 않는다**(#46 `auth.md` — 메모리 토큰과 같은 선, 24 h 에 한 번이라 복잡도가 이득보다 크다) |
+| 403 | 역할 불일치 — 세션 폐기 + 로그인 화면 `danger` Banner "이 화면을 쓸 권한이 없습니다."(정상 흐름에선 로그인 시 사전 차단되므로 버그 취급, 콘솔에 남김) |
 | 409 | 화면이 준 문맥 문장(예: "다른 사람이 먼저 바꿨습니다 — 목록을 새로 불러옵니다") + 해당 리소스 재조회 |
 | 422 | 필드 오류로 매핑(Input.error), 매핑 못 하면 폼 상단 Banner |
 | 429 | "잠시 후 다시 시도하세요" + 해당 버튼 10 s 잠금(서버가 남은 시간을 주지 않음) |
@@ -115,7 +115,7 @@ web/e2e/           Playwright 테스트 (§7.2)
 
 | 화면 스펙 | 앱·라우트 | 주요 API | 새로고침 |
 |---|---|---|---|
-| auth.md | 학생 `/login` `/signup` `/verify` `/forgot` `/reset`, 관리자 `/admin/login` `/admin/forgot` `/admin/reset` | `/api/auth/*` | 없음. 가입 재전송 60 s 쿨다운 |
+| auth.md | 학생 `/login` `/signup` `/verify` `/forgot` `/reset`, 관리자 `/admin/login` | `/api/auth/*` | 없음. 가입 재전송 60 s 쿨다운 |
 | admin-users.md | `/admin/users` | `GET /api/admin/users?status=`, `POST …/{approve,reject,disable,enable}` | 없음 |
 | admin-master.md (#46) | `/admin/master` | `/api/buildings`·`/api/rooms` CRUD, `/api/lora/modems`, `/api/admin/nodes` | 없음 |
 | admin-rooms.md | `/admin/rooms` | 건물 단위 조회 4개, 방 단위 slots·reservations·exams, `/api/import/slots`, `/api/rooms/{id}/sync`, 신청 대기(`/api/admin/reservations`) | 저장 후 OutboxDot |
@@ -147,13 +147,13 @@ F1 은 A1 만 있으면 끝까지 동작한다. A1 이 늦으면 admin-users 의
 
 ### 7.1 Vitest (단위·컴포넌트)
 - `api/`: 서버 응답 **픽스처 JSON**(`src/api/__fixtures__/`)으로 파싱·시각 변환·오류 매핑을 검사 — 서버가 필드를 바꾸면 여기가 먼저 실패한다. 픽스처는 서버 테스트가 쓰는 응답 모양에서 가져온다.
-- `lib/`: `useResource` 의 늦은 응답 폐기·오류 시 데이터 유지, `usePolling` 의 숨김 정지·겹침 방지·복귀 즉시 실행(가짜 타이머), `time` 의 UTC→KST(자정 경계 포함), `draft` 저장·복원·비밀번호 제외.
+- `lib/`: `useResource` 의 늦은 응답 폐기·오류 시 데이터 유지, `usePolling` 의 숨김 정지·겹침 방지·복귀 즉시 실행(가짜 타이머), `time` 의 UTC→KST(자정 경계 포함).
 - 컴포넌트: props·variant·상태별 렌더와 상호작용(@vue/test-utils). `tokens.guard.spec.ts`(§3.1).
 
 ### 7.2 Playwright (E2E — 실제 브라우저)
 - `@playwright/test` 를 devDependency 로. `web/e2e/` + `playwright.config.ts`.
 - `globalSetup`: 임시 DB 로 메인Pi 서버를 띄운다(`DEBUG=1 MAIL_BACKEND=console JWT_SECRET=…`, `uv run alembic upgrade head` → CLI `create-school`·`create-admin` 시드) + Vite dev 서버. 메일 링크는 서버 stdout(console 백엔드)에서 토큰을 읽는다.
-- 흐름(최소): 관리자 로그인 → 회원 승인 / 학생 가입 → verify/open → verify → 승인 대기 403 → 관리자 승인 → 학생 로그인 / 관리자 앱에 학생 로그인 → 거절 / 401 만료 → 재로그인 → 폼 초안 복원 / 429 버튼 잠금 / 관리자 화면 1024px 미만 Banner.
+- 흐름(최소): 관리자 로그인 → 회원 승인 / 학생 가입 → verify/open → verify → 승인 대기 403 → 관리자 승인 → 학생 로그인 / 관리자 앱에 학생 로그인 → 거절 / 401 만료 → 로그인 화면 Banner → 재로그인 뒤 `next` 복귀 / 429 버튼 잠금 / 관리자 화면 1024px 미만 Banner.
 - **화면별 완료 조건**: 관리자 1440×900, 학생 390×844 스크린샷을 찍어 화면 스펙의 수치(치수·간격·상태)와 대조 — 구현자가 확인하고 PR 에 첨부. 시각 회귀 스냅샷(`toHaveScreenshot`)은 폰트 렌더 차이가 OS 마다 달라 CI 기준으로만 켠다(§7.3).
 - 날짜 의존 흐름은 서버 시계를 고정할 수 없으므로 "오늘+1" 처럼 상대 날짜로 만든다.
 
@@ -165,7 +165,7 @@ F1 은 A1 만 있으면 끝까지 동작한다. A1 이 늦으면 admin-users 의
 
 | 상황 | 대응 |
 |---|---|
-| 폼 작성 중 토큰 만료(24 h) | 401 → 초안 `sessionStorage` 보관 → 재로그인 후 복원(§4.1) |
+| 폼 작성 중 토큰 만료(24 h) | 401 → 로그인 화면 + Banner, 재로그인 뒤 `next` 로 복귀. 입력은 버린다(§4.1, #46 결정) |
 | 새로고침 | 메모리 세션이라 재로그인 — `next` 로 원래 화면 복귀 |
 | 필터를 빠르게 바꿈 | 늦게 온 옛 응답 폐기(§4.3) |
 | 탭을 숨긴 채 방치 | 폴링 정지, 복귀 시 즉시 갱신 |
