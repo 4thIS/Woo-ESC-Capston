@@ -1,3 +1,3 @@
 <template>
-  <h1>관리자</h1>
+  <h1>회원</h1>
 </template>
