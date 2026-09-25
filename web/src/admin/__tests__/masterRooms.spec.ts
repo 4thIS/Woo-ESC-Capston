@@ -186,6 +186,21 @@ describe('강의실 패널', () => {
     })
   })
 
+  it('다른 탭이 같은 호수를 먼저 만들었다(409) — 호수 칸에 방 문장, 목록을 새로', async () => {
+    rooms.createRoom.mockRejectedValue(
+      new ApiError(409, MESSAGES[409], [], { detail: 'constraint violation' }),
+    )
+    await mountView()
+    await btn(panel(), '+ 강의실').trigger('click')
+    const d = () => dialog('강의실 추가')!
+    await control(d(), '호수').setValue('403')
+    await btn(d(), '저장').trigger('click')
+    await flushPromises()
+    expect(d().text()).toContain('이미 있는 호수입니다. 목록을 새로 불러옵니다.')
+    expect(rooms.rooms).toHaveBeenCalledTimes(2)
+    expect(toasts.value).toHaveLength(0)
+  })
+
   it('수정 — 호수는 읽기 전용, 유닛 2→1 만 묻고(단말을 떼라), 늘리는 쪽은 묻지 않는다', async () => {
     await mountView()
     await btn(row(402), '수정').trigger('click')

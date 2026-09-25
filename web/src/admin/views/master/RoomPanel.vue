@@ -8,7 +8,7 @@ import Modal from '@/components/ui/Modal.vue'
 import Select from '@/components/ui/Select.vue'
 import Table from '@/components/ui/Table.vue'
 import { showToast } from '@/components/ui/toast'
-import { conflictMessage, floorLabel } from '@/components/domain/rules'
+import { conflictMessage, detailText, floorLabel } from '@/components/domain/rules'
 import { ApiError, MESSAGES } from '@/api/client'
 import { roomsApi } from '@/api/rooms'
 import type { BuildingOut, NodeOut, RoomOut, RoomPatch } from '@/api/types'
@@ -144,7 +144,9 @@ async function save() {
     shrinkAsk.value = null
     if (e.status === 409) {
       // 다른 탭에서 같은 호수를 먼저 만들었다 — 호수 칸에 붙이고 목록을 새로 받는다
-      errors.room = conflictMessage(e)
+      errors.room = /constraint violation/.test(detailText(e))
+        ? '이미 있는 호수입니다. 목록을 새로 불러옵니다.'
+        : conflictMessage(e)
       emit('changed')
     } else if (e.status === 404) {
       showToast({

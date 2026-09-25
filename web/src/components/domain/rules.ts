@@ -78,6 +78,7 @@ export function detailText(e: ApiError): string {
 }
 
 // 409 원문 → 사람 문장 (spec §4.1 — 원문은 화면에 내지 않는다). 위에서부터 첫 일치
+// 건물·강의실 폼만 받는 409(다른 학교 bld·중복 제약)는 그 폼이 직접 문장을 고른다 — 여기 두면 다른 폼에도 샌다
 const CONFLICTS: [RegExp, string][] = [
   [/^source \d/, '이 슬롯은 웹에서 수정된 행입니다. CSV로 덮어쓸 수 없습니다.'],
   [/가득/, '이 강의실은 7일 안 예약이 가득 찼습니다(24건). 지난 예약을 정리하세요.'],
@@ -87,8 +88,6 @@ const CONFLICTS: [RegExp, string][] = [
   [/시작 시각이 지난/, '이미 시작 시각이 지난 신청입니다.'],
   [/다른 예약·수업이 생겼/, '그 시간에 다른 예약이나 수업이 생겨 승인할 수 없습니다.'],
   [/상태에서는 불가/, '이미 처리된 신청입니다.'],
-  [/다른 학교/, '이 bld 는 다른 학교가 쓰고 있습니다'],
-  [/constraint violation/, '같은 bld·호수가 이미 있습니다'],
 ]
 export function conflictMessage(e: ApiError): string {
   const t = detailText(e)
