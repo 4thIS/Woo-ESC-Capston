@@ -148,8 +148,7 @@ def free_spans(s: Session, room_id: int, date: dt.date, lo: int) -> list[tuple[i
     for a, b in sorted(
         (x.s_h * 60 + x.s_m, x.e_h * 60 + x.e_m) for x in _blockers(s, room_id, date)
     ):
-        if b <= a:
-            continue  # ponytail: 관리자 입력엔 시작<끝 검증이 없다 — merge_busy 와 같이 무시
+        a, b = min(a, b), max(a, b)  # 0분/뒤집힌 입력도 막힌 구간으로 (merge_busy 와 같은 정신)
         if a > cur:
             gaps.append((cur, a))
         cur = max(cur, b)
