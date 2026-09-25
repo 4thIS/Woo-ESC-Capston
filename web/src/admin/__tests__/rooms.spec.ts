@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import RoomsView from '@/admin/views/RoomsView.vue'
-import { picked } from '@/admin/selection'
+import { picked, resetSelection } from '@/admin/selection'
 import { roomsApi } from '@/api/rooms'
 import { loraApi } from '@/api/lora'
 import type { BuildingOut, FailedOut, RoomOut, SlotWithRoom } from '@/api/types'
@@ -95,7 +95,7 @@ const control = (root: Root, label: string) =>
 const slotRows = () => w.get('[aria-labelledby=blk-slots]').findAll('tbody tr')
 
 beforeEach(() => {
-  picked.value = []
+  resetSelection()
   Object.values(api).forEach((f) => f.mockReset())
   lora.syncRoom.mockReset()
   api.buildings.mockResolvedValue([B(1, '공학관', 'E'), B(2, '사회관', 'S')])

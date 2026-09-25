@@ -6,6 +6,7 @@ import { makeRouter } from '@/admin/router'
 import { usersApi } from '@/api/users'
 import type { UserOut } from '@/api/types'
 import { clearSession, session, setSession } from '@/lib/session'
+import { nightPref, picked, weekMonday, weekRoom, weekendPref } from '@/admin/selection'
 
 vi.mock('@/api/users', () => ({ usersApi: { list: vi.fn() } }))
 vi.mock('@/api/rooms', () => ({
@@ -93,6 +94,36 @@ describe('AdminShell', () => {
     expect(session.value).toBeNull()
     // /login 은 지연 로드라 첫 이동은 dynamic import 만큼 걸린다 — 이동이 끝날 때까지 기다린다
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/login'))
+  })
+})
+
+describe('선택 상태 — 세션과 같은 수명', () => {
+  it('로그아웃·만료로 세션이 비면 트리 선택·주간 강의실·주·야간/주말 선택을 지운다', async () => {
+    setSession({ token: 't', role: 'admin', school_id: 1, name: '관리자1' })
+    const fill = () => {
+      picked.value = [11]
+      weekRoom.value = 11
+      weekMonday.value = '2026-09-21'
+      nightPref.value = true
+      weekendPref.value = false
+    }
+    const empty = () =>
+      expect([
+        picked.value,
+        weekRoom.value,
+        weekMonday.value,
+        nightPref.value,
+        weekendPref.value,
+      ]).toEqual([[], null, null, null, null])
+    fill()
+    clearSession()
+    await flushPromises()
+    empty()
+    setSession({ token: 't', role: 'admin', school_id: 1, name: '관리자1' })
+    fill()
+    clearSession('expired')
+    await flushPromises()
+    empty()
   })
 })
 

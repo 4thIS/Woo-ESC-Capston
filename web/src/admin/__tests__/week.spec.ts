@@ -3,7 +3,7 @@ import { h } from 'vue'
 import { flushPromises, mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils'
 import { RouterView, createMemoryHistory, createRouter } from 'vue-router'
 import WeekView from '@/admin/views/WeekView.vue'
-import { nightPref, picked, weekMonday, weekRoom, weekendPref } from '@/admin/selection'
+import { picked, resetSelection, weekRoom } from '@/admin/selection'
 import { roomsApi } from '@/api/rooms'
 import { ApiError, MESSAGES } from '@/api/client'
 import type { FailedOut, ResvWithRoom, RoomOut, SlotOut } from '@/api/types'
@@ -105,11 +105,7 @@ beforeEach(() => {
   // KST 2026-09-25(금) 12:00 — 이번 주 월요일 9/21
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-09-25T03:00:00Z'))
-  picked.value = []
-  weekRoom.value = null
-  weekMonday.value = null
-  nightPref.value = null
-  weekendPref.value = null
+  resetSelection()
   Object.values(api).forEach((f) => f.mockReset())
   api.buildings.mockResolvedValue([
     { id: 1, school_id: 1, name: '공학관', bld: 'E', modem_id: 'm1' },
