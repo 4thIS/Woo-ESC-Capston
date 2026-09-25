@@ -131,6 +131,8 @@ server/
 ### 4.2 `lora_service/api.py` (v2 §8.6 + 추가 3개)
 
 모두 동기, 자체 세션, 한 트랜잭션. 웹 라우터는 이 파일과 `set_record_provider`만 import한다.
+`enqueue_*` 8개는 키워드 `session=` 을 받으면 호출자 트랜잭션에서 flush 까지만 하고, 커밋·
+`api.notify(modem_id)` 는 호출자 몫 (#9). additive — `session` 생략 시 기존 경로 그대로.
 
 | 함수 | 비고 |
 |---|---|
