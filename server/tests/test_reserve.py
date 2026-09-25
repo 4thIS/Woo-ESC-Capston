@@ -113,6 +113,16 @@ S1 = {"requested_by": "s1@mju.ac.kr"}
 S2 = {"requested_by": "s2@mju.ac.kr"}
 
 
+def test_free_spans_splits_at_zero_length_blocker_like_overlaps_blocks_it(app, students):
+    _, ids = _building(app, 1, "E")
+    rid = ids[101]
+    _slot(app, rid, dt.date(2026, 9, 23).isoweekday(), 10, 0, 10, 0)  # 0분짜리(관리자 입력 오류)
+    with app.state.Session() as s:
+        spans = reserve.free_spans(s, rid, dt.date(2026, 9, 23), reserve.OPEN_MIN)
+        assert spans == [(540, 600), (600, 1260)]  # 10:00 에서 갈라진다 — 이어붙은 하나가 아니다
+        assert reserve.overlaps(s, rid, dt.date(2026, 9, 23), 595, 605) is True  # 09:55~10:05
+
+
 def test_constraints(app, students, monkeypatch):
     _fix_clock(monkeypatch)  # KST 9/23 10:30
     _, ids = _building(app, 1, "E")

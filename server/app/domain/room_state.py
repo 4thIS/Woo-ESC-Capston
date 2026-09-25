@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass
+from collections import defaultdict
+from dataclasses import dataclass, replace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,6 +25,7 @@ class Span:
     label: str
     mine: bool = False
     id: int | None = None
+    status: str | None = None  # 내 예약만 'requested'|'approved' (web A3 busy)
 
 
 def _inside(spans: list[Span], at: int) -> Span | None:
@@ -130,3 +132,87 @@ def state_of(s: Session, room_id: int, at_local: dt.datetime) -> tuple[int, int 
 
 def fmt_hhmm(m: int | None) -> str | None:
     return None if m is None else f"{m // 60:02d}:{m % 60:02d}"
+
+
+def merge_busy(spans: list[Span]) -> list[Span]:
+    """1분이라도 겹친 구간을 한 덩어리로 (student-room §겹침). 머리 = 먼저 시작한 것(같으면 긴 것) —
+    라벨은 머리 + ' 외 N건', type 은 머리 것이 원칙이나 머리가 휴강(3)·빈강의실(4)이고 겹친 구간이
+    실사용중(1/2/5/6)이면 그 type 을 따른다(빈 것처럼 보이는 라벨 뒤에 실사용을 숨기지 않는다).
+    mine 은 하나라도 내 것이면, status 는 머리부터 첫 내 것의 상태. 맞닿기만 한 구간은 따로 둔다."""
+    out: list[tuple[Span, int]] = []
+    for x in sorted(spans, key=lambda x: (x.s, -x.e)):
+        if x.e <= x.s:
+            continue  # ponytail: 관리자 입력엔 시작<끝 검증이 없다 — 뒤집힌 구간은 그리지 않는다
+        if out and x.s < out[-1][0].e:
+            head, n = out[-1]
+            type_ = x.type if head.type in (3, 4) and x.type in (1, 2, 5, 6) else head.type
+            merged = replace(
+                head,
+                e=max(head.e, x.e),
+                type=type_,
+                mine=head.mine or x.mine,
+                status=head.status or x.status,
+            )
+            out[-1] = (merged, n + 1)
+        else:
+            out.append((x, 0))
+    return [replace(h, label=f"{h.label} 외 {n}건") if n else h for h, n in out]
+
+
+_BUSY_STATUSES = ("approved", "requested")  # = reserve._LIVE. reserve 를 import 하면 순환
+
+
+def week_busy(s: Session, room_id: int, start: dt.date, viewer_email: str) -> list[dict]:
+    """주간 격자의 요일별 사용 구간 (web A3). 정규 슬롯 · approved · requested(남의 것은 '예약됨')를
+    날짜마다 merge_busy. 시험기간 안의 슬롯은 type 2 — room_state 가 그 구간을 시험으로 그리는 것과 같다.
+    시험기간만 있고 슬롯이 없는 날은 비어 있다(겹침 검사 reserve.overlaps 도 그렇게 본다)."""
+    end = start + dt.timedelta(days=6)
+    slots: dict[int, list[Span]] = defaultdict(list)
+    for x in s.scalars(select(Slot).where(Slot.room_id == room_id)):
+        slots[x.day].append(Span(x.s_h * 60 + x.s_m, x.e_h * 60 + x.e_m, x.type, x.subject))
+    resvs: dict[dt.date, list[Span]] = defaultdict(list)
+    for r in s.scalars(
+        select(Reservation)
+        .where(
+            Reservation.room_id == room_id,
+            Reservation.date.between(start, end),
+            Reservation.status.in_(_BUSY_STATUSES),
+        )
+        .order_by(Reservation.id)
+    ):
+        mine, label = public_label(r, viewer_email)
+        st = r.status if mine else None  # 남의 것은 상태도 숨긴다 — 존재만
+        resvs[r.date].append(
+            Span(r.s_h * 60 + r.s_m, r.e_h * 60 + r.e_m, r.type, label, mine, status=st)
+        )
+    exams = s.execute(
+        select(ExamPeriod.date_start, ExamPeriod.date_end).where(
+            ExamPeriod.room_id == room_id,
+            ExamPeriod.date_start <= end,
+            ExamPeriod.date_end >= start,
+        )
+    ).all()
+    out = []
+    for i in range(7):
+        d = start + dt.timedelta(days=i)
+        day_slots = slots[d.isoweekday()]
+        if any(a <= d <= b for a, b in exams):
+            day_slots = [replace(x, type=2) for x in day_slots]
+        spans = merge_busy(day_slots + resvs[d])
+        out.append(
+            {
+                "day": d.isoweekday(),
+                "spans": [
+                    {
+                        "from": fmt_hhmm(x.s),
+                        "to": fmt_hhmm(x.e),
+                        "label": x.label,
+                        "type": x.type,
+                        "mine": x.mine,
+                        "status": x.status,
+                    }
+                    for x in spans
+                ],
+            }
+        )
+    return out

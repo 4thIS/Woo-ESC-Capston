@@ -175,10 +175,29 @@ def _mine_out(s: Session, r: Reservation) -> dict:
     }
 
 
+def _requester(u: User | None) -> dict | None:
+    return {"email": u.email, "name": u.name, "student_no": u.student_no} if u else None
+
+
 def resv_admin_out(s: Session, r: Reservation) -> dict:
     u = s.get(User, r.requested_by) if r.requested_by else None
-    requester = {"email": u.email, "name": u.name, "student_no": u.student_no} if u else None
-    return {**_mine_out(s, r), "requester": requester}
+    return {**_mine_out(s, r), "requester": _requester(u), "pushed_at": r.pushed_at}
+
+
+def resv_with_room_rows(s: Session, q) -> list[dict]:
+    """select(Reservation) → ResvWithRoom dict (web A2). 신청자는 한 쿼리로 읽는다 — 건물 전체가 수백 행."""
+    rows = s.scalars(q).all()
+    emails = {r.requested_by for r in rows if r.requested_by}
+    users = {u.email: u for u in s.scalars(select(User).where(User.email.in_(emails)))}
+    return [
+        {
+            **S.ResvOut.model_validate(r).model_dump(),
+            "room_id": r.room_id,
+            "requester": _requester(users.get(r.requested_by)),
+            "pushed_at": r.pushed_at,
+        }
+        for r in rows
+    ]
 
 
 def pending_reservations(s: Session, school_id: int, now_local: dt.datetime) -> list[dict]:

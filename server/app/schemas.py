@@ -164,6 +164,7 @@ class RequesterOut(BaseModel):
 
 class ResvAdminOut(ResvMineOut):
     requester: RequesterOut | None
+    pushed_at: dt.datetime | None = None  # web A2 — NULL = 노드에 없음, 화면의 '예정' 배지
 
 
 class ExamIn(BaseModel):
@@ -264,6 +265,9 @@ class SlotWithRoom(SlotOut):
 
 class ResvWithRoom(ResvOut):
     room_id: int
+    # web A2 — 관리자 예약 표의 신청자·학번 열과 '예정' 배지. 관리자 전용 라우터에서만 쓴다
+    requester: RequesterOut | None = None  # 관리자가 넣은 예약은 null
+    pushed_at: dt.datetime | None = None
 
 
 class ExamWithRoom(ExamOut):
@@ -417,6 +421,9 @@ class UserOut(Out):
     student_no: str | None
     created_at: dt.datetime
     approved_at: dt.datetime | None
+    # web A1 — 관리자 회원 목록의 거절 사유. 값은 status=rejected 행에만 있다: 재신청(verify)이 행을
+    # 교체하고 /api/auth/me 는 active 만 통과하므로 학생 본인 응답에서는 구조적으로 null
+    reject_reason: str | None = None
 
 
 # ---- S4b §2.3 요약 ----
@@ -482,12 +489,41 @@ class ResvPublicOut(BaseModel):
     label: str
 
 
+class FreeRange(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class BusySpan(FreeRange):
+    label: str  # 남의 학생 예약·신청은 "예약됨" (room_state.public_label)
+    type: int  # 1~6. 시험기간 안의 정규 슬롯은 2
+    mine: bool
+    # 내 예약만 — 격자가 '내 신청(대기)'과 '내 예약'을 가른다. 남의 것·슬롯은 None
+    status: Literal["requested", "approved"] | None = None
+
+
+class BusyDay(BaseModel):
+    day: int  # 1=월 … 7=일 (SlotOut.day 와 같다)
+    spans: list[BusySpan]
+
+
+class FreeDay(BaseModel):
+    date: dt.date
+    spans: list[FreeRange]
+
+
 class WeekOut(BaseModel):
     room: RoomStateOut
     week_start: dt.date
     slots: list[SlotOut]
     reservations: list[ResvPublicOut]
     exams: list[ExamOut]
+    busy: list[BusyDay] = []  # web A3 — 겹친 구간을 합친 요일별 사용 구간 (room_state.week_busy)
+    # web A3 — KST 오늘~+7 신청 가능 구간 (reserve.free_days). date 파라미터와 무관
+    free: list[FreeDay] = []
+    # web A3 — 창(오늘~+7) 안 approved+requested 가 노드 용량(24)에 찼다 (reserve.room_full). 그러면 free 는 전부 빈 목록
+    full: bool = False
 
 
 class JobRunOut(Out):
@@ -509,12 +545,6 @@ class AllocationOut(BaseModel):
     unused_min: int
     total_min: int
     rate: float
-
-
-class FreeRange(BaseModel):
-    from_: str = Field(alias="from")
-    to: str
-    model_config = ConfigDict(populate_by_name=True)
 
 
 class FreeSlotsOut(BaseModel):

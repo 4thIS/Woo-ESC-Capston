@@ -131,6 +131,28 @@ def test_midnight_never_returned_as_until():
     assert RS.room_state([], [Span(M(23), RS.DAY_MIN, 6, "x")], False, M(23, 30)) == (7, None)
 
 
+def test_week_busy_reservation_query_orders_by_id(app, school, students):
+    """id 로 정렬해야 동률 구간의 머리(먼저 나온 것)가 폴마다 안 바뀐다 — 정렬이 없으면 DB 의 스캔
+    순서(인덱스 선택 등)에 맡겨져 달라질 수 있다. 실행된 SQL 에 ORDER BY 가 있는지로 직접 확인한다."""
+    from sqlalchemy import event
+
+    _, ids = _building(app, 1, "E")
+    rid = ids[101]
+    seen = []
+
+    def _capture(conn, cursor, statement, parameters, context, executemany):
+        seen.append(statement)
+
+    with app.state.Session() as s:
+        event.listen(s.bind, "before_cursor_execute", _capture)
+        try:
+            RS.week_busy(s, rid, dt.date(2026, 9, 21), "s1@mju.ac.kr")
+        finally:
+            event.remove(s.bind, "before_cursor_execute", _capture)
+    resv_sql = next(sql for sql in seen if "reservations" in sql and "SELECT" in sql)
+    assert "ORDER BY reservations.id" in resv_sql
+
+
 def test_type_map_and_fmt():
     assert RS.TYPE_TO_LAYOUT == {1: 1, 2: 5, 3: 3, 4: 4, 5: 6, 6: 7} and RS.FREE == 4
     assert RS.fmt_hhmm(M(9, 5)) == "09:05" and RS.fmt_hhmm(None) is None
@@ -167,3 +189,35 @@ def test_load_inputs_and_state_of(app, school, students):
         )
         assert RS.state_of(s, rid, dt.datetime(2026, 9, 23, 9, 30)) == (5, M(10, 50))  # noqa: DTZ001
         assert RS.state_of(s, rid, dt.datetime(2026, 9, 25, 9, 30)) == (4, None)  # noqa: DTZ001
+
+
+def test_merge_busy_chains_overlaps_but_keeps_touching_apart():
+    out = RS.merge_busy(
+        [
+            Span(M(11), M(13), 6, "동아리 대관"),
+            Span(M(10), M(12), 1, "알고리즘"),
+            Span(M(12, 30), M(14), 6, "예약됨", mine=True),
+            Span(M(14), M(15), 1, "운영체제"),  # 14:00 에 맞닿기만 — 따로 둔다
+            Span(M(16), M(15), 1, "뒤집힘"),  # 관리자 입력엔 시작<끝 검증이 없다 — 버린다
+        ]
+    )
+    assert [(x.s, x.e, x.type, x.label, x.mine) for x in out] == [
+        (M(10), M(14), 1, "알고리즘 외 2건", True),
+        (M(14), M(15), 1, "운영체제", False),
+    ]
+    same = RS.merge_busy([Span(M(9), M(10), 6, "짧은"), Span(M(9), M(11), 1, "긴")])
+    assert [(x.label, x.e) for x in same] == [("긴 외 1건", M(11))]  # 같은 시작이면 긴 것이 머리
+    mixed = RS.merge_busy(
+        [Span(M(9), M(11), 1, "수업"), Span(M(10), M(12), 6, "스터디", True, status="requested")]
+    )
+    assert [(x.label, x.mine, x.status) for x in mixed] == [("수업 외 1건", True, "requested")]
+    assert RS.merge_busy([]) == []
+
+
+def test_merge_busy_type_flips_to_in_use_when_head_is_cancelled_or_free_slot():
+    # 휴강(3) 슬롯 + 관리자 예약(6) 겹침 — 라벨은 머리(휴강)지만 type 은 실사용중(6)이어야 한다
+    out = RS.merge_busy([Span(M(10), M(12), 3, "휴강"), Span(M(10), M(12), 6, "대여")])
+    assert [(x.label, x.type) for x in out] == [("휴강 외 1건", 6)]
+    # 시험기간 슬롯(2, 이미 실사용) 위 예약은 그대로 2 유지
+    out2 = RS.merge_busy([Span(M(10), M(11), 2, "시험"), Span(M(10), M(11), 6, "대여")])
+    assert [(x.label, x.type) for x in out2] == [("시험 외 1건", 2)]

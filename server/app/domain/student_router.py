@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -77,10 +77,16 @@ def rooms(building_id: int | None = None, user: User = StudentUser, s: Session =
     return [_state_out(s, room, b, now) for room, b in s.execute(_rooms_q(user, building_id)).all()]
 
 
+# 9999-12-26 = 그 주 일요일이 date 범위 안인 마지막 날 — 넘기면 week_start+6 이 OverflowError(500)
+_WEEK_DATE = Query(None, le=dt.date(9999, 12, 26))
+
+
 @router.get("/rooms/{id}/week", response_model=S.WeekOut)
-def week(id: int, date: dt.date | None = None, user: User = StudentUser, s: Session = _DB):
+def week(id: int, date: dt.date | None = _WEEK_DATE, user: User = StudentUser, s: Session = _DB):
     room, b = _student_room(s, user, id)
-    start = clock.week_start(date or clock.local_today())
+    now = clock.local_now()
+    full = reserve.room_full(s, id, now.date())  # 신청 검사와 같은 규칙 — 창 안 live 24건
+    start = clock.week_start(date or now.date())
     end = start + dt.timedelta(days=6)
     resvs = []
     for r in s.scalars(
@@ -106,7 +112,7 @@ def week(id: int, date: dt.date | None = None, user: User = StudentUser, s: Sess
             }
         )
     return {
-        "room": _state_out(s, room, b, clock.local_now()),
+        "room": _state_out(s, room, b, now),
         "week_start": start,
         "slots": s.scalars(
             select(Slot).where(Slot.room_id == id).order_by(Slot.day, Slot.s_h, Slot.s_m)
@@ -121,6 +127,9 @@ def week(id: int, date: dt.date | None = None, user: User = StudentUser, s: Sess
             )
             .order_by(ExamPeriod.date_start)
         ).all(),
+        "busy": room_state.week_busy(s, id, start, user.email),
+        "free": reserve.free_days(s, id, now, full),
+        "full": full,
     }
 
 

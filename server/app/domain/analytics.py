@@ -15,7 +15,7 @@ from app.domain import clock, reserve, room_state
 from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
 from app.lora_service.models import Outbox
 
-OPEN_MIN, CLOSE_MIN = 9 * 60, 21 * 60
+OPEN_MIN, CLOSE_MIN = reserve.OPEN_MIN, reserve.CLOSE_MIN  # 운영 시간은 한 곳 (web A3 free)
 MAX_DAYS = 90
 DEFAULT_DAYS = 30
 BINS = (0, 10, 20, 30, 45, 60, 90, 120)

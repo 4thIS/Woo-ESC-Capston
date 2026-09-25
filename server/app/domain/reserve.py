@@ -12,13 +12,15 @@ from sqlalchemy.orm import Session
 
 from app import schemas as S
 from app.auth.models import User
-from app.domain import clock
+from app.domain import clock, room_state
 from app.domain.models import Building, Reservation, Room, Slot
 from app.domain.topology import NODE_RESV_MAX, RESV_HORIZON_DAYS
 from app.lora_service import api
 
 MAX_ACTIVE = 3
 MIN_MIN, MAX_MIN = 15, 120
+OPEN_MIN, CLOSE_MIN = 9 * 60, 21 * 60  # 운영 시간 KST (S10 §2.6) — analytics 도 이 값을 쓴다
+STEP_MIN = 5  # StudentResvIn 의 s_m·e_m multiple_of=5
 STUDENT_LABEL = "학생 예약"  # 문 앞 e-Paper 는 공개 — 학생이 적은 목적은 싣지 않는다
 CHECKIN_BEFORE, CHECKIN_AFTER = 10, 15  # 분
 STUDENT_TYPE = 6  # 대여
@@ -117,14 +119,9 @@ def _hit(x, s_min: int, e_min: int) -> bool:
     return x.s_h * 60 + x.s_m < e_min and s_min < x.e_h * 60 + x.e_m
 
 
-def overlaps(
-    s: Session, room_id: int, date: dt.date, s_min: int, e_min: int, exclude_id: int | None = None
-) -> bool:
-    """정규 슬롯(그 요일, type 무관)·approved/requested 예약과 1분이라도 겹치면 True.
-    시험기간은 슬롯이 있을 때만 의미가 있어 슬롯 겹침에 이미 포함된다."""
-    slots = s.scalars(select(Slot).where(Slot.room_id == room_id, Slot.day == date.isoweekday()))
-    if any(_hit(x, s_min, e_min) for x in slots):
-        return True
+def _blockers(s: Session, room_id: int, date: dt.date, exclude_id: int | None = None) -> list:
+    """겹침 판정 대상 — 그 요일 정규 슬롯(type 무관) + 그 날 approved/requested 예약.
+    overlaps 와 free_spans 가 같은 목록을 본다: 빈 구간으로 보여준 곳이 겹침 409 가 나지 않게."""
     q = select(Reservation).where(
         Reservation.room_id == room_id,
         Reservation.date == date,
@@ -132,7 +129,57 @@ def overlaps(
     )
     if exclude_id is not None:
         q = q.where(Reservation.id != exclude_id)
-    return any(_hit(x, s_min, e_min) for x in s.scalars(q))
+    slots = s.scalars(select(Slot).where(Slot.room_id == room_id, Slot.day == date.isoweekday()))
+    return [*slots, *s.scalars(q)]
+
+
+def overlaps(
+    s: Session, room_id: int, date: dt.date, s_min: int, e_min: int, exclude_id: int | None = None
+) -> bool:
+    """정규 슬롯(그 요일, type 무관)·approved/requested 예약과 1분이라도 겹치면 True.
+    시험기간은 슬롯이 있을 때만 의미가 있어 슬롯 겹침에 이미 포함된다."""
+    return any(_hit(x, s_min, e_min) for x in _blockers(s, room_id, date, exclude_id))
+
+
+def free_spans(s: Session, room_id: int, date: dt.date, lo: int) -> list[tuple[int, int]]:
+    """[lo, CLOSE_MIN] 안에서 _blockers 의 여집합 (분). 끝점은 5분 격자 안쪽으로 맞추고
+    MIN_MIN 보다 짧은 조각은 버린다 — 남은 구간 안의 신청은 겹침·길이·격자 검사를 통과한다."""
+    gaps, cur = [], lo
+    for a, b in sorted(
+        (x.s_h * 60 + x.s_m, x.e_h * 60 + x.e_m) for x in _blockers(s, room_id, date)
+    ):
+        a, b = min(a, b), max(a, b)  # 0분/뒤집힌 입력도 막힌 구간으로 (merge_busy 와 같은 정신)
+        if a > cur:
+            gaps.append((cur, a))
+        cur = max(cur, b)
+    gaps.append((cur, CLOSE_MIN))
+    out = []
+    for a, b in gaps:
+        a, b = -(-a // STEP_MIN) * STEP_MIN, min(b, CLOSE_MIN) // STEP_MIN * STEP_MIN
+        if b - a >= MIN_MIN:
+            out.append((a, b))
+    return out
+
+
+def free_days(s: Session, room_id: int, now_local: dt.datetime, full: bool) -> list[dict]:
+    """예약 화면의 날짜 칩 8개(KST 오늘~+7)와 날마다 신청 가능한 구간 (web A3).
+    오늘은 지금 이후만(시작 > 지금). full(= room_full, 호출자가 WeekOut.full 로도 싣는다)이면 전부
+    빈 목록 — 신청해도 409 라서."""
+    today = now_local.date()
+    out = []
+    for i in range(RESV_HORIZON_DAYS + 1):  # ponytail: 날마다 쿼리 2개(16개) — 느려지면 범위 조회로
+        d = today + dt.timedelta(days=i)
+        lo = OPEN_MIN if i else max(OPEN_MIN, now_local.hour * 60 + now_local.minute + 1)
+        spans = [] if full else free_spans(s, room_id, d, lo)
+        out.append(
+            {
+                "date": d,
+                "spans": [
+                    {"from": room_state.fmt_hhmm(a), "to": room_state.fmt_hhmm(b)} for a, b in spans
+                ],
+            }
+        )
+    return out
 
 
 def validate_request(
