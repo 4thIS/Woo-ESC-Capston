@@ -29,7 +29,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_job_runs_name", "job_runs", ["name", "ran_at"])
-    with op.batch_alter_table("reservations") as b:
+    # sqlite 의 익명 CHECK(원래 id BETWEEN...)는 reflection 이 못 읽어 재생성 경고를 내고 사라진다
+    # (리뷰 🟡, 실측) — table_args 로 재생성될 새 테이블에 이름 붙여 명시해 경고 자체를 없앤다.
+    with op.batch_alter_table(
+        "reservations",
+        table_args=(sa.CheckConstraint("id BETWEEN 1 AND 65535", name="ck_resv_id"),),
+    ) as b:
         b.add_column(sa.Column("status", sa.String(), nullable=False, server_default="approved"))
         b.add_column(sa.Column("requested_by", sa.String(), nullable=True))
         b.add_column(sa.Column("requested_at", sa.DateTime(), nullable=True))
@@ -39,9 +44,6 @@ def upgrade() -> None:
         b.add_column(sa.Column("checked_in_at", sa.DateTime(), nullable=True))
         b.add_column(sa.Column("cancelled_at", sa.DateTime(), nullable=True))
         b.add_column(sa.Column("pushed_at", sa.DateTime(), nullable=True))
-        # add_column 만으로도 batch 모드가 테이블을 재생성하는데, sqlite 의 익명 CHECK 는 reflection 이
-        # 못 읽어 재생성 뒤 사라진다 (리뷰 🟡, 실측) — 기존 id 범위 CHECK 를 이름 붙여 다시 만든다.
-        b.create_check_constraint("ck_resv_id", "id BETWEEN 1 AND 65535")
         b.create_check_constraint(
             "ck_resv_status",
             "status IN ('requested','approved','rejected','cancelled','expired')",
@@ -49,12 +51,23 @@ def upgrade() -> None:
         b.create_foreign_key("fk_resv_requester", "users", ["requested_by"], ["email"])
         b.create_index("ix_resv_room_date", ["room_id", "date"])
         b.create_index("ix_resv_requester", ["requested_by", "status"])
-    # 기존 예약 중 창 안(KST 오늘~+7)인 것은 S2 가 이미 노드로 보냈다 — pushed_at 을 NULL 로 두면
-    # 배포 직후 삭제·취소에 RESV_DEL 이 안 나가 노드에 유령 예약이 남고, 첫 일일 작업이 오늘 한낮에
-    # 창 안 예약을 전부 다시 보낸다 (자체 점검 🟡). 창 밖은 NULL 로 두어 승격 대상으로 남긴다.
+    # 기존 예약 중 창 안(KST 오늘~+7)이고 이미 RESV_SET 으로 노드에 나간 것만 pushed_at 을 채운다.
+    # S2 는 등록 시점 창 안이면 바로 보냈지만, 창 밖(오늘+7 초과)으로 만들어진 예약은 한 번도 보낸 적
+    # 없다 — 그런 행까지 pushed_at 을 채우면 첫 일일 승격이 그 행을 건너뛰어 노드에 영영 안 실린다.
+    # RESV_DEL 이 아니라 RESV_SET 이력을 보는 이유: 지워진 적 없이 지금 창에 들어온 경우만 "이미 노드에
+    # 있다"고 볼 수 있다. cancelled 상태 outbox 행(예: 방 재배정으로 취소된 발송)은 실제 전송이 아니므로
+    # 제외한다.
     op.execute(
         "UPDATE reservations SET pushed_at = CURRENT_TIMESTAMP"
         " WHERE date BETWEEN date('now', '+9 hours') AND date('now', '+9 hours', '+7 days')"
+        " AND EXISTS ("
+        "   SELECT 1 FROM outbox"
+        "   JOIN rooms ON rooms.id = reservations.room_id"
+        "   JOIN buildings ON buildings.id = rooms.building_id"
+        "   WHERE outbox.bld = buildings.bld AND outbox.room = rooms.room"
+        "     AND outbox.type = 'RESV_SET' AND outbox.state != 'cancelled'"
+        "     AND json_extract(outbox.payload, '$.resv_id') = reservations.id"
+        " )"
     )
 
 

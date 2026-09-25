@@ -80,7 +80,8 @@ def record_provider(
                     )
                 ]
             if kind == "resv":
-                lo, hi = today(), today() + dt.timedelta(days=RESV_HORIZON_DAYS)
+                lo = today()
+                hi = lo + dt.timedelta(days=RESV_HORIZON_DAYS)
                 return [
                     C.ResvSet(
                         0,

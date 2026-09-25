@@ -139,6 +139,74 @@ def test_record_provider_only_approved_and_local_window(app, students, monkeypat
     assert sorted(x.resv_id for x in recs) == [1, 4]  # 9/30 = KST 오늘+7 포함, 신청·취소 제외
 
 
+def test_record_provider_subject_hides_requester(app, students):
+    """학생이 신청해 승인된 예약도 문 앞 e-Paper 엔 과목 대신 '학생 예약' 만 나간다."""
+    from app.domain.models import Building, Room
+    from app.domain.topology import record_provider
+
+    with app.state.Session() as s, s.begin():
+        b = Building(school_id=1, name="E동", bld="E")
+        s.add(b)
+        s.flush()
+        r = Room(building_id=b.id, room=101, units=1)
+        s.add(r)
+        s.flush()
+        s.add(
+            Reservation(
+                id=1,
+                room_id=r.id,
+                date=clock.local_today(),
+                s_h=9,
+                s_m=0,
+                e_h=10,
+                e_m=0,
+                type=6,
+                subject="비밀 과목",
+                professor="",
+                status="approved",
+                requested_by="s1@mju.ac.kr",
+            )
+        )
+    recs = record_provider(app.state.Session)("E", 101, "resv")
+    assert len(recs) == 1 and recs[0].subject == "학생 예약"
+
+
+def test_record_provider_limits_to_node_resv_max(app, students):
+    """방의 창 안 approved 예약이 24 개를 넘으면 (date, s_h, s_m) 순 앞 24 개만 — STORE_FAIL 방지."""
+    from app.domain.models import Building, Room
+    from app.domain.topology import NODE_RESV_MAX, record_provider
+
+    today = clock.local_today()
+    with app.state.Session() as s, s.begin():
+        b = Building(school_id=1, name="E동", bld="E")
+        s.add(b)
+        s.flush()
+        r = Room(building_id=b.id, room=101, units=1)
+        s.add(r)
+        s.flush()
+        s.add_all(
+            [
+                Reservation(
+                    id=i,
+                    room_id=r.id,
+                    date=today,
+                    s_h=8,
+                    s_m=i,
+                    e_h=9,
+                    e_m=0,
+                    type=6,
+                    subject="x",
+                    professor="",
+                    status="approved",
+                )
+                for i in range(1, 26)
+            ]
+        )
+    recs = record_provider(app.state.Session)("E", 101, "resv")
+    assert NODE_RESV_MAX == 24
+    assert [x.resv_id for x in recs] == list(range(1, 25))  # s_m 오름차순 = id 1..24, 25 는 잘림
+
+
 def test_resv_id_check_survives_migration(tmp_path):
     import pytest
     from sqlalchemy import create_engine, text
@@ -160,3 +228,40 @@ def test_resv_id_check_survives_migration(tmp_path):
                 " VALUES (70000, 1, '2026-09-24', 9, 0, 10, 0, 6, 'x', '')"
             )
         )
+
+
+def test_backfill_pushed_at_needs_resv_set_history(tmp_path):
+    """오늘~+7 인 예약이라도 RESV_SET 이력(outbox)이 없으면 pushed_at 을 채우지 않는다 — 채우면
+    첫 일일 승격이 노드에 한 번도 나간 적 없는 예약을 건너뛰어 영영 안 실린다 (fix round 1, item 1)."""
+    from sqlalchemy import create_engine, text
+
+    from alembic import command
+    from tests.test_migrations import _cfg
+
+    db = tmp_path / "p.db"
+    command.upgrade(_cfg(db), "1739aef3234e")  # web_student 직전 (web_auth head)
+    today = (dt.datetime.now(dt.UTC) + dt.timedelta(hours=9)).date().isoformat()
+    with create_engine(f"sqlite:///{db}").begin() as c:
+        c.execute(text("INSERT INTO schools (id, name, net_id) VALUES (1,'a',75)"))
+        c.execute(text("INSERT INTO buildings (id, school_id, name, bld) VALUES (1,1,'x','E')"))
+        c.execute(text("INSERT INTO rooms (id, building_id, room, units) VALUES (1,1,101,1)"))
+        c.execute(
+            text(
+                "INSERT INTO reservations (id, room_id, date, s_h, s_m, e_h, e_m, type, subject, professor)"
+                " VALUES (1,1,:d,9,0,10,0,6,'a',''), (2,1,:d,9,0,10,0,6,'b','')"
+            ),
+            {"d": today},
+        )
+        # id=1 만 RESV_SET 으로 이미 나간 이력이 있다 (id=2 는 없음 — 창 밖에서 만들어졌던 예약)
+        c.execute(
+            text(
+                "INSERT INTO outbox (bld, room, unit, type, payload, priority, state, attempts,"
+                " created_at) VALUES ('E', 101, 1, 'RESV_SET', '{\"resv_id\": 1}', 1, 'queued', 0,"
+                " CURRENT_TIMESTAMP)"
+            )
+        )
+    command.upgrade(_cfg(db), "head")
+    with create_engine(f"sqlite:///{db}").connect() as c:
+        rows = dict(c.execute(text("SELECT id, pushed_at FROM reservations")).fetchall())
+    assert rows[1] is not None
+    assert rows[2] is None
