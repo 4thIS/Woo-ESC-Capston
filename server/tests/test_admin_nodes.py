@@ -54,9 +54,12 @@ def _status(
         )
 
 
-def _outbox(app, bld, room, *, unit=1, state="failed", last_error=None, finished_at=None):
+def _outbox(
+    app, bld, room, *, unit=1, state="failed", last_error=None, finished_at=None, modem_id=None
+):
     with app.state.Session() as s, s.begin():
         o = Outbox(
+            modem_id=modem_id,
             bld=bld,
             room=room,
             unit=unit,
@@ -104,6 +107,23 @@ def test_expected_nodes_left_join_and_warnings(app, school):
     assert _nodes(app, school_id=2)[0]["bld"] == "F"
 
 
+def test_expected_nodes_excludes_other_school_modem_on_bld_reuse(app, school):
+    """건물 삭제·재생성으로 bld 글자가 재사용되면, 옛 학교(모뎀이 다른 학교 소속) status 행이
+    같은 (bld, room, unit) 을 우연히 물고 있어도 쓰이면 안 된다 (/api/lora/status 와 같은 규칙)."""
+    _building(app, 1, "E", modem_id="m1")
+    with app.state.Session() as s, s.begin():
+        s.add(Modem(modem_id="m2", token_hash="x", school_id=2))
+    _status(app, "E", 101, 1, modem_id="m2", last_seen_at=NOW)  # 학교 2 소유 모뎀의 옛 행 → 안 쓰임
+    _status(app, "E", 102, 1, modem_id="m1", last_seen_at=NOW)  # 학교 1 소유 모뎀 → 쓰임
+    rows = _nodes(app)
+    a = next(r for r in rows if r["room"] == 101)
+    b = next(r for r in rows if r["room"] == 102)
+    assert (
+        a["warnings"] == ["unseen"] and a["sync_state"] == "unknown" and a["last_seen_at"] is None
+    )
+    assert b["warnings"] == [] and b["last_seen_at"] == NOW
+
+
 def test_failed_outbox_window_join_and_limit(app, school):
     _, ids = _building(app, 1, "E")
     _building(app, 2, "F", rooms=((101, 1),))
@@ -126,3 +146,17 @@ def test_failed_outbox_window_join_and_limit(app, school):
         )
         assert [r["id"] for r in admin.failed_outbox(s, 1, days=7, limit=1, now=NOW)] == [newest]
         assert admin.failed_outbox(s, 1, days=8, now=NOW)[-1]["id"] == old
+
+
+def test_failed_outbox_excludes_other_school_modem_on_bld_reuse(app, school):
+    """건물 삭제·재생성으로 bld 글자가 재사용되면, 옛 학교(모뎀이 다른 학교 소속) outbox 행이
+    같은 (bld, room) 을 우연히 물고 있어도 실패 목록에 보이면 안 된다 (/api/lora/outbox 와 같은 규칙)."""
+    _building(app, 1, "E")
+    with app.state.Session() as s, s.begin():
+        s.add(Modem(modem_id="m2", token_hash="x", school_id=2))
+    stale = _outbox(app, "E", 101, modem_id="m2", finished_at=NOW)  # 학교 2 소유 모뎀의 옛 행
+    mine = _outbox(app, "E", 101, modem_id=None, finished_at=NOW)
+    with app.state.Session() as s:
+        rows = admin.failed_outbox(s, 1, days=7, now=NOW)
+    assert [r["id"] for r in rows] == [mine]
+    assert stale not in [r["id"] for r in rows]
