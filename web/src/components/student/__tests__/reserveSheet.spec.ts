@@ -40,6 +40,7 @@ describe('ReserveSheet — 제약은 고를 수 없게 건다 (student-room.md �
     expect(chips).toHaveLength(8)
     expect(chips[0].text()).toContain('오늘')
     expect(chips[0].attributes('aria-checked')).toBe('true')
+    expect(chips[0].attributes('aria-label')).toBe('오늘 10월 23일 금')
     expect(chips[1].attributes('aria-label')).toBe('10월 24일 토')
     expect(w.get('legend').text()).toContain('10월 23일 금')
   })
@@ -141,5 +142,26 @@ describe('ReserveSheet — 제약은 고를 수 없게 건다 (student-room.md �
     expect(submitBtn(w).attributes('aria-busy')).toBe('true')
     await w.get('form').trigger('submit')
     expect(w.emitted('submit')).toBeUndefined()
+  })
+
+  it('오늘 시작 후보가 다 지난 구간은 목록에서 빠진다 — 열어 둔 채 지나도 선택이 풀린다', async () => {
+    const w = mount(ReserveSheet, { props: base })
+    await w.findAll('input[type="radio"]')[0].setValue()
+    expect(w.findAll('select')).toHaveLength(2)
+    await w.setProps({ now: new Date('2026-10-23T02:20:00Z') }) // KST 11:20
+    expect(w.findAll('label.rs__span .num').map((l) => l.text())).toEqual(['16:00 – 21:00'])
+    expect(w.findAll('select')).toHaveLength(0)
+    expect(submitBtn(w).element.disabled).toBe(true)
+  })
+
+  it('자정이 지나면 지난 날의 구간은 고를 수 없다', async () => {
+    const w = mount(ReserveSheet, { props: base })
+    await w.findAll('input[type="radio"]')[1].setValue()
+    await w.get('.field__control').setValue('스터디')
+    expect(submitBtn(w).element.disabled).toBe(false)
+    await w.setProps({ now: new Date('2026-10-23T15:05:00Z') }) // KST 10/24 00:05
+    expect(w.findAll('label.rs__span')).toHaveLength(0)
+    expect(w.get('.rs__empty').text()).toBe('이 날은 비어 있는 시간이 없어요')
+    expect(submitBtn(w).element.disabled).toBe(true)
   })
 })

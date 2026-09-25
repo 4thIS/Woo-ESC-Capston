@@ -55,12 +55,18 @@ watch(
 )
 
 const day = computed(() => props.days.find((d) => d.date === date.value) ?? null)
-/** 재조회로 사라진 구간이면 null — 선택이 풀리고 버튼이 잠긴다 */
-const span = computed(() => day.value?.spans.find((s) => spanKey(s) === spanId.value) ?? null)
-/** 오늘이면 지금 이후만 — 서버가 준 뒤 흐른 시간만큼 지운다 */
-const after = computed(() =>
-  day.value?.date === kstDateStr(props.now) ? kstMinutes(props.now) : null,
+/** 오늘이면 지금 이후만 — 서버가 준 뒤 흐른 시간만큼 지운다. 자정이 지나 어제가 된 날은 전부 지운다 */
+const after = computed(() => {
+  const today = kstDateStr(props.now)
+  if (!day.value || day.value.date > today) return null
+  return day.value.date === today ? kstMinutes(props.now) : Infinity
+})
+/** 고를 수 있는 시작이 하나라도 남은 구간만 (student-room.md: 오늘 칩에서 지난 구간을 지운다) */
+const shown = computed(
+  () => day.value?.spans.filter((s) => startOptions(s, after.value).length) ?? [],
 )
+/** 재조회로 사라졌거나 시간이 흘러 지난 구간이면 null — 선택이 풀리고 버튼이 잠긴다 */
+const span = computed(() => shown.value.find((s) => spanKey(s) === spanId.value) ?? null)
 const starts = computed(() => (span.value ? startOptions(span.value, after.value) : []))
 const ends = computed(() =>
   span.value && start.value !== null ? endOptions(start.value, span.value) : [],
@@ -145,7 +151,7 @@ function submit() {
           class="rs__chip"
           :class="{ 'rs__chip--on': d.date === date }"
           :aria-checked="d.date === date"
-          :aria-label="dateLabel(d.date)"
+          :aria-label="i === 0 ? `오늘 ${dateLabel(d.date)}` : dateLabel(d.date)"
           @click="pickDay(d.date)"
         >
           <span>{{ i === 0 ? '오늘' : chipDay(d.date) }}</span>
@@ -158,11 +164,11 @@ function submit() {
       <legend class="rs__h">
         비어 있는 시간 <span class="rs__sub">· {{ dateLabel(day.date) }}</span>
       </legend>
-      <p v-if="!day.spans.length" class="rs__empty">
+      <p v-if="!shown.length" class="rs__empty">
         {{ full ? FULL_TEXT : '이 날은 비어 있는 시간이 없어요' }}
       </p>
       <label
-        v-for="s in day.spans"
+        v-for="s in shown"
         :key="spanKey(s)"
         class="rs__span"
         :class="{ 'rs__span--on': spanKey(s) === spanId }"
@@ -222,6 +228,7 @@ function submit() {
   display: flex;
   flex-direction: column;
   min-height: calc(100vh - 58px);
+  min-height: calc(100dvh - 58px);
 }
 .rs__sec {
   min-width: 0;
