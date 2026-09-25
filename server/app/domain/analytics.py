@@ -11,8 +11,8 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.auth import scope
-from app.domain import clock, room_state
-from app.domain.models import Building, Reservation, Room
+from app.domain import clock, reserve, room_state
+from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
 from app.lora_service.models import Outbox
 
 OPEN_MIN, CLOSE_MIN = 9 * 60, 21 * 60
@@ -50,15 +50,54 @@ def _school_rooms(s: Session, school_id: int, building_id: int | None):
     return s.execute(q).all()
 
 
-def day_segments(s: Session, room_id: int, date: dt.date) -> list[tuple[int, int, int]]:
+def _inputs_range(s: Session, room_ids: list[int], d_from: dt.date, d_to: dt.date):
+    """방들의 슬롯(요일별)·승인 예약·시험기간을 쿼리 3개로 읽고, (room_id, date) → load_inputs
+    와 같은 (slots, resvs, in_exam) 을 돌려주는 함수를 준다. 정렬도 load_inputs 와 같다."""
+    slots: dict = defaultdict(list)
+    for x in s.scalars(select(Slot).where(Slot.room_id.in_(room_ids)).order_by(Slot.s_h, Slot.s_m)):
+        slots[x.room_id, x.day].append(
+            room_state.Span(x.s_h * 60 + x.s_m, x.e_h * 60 + x.e_m, x.type, x.subject)
+        )
+    resvs: dict = defaultdict(list)
+    for r in s.scalars(
+        select(Reservation)
+        .where(
+            Reservation.room_id.in_(room_ids),
+            Reservation.date.between(d_from, d_to),
+            Reservation.status == "approved",
+        )
+        .order_by(Reservation.s_h, Reservation.s_m)
+    ):
+        resvs[r.room_id, r.date].append(
+            room_state.Span(r.s_h * 60 + r.s_m, r.e_h * 60 + r.e_m, r.type, r.subject, id=r.id)
+        )
+    exams: dict = defaultdict(list)
+    for e in s.scalars(
+        select(ExamPeriod).where(
+            ExamPeriod.room_id.in_(room_ids),
+            ExamPeriod.date_start <= d_to,
+            ExamPeriod.date_end >= d_from,
+        )
+    ):
+        exams[e.room_id].append((e.date_start, e.date_end))
+
+    def get(room_id: int, d: dt.date):
+        in_exam = any(a <= d <= b for a, b in exams.get(room_id, ()))
+        return slots.get((room_id, d.isoweekday()), []), resvs.get((room_id, d), []), in_exam
+
+    return get
+
+
+def _segments(
+    slots: list[room_state.Span], resvs: list[room_state.Span], in_exam: bool
+) -> list[tuple[int, int, int]]:
     """운영 시간 안의 배정 구간 (s, e, layout). room_state 를 변화점마다 호출해 이어 붙인다.
     배정 = layout ∈ {1,2,3,5,6,7} — 즉 FREE(4) 가 아닌 전부."""
-    slots, resvs, in_exam = room_state.load_inputs(s, room_id, date)
-    lessons = [x for x in slots if x.type == 1]  # 수업은 매시 50분·정각에 1↔2
     points = {OPEN_MIN, CLOSE_MIN, *(p for x in slots + resvs for p in (x.s, x.e))}
-    for x in lessons:
-        points.update(range(x.s - x.s % 60 + 50, x.e, 60))
-        points.update(range(x.s - x.s % 60 + 60, x.e, 60))
+    for x in slots:
+        if x.type == 1:  # 수업은 매시 50분·정각에 1↔2
+            points.update(range(x.s - x.s % 60 + 50, x.e, 60))
+            points.update(range(x.s - x.s % 60 + 60, x.e, 60))
     pts = sorted(p for p in points if OPEN_MIN <= p <= CLOSE_MIN)
     out: list[tuple[int, int, int]] = []
     for a, b in pairwise(pts):
@@ -72,8 +111,10 @@ def day_segments(s: Session, room_id: int, date: dt.date) -> list[tuple[int, int
     return out
 
 
-# ponytail: 방·날짜마다 load_inputs 쿼리 3개(방 100·30일 ≈ 9000 쿼리, 노트북 SQLite 실측 ≈ 1.1 s — Pi 는 더 느림).
-# 목표 < 1 s 를 넘기면 방별로 기간 전체 슬롯·예약·시험을 한 번에 읽어 날짜별로 나누는 load_inputs_range 로.
+def day_segments(s: Session, room_id: int, date: dt.date) -> list[tuple[int, int, int]]:
+    return _segments(*room_state.load_inputs(s, room_id, date))
+
+
 def allocation(
     s: Session,
     school_id: int,
@@ -86,7 +127,9 @@ def allocation(
         lambda: {"label": "", "assigned_min": 0, "unused_min": 0, "total_min": 0}
     )
     days = _days(d_from, d_to)
-    for room, b in _school_rooms(s, school_id, building_id):
+    rooms = _school_rooms(s, school_id, building_id)
+    inputs = _inputs_range(s, [room.id for room, _ in rooms], d_from, d_to)
+    for room, b in rooms:
         for d in days:
             if group == "room":
                 key, label = room.id, f"{b.name} {room.room}"
@@ -97,7 +140,7 @@ def allocation(
             a = acc[key]
             a["label"] = label
             a["total_min"] += CLOSE_MIN - OPEN_MIN
-            for x0, x1, layout in day_segments(s, room.id, d):
+            for x0, x1, layout in _segments(*inputs(room.id, d)):
                 a["assigned_min"] += x1 - x0
                 if layout == 3:  # 휴강
                     a["unused_min"] += x1 - x0
@@ -110,9 +153,11 @@ def allocation(
 
 def free_slots(s: Session, school_id: int, date: dt.date, building_id: int | None) -> list[dict]:
     out = []
-    for room, b in _school_rooms(s, school_id, building_id):
+    rooms = _school_rooms(s, school_id, building_id)
+    inputs = _inputs_range(s, [room.id for room, _ in rooms], date, date)
+    for room, b in rooms:
         free, cur = [], OPEN_MIN
-        for x0, x1, _ in day_segments(s, room.id, date):
+        for x0, x1, _ in _segments(*inputs(room.id, date)):
             if x0 > cur:
                 free.append({"from": room_state.fmt_hhmm(cur), "to": room_state.fmt_hhmm(x0)})
             cur = max(cur, x1)
@@ -150,9 +195,9 @@ def reservation_stats(
     for r in s.scalars(q):
         row = series[bucket(r.date)]
         row["requested"] += 1
-        if r.status in RESV_KEYS:
+        if r.status in ("approved", "rejected", "cancelled", "expired"):
             row[r.status] += 1
-        if r.status == "approved" and clock.local_dt(r.date, r.e_h, r.e_m) <= now_local:
+        if r.status == "approved" and reserve.end_local(r) <= now_local:
             ended += 1
             row["no_show" if r.checked_in_at is None else "checked_in"] += 1
     labels = sorted({bucket(d) for d in _days(d_from, d_to)})
@@ -193,7 +238,7 @@ def _latency_rows(
 
 
 def _secs(o: Outbox) -> float:
-    return (o.finished_at - o.created_at).total_seconds()
+    return max(0.0, (o.finished_at - o.created_at).total_seconds())  # 시계 역행 → 0 (bin 합 = n)
 
 
 def latency(s: Session, school_id: int, d_from: dt.date, d_to: dt.date, type_: str) -> dict:

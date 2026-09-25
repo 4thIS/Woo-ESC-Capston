@@ -2,7 +2,7 @@ import datetime as dt
 
 from app.domain import analytics as A
 from app.domain import clock
-from app.domain.models import Building, Reservation, Room, Slot
+from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
 from app.lora_service.models import Modem, Outbox
 
 UTC_NOW = dt.datetime(2026, 9, 23, 1, 30)  # noqa: DTZ001 — KST 9/23(수) 10:30
@@ -128,6 +128,25 @@ def test_day_segments_and_allocation(app, school, monkeypatch):
         assert by_w[0]["key"] == 3 and by_w[0]["label"] == "수"  # rate desc — 수요일만 배정
 
 
+def test_range_loader_matches_day_segments_with_exam(app, school, monkeypatch):
+    _fix_clock(monkeypatch)
+    _, ids = _building(app, 1, "E", rooms=((101, 1),))
+    rid = ids[101]
+    _slot(app, rid, 2, 9, 0, 10, 50)  # 화
+    _slot(app, rid, 3, 9, 0, 10, 50)  # 수
+    _resv(app, rid, dt.date(2026, 9, 22), 13, 0, 14, 0, id_=1)
+    with app.state.Session() as s, s.begin():
+        s.add(
+            ExamPeriod(room_id=rid, date_start=dt.date(2026, 9, 23), date_end=dt.date(2026, 9, 23))
+        )
+    with app.state.Session() as s:
+        assert A.day_segments(s, rid, dt.date(2026, 9, 23)) == [(540, 650, 5)]  # 시험기간
+        inputs = A._inputs_range(s, [rid], dt.date(2026, 9, 21), dt.date(2026, 9, 27))
+        for i in range(7):
+            d = dt.date(2026, 9, 21) + dt.timedelta(days=i)
+            assert A._segments(*inputs(rid, d)) == A.day_segments(s, rid, d)
+
+
 def test_free_slots_merge(app, school, monkeypatch):
     _fix_clock(monkeypatch)
     _, ids = _building(app, 1, "E", rooms=((101, 1),))
@@ -190,10 +209,13 @@ def test_reservation_stats_and_no_show(app, school, students, monkeypatch):
         requested_at=UTC_NOW,
     )
     _resv(app, rid, d, 13, 0, 14, 0, id_=5)  # 관리자 예약 → 통계 제외
+    _resv(  # 대기 중 신청 — requested 에 한 번만 센다
+        app, rid, dt.date(2026, 9, 24), 13, 0, 14, 0, id_=6, status="requested", requested_by=s1
+    )
     with app.state.Session() as s:
         st = A.reservation_stats(s, 1, d, dt.date(2026, 9, 24), "day", clock.local_now())
         assert st["totals"] == {
-            "requested": 4,
+            "requested": 5,
             "approved": 3,
             "rejected": 1,
             "cancelled": 0,
@@ -204,6 +226,7 @@ def test_reservation_stats_and_no_show(app, school, students, monkeypatch):
         assert st["no_show_rate"] == 0.5 and st["checkin_rate"] == 0.5
         assert [x["date"] for x in st["series"]] == ["2026-09-22", "2026-09-23", "2026-09-24"]
         assert st["series"][0]["approved"] == 2 and st["series"][2]["approved"] == 1
+        assert st["series"][2]["requested"] == 2
 
 
 def test_latency_bins_and_samples(app, school, monkeypatch):
@@ -238,10 +261,12 @@ def test_latency_excludes_other_school_modem_on_bld_reuse(app, school, monkeypat
     day_ago = UTC_NOW - dt.timedelta(days=1)
     _acked(app, "E", 101, "SLOT_SET", day_ago, 7, modem_id="m2")  # 학교 2 모뎀의 옛 행
     _acked(app, "E", 101, "SLOT_SET", day_ago, 9)
+    _acked(app, "E", 101, "SLOT_SET", day_ago, -3)  # 시계 역행 → 0 s 로 첫 bin
     with app.state.Session() as s:
         d0, d1 = dt.date(2026, 8, 25), dt.date(2026, 9, 23)
-        assert A.latency(s, 1, d0, d1, "all")["n"] == 1
-        assert [x["seconds"] for x in A.latency_samples(s, 1, d0, d1, "all", 10)] == [9]
+        lat = A.latency(s, 1, d0, d1, "all")
+        assert lat["n"] == 2 and sum(b["count"] for b in lat["bins"]) == 2
+        assert sorted(x["seconds"] for x in A.latency_samples(s, 1, d0, d1, "all", 10)) == [0, 9]
 
 
 def test_parse_range_and_endpoints(client, app, school, student_hdr, monkeypatch):
