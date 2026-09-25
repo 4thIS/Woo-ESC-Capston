@@ -5,12 +5,15 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import { showToast } from '@/components/ui/toast'
 import RoomTree from '@/components/domain/RoomTree.vue'
 import type { SavedRow } from '@/components/domain/rules'
+import { adminApi } from '@/api/admin'
 import { roomsApi } from '@/api/rooms'
 import type { RoomOut } from '@/api/types'
 import { useResource } from '@/lib/useResource'
 import { useOutboxTracker } from '../outboxTrack'
 import { defaultPick, roomLabeler } from '../roomsView'
 import { picked } from '../selection'
+import PendingBlock from './rooms/PendingBlock.vue'
+import ResvBlock from './rooms/ResvBlock.vue'
 import SlotBlock from './rooms/SlotBlock.vue'
 
 const router = useRouter()
@@ -63,13 +66,20 @@ const scope = useResource(
   },
   { deps: () => bids.value.join(',') },
 )
+// 신청 대기는 학교 전체 — 처리해야 할 일이라 트리 밖 신청도 숨기지 않는다 (설계 판정)
+const pending = useResource(() => adminApi.pendingResv())
 const inPick = <T extends { room_id: number }>(xs: T[] | undefined) =>
   (xs ?? []).filter((x) => picked.value.includes(x.room_id))
 const slots = computed(() => inPick(scope.data.value?.slots))
+const resv = computed(() => inPick(scope.data.value?.resv))
 const scopeLoading = computed(() => scope.loading.value && !scope.data.value)
+function reloadAll() {
+  void scope.reload()
+  void pending.reload()
+}
 
 // 오류 — Toast + 재시도. 표는 이전 내용을 지우지 않는다 (useResource 가 data 를 지킨다)
-for (const r of [master, scope])
+for (const r of [master, scope, pending])
   watch(r.error, (e) => {
     if (e && e.status !== 401 && e.status !== 403)
       showToast({
@@ -116,6 +126,19 @@ function resync(roomId: number, key: string) {
         :loading="scopeLoading"
         @saved="onSaved"
         @changed="scope.reload"
+        @resync="resync"
+      />
+      <!-- 신청 대기는 예약 블록 위에 선다 — 승인해야 approved 가 되어 노드로 나간다 -->
+      <PendingBlock :pending="pending.data.value" @changed="reloadAll" />
+      <ResvBlock
+        :rooms="pickedRooms"
+        :label="label"
+        :resv="resv"
+        :states="tracker.states"
+        :resyncing="tracker.resyncing"
+        :loading="scopeLoading"
+        @saved="onSaved"
+        @changed="reloadAll"
         @resync="resync"
       />
     </div>

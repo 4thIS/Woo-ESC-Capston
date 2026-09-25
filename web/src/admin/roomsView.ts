@@ -1,5 +1,7 @@
-import type { BuildingOut, RoomOut } from '@/api/types'
+import type { BuildingOut, ResvWithRoom, RoomOut } from '@/api/types'
+import type { DotState } from '@/components/domain/OutboxDot.vue'
 import { buildTree } from '@/components/domain/roomTree'
+import { resvWindow } from '@/components/domain/rules'
 
 /** 첫 진입 — 첫 건물의 첫 층. 건물 전체는 행이 너무 많다 (admin-rooms.md "층이나 강의실 몇 개만 고르는 것이 기본") */
 export function defaultPick(buildings: BuildingOut[], rooms: RoomOut[]): number[] {
@@ -19,4 +21,14 @@ export function roomLabeler(
     const b = buildings.find((x) => x.id === r.building_id)
     return many && b ? `${b.bld} ${r.room}` : String(r.room)
   }
+}
+
+/** 예약 행의 점 — 추적 중이면 그 상태, 아니면 창 밖이고 노드에 안 간 것만 '예정'. 빈 outbox_ids 는 실패가 아니다 */
+export function resvDot(
+  r: ResvWithRoom,
+  tracked: DotState | undefined,
+  today: string,
+): DotState | undefined {
+  if (tracked) return tracked
+  return r.pushed_at === null && resvWindow(r.date, today) === 'later' ? 'scheduled' : undefined
 }

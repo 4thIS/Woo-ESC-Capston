@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { defaultPick, roomLabeler } from '@/admin/roomsView'
-import type { BuildingOut, RoomOut } from '@/api/types'
+import { defaultPick, resvDot, roomLabeler } from '@/admin/roomsView'
+import type { BuildingOut, ResvWithRoom, RoomOut } from '@/api/types'
 
 const B = (id: number, name: string, bld: string): BuildingOut => ({
   id,
@@ -31,5 +31,33 @@ describe('roomsView', () => {
     expect(many(11)).toBe('E 401')
     expect(many(21)).toBe('S 101')
     expect(many(99)).toBe('—')
+  })
+})
+
+describe('resvDot — 예약 행의 점', () => {
+  const r = (o: Partial<ResvWithRoom>): ResvWithRoom => ({
+    id: 7,
+    room_id: 11,
+    date: '2026-10-05',
+    s_h: 10,
+    s_m: 0,
+    e_h: 11,
+    e_m: 0,
+    type: 5,
+    subject: 'OT',
+    professor: '',
+    status: 'approved',
+    requester: null,
+    pushed_at: null,
+    ...o,
+  })
+  it('창 밖이고 노드에 안 간 것(pushed_at null)만 예정 — 실패로 그리지 않는다', () => {
+    expect(resvDot(r({}), undefined, '2026-09-25')).toBe('scheduled')
+    expect(resvDot(r({ date: '2026-09-30' }), undefined, '2026-09-25')).toBeUndefined()
+    expect(resvDot(r({ pushed_at: new Date() }), undefined, '2026-09-25')).toBeUndefined()
+    expect(resvDot(r({ date: '2026-09-20' }), undefined, '2026-09-25')).toBeUndefined()
+  })
+  it('추적 중이면 그 상태가 먼저', () => {
+    expect(resvDot(r({}), 'queued', '2026-09-25')).toBe('queued')
   })
 })

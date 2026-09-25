@@ -11,7 +11,9 @@ import {
   SIZES,
   WEB_URL,
   apiLogin,
+  createStudent,
   ensureModems,
+  kstDate,
   login,
   nextAdmin,
   seedOps,
@@ -199,7 +201,6 @@ test('범위로 추가 — 이미 있는 호수는 점선·취소선, 눌러서 
 })
 
 // ---- 강의실 설정 ----
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- 방 id 는 Task 15–18 테스트가 쓴다
 let ops: Awaited<ReturnType<typeof seedOps>>
 const slotsBlock = () => page.getByRole('region', { name: '시간표' })
 /** 테스트 전용 — 모뎀이 연결되지 않은 E2E 에서 무선 결과(ACK·실패·취소)를 흉내 낸다 */
@@ -290,4 +291,96 @@ test('전송 실패 — 점이 실패 + 재전송(방 단위), 관리자 취소�
   })
   await expect(row.getByRole('button', { name: '재전송' })).toBeVisible()
   await shot(page, 'admin-rooms-slots-1440')
+})
+
+const resvBlock = () => page.getByRole('region', { name: '예약', exact: true })
+
+test('예약 — 7일 안은 대기 점, 7일 밖은 예정 배지 (폼에서도 저장 전에 같은 문구)', async () => {
+  const resv = resvBlock()
+  await resv.getByRole('button', { name: '+ 예약 추가' }).click()
+  const d = page.getByRole('dialog', { name: '예약 추가' })
+  await d.getByLabel('강의실').selectOption({ label: '101호' })
+  await d.getByLabel('날짜').fill(kstDate(1))
+  await d.getByLabel('시작').fill('16:00')
+  await d.getByLabel('종료').fill('17:00')
+  await d.getByLabel('사용 목적').fill('신입생 OT')
+  await d.getByLabel('주관 부서').fill('학생처')
+  await d.getByRole('button', { name: '저장' }).click()
+  await expect(d).toHaveCount(0)
+  const near = resv.getByRole('row').filter({ hasText: '신입생 OT' })
+  await expect(near.getByRole('img', { name: '대기' })).toBeVisible()
+  await expect(near).toContainText('—')
+  await resv.getByRole('button', { name: '+ 예약 추가' }).click()
+  await d.getByLabel('날짜').fill(kstDate(10))
+  await expect(d.getByText('7일 이내로 들어오면 자동 전송됩니다')).toBeVisible()
+  await d.getByLabel('사용 목적').fill('동문회')
+  await d.getByRole('button', { name: '저장' }).click()
+  await expect(d).toHaveCount(0)
+  const far = resv.getByRole('row').filter({ hasText: '동문회' })
+  await expect(far.getByText('예정')).toHaveAttribute(
+    'title',
+    '7일 이내로 들어오면 자동 전송됩니다',
+  )
+})
+
+test('신청 대기 — 오래된 순, 승인하면 예약 표로, 다른 관리자가 먼저 처리하면 409 문장, 거절은 사유 필수', async () => {
+  const no = `P${Date.now().toString(36).toUpperCase()}`
+  // 로그인은 IP 당 분당 30회 — 앞 테스트가 이미 캐시한 ADMINS[1] 로 가입 승인과 '다른 관리자'를 함께 한다
+  const other = { authorization: `Bearer ${await apiLogin(api, cfg.ADMINS[1])}` }
+  const s = await createStudent(api, { name: '김신청', studentNo: no })
+  const ok = await api.post(`/api/admin/users/${encodeURIComponent(s.email)}/approve`, {
+    headers: other,
+  })
+  expect(ok.ok()).toBe(true)
+  const st = { authorization: `Bearer ${await apiLogin(api, s.email)}` }
+  const ask = async (s_h: number, subject: string) => {
+    const r = await api.post(`/api/student/rooms/${ops.roomIds[101]}/reservations`, {
+      headers: st,
+      data: { date: kstDate(2), s_h, s_m: 0, e_h: s_h + 1, e_m: 0, subject },
+    })
+    expect(r.status(), subject).toBe(201)
+    return ((await r.json()) as { id: number }).id
+  }
+  await ask(9, '캡스톤 스터디')
+  const second = await ask(10, '동아리 회의')
+  await ask(11, '밴드 연습')
+  // 신청 대기는 자동 새로고침이 없다 — 화면을 다시 연다
+  await page.getByRole('link', { name: '건물 · 강의실' }).click()
+  await page.getByRole('link', { name: '강의실 설정' }).click()
+  const pend = page.getByRole('region', { name: '신청 대기' })
+  await expect(pend).toContainText('3건')
+  await expect(pend.locator('tbody tr').nth(0)).toContainText('캡스톤 스터디')
+  await expect(pend.getByText('김신청').first()).toHaveAttribute('title', `${no} · ${s.email}`)
+  await shot(page, 'admin-rooms-pending-1440')
+  await pend
+    .getByRole('row')
+    .filter({ hasText: '캡스톤 스터디' })
+    .getByRole('button', { name: '승인' })
+    .click()
+  await expect(page.getByText('승인했습니다. 문 앞 화면에 나갑니다.')).toBeVisible()
+  const approved = resvBlock().getByRole('row').filter({ hasText: '캡스톤 스터디' })
+  await expect(approved).toContainText('김신청')
+  await expect(approved).toContainText(no)
+  // 다른 관리자가 먼저 승인
+  const r = await api.post(`/api/admin/reservations/${second}/approve`, { headers: other })
+  expect(r.status()).toBe(200)
+  await pend
+    .getByRole('row')
+    .filter({ hasText: '동아리 회의' })
+    .getByRole('button', { name: '승인' })
+    .click()
+  await expect(page.getByText('이미 처리된 신청입니다.')).toBeVisible()
+  await expect(pend.getByRole('row').filter({ hasText: '동아리 회의' })).toHaveCount(0)
+  // 거절 — 사유 필수, 0건이 되면 블록이 사라진다
+  await pend
+    .getByRole('row')
+    .filter({ hasText: '밴드 연습' })
+    .getByRole('button', { name: '거절' })
+    .click()
+  const d = page.getByRole('dialog', { name: '예약 신청 거절' })
+  await expect(d.getByRole('button', { name: '거절' })).toBeDisabled()
+  await d.getByLabel('거절 사유').fill('시험 기간입니다')
+  await d.getByRole('button', { name: '거절' }).click()
+  await expect(page.getByText('거절했습니다. 사유가 학생에게 보입니다.')).toBeVisible()
+  await expect(pend).toHaveCount(0)
 })
