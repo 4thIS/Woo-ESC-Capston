@@ -57,8 +57,7 @@ function fieldNames(detail: unknown): string[] {
     .filter((x): x is string => typeof x === 'string')
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- 타입 인자를 안 준 호출부의 catch(e=>e) 가 unknown 이 아닌 any 로 추론되게 함
-export async function request<T = any>(
+export async function request<T>(
   method: Method,
   path: string,
   body?: unknown,

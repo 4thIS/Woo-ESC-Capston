@@ -47,7 +47,7 @@ describe('request', () => {
     onAuthFailure(onFail)
     setSession(login as never)
     fetchMock.mockResolvedValue(json(401, { detail: 'invalid token' }))
-    const e = await request('GET', '/a').catch((x) => x)
+    const e = (await request('GET', '/a').catch((x) => x)) as ApiError
     expect(e).toBeInstanceOf(ApiError)
     expect(e.status).toBe(401)
     expect(e.message).toBe(MESSAGES[401])
@@ -60,7 +60,9 @@ describe('request', () => {
     const onFail = vi.fn()
     onAuthFailure(onFail)
     fetchMock.mockResolvedValue(json(401, { detail: '이메일 또는 비밀번호가 틀립니다' }))
-    const e = await request('POST', '/api/auth/login', {}, { auth: false }).catch((x) => x)
+    const e = (await request('POST', '/api/auth/login', {}, { auth: false }).catch(
+      (x) => x,
+    )) as ApiError
     expect(e.status).toBe(401)
     expect(onFail).not.toHaveBeenCalled()
     expect(authNotice.value).toBeNull()
@@ -77,13 +79,13 @@ describe('request', () => {
 
   it('422 → 필드 이름 목록', async () => {
     fetchMock.mockResolvedValue(json(422, err422))
-    const e = await request('POST', '/v', {}, { auth: false }).catch((x) => x)
+    const e = (await request('POST', '/v', {}, { auth: false }).catch((x) => x)) as ApiError
     expect(e.fields).toEqual(['student_no'])
   })
 
   it('서버 원문을 message 로 내지 않는다', async () => {
     fetchMock.mockResolvedValue(json(409, { detail: 'constraint violation' }))
-    const e = await request('POST', '/x').catch((x) => x)
+    const e = (await request('POST', '/x').catch((x) => x)) as ApiError
     expect(e.message).toBe(MESSAGES[409])
     expect(e.detail).toEqual({ detail: 'constraint violation' })
   })
@@ -99,21 +101,21 @@ describe('request', () => {
 
   it('503 쓰기는 재시도하지 않는다', async () => {
     fetchMock.mockResolvedValue(json(503, {}))
-    const e = await request('POST', '/p').catch((x) => x)
+    const e = (await request('POST', '/p').catch((x) => x)) as ApiError
     expect(e.status).toBe(503)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('네트워크 오류 → status 0', async () => {
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
-    const e = await request('GET', '/n').catch((x) => x)
+    const e = (await request('GET', '/n').catch((x) => x)) as ApiError
     expect(e).toBeInstanceOf(ApiError)
     expect(e.status).toBe(0)
   })
 
   it('abort 는 ApiError 로 바꾸지 않는다', async () => {
     fetchMock.mockRejectedValue(new DOMException('aborted', 'AbortError'))
-    const e = await request('GET', '/n').catch((x) => x)
+    const e = (await request('GET', '/n').catch((x) => x)) as Error
     expect(e.name).toBe('AbortError')
   })
 
