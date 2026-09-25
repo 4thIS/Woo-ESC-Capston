@@ -37,7 +37,8 @@ async function open() {
     state.value = 'form'
   } catch (e) {
     if (!(e instanceof ApiError)) throw e
-    if (e.status === 400) state.value = 'invalid'
+    if (e.status === 400 || e.status === 422)
+      state.value = 'invalid' // 422 = 모양이 틀린 토큰
     else error.value = e.message // 네트워크·503 — 다시 열기 버튼
   }
 }
@@ -70,7 +71,7 @@ async function submit() {
     // 409 는 토큰을 쓰지 않는다 — 학번만 고쳐 다시 낸다 (auth.md)
     if (e.status === 409) errs.value = { studentNo: '이미 등록된 학번입니다' }
     else if (e.status === 400) state.value = 'invalid'
-    else if (e.status === 422)
+    else if (e.status === 422) {
       errs.value = {
         name: e.fields.includes('name') ? '이름을 확인해 주세요' : undefined,
         studentNo: e.fields.includes('student_no')
@@ -78,7 +79,9 @@ async function submit() {
           : undefined,
         password: e.fields.includes('password') ? '8자 이상 입력해 주세요' : undefined,
       }
-    else if (e.status === 429) {
+      // 칸에 붙일 곳이 없는 422 는 폼 단위 메시지로 (spec §4.1)
+      if (!Object.values(errs.value).some(Boolean)) error.value = e.message
+    } else if (e.status === 429) {
       error.value = '잠시 후 다시 시도해 주세요'
       lock(10)
     } else error.value = e.message

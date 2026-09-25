@@ -113,3 +113,29 @@ test('비밀번호 재설정 → 새 비밀번호로 로그인, 옛 비밀번호
   await fillLogin(page, s.email, 'newpassword9')
   await expect(page.getByText('강의실 화면은 준비 중입니다')).toBeVisible()
 })
+
+test('링크를 연 뒤 앱 안에서 이동하고 뒤로 가도 주소에 토큰이 되살아나지 않는다', async ({
+  page,
+  request,
+}) => {
+  const s = await createStudent(request, { approve: true })
+  const before = mailCount(s.email)
+  expect((await request.post('/api/auth/forgot', { data: { email: s.email } })).ok()).toBe(true)
+  await page.goto(`/reset#token=${await mailToken(s.email, { after: before })}`)
+  await page.getByLabel('새 비밀번호').fill('newpassword9')
+  await page.getByRole('button', { name: '비밀번호 바꾸기' }).click()
+  await page.getByRole('link', { name: '로그인하러 가기' }).click()
+  await expect(page).toHaveURL(/\/login$/)
+  await page.goBack()
+  await expect(page).toHaveURL(/\/reset$/)
+  expect(page.url()).not.toContain('#token=')
+  // 화면이 다시 읽으며 주소는 또 지우므로, 그 항목에 저장된 라우터 상태까지 본다
+  expect(
+    await page.evaluate(() => {
+      // e2e tsconfig 에는 DOM lib 이 없다
+      const h = (globalThis as unknown as { history: { state: { current?: string } | null } })
+        .history
+      return String(h.state?.current)
+    }),
+  ).not.toContain('#token=')
+})

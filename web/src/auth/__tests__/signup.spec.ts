@@ -48,6 +48,17 @@ describe('readFragmentToken', () => {
     expect(location.hash).toBe('')
     expect(location.pathname).toBe('/verify')
   })
+  it('라우터 상태의 current 에서도 토큰을 지운다 — 다음 push 가 옛 주소를 되살리지 않게', () => {
+    history.replaceState({ back: '/x', current: '/verify#token=abc' }, '', '/verify#token=abc')
+    readFragmentToken()
+    expect(history.state).toMatchObject({ back: '/x', current: '/verify' })
+  })
+  it('128자를 넘는 토큰은 null (서버 TokenIn 상한)', () => {
+    setHash(`#token=${'a'.repeat(129)}`)
+    expect(readFragmentToken()).toBeNull()
+    setHash(`#token=${'a'.repeat(128)}`)
+    expect(readFragmentToken()).toBe('a'.repeat(128))
+  })
   it('없거나 모양이 다르면 null (그래도 지운다)', () => {
     expect(readFragmentToken()).toBeNull()
     setHash('#token=<script>')
@@ -135,6 +146,27 @@ describe('VerifyView', () => {
     expect(api.verify).not.toHaveBeenCalled()
     expect(w.text()).toContain('학번은 영문·숫자·하이픈만 쓸 수 있어요')
     expect(w.text()).toContain('8자 이상 입력해 주세요')
+  })
+
+  it('verify/open 422 → 만료 안내 (다시 열기에 갇히지 않는다)', async () => {
+    setHash('#token=tok1')
+    api.verifyOpen.mockRejectedValue(err(422, ['token']))
+    const { w } = await mountView(VerifyView)
+    expect(w.text()).toContain('링크가 만료되었거나 잘못되었습니다')
+  })
+
+  it('필드와 맞지 않는 422 → 폼 단위 메시지', async () => {
+    setHash('#token=tok1')
+    api.verifyOpen.mockResolvedValue({ email: 's1@wsu.ac.kr' })
+    api.verify.mockRejectedValue(new ApiError(422, '입력값을 확인해 주세요', ['token']))
+    const { w } = await mountView(VerifyView)
+    const [name, no, pw] = w.findAll('input')
+    await name.setValue('김민준')
+    await no.setValue('20231234')
+    await pw.setValue('password1')
+    await w.get('form').trigger('submit')
+    await flushPromises()
+    expect(w.get('[role="alert"]').text()).toBe('입력값을 확인해 주세요')
   })
 
   it('성공 → 승인 대기 화면', async () => {
