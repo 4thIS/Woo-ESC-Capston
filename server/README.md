@@ -20,6 +20,25 @@
   - `GET /api/admin/outbox/failed?days=&limit=` — 최근 실패 outbox(기본 7일, 관리자 취소 제외).
   - `GET /api/buildings/{id}/{slots|reservations|exams|outbox}` — 건물 단위 시간표·예약·시험기간·outbox 목록.
   - 예약·시험기간 등록 POST는 `id` 생략 시 서버가 채번하고 응답 `Enqueued.id`로 알려준다(지정 시 같은 방의 기존 id만 수정).
+- 학생·관리자 예약·일일 작업·분석 API: 설계는 `../docs/specs/2026-09-23-s10-student-analytics-design.md`.
+  - 학생(로그인 필요, 자기 학교의 reservable 방만):
+    - `GET /api/student/rooms/free?at=&building_id=` — 지금(또는 `at`) 비어 있는 방 목록.
+    - `GET /api/student/rooms?building_id=` — 전체 방 현재 상태.
+    - `GET /api/student/rooms/{id}/week?date=` — 그 방 주간 시간표·예약·시험기간.
+    - `POST /api/student/rooms/{id}/reservations` — 예약 신청(하루 10회 초과 시 429).
+    - `GET /api/student/me/reservations?status=` — 내 예약 목록(기본 `requested,approved`).
+    - `POST /api/student/me/reservations/{id}/cancel` — 신청 철회 또는 시작 전 취소.
+    - `POST /api/student/me/reservations/{id}/checkin` — 체크인.
+  - 관리자(자기 학교 스코프):
+    - `GET /api/admin/reservations?status=&building_id=&date_from=&date_to=` — 예약 목록(기본 `requested`).
+    - `POST /api/admin/reservations/{id}/{approve|reject|cancel}` — 승인·거절·취소.
+    - `GET /api/admin/analytics/allocation?from=&to=&building_id=&group=` — 배정률(방/건물/요일별).
+    - `GET /api/admin/analytics/free-slots?date=&building_id=` — 공강 슬롯.
+    - `GET /api/admin/analytics/reservations?from=&to=&group=` — 예약·No-show 통계.
+    - `GET /api/admin/analytics/latency?from=&to=&type=` — 갱신 지연 히스토그램(`SLOT_SET`/`RESV_SET`/`all`).
+    - `GET /api/admin/analytics/latency/samples?from=&to=&type=&limit=` — 지연 원본 샘플.
+  - 일일 작업(만료·승격·실패 재동기·정리)은 KST **04:00**에 자동 실행(`daily_loop`), 필요 시 수동 `POST /api/admin/jobs/daily`. 실행 기록은 `GET /api/admin/jobs?name=daily&limit=`.
+  - `.env` 변경 없음.
 - 테스트: `uv run pytest -q`
 
 ## env
