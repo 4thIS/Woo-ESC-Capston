@@ -23,6 +23,17 @@ STUDENT_LABEL = "학생 예약"  # 문 앞 e-Paper 는 공개 — 학생이 적�
 CHECKIN_BEFORE, CHECKIN_AFTER = 10, 15  # 분
 STUDENT_TYPE = 6  # 대여
 _LIVE = ("approved", "requested")
+STATUSES = frozenset(
+    ("requested", "approved", "rejected", "cancelled", "expired")
+)  # ck_resv_status
+
+
+def parse_statuses(status: str) -> list[str]:
+    """쉼표 목록 ?status= → 목록. 모르는 값·빈 값은 422 (오타가 조용히 빈 목록이 되지 않게)."""
+    states = status.split(",")
+    if not all(x in STATUSES for x in states):
+        raise HTTPException(422, f"status 는 {', '.join(sorted(STATUSES))} 중 쉼표 목록")
+    return states
 
 
 def start_local(r: Reservation) -> dt.datetime:

@@ -52,7 +52,9 @@ def _school_rooms(s: Session, school_id: int, building_id: int | None):
 
 def _inputs_range(s: Session, room_ids: list[int], d_from: dt.date, d_to: dt.date):
     """방들의 슬롯(요일별)·승인 예약·시험기간을 쿼리 3개로 읽고, (room_id, date) → load_inputs
-    와 같은 (slots, resvs, in_exam) 을 돌려주는 함수를 준다. 정렬도 load_inputs 와 같다."""
+    와 같은 (slots, resvs, in_exam) 을 돌려주는 함수를 준다. 정렬도 load_inputs 와 같다.
+    예약 Span 의 라벨은 r.subject 그대로(public_label 로 가리지 않음) — 레이아웃 계산(_segments)에만
+    쓰고 응답에 싣지 않는다. 라벨을 밖으로 내보낼 일이 생기면 public_label 을 거칠 것."""
     slots: dict = defaultdict(list)
     for x in s.scalars(select(Slot).where(Slot.room_id.in_(room_ids)).order_by(Slot.s_h, Slot.s_m)):
         slots[x.room_id, x.day].append(

@@ -168,7 +168,7 @@ def request_resv(id: int, body: S.StudentResvIn, user: User = StudentUser, s: Se
 
 @router.get("/me/reservations", response_model=list[S.ResvMineOut])
 def my_reservations(status: str | None = None, user: User = StudentUser, s: Session = _DB):
-    states = status.split(",") if status else ["requested", "approved"]
+    states = ["requested", "approved"] if status is None else reserve.parse_statuses(status)
     q = (
         select(Reservation)
         .where(Reservation.requested_by == user.email, Reservation.status.in_(states))

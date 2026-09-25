@@ -182,3 +182,53 @@ def test_approve_reject_cancel_and_summary_bucket(client, live, app, school, stu
             "RESV_DEL",
         ]
     assert client.get("/api/admin/summary").json()["warnings"]["pending_reservations"]["count"] == 0
+
+
+def test_status_filter_validated(client, app, school, student_hdr):
+    for q in ("status=bogus", "status=requested,", "status="):
+        assert client.get(f"/api/admin/reservations?{q}").status_code == 422, q
+        assert (
+            client.get(f"/api/student/me/reservations?{q}", headers=student_hdr).status_code == 422
+        )
+    assert client.get("/api/admin/reservations?status=approved,expired").status_code == 200
+    assert (
+        client.get("/api/student/me/reservations?status=cancelled", headers=student_hdr).status_code
+        == 200
+    )
+
+
+def test_summary_pending_uses_injected_now(app, school, students):
+    from app.domain import admin
+
+    _, ids = _building(app, 1, "E")
+    _resv(
+        app, ids[101], dt.date(2030, 1, 1), 13, 0, 14, 0, id_=1, status="requested",
+        requested_by="s1@mju.ac.kr", requested_at=UTC_NOW,
+    )  # fmt: skip
+    with app.state.Session() as s:
+        at = admin.summary(s, 1, now=dt.datetime(2030, 1, 1, 3, 59))  # noqa: DTZ001 — KST 12:59
+        assert at["warnings"]["pending_reservations"]["count"] == 1
+        at = admin.summary(s, 1, now=dt.datetime(2030, 1, 1, 4, 0))  # noqa: DTZ001 — KST 13:00
+        assert at["warnings"]["pending_reservations"]["count"] == 0
+
+
+def test_actions_scope_and_state_conflicts(client, live, app, school, students, monkeypatch):
+    _fix_clock(monkeypatch)  # KST 9/23 10:30
+    _, ids = _building(app, 1, "E", rooms=((301, 2), (302, 1)))
+    _, ids2 = _building(app, 2, "F")
+    req = {"status": "requested", "requested_by": "s1@mju.ac.kr", "requested_at": UTC_NOW}
+    _resv(app, ids2[101], dt.date(2026, 9, 24), 13, 0, 14, 0, id_=1, **req)  # 타교
+    for act in ("approve", "cancel"):
+        assert client.post(f"/api/admin/reservations/1/{act}").status_code == 404
+    assert client.post("/api/admin/reservations/1/reject", json={"reason": "x"}).status_code == 404
+    _resv(app, ids[301], dt.date(2026, 9, 23), 10, 0, 11, 0, id_=2, **req)  # 이미 시작
+    assert client.post("/api/admin/reservations/2/approve").status_code == 409
+    for i in range(24):  # 302 는 노드 용량만큼 찼다
+        _resv(app, ids[302], dt.date(2026, 9, 25), 0, 0, 0, 5, id_=100 + i)
+    _resv(app, ids[302], dt.date(2026, 9, 24), 13, 0, 14, 0, id_=3, **req)
+    assert client.post("/api/admin/reservations/3/approve").status_code == 409
+    # 틀린 상태: requested 는 취소 불가, approved 는 거절 불가
+    assert client.post("/api/admin/reservations/3/cancel").status_code == 409
+    assert (
+        client.post("/api/admin/reservations/100/reject", json={"reason": "x"}).status_code == 409
+    )

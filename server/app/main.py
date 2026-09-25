@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from pathlib import Path
 
@@ -55,6 +55,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
         finally:
             sweeper.cancel()
             daily_task.cancel()
+            with suppress(
+                asyncio.CancelledError
+            ):  # 경고만 없앤다 — to_thread 로 도는 실행은 못 멈춘다
+                await daily_task
             await hub.stop()
 
     # /docs·/openapi.json 은 내부 엔드포인트 목록 — DEBUG 에서만 (S4a §3.2)

@@ -181,7 +181,7 @@ def resv_admin_out(s: Session, r: Reservation) -> dict:
     return {**_mine_out(s, r), "requester": requester}
 
 
-def pending_reservations(s: Session, school_id: int) -> list[dict]:
+def pending_reservations(s: Session, school_id: int, now_local: dt.datetime) -> list[dict]:
     q = (
         select(Reservation)
         .join(Room, Room.id == Reservation.room_id)
@@ -191,15 +191,16 @@ def pending_reservations(s: Session, school_id: int) -> list[dict]:
             Reservation.requested_at, Reservation.id
         )  # 같은 시각이면 id — SQLite 동순위 순서는 정의되지 않음
     )
-    now = clock.local_now()
     # 시작 지난 신청은 승인할 수 없다(409) — 04:00 만료 전까지 경고에 남기지 않는다
-    return [resv_admin_out(s, r) for r in s.scalars(q) if reserve.start_local(r) > now]
+    return [resv_admin_out(s, r) for r in s.scalars(q) if reserve.start_local(r) > now_local]
 
 
 def summary(
     s: Session, school_id: int, preview: int = PREVIEW_DEFAULT, now: dt.datetime | None = None
 ) -> dict:
     """S4b §2.3 — 경고 8종 카운트 + 미리보기, 총계. 요청마다 계산(캐시 없음)."""
+    # 예약은 KST·clock 기준 — 주입된 now 가 있으면 그것을 쓴다
+    now_local = clock.to_local(now) if now else clock.local_now()
     now = now or utcnow()
     nodes = expected_nodes(s, school_id, now=now)
     by_seen = sorted(nodes, key=lambda n: n["last_seen_at"] or _MIN)  # 보고 없음(None) 먼저
@@ -259,6 +260,6 @@ def summary(
             "failed": _bucket(failed, preview),
             "pending_devices": _bucket(pending, preview),
             "pending_approval": _bucket(approvals, preview),
-            "pending_reservations": _bucket(pending_reservations(s, school_id), preview),
+            "pending_reservations": _bucket(pending_reservations(s, school_id, now_local), preview),
         },
     }

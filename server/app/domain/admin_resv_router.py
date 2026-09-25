@@ -40,7 +40,10 @@ def list_reservations(
         select(Reservation)
         .join(Room, Room.id == Reservation.room_id)
         .join(Building, Building.id == Room.building_id)
-        .where(Building.school_id == user.school_id, Reservation.status.in_(status.split(",")))
+        .where(
+            Building.school_id == user.school_id,
+            Reservation.status.in_(reserve.parse_statuses(status)),
+        )
         .order_by(Reservation.date, Reservation.s_h, Reservation.s_m, Reservation.id)
     )
     if building_id is not None:
