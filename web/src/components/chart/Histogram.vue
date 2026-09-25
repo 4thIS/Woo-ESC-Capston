@@ -6,7 +6,9 @@ export const SERIES_COLORS = [
   'var(--chart-series-3)',
 ] as const
 type S = { label: string }
-/** 4계열 이상은 타입에서 막는다 (tokens.md §chart 규칙 2) */
+/** 4계열 이상은 타입에서 막는다 (tokens.md §chart 규칙 2).
+ * 슬롯 순서는 고정 — 색(hist__bar--N)은 배열 인덱스로 정해진다. 계열을 건너뛰거나 필터링해서
+ * 빼지 말 것: 값이 없는 계열도 0 을 채워 자리를 지켜야 다른 계열이 색을 이어받지 않는다. */
 export type HistogramSeries = [S] | [S, S] | [S, S, S]
 export interface HistogramBucket {
   label: string
@@ -30,7 +32,6 @@ const props = defineProps<{
   buckets: HistogramBucket[]
   series: HistogramSeries
   marker?: { at: number; label: string }
-  yMax?: number
 }>()
 
 // px 고정 — 막대 폭 15px 를 지키려고 확대·축소하지 않는다 (components.md)
@@ -47,8 +48,8 @@ const BASE = T + PLOT
 const width = computed(() => L + props.buckets.length * SLOT + R)
 const height = T + PLOT + B
 const peak = computed(() => Math.max(0, ...props.buckets.flatMap((b) => b.values)))
-const step = computed(() => (props.yMax ? props.yMax / 3 : niceStep(peak.value)))
-const top = computed(() => props.yMax ?? step.value * 3)
+const step = computed(() => niceStep(peak.value))
+const top = computed(() => step.value * 3)
 const y = (v: number) => BASE - (Math.min(v, top.value) / top.value) * PLOT
 const n = computed(() => props.series.length)
 const barX = (i: number, j: number) =>
