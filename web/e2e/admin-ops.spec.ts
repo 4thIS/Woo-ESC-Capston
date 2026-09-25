@@ -501,7 +501,7 @@ test('주간 시간표 — 호수를 누르면 그 강의실의 한 주, 19시 �
   )
   // 오늘이 일요일이면 내일(월)은 다음 주 — 그 주로 옮겨 본다 (주 이동은 서버를 다시 부르지 않는다)
   if (dow === 1) await page.getByRole('button', { name: '다음 주' }).click()
-  await expect(page.getByLabel('야간')).toBeChecked()
+  await expect(page.getByLabel('야간', { exact: true })).toBeChecked()
   await expect(page.locator('.wk__block').filter({ hasText: '운영체제' })).toContainText('수업중')
   await expect(page.locator('.wk__block').filter({ hasText: '초청강연' })).toContainText(
     '예약 · 특강',

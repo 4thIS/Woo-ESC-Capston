@@ -6,8 +6,9 @@ import WeekView from '@/admin/views/WeekView.vue'
 import { nightPref, picked, weekMonday, weekRoom, weekendPref } from '@/admin/selection'
 import { roomsApi } from '@/api/rooms'
 import { ApiError, MESSAGES } from '@/api/client'
-import type { ResvWithRoom, RoomOut, SlotOut } from '@/api/types'
+import type { FailedOut, ResvWithRoom, RoomOut, SlotOut } from '@/api/types'
 import { dismissToast, toasts } from '@/components/ui/toast'
+import { loraApi } from '@/api/lora'
 
 vi.mock('@/api/rooms', () => ({
   roomsApi: {
@@ -262,5 +263,71 @@ describe('주간 시간표', () => {
     await w.get('button[aria-label="수 14:00 슬롯 추가"]').trigger('click')
     await flushPromises()
     expect(api.slots).toHaveBeenCalledTimes(2)
+  })
+
+  it('재전송은 블록 밖 형제 — Enter 가 편집을 열지 않고, 누르면 방 단위 재전송', async () => {
+    vi.useRealTimers() // beforeEach 가 Date 만 속였다 — 폴링 타이머까지 다시 건다
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    vi.setSystemTime(new Date('2026-09-25T03:00:00Z'))
+    api.putSlot.mockResolvedValue({ outbox_ids: [7], id: null })
+    vi.mocked(loraApi.syncRoom)
+      .mockReset()
+      .mockResolvedValue({ outbox_ids: [9], id: null })
+    await mountAt('/rooms/11/week')
+    await w.get('button[aria-label="수 14:00 슬롯 추가"]').trigger('click')
+    await flushPromises()
+    const d = () => dialog('슬롯 추가')!
+    await control(d(), '과목명').setValue('자료구조')
+    api.slots.mockResolvedValue([
+      S({}),
+      S({ id: 2, day: 3, s_h: 14, e_h: 15, subject: '자료구조' }),
+    ])
+    await btn(d(), '저장').trigger('click')
+    await flushPromises()
+    api.buildingOutbox.mockResolvedValue([
+      { id: 7, state: 'failed', last_error: 'max_retries' } as unknown as FailedOut,
+    ])
+    await vi.advanceTimersByTimeAsync(3_000)
+    const again = w.findAll('button').find((b) => b.text() === '재전송')!
+    expect(again.element.closest('.wk__block')).toBeNull()
+    await again.trigger('keydown', { key: 'Enter' })
+    expect(w.findAll('[role=dialog]')).toHaveLength(0)
+    await again.trigger('click')
+    await flushPromises()
+    expect(loraApi.syncRoom).toHaveBeenCalledWith(11)
+    expect(w.findAll('[role=dialog]')).toHaveLength(0)
+  })
+
+  it('블록은 Space 로도 열리고, 무엇인지 말하는 이름이 있다', async () => {
+    await mountAt('/rooms/11/week')
+    const b = w.get('.wk__block[aria-label="월 10:00–12:00 수업중 캡스톤디자인"]')
+    await b.trigger('keydown', { key: ' ' })
+    expect(dialog('슬롯 수정')).toBeTruthy()
+  })
+
+  it('없는 강의실 주소는 마지막 강의실로 기억하지 않는다', async () => {
+    await mountAt('/rooms/99/week')
+    expect(weekRoom.value).toBeNull()
+  })
+
+  it('404 강의실에서 있는 강의실로 옮기면 불러오는 동안 "찾을 수 없습니다"가 아니라 로딩', async () => {
+    api.slots.mockRejectedValueOnce(new ApiError(404, MESSAGES[404]))
+    const router = await mountAt('/rooms/99/week')
+    expect(w.text()).toContain('강의실을 찾을 수 없습니다')
+    api.slots.mockReturnValueOnce(new Promise(() => {}))
+    await router.push('/rooms/11/week')
+    await flushPromises()
+    expect(w.text()).not.toContain('강의실을 찾을 수 없습니다')
+    expect(w.find('.wk__overlay .sk').exists()).toBe(true)
+  })
+
+  it('주 라벨을 누르면 이번 주로', async () => {
+    await mountAt('/rooms/11/week')
+    await w.get('button[aria-label="다음 주"]').trigger('click')
+    await w.get('button[aria-label="다음 주"]').trigger('click')
+    expect(w.get('.wk__range').text()).toBe('10/5~10/11')
+    expect(w.get('.wk__range').attributes('title')).toBe('이번 주로')
+    await w.get('.wk__range').trigger('click')
+    expect(w.get('.wk__range').text()).toBe('9/21~9/27')
   })
 })

@@ -68,10 +68,11 @@ watch(
   },
   { immediate: true },
 )
+// 실제로 있는 강의실만 기억한다 — 주소창의 아무 숫자나 메뉴 링크가 되지 않게
 watch(
-  id,
-  (v) => {
-    if (v !== null) weekRoom.value = v
+  room,
+  (r) => {
+    if (r) weekRoom.value = r.id
   },
   { immediate: true },
 )
@@ -99,7 +100,7 @@ const fresh = computed(() =>
 const notFound = computed(
   () =>
     (!!master.data.value && id.value !== null && !room.value) ||
-    (!fresh.value && res.error.value?.status === 404),
+    (!fresh.value && !res.loading.value && res.error.value?.status === 404),
 )
 // 첫 불러오기 실패는 빈 시간표가 아니다 — 격자 가운데 오류 안내 + 다시 불러오기
 const failedRes = computed(() => {
@@ -199,6 +200,9 @@ function blockLabel(p: Placed) {
   if (p.slot) return TYPE_LABEL[p.slot.type]
   return `${p.resv!.status === 'requested' ? '신청' : '예약'} · ${TYPE_LABEL[p.resv!.type]}`
 }
+/** 스크린리더 이름 — '월 10:00–12:00 수업중 캡스톤디자인' */
+const blockName = (p: Placed) =>
+  `${DAYS[p.day - 1]} ${clock(p.s)}–${clock(p.e)} ${blockLabel(p)} ${p.slot?.subject ?? p.resv?.subject ?? ''}`.trim()
 const who = (p: Placed) =>
   p.slot ? p.slot.professor : (p.resv!.requester?.name ?? p.resv!.professor)
 
@@ -279,7 +283,9 @@ function toRooms() {
       />
       <div class="wk__nav">
         <Button variant="ghost" size="sm" aria-label="이전 주" @click="shiftWeek(-1)">◀</Button>
-        <span class="wk__range num">{{ md(monday) }}~{{ md(sunday) }}</span>
+        <button type="button" class="wk__range num" title="이번 주로" @click="weekMonday = null">
+          {{ md(monday) }}~{{ md(sunday) }}
+        </button>
         <Button variant="ghost" size="sm" aria-label="다음 주" @click="shiftWeek(1)">▶</Button>
       </div>
       <Checkbox v-model="night" label="야간" />
@@ -332,31 +338,39 @@ function toRooms() {
             :aria-label="`${DAYS[d.day - 1]} ${clock(t)} 슬롯 추가`"
             @click="openSlot(null, { day: d.day, t })"
           />
+          <!-- 자리 하나에 블록과 점이 형제로 선다 — 재전송 버튼을 role=button 블록 안에 넣으면
+               스크린리더가 한 덩어리로 읽고, 재전송의 Enter 가 블록까지 올라가 편집을 연다 -->
           <div
             v-for="{ p, box } in d.blocks"
             :key="p.key"
-            class="wk__block"
-            :class="blockClass(p)"
+            class="wk__place"
             :style="{
               top: `${box.top}px`,
               height: `${box.height}px`,
               left: `calc(${(p.lane / p.lanes) * 100}% + 4px)`,
               width: `calc(${100 / p.lanes}% - 8px)`,
             }"
-            :role="clickable(p) ? 'button' : undefined"
-            :tabindex="clickable(p) ? 0 : undefined"
-            :title="blockTitle(p)"
-            @click="openBlock(p)"
-            @keydown.enter="openBlock(p)"
           >
-            <span class="wk__label">{{ blockLabel(p) }}</span>
-            <!-- 높이가 모자라면 교수부터 지운다 -->
-            <span v-if="box.height >= 40" class="wk__subject">{{
-              p.slot?.subject ?? p.resv?.subject
-            }}</span>
-            <span v-if="box.height >= 80 && who(p)" class="wk__who">{{ who(p) }}</span>
-            <span v-if="box.cutEnd" class="wk__cut num">~{{ clock(p.e) }}</span>
-            <span class="wk__dot" @click.stop
+            <div
+              class="wk__block"
+              :class="blockClass(p)"
+              :role="clickable(p) ? 'button' : undefined"
+              :tabindex="clickable(p) ? 0 : undefined"
+              :aria-label="clickable(p) ? blockName(p) : undefined"
+              :title="blockTitle(p)"
+              @click="openBlock(p)"
+              @keydown.enter.self.prevent="openBlock(p)"
+              @keydown.space.self.prevent="openBlock(p)"
+            >
+              <span class="wk__label">{{ blockLabel(p) }}</span>
+              <!-- 높이가 모자라면 교수부터 지운다 -->
+              <span v-if="box.height >= 40" class="wk__subject">{{
+                p.slot?.subject ?? p.resv?.subject
+              }}</span>
+              <span v-if="box.height >= 80 && who(p)" class="wk__who">{{ who(p) }}</span>
+              <span v-if="box.cutEnd" class="wk__cut num">~{{ clock(p.e) }}</span>
+            </div>
+            <span class="wk__dot"
               ><RowDot
                 :state="dotOf(p)"
                 :busy="!!room && tracker.resyncing.has(room.id)"
@@ -459,7 +473,17 @@ function toRooms() {
   gap: var(--space-1);
 }
 .wk__range {
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
   font-weight: var(--font-weight-bold);
+  cursor: pointer;
+}
+.wk__range:hover {
+  background: var(--sunken);
 }
 .wk__add {
   margin-left: auto;
@@ -551,8 +575,12 @@ function toRooms() {
 .wk__cell:hover:enabled {
   background: var(--sunken);
 }
+.wk__place {
+  position: absolute;
+}
 .wk__block {
   position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
