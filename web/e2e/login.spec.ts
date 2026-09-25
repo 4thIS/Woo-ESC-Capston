@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { SIZES, createStudent, fillLogin, nextAdmin, shot, uniqEmail } from './helpers'
+import { SIZES, WEB_URL, createStudent, fillLogin, nextAdmin, shot, uniqEmail } from './helpers'
 
 test('관리자 — 가드가 로그인으로 보내고, 로그인하면 돌아온다', async ({ page }) => {
   await page.setViewportSize(SIZES.admin)
@@ -58,6 +58,6 @@ test('next 가 외부 주소면 기본 화면으로 (Review Focus 1)', async ({ 
   const s = await createStudent(request, { approve: true })
   await page.goto('/login?next=//evil.example')
   await fillLogin(page, s.email)
-  await expect(page).toHaveURL('http://127.0.0.1:5173/')
+  await expect(page).toHaveURL(`${WEB_URL}/`)
   await expect(page.getByText('강의실 화면은 준비 중입니다')).toBeVisible()
 })
