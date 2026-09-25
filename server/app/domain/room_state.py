@@ -136,16 +136,22 @@ def fmt_hhmm(m: int | None) -> str | None:
 
 def merge_busy(spans: list[Span]) -> list[Span]:
     """1분이라도 겹친 구간을 한 덩어리로 (student-room §겹침). 머리 = 먼저 시작한 것(같으면 긴 것) —
-    라벨은 머리 + ' 외 N건', type 도 머리 것, mine 은 하나라도 내 것이면, status 는 머리부터 첫 내 것의
-    상태. 맞닿기만 한 구간은 따로 둔다."""
+    라벨은 머리 + ' 외 N건', type 은 머리 것이 원칙이나 머리가 휴강(3)·빈강의실(4)이고 겹친 구간이
+    실사용중(1/2/5/6)이면 그 type 을 따른다(빈 것처럼 보이는 라벨 뒤에 실사용을 숨기지 않는다).
+    mine 은 하나라도 내 것이면, status 는 머리부터 첫 내 것의 상태. 맞닿기만 한 구간은 따로 둔다."""
     out: list[tuple[Span, int]] = []
     for x in sorted(spans, key=lambda x: (x.s, -x.e)):
         if x.e <= x.s:
             continue  # ponytail: 관리자 입력엔 시작<끝 검증이 없다 — 뒤집힌 구간은 그리지 않는다
         if out and x.s < out[-1][0].e:
             head, n = out[-1]
+            type_ = x.type if head.type in (3, 4) and x.type in (1, 2, 5, 6) else head.type
             merged = replace(
-                head, e=max(head.e, x.e), mine=head.mine or x.mine, status=head.status or x.status
+                head,
+                e=max(head.e, x.e),
+                type=type_,
+                mine=head.mine or x.mine,
+                status=head.status or x.status,
             )
             out[-1] = (merged, n + 1)
         else:

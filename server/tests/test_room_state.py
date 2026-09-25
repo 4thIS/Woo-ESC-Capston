@@ -190,3 +190,12 @@ def test_merge_busy_chains_overlaps_but_keeps_touching_apart():
     )
     assert [(x.label, x.mine, x.status) for x in mixed] == [("수업 외 1건", True, "requested")]
     assert RS.merge_busy([]) == []
+
+
+def test_merge_busy_type_flips_to_in_use_when_head_is_cancelled_or_free_slot():
+    # 휴강(3) 슬롯 + 관리자 예약(6) 겹침 — 라벨은 머리(휴강)지만 type 은 실사용중(6)이어야 한다
+    out = RS.merge_busy([Span(M(10), M(12), 3, "휴강"), Span(M(10), M(12), 6, "대여")])
+    assert [(x.label, x.type) for x in out] == [("휴강 외 1건", 6)]
+    # 시험기간 슬롯(2, 이미 실사용) 위 예약은 그대로 2 유지
+    out2 = RS.merge_busy([Span(M(10), M(11), 2, "시험"), Span(M(10), M(11), 6, "대여")])
+    assert [(x.label, x.type) for x in out2] == [("시험 외 1건", 2)]
