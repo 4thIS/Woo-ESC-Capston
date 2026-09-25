@@ -1,5 +1,11 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { SIZES, WEB_URL, createStudent, fillLogin, nextAdmin, shot, uniqEmail } from './helpers'
+
+// 카드의 윗여백이 바탕(.auth, min-height 100vh) 밖으로 새면 폼 하나짜리 화면이 스크롤된다
+const noScroll = async (page: Page) =>
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+  ).toBe(true)
 
 test('관리자 — 가드가 로그인으로 보내고, 로그인하면 돌아온다', async ({ page }) => {
   await page.setViewportSize(SIZES.admin)
@@ -7,6 +13,7 @@ test('관리자 — 가드가 로그인으로 보내고, 로그인하면 돌아�
   await expect(page).toHaveURL(/\/admin\/login\?next=/)
   await expect(page.getByRole('link', { name: '가입 신청' })).toHaveCount(0)
   await shot(page, 'admin-login-1440')
+  await noScroll(page)
   await fillLogin(page, nextAdmin())
   await expect(page).toHaveURL(/\/admin\/dashboard$/)
 })
@@ -23,6 +30,9 @@ test('학생 로그인 화면 390', async ({ page }) => {
     expect(link!.height, name).toBeGreaterThanOrEqual(48)
   }
   await shot(page, 'student-login-390')
+  // 넓은 화면(≥640)에서는 카드에 윗여백 — 그래도 스크롤이 생기지 않는다
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await noScroll(page)
 })
 
 test('역할이 다른 앱에 로그인하면 토큰을 버리고 안내한다', async ({ page, request }) => {
