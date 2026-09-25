@@ -143,6 +143,19 @@ describe('신청 대기', () => {
     )
   })
 
+  it('시작 시각이 지난 신청은 승인을 잠근다(툴팁) — 거절은 된다', async () => {
+    // 지금 KST 09-25 12:00 — 오늘 10:00 신청은 지났다, 오늘 13:00 은 아직
+    const past = { ...P(1, '지난 것', '2026-09-24T01:00:00Z', '2026-09-25'), s_h: 10 }
+    const soon = { ...P(2, '곧', '2026-09-24T02:00:00Z', '2026-09-25'), s_h: 13 }
+    w = mount(PendingBlock, { props: { pending: [past, soon] } })
+    const row = (t: string) => w.findAll('tbody tr').find((r) => r.text().includes(t))!
+    const ok = btn(row('지난 것'), '승인')
+    expect(ok.attributes('disabled')).toBeDefined()
+    expect(ok.attributes('title')).toBe('시작 시각이 지나 승인할 수 없습니다')
+    expect(btn(row('지난 것'), '거절').attributes('disabled')).toBeUndefined()
+    expect(btn(row('곧'), '승인').attributes('disabled')).toBeUndefined()
+  })
+
   it('거절 — 사유가 없으면 잠기고, 사유를 보내면 닫힌다', async () => {
     admin.rejectResv.mockResolvedValue(P(1, 'x', '2026-09-24T01:00:00Z'))
     w = mount(PendingBlock, {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -25,10 +25,10 @@ const props = withDefaults(
     slots: SlotWithRoom[]
     states: Map<string, DotState>
     loading: boolean
-    /** 재전송 응답을 기다리는 행 key — 그 행의 재전송 버튼을 잠근다 */
-    resyncing?: Set<string>
+    /** 재전송 응답을 기다리는 강의실 id — 그 방 행들의 재전송 버튼을 잠근다 */
+    resyncing?: Set<number>
   }>(),
-  { resyncing: () => new Set<string>() },
+  { resyncing: () => new Set<number>() },
 )
 const emit = defineEmits<{
   saved: [row: SavedRow]
@@ -70,8 +70,21 @@ const editing = ref<SlotWithRoom | null>(null)
 function openForm(s: SlotWithRoom | null) {
   editing.value = s
   formOpen.value = true
+  emit('changed') // 겹침 검사(existing)가 최신 슬롯을 보게 — 다른 관리자가 넣은 같은 키를 모르고 덮지 않도록
 }
+// 저장한 행이 요일·유형 필터에 가려지면 필터를 푼다 — 행과 점이 보여야 결과를 안다
+const reveal = ref<string | null>(null)
+watch(
+  () => props.slots,
+  (slots) => {
+    const k = reveal.value
+    if (!k || !slots.some((s) => slotKey(s) === k)) return
+    reveal.value = null
+    if (!rows.value.some((r) => r.key === k)) day.value = type.value = 0
+  },
+)
 function onSaved(r: SavedRow) {
+  reveal.value = r.key
   emit('saved', r)
   emit('changed')
 }
@@ -153,7 +166,7 @@ async function remove() {
         <div class="blk__actions">
           <RowDot
             :state="states.get(asS(row).key)"
-            :busy="resyncing.has(asS(row).key)"
+            :busy="resyncing.has(asS(row).room_id)"
             @resync="emit('resync', asS(row).room_id, asS(row).key)"
           />
           <Button variant="ghost" size="sm" @click="openForm(asS(row))">수정</Button>

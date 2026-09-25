@@ -7,6 +7,7 @@ import { roomsApi } from '@/api/rooms'
 import { loraApi } from '@/api/lora'
 import type { BuildingOut, FailedOut, RoomOut, SlotWithRoom } from '@/api/types'
 import { dismissToast, toasts } from '@/components/ui/toast'
+import { ApiError, MESSAGES } from '@/api/client'
 
 vi.mock('@/api/rooms', () => ({
   IMPORT_MAX_BYTES: 1024 * 1024,
@@ -173,6 +174,123 @@ describe('강의실 설정 — 트리와 시간표', () => {
     await flushPromises()
     expect(lora.syncRoom).toHaveBeenCalledWith(11)
     expect(row().get('.dot').attributes('title')).toBe('대기')
+  })
+
+  it('첫 불러오기 실패 — 빈 시간표로 보이지 않고 다시 불러오기, 누르면 채운다', async () => {
+    api.buildingSlots.mockRejectedValueOnce(new ApiError(500, MESSAGES[500]))
+    await mountView()
+    const blocks = () => w.get('.rooms').text()
+    expect(blocks()).not.toContain('등록된 시간표가 없습니다')
+    expect(blocks()).not.toContain('등록된 항목이 없습니다')
+    await btn(w, '다시 불러오기').trigger('click')
+    await flushPromises()
+    expect(slotRows()).toHaveLength(1)
+    expect(btn(w, '다시 불러오기')).toBeUndefined()
+  })
+
+  it('아직 안 불러온 건물로 바꾸는 동안 — 빈 시간표가 아니라 불러오는 중', async () => {
+    await mountView()
+    let done!: (v: SlotWithRoom[]) => void
+    api.buildingSlots.mockImplementation(
+      (b: number) => new Promise<SlotWithRoom[]>((r) => (b === 2 ? (done = r) : r([]))),
+    )
+    picked.value = [21]
+    await flushPromises()
+    expect(w.get('[aria-labelledby=blk-slots]').text()).not.toContain('등록된 시간표가 없습니다')
+    expect(w.get('[aria-labelledby=blk-resv]').text()).not.toContain('등록된 항목이 없습니다')
+    // 불러오는 동안은 Skeleton 행 — 옛 건물(공학관) 행이 남아 있지도 않다
+    expect(
+      slotRows()
+        .map((r) => r.text())
+        .join(),
+    ).not.toContain('캡스톤디자인')
+    expect(slotRows()[0].findComponent({ name: 'Skeleton' }).exists()).toBe(true)
+    done([S(21, 3, 9, '사회학개론')])
+    await flushPromises()
+    expect(slotRows()[0].text()).toContain('사회학개론')
+  })
+
+  it('폼을 열면 최신 슬롯을 다시 읽는다 — 다른 관리자가 넣은 같은 키를 모르고 덮지 않게', async () => {
+    await mountView()
+    expect(api.buildingSlots).toHaveBeenCalledTimes(1)
+    await btn(w.get('[aria-labelledby=blk-slots]'), '+ 슬롯 추가').trigger('click')
+    await flushPromises()
+    expect(api.buildingSlots).toHaveBeenCalledTimes(2)
+    await btn(dialog('슬롯 추가'), '취소').trigger('click')
+    await btn(w.get('[aria-labelledby=blk-resv]'), '+ 예약 추가').trigger('click')
+    await flushPromises()
+    expect(api.buildingResv).toHaveBeenCalledTimes(3)
+  })
+
+  it('저장한 행이 요일 필터에 가려지면 필터를 푼다', async () => {
+    api.putSlot.mockResolvedValue({ outbox_ids: [7], id: null })
+    await mountView()
+    const blk = () => w.get('[aria-labelledby=blk-slots]')
+    await control(blk(), '요일').setValue('1')
+    expect(slotRows()).toHaveLength(1)
+    await btn(blk(), '+ 슬롯 추가').trigger('click')
+    await flushPromises()
+    const d = () => dialog('슬롯 추가')
+    await control(d(), '요일').setValue('3')
+    await control(d(), '과목명').setValue('자료구조')
+    api.buildingSlots.mockImplementation(async () => [
+      S(11, 1, 9, '캡스톤디자인'),
+      S(11, 3, 9, '자료구조'),
+    ])
+    await btn(d(), '저장').trigger('click')
+    await flushPromises()
+    expect(
+      slotRows()
+        .map((r) => r.text())
+        .join(),
+    ).toContain('자료구조')
+    expect((control(blk(), '요일').element as HTMLSelectElement).selectedIndex).toBe(0)
+  })
+
+  it('재전송은 강의실 단위 — 같은 방의 실패 행이 모두 대기로, 도는 동안 그 방 버튼 전부 잠금', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    await mountView()
+    const d = () => dialog('슬롯 추가')
+    const blk = () => w.get('[aria-labelledby=blk-slots]')
+    for (const [id, day, subject] of [
+      [7, '3', '자료구조'],
+      [8, '4', '운영체제'],
+    ] as const) {
+      api.putSlot.mockResolvedValueOnce({ outbox_ids: [id], id: null })
+      await btn(blk(), '+ 슬롯 추가').trigger('click')
+      await flushPromises()
+      await control(d(), '요일').setValue(day)
+      await control(d(), '과목명').setValue(subject)
+      await btn(d(), '저장').trigger('click')
+      await flushPromises()
+    }
+    api.buildingSlots.mockImplementation(async () => [
+      S(11, 1, 9, '캡스톤디자인'),
+      S(11, 3, 9, '자료구조'),
+      S(11, 4, 9, '운영체제'),
+    ])
+    await btn(blk(), '+ 슬롯 추가').trigger('click') // 폼을 열면 다시 읽는다 — 새 두 행이 표에
+    await flushPromises()
+    await btn(d(), '취소').trigger('click')
+    api.buildingOutbox.mockResolvedValue([
+      { id: 7, state: 'failed', last_error: 'max_retries' },
+      { id: 8, state: 'failed', last_error: 'cancelled' },
+    ] as unknown as FailedOut[])
+    await vi.advanceTimersByTimeAsync(3_000)
+    const row = (t: string) => slotRows().find((r) => r.text().includes(t))!
+    expect(row('자료구조').get('.dot').attributes('title')).toBe('실패')
+    expect(row('운영체제').get('.dot').attributes('title')).toBe('취소됨 — 노드에 반영 안 됨')
+    let done!: (v: { outbox_ids: number[]; id: null }) => void
+    lora.syncRoom.mockReturnValue(new Promise((r) => (done = r)))
+    api.buildingOutbox.mockResolvedValue([])
+    await btn(row('자료구조'), '재전송').trigger('click')
+    expect(btn(row('운영체제'), '재전송').attributes('disabled')).toBeDefined()
+    await btn(row('운영체제'), '재전송').trigger('click')
+    expect(lora.syncRoom).toHaveBeenCalledTimes(1)
+    done({ outbox_ids: [9], id: null })
+    await flushPromises()
+    expect(row('자료구조').get('.dot').attributes('title')).toBe('대기')
+    expect(row('운영체제').get('.dot').attributes('title')).toBe('대기')
   })
 
   it('강의실이 하나도 없으면 건물 · 강의실로 보낸다', async () => {

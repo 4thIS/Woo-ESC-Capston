@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import { showToast } from '@/components/ui/toast'
 import RoomTree from '@/components/domain/RoomTree.vue'
-import type { SavedRow } from '@/components/domain/rules'
+import { examKey, resvKey, slotKey, type SavedRow } from '@/components/domain/rules'
 import { adminApi } from '@/api/admin'
 import { roomsApi } from '@/api/rooms'
 import type { RoomOut } from '@/api/types'
@@ -47,8 +47,10 @@ const label = computed(() => roomLabeler(buildings.value, pickedRooms.value))
 const bids = computed(() =>
   [...new Set(pickedRooms.value.map((r) => r.building_id))].sort((a, b) => a - b),
 )
+const bidsKey = computed(() => bids.value.join(','))
 const scope = useResource(
   async () => {
+    const key = bidsKey.value
     const per = await Promise.all(
       bids.value.map((b) =>
         Promise.all([
@@ -59,20 +61,26 @@ const scope = useResource(
       ),
     )
     return {
+      key,
       slots: per.flatMap((p) => p[0]),
       resv: per.flatMap((p) => p[1]),
       exams: per.flatMap((p) => p[2]),
     }
   },
-  { deps: () => bids.value.join(',') },
+  { deps: bidsKey },
 )
 // 신청 대기는 학교 전체 — 처리해야 할 일이라 트리 밖 신청도 숨기지 않는다 (설계 판정)
 const pending = useResource(() => adminApi.pendingResv())
 const inPick = <T extends { room_id: number }>(xs: T[] | undefined) =>
   (xs ?? []).filter((x) => picked.value.includes(x.room_id))
-const slots = computed(() => inPick(scope.data.value?.slots))
-const resv = computed(() => inPick(scope.data.value?.resv))
-const scopeLoading = computed(() => scope.loading.value && !scope.data.value)
+// 지금 고른 건물들의 데이터만 쓴다 — 다른 건물 조합의 옛 응답·첫 진입의 빈 결과를 '비어 있음'으로 그리지 않는다
+const fresh = computed(() =>
+  scope.data.value?.key === bidsKey.value ? scope.data.value : undefined,
+)
+const slots = computed(() => inPick(fresh.value?.slots))
+const resv = computed(() => inPick(fresh.value?.resv))
+const scopeFailed = computed(() => !fresh.value && !!scope.error.value && !scope.loading.value)
+const scopeLoading = computed(() => !fresh.value && !scopeFailed.value)
 function reloadAll() {
   void scope.reload()
   void pending.reload()
@@ -96,9 +104,20 @@ function onSaved(s: SavedRow) {
   const b = buildingOf(s.roomId)
   if (b !== undefined) tracker.track(s.key, b, s.outboxIds)
 }
+// 재전송은 방 단위 — 그 방에서 실패·취소로 보이는 행을 모두 새 작업으로 따라간다
+const DEAD = ['failed', 'cancelled']
 function resync(roomId: number, key: string) {
   const b = buildingOf(roomId)
-  if (b !== undefined) void tracker.resync(key, roomId, b)
+  if (b === undefined) return
+  const d = fresh.value
+  const mine = <T extends { room_id: number }>(xs: T[] | undefined) =>
+    (xs ?? []).filter((x) => x.room_id === roomId)
+  const keys = [
+    ...mine(d?.slots).map(slotKey),
+    ...mine(d?.resv).map((r) => resvKey(r.id)),
+    ...mine(d?.exams).map((x) => examKey(x.id)),
+  ].filter((k) => k !== key && DEAD.includes(tracker.states.get(k) ?? ''))
+  void tracker.resync([key, ...keys], roomId, b)
 }
 </script>
 
@@ -117,7 +136,13 @@ function resync(roomId: number, key: string) {
       ]"
     />
     <div v-else class="rooms__blocks">
+      <EmptyState
+        v-if="scopeFailed"
+        message="시간표·예약을 불러오지 못했습니다"
+        :actions="[{ label: '다시 불러오기', onClick: () => void scope.reload() }]"
+      />
       <SlotBlock
+        v-else
         :rooms="pickedRooms"
         :label="label"
         :slots="slots"
@@ -131,6 +156,7 @@ function resync(roomId: number, key: string) {
       <!-- 신청 대기는 예약 블록 위에 선다 — 승인해야 approved 가 되어 노드로 나간다 -->
       <PendingBlock :pending="pending.data.value" @changed="reloadAll" />
       <ResvBlock
+        v-if="!scopeFailed"
         :rooms="pickedRooms"
         :label="label"
         :resv="resv"

@@ -97,25 +97,26 @@ describe('useOutboxTracker', () => {
   it('재전송 — 방 단위 sync 뒤 새 작업을 대기부터 다시 따라간다', async () => {
     const t = start()
     lora.syncRoom.mockResolvedValue({ outbox_ids: [9, 10], id: null })
-    await t.resync('s11-1-9-0', 11, 3)
+    await t.resync(['s11-1-9-0'], 11, 3)
     expect(lora.syncRoom).toHaveBeenCalledWith(11)
     expect(t.states.get('s11-1-9-0')).toBe('queued')
     expect(toasts.value.at(-1)?.message).toBe('다시 보냈습니다.')
     lora.syncRoom.mockRejectedValue(new ApiError(500, MESSAGES[500]))
-    await t.resync('s11-1-9-0', 11, 3)
+    await t.resync(['s11-1-9-0'], 11, 3)
     expect(toasts.value.at(-1)).toMatchObject({ tone: 'danger', message: MESSAGES[500] })
   })
 
-  it('재전송 중에는 같은 행을 다시 보내지 않는다 — resyncing 이 끝날 때까지 key 를 든다', async () => {
+  it('재전송 중에는 같은 방을 다시 보내지 않고, 넘긴 행 전부를 새 작업으로 따라간다', async () => {
     const t = start()
     let done!: (v: { outbox_ids: number[]; id: null }) => void
     lora.syncRoom.mockReturnValue(new Promise((r) => (done = r)))
-    const first = t.resync('s11-1-9-0', 11, 3)
-    expect(t.resyncing.has('s11-1-9-0')).toBe(true)
-    await t.resync('s11-1-9-0', 11, 3)
+    const first = t.resync(['s11-1-9-0', 'r5'], 11, 3)
+    expect(t.resyncing.has(11)).toBe(true)
+    await t.resync(['s11-1-9-0'], 11, 3)
     expect(lora.syncRoom).toHaveBeenCalledTimes(1)
     done({ outbox_ids: [9], id: null })
     await first
-    expect(t.resyncing.has('s11-1-9-0')).toBe(false)
+    expect(t.resyncing.has(11)).toBe(false)
+    expect([t.states.get('s11-1-9-0'), t.states.get('r5')]).toEqual(['queued', 'queued'])
   })
 })

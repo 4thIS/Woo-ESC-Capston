@@ -9,7 +9,7 @@ import { DAYS, LATER_HINT, conflictMessage, resvWindow } from '@/components/doma
 import { ApiError } from '@/api/client'
 import { adminApi } from '@/api/admin'
 import type { ResvAdminOut } from '@/api/types'
-import { dayOfDate, formatKst, hm, kstDateStr, md, relativeKo } from '@/lib/time'
+import { dayOfDate, formatHm, formatKst, hm, kstDateStr, md, relativeKo } from '@/lib/time'
 
 const props = defineProps<{ pending?: ResvAdminOut[] }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -30,6 +30,10 @@ const COLUMNS = [
   { key: 'actions', label: '작업', width: '136px', align: 'right' as const },
 ]
 const asP = (row: Record<string, unknown>) => row as unknown as ResvAdminOut
+/** 시작 시각이 지난 신청은 서버가 승인을 409 로 막는다 — 누르기 전에 잠근다 (거절은 된다). KST 문자열 비교 */
+const started = (r: ResvAdminOut, now = new Date()) =>
+  `${r.date} ${hm(r.s_h, r.s_m)}` <= `${kstDateStr(now)} ${formatHm(now)}`
+const STARTED_HINT = '시작 시각이 지나 승인할 수 없습니다'
 
 const busy = ref<number | null>(null)
 /** 승인·거절 공통. 409·404 면 true(대상이 이미 바뀌었다 — 모달을 닫는다) */
@@ -116,7 +120,8 @@ async function submitReject() {
           <Button
             size="sm"
             :loading="busy === asP(row).id"
-            :disabled="busy !== null && busy !== asP(row).id"
+            :disabled="(busy !== null && busy !== asP(row).id) || started(asP(row))"
+            :title="started(asP(row)) ? STARTED_HINT : undefined"
             @click="approve(asP(row))"
             >승인</Button
           >

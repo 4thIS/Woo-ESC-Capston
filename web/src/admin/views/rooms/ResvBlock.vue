@@ -25,10 +25,10 @@ const props = withDefaults(
     resv: ResvWithRoom[]
     states: Map<string, DotState>
     loading: boolean
-    /** 재전송 응답을 기다리는 행 key — 그 행의 재전송 버튼을 잠근다 */
-    resyncing?: Set<string>
+    /** 재전송 응답을 기다리는 강의실 id — 그 방 행들의 재전송 버튼을 잠근다 */
+    resyncing?: Set<number>
   }>(),
-  { resyncing: () => new Set<string>() },
+  { resyncing: () => new Set<number>() },
 )
 const emit = defineEmits<{
   saved: [row: SavedRow]
@@ -64,11 +64,13 @@ const roomLabel = (r: RoomOut) => `${props.label(r.id)}호`
 
 const formOpen = ref(false)
 const editing = ref<ResvWithRoom | null>(null)
-// 수정은 관리자가 넣은 approved 만 — 학생 신청은 승인·거절·취소로 다룬다 (서버도 409)
+// 수정은 관리자가 넣은 approved 만 — 학생 신청은 승인·거절·취소로 다룬다. 서버는 학생 행을 관리자가
+// 덮어쓰는 것을 막지 않는다 — 이 가드가 유일한 보호다
 function openForm(r: ResvWithRoom | null) {
   if (r && (r.requester || r.status !== 'approved')) return
   editing.value = r
   formOpen.value = true
+  emit('changed') // 겹침 검사(existing)가 최신 예약을 보게
 }
 function onSaved(r: SavedRow) {
   emit('saved', r)
@@ -154,7 +156,7 @@ async function remove() {
         <div class="blk__actions">
           <RowDot
             :state="resvDot(asV(row), states.get(asV(row).key), today)"
-            :busy="resyncing.has(asV(row).key)"
+            :busy="resyncing.has(asV(row).room_id)"
             @resync="emit('resync', asV(row).room_id, asV(row).key)"
           />
           <Button v-if="asV(row).requester" variant="ghost" size="sm" @click="removing = asV(row)"
