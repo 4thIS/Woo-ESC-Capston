@@ -8,7 +8,8 @@ export const DOT_LABEL: Record<DotState, string> = {
   dispatched: '전송 중',
   acked: '반영됨',
   failed: '실패',
-  cancelled: '취소됨',
+  // 관리자가 의도한 일이라 경고색은 아니지만, 웹 DB 는 새 값인데 문 앞은 옛 값이다 (admin-rooms.md)
+  cancelled: '취소됨 — 노드에 반영 안 됨',
   scheduled: '7일 이내로 들어오면 자동 전송됩니다',
 }
 </script>

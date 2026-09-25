@@ -6,8 +6,12 @@ import { makeRouter } from '@/admin/router'
 import { usersApi } from '@/api/users'
 import type { UserOut } from '@/api/types'
 import { clearSession, session, setSession } from '@/lib/session'
+import { nightPref, picked, weekMonday, weekRoom, weekendPref } from '@/admin/selection'
 
 vi.mock('@/api/users', () => ({ usersApi: { list: vi.fn() } }))
+vi.mock('@/api/rooms', () => ({
+  roomsApi: { schools: vi.fn(async () => [{ id: 1, name: '우송대', net_id: 75 }]) },
+}))
 const list = vi.mocked(usersApi.list)
 // 회원 화면(Task 13)이 /users 에서 실제로 그린다 — 정렬에 쓰는 필드까지 채운다
 const user = (email: string): UserOut => ({
@@ -48,18 +52,24 @@ beforeEach(() => {
 })
 
 describe('AdminShell', () => {
-  it('/ 는 /dashboard 로, 메뉴 순서(#46) · 전송 현황 활성 · 회원 대기 건수', async () => {
+  it('/ 는 /dashboard 로, 메뉴 순서(#46) · 전송 현황 활성 · 회원 대기 건수 · 학교 읽기 전용', async () => {
     const { w, router } = await mountApp('/')
     expect(router.currentRoute.value.path).toBe('/dashboard')
     expect(list).toHaveBeenCalledWith('pending_approval')
     const links = w.findAll('nav a')
     expect(links.map((a) => a.text().replace(/\d+/g, '').trim())).toEqual([
+      '건물 · 강의실',
+      '강의실 설정',
+      '주간 시간표',
       '노드 상태',
       '전송 현황',
       '회원',
     ])
-    expect(links[1].attributes('aria-current')).toBe('page')
-    expect(links[2].text()).toContain('2')
+    expect(links[2].attributes('href')).toBe('/week')
+    expect(links[4].attributes('aria-current')).toBe('page')
+    expect(links[5].text()).toContain('2')
+    expect(w.text()).toContain('우송대 · net_id 75')
+    expect(w.text()).toContain('학교는 CLI 에서만 만든다')
     expect(w.text()).toContain('관리자1')
   })
 
@@ -84,6 +94,36 @@ describe('AdminShell', () => {
     expect(session.value).toBeNull()
     // /login 은 지연 로드라 첫 이동은 dynamic import 만큼 걸린다 — 이동이 끝날 때까지 기다린다
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/login'))
+  })
+})
+
+describe('선택 상태 — 세션과 같은 수명', () => {
+  it('로그아웃·만료로 세션이 비면 트리 선택·주간 강의실·주·야간/주말 선택을 지운다', async () => {
+    setSession({ token: 't', role: 'admin', school_id: 1, name: '관리자1' })
+    const fill = () => {
+      picked.value = [11]
+      weekRoom.value = 11
+      weekMonday.value = '2026-09-21'
+      nightPref.value = true
+      weekendPref.value = false
+    }
+    const empty = () =>
+      expect([
+        picked.value,
+        weekRoom.value,
+        weekMonday.value,
+        nightPref.value,
+        weekendPref.value,
+      ]).toEqual([[], null, null, null, null])
+    fill()
+    clearSession()
+    await flushPromises()
+    empty()
+    setSession({ token: 't', role: 'admin', school_id: 1, name: '관리자1' })
+    fill()
+    clearSession('expired')
+    await flushPromises()
+    empty()
   })
 })
 

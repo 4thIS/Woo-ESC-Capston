@@ -3,7 +3,9 @@ export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost'
 </script>
 
 <script setup lang="ts">
-withDefaults(
+import { computed } from 'vue'
+
+const props = withDefaults(
   defineProps<{
     variant?: ButtonVariant
     size?: 'sm' | 'md'
@@ -14,6 +16,14 @@ withDefaults(
   }>(),
   { variant: 'primary', size: 'md', disabled: false, loading: false, type: 'button' },
 )
+// 진행 라벨("3/12 적용 중")은 숫자가 바뀌어도 폭이 흔들리면 안 된다 (components.md) — 숫자를 가장 긴
+// 자릿수의 0 으로 채운 문자열을 숨겨 두어 폭을 미리 잡는다. .num(tabular-nums)이라 숫자 폭은 0 과 같다
+const sizer = computed(() => {
+  const label = props.loadingLabel
+  if (!label) return ''
+  const width = Math.max(...(label.match(/\d+/g) ?? ['']).map((s) => s.length))
+  return label.replace(/\d+/g, '0'.repeat(width))
+})
 </script>
 
 <template>
@@ -25,8 +35,11 @@ withDefaults(
     :aria-busy="loading || undefined"
   >
     <span v-if="loading" class="btn__spin" aria-hidden="true" />
-    <template v-if="loading && loadingLabel">{{ loadingLabel }}</template>
-    <slot v-else />
+    <span class="btn__label">
+      <span :class="{ btn__ghost: loading && loadingLabel }"><slot /></span>
+      <span v-if="loadingLabel" class="btn__ghost num" aria-hidden="true">{{ sizer }}</span>
+      <span v-if="loading && loadingLabel" class="btn__progress num">{{ loadingLabel }}</span>
+    </span>
   </button>
 </template>
 
@@ -99,5 +112,16 @@ withDefaults(
   .btn__spin {
     animation: none;
   }
+}
+/* 기본 라벨·폭 잡이·진행 라벨을 한 칸에 겹친다 — 폭은 셋 중 가장 넓은 것 */
+.btn__label {
+  display: inline-grid;
+}
+.btn__label > * {
+  grid-area: 1 / 1;
+  text-align: center;
+}
+.btn__ghost {
+  visibility: hidden;
 }
 </style>

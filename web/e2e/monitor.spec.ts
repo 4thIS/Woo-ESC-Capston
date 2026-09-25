@@ -6,7 +6,17 @@ import {
   type Page,
 } from '@playwright/test'
 import cfg from './env.json' with { type: 'json' }
-import { SEED, SIZES, WEB_URL, apiLogin, login, nextAdmin, seedMonitoring, shot } from './helpers'
+import {
+  SEED,
+  SIZES,
+  WEB_URL,
+  apiLogin,
+  login,
+  nextAdmin,
+  seedMonitoring,
+  shot,
+  sql,
+} from './helpers'
 
 // e2e 는 node 타입 — page.evaluate 콜백은 브라우저에서 돈다
 declare const navigator: { clipboard: { readText(): Promise<string> } }
@@ -27,6 +37,9 @@ test.beforeAll(async ({ browser }) => {
   })
   api = ctx.request
   await seedMonitoring(api)
+  // 전송 현황은 학교 전체 집계라 건물로 좁힐 수 없다 — 앞 파일(admin-ops)이 남긴 다른 건물의 전송 작업을
+  // 지워 KPI·최근 전송이 이 파일의 시드만 세게 한다. 노드·강의실은 지우지 않고 아래에서 건물 E 로 좁힌다
+  sql(`DELETE FROM outbox WHERE bld <> '${SEED.bld}'`)
   page = await ctx.newPage()
   await page.goto('/admin/nodes')
   await login(page, nextAdmin)
@@ -45,11 +58,14 @@ test('시드 — 노드 4행·경고, 대기 장치 1, 모뎀 2, 지연 표본 8
     return r.json()
   }
   const nodes = (await get('/api/admin/nodes')) as {
+    bld: string
     room: number
     unit: number
     warnings: string[]
   }[]
-  expect(nodes.map((n) => `${n.room}-${n.unit}:${n.warnings.join(',')}`)).toEqual([
+  // 서버는 학교의 모든 방·유닛마다 노드 행을 만든다(보고 없으면 unseen) — 다른 spec 이 만든 방은 빼고 시드 건물만
+  const seeded = nodes.filter((n) => n.bld === SEED.bld)
+  expect(seeded.map((n) => `${n.room}-${n.unit}:${n.warnings.join(',')}`)).toEqual([
     '401-1:',
     '402-1:unseen,low_batt',
     '402-2:unseen',
@@ -58,7 +74,13 @@ test('시드 — 노드 4행·경고, 대기 장치 1, 모뎀 2, 지연 표본 8
   const pending = (await get('/api/lora/pending')) as { mac: string }[]
   expect(pending.map((p) => p.mac)).toEqual([SEED.mac])
   const modems = (await get('/api/lora/modems')) as { modem_id: string; connected: boolean }[]
-  expect(modems.map((m) => `${m.modem_id}:${m.connected}`)).toEqual(['e2e-m1:true', 'e2e-m2:false'])
+  // 전체 실행에서는 admin-ops 가 먼저 e2e-m4·m5 를 등록한다 — 시드 모뎀만 본다
+  const seededModems: string[] = [SEED.modem, SEED.offlineModem]
+  expect(
+    modems
+      .filter((m) => seededModems.includes(m.modem_id))
+      .map((m) => `${m.modem_id}:${m.connected}`),
+  ).toEqual(['e2e-m1:true', 'e2e-m2:false'])
   expect(await get('/api/admin/analytics/latency')).toMatchObject({
     n: 8,
     p50: 25,
@@ -119,6 +141,8 @@ test('기간 30일 — from 이 to 보다 29일 앞 (KST 날짜)', async () => {
 const esp = () => page.getByRole('region', { name: 'ESP노드', exact: true })
 
 test('노드 상태 — 보고 없음 먼저, 경고 배지 하나, 배터리 V·신호, 마지막 갱신', async () => {
+  // 다른 spec 이 만든 건물의 방도 '응답 없음' 노드로 섞인다 — 시드 건물로 좁혀서 센다 (이 파일 끝까지 유지)
+  await page.getByLabel('건물').selectOption({ label: SEED.building })
   const rows = esp().locator('tbody tr')
   await expect(rows).toHaveCount(4)
   await expect(rows.nth(0)).toContainText('공학관 402-2')
@@ -147,9 +171,11 @@ test('문제 있는 것만 · 건물 필터', async () => {
   await esp().getByLabel('문제 있는 것만').check()
   await expect(esp().locator('tbody tr')).toHaveCount(3)
   await esp().getByLabel('문제 있는 것만').uncheck()
+  // 전체로 넓히면 시드 4행은 그대로 있고 다른 건물 행이 더해질 수 있다 — 다시 시드 건물로
+  await page.getByLabel('건물').selectOption({ label: '전체' })
+  await expect(esp().locator('tbody tr', { hasText: SEED.building })).toHaveCount(4)
   await page.getByLabel('건물').selectOption({ label: SEED.building })
   await expect(esp().locator('tbody tr')).toHaveCount(4)
-  await page.getByLabel('건물').selectOption({ label: '전체' })
 })
 
 test('네트워크가 끊겨도 표를 지우지 않는다', async () => {

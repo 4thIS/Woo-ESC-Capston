@@ -19,8 +19,16 @@ const props = withDefaults(
     loading?: boolean
     empty?: string
     expandable?: boolean
+    tall?: boolean
   }>(),
-  { rowKey: 'id', selected: () => [], loading: false, empty: '항목이 없습니다', expandable: false },
+  {
+    rowKey: 'id',
+    selected: () => [],
+    loading: false,
+    empty: '항목이 없습니다',
+    expandable: false,
+    tall: false,
+  },
 )
 const open = reactive(new Set<string>())
 const keyOf = (row: Record<string, unknown>) => String(row[props.rowKey])
@@ -34,7 +42,7 @@ const span = () => props.columns.length + (props.expandable ? 1 : 0)
 
 <template>
   <div class="tbl-wrap">
-    <table class="tbl">
+    <table class="tbl" :class="{ 'tbl--tall': tall }">
       <thead>
         <tr>
           <th v-if="expandable" class="tbl__toggle-col" aria-label="펼치기" />
@@ -114,6 +122,10 @@ td {
   height: 32px;
   padding: 0 var(--space-3);
   border-bottom: var(--border-thin) solid var(--line-1);
+}
+/* 두 줄 셀이 있는 표 (components.md — 행 32px, 두 줄이면 44px) */
+.tbl--tall td {
+  height: 44px;
 }
 .tbl__cell--left {
   text-align: left;

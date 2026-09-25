@@ -21,7 +21,9 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
 </template>
 
 <style scoped>
+/* flow-root — 카드의 윗여백이 바탕 밖으로 새어(margin collapse) 100vh 위에 얹혀 스크롤이 생기지 않게 */
 .auth {
+  display: flow-root;
   min-height: 100vh;
 }
 .auth__card {
