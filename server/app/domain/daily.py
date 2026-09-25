@@ -109,7 +109,7 @@ def _promote(Session: sessionmaker, now_local: dt.datetime, errors: list[str]) -
             n += 1
         except Exception as e:
             log.exception("승격 실패 resv %s", rid)
-            errors.append(f"promoted: resv {rid}: {e}")
+            errors.append(f"promoted: resv {rid}: {type(e).__name__}")
     return n
 
 
@@ -136,7 +136,7 @@ def _resync_failed(s: Session, now_utc: dt.datetime, errors: list[str]) -> list[
             out.append([bld, room, unit, sorted(ks)])
         except Exception as e:
             log.exception("재동기 실패 %s%s/%s", bld, room, unit)
-            errors.append(f"resynced: {bld}{room}/{unit}: {e}")
+            errors.append(f"resynced: {bld}{room}/{unit}: {type(e).__name__}")
     return out
 
 
@@ -182,7 +182,8 @@ def _run_daily(Session: sessionmaker, now_utc: dt.datetime | None) -> int:
                 res[name] = fn(s)
         except Exception as e:  # 한 단계 실패가 나머지를 막지 않는다
             log.exception("daily %s 실패", name)
-            res["errors"].append(f"{name}: {e}")
+            # 클래스명만 — str(e) 는 IntegrityError 의 SQL 파라미터를 /api/admin/jobs 로 흘린다 (#49)
+            res["errors"].append(f"{name}: {type(e).__name__}")
 
     step("expired", lambda s: _expire(s, now_local))
     step("promoted", lambda s: _promote(Session, now_local, res["errors"]))  # 예약마다 자기 세션

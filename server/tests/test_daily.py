@@ -251,7 +251,7 @@ def test_step_failure_continues(db, hub, app, school, monkeypatch):
 
     monkeypatch.setattr(daily, "_promote", boom)
     res = _run(app)
-    assert res["promoted"] == 0 and res["errors"] == ["promoted: boom"] and "pruned" in res
+    assert res["promoted"] == 0 and res["errors"] == ["promoted: RuntimeError"] and "pruned" in res
 
 
 def test_already_ran_today_and_loop_tick(db, hub, app, school, monkeypatch):
@@ -338,3 +338,24 @@ def test_manual_daily_returns_its_own_jobrun(client, live, app, school, monkeypa
     monkeypatch.setattr(daily, "_run_daily", then_another)
     body = client.post("/api/admin/jobs/daily").json()
     assert body["result"] != {} and body["id"] == 1
+
+
+def test_errors_keep_only_exception_class_name(db, hub, app, school, monkeypatch):
+    """#49 리뷰: /api/admin/jobs 로 나가는 errors 에 str(e) 를 넣으면 IntegrityError 의 SQL 파라미터가
+    섞인다 — 예외 클래스명만 남긴다 (자세한 건 서버 로그)."""
+    _fix_clock(monkeypatch)
+    _, ids = _building(app, 1, "E", rooms=((301, 2),))
+    _resv(app, ids[301], dt.date(2026, 9, 25), 13, 0, 14, 0, id_=1)
+    _outbox(app, "E", 301, "SLOT_SET", "failed", UTC_NOW - dt.timedelta(hours=1))
+
+    def leak(*a, **kw):
+        raise LookupError("secret-param")
+
+    monkeypatch.setattr(daily.api, "enqueue_resv_set", leak)
+    monkeypatch.setattr(daily.api, "enqueue_full_sync", leak)
+    monkeypatch.setattr(daily, "_prune", leak)  # 단계 실패도
+    res = _run(app)
+    assert "promoted: resv 1: LookupError" in res["errors"]
+    assert "resynced: E301/1: LookupError" in res["errors"]
+    assert "pruned: LookupError" in res["errors"]
+    assert not any("secret-param" in e for e in res["errors"]), res["errors"]
