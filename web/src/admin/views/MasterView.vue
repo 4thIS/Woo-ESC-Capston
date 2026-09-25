@@ -7,6 +7,8 @@ import { loraApi } from '@/api/lora'
 import { roomsApi } from '@/api/rooms'
 import { useResource } from '@/lib/useResource'
 import BuildingPanel from './master/BuildingPanel.vue'
+import RangeAddModal from './master/RangeAddModal.vue'
+import RoomPanel from './master/RoomPanel.vue'
 
 // 마스터 데이터는 관리자가 바꿀 때만 바뀐다 — 자동 새로고침 없음 (admin-master.md)
 const { data, error, loading, reload } = useResource(async () => {
@@ -23,12 +25,17 @@ watch(data, (d) => {
   if (d && !d.buildings.some((b) => b.id === selectedId.value))
     selectedId.value = d.buildings[0]?.id ?? null
 })
+const selected = computed(
+  () => data.value?.buildings.find((b) => b.id === selectedId.value) ?? null,
+)
+const ranging = ref(false)
 // reservable 기본값이 꺼짐 — 켜는 것을 잊으면 학생 웹이 빈 채로 남는다
 const noReservable = computed(
   () => !!data.value?.rooms.length && !data.value.rooms.some((r) => r.reservable),
 )
-watch(error, (e) => {
-  if (e && e.status !== 401 && e.status !== 403)
+// 다시 불러오기도 실패하면 Toast 를 쌓지 않는다 — 처음 실패할 때 한 번 (NodesView 와 같다)
+watch(error, (e, prev) => {
+  if (e && !prev && e.status !== 401 && e.status !== 403)
     showToast({ tone: 'danger', message: e.message, action: { label: '재시도', onClick: reload } })
 })
 </script>
@@ -53,8 +60,26 @@ watch(error, (e) => {
         :selected-id="selectedId"
         @select="selectedId = $event"
         @changed="reload"
+        @reload="reload"
+      />
+      <RoomPanel
+        v-if="selected"
+        :building="selected"
+        :rooms="data?.rooms ?? []"
+        :nodes="data?.nodes ?? []"
+        :loading="loading && !data"
+        @changed="reload"
+        @range="ranging = true"
       />
     </div>
+    <RangeAddModal
+      v-if="selected"
+      :open="ranging"
+      :building="selected"
+      :rooms="data?.rooms ?? []"
+      @close="ranging = false"
+      @changed="reload"
+    />
   </main>
 </template>
 

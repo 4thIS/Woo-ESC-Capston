@@ -38,11 +38,13 @@ const draft = (o: Partial<ResvDraft> = {}): ResvDraft => ({
   ...o,
 })
 
+// 저장 버튼은 form 속성으로 폼에 붙는다 — 문서 안에 있어야 이어진다(버튼 클릭 = 폼 submit)
 let w: VueWrapper
 async function mountForm(props: Record<string, unknown> = {}) {
   w = mount(ResvForm, {
     props: { open: true, rooms, preset: { room_id: 11 }, ...props },
     global: { stubs: { teleport: true } },
+    attachTo: document.body,
   })
   await flushPromises()
 }
@@ -66,7 +68,10 @@ beforeEach(() => {
   api.saveResv.mockReset().mockResolvedValue({ outbox_ids: [5], id: 12 })
   for (const t of [...toasts.value]) dismissToast(t.id)
 })
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  w?.unmount()
+  vi.useRealTimers()
+})
 
 describe('resvErrors', () => {
   it('오늘 이전 날짜·종료 ≤ 시작은 막는다', () => {

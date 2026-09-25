@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils'
 import MasterView from '@/admin/views/MasterView.vue'
 import { roomsApi } from '@/api/rooms'
@@ -54,10 +54,11 @@ const M = (modem_id: string): ModemOut => ({
   school_id: 1,
 })
 
+// 저장 버튼은 form 속성으로 폼에 붙는다 — 문서 안에 있어야 이어진다(버튼 클릭 = 폼 submit)
 let w: VueWrapper
 // teleport 스텁은 갱신마다 슬롯을 다시 그린다 — dialog 를 매번 다시 찾는다 (users.spec 과 같다)
 async function mountView() {
-  w = mount(MasterView, { global: { stubs: { teleport: true } } })
+  w = mount(MasterView, { global: { stubs: { teleport: true } }, attachTo: document.body })
   await flushPromises()
 }
 type Root = VueWrapper | DOMWrapper<Element>
@@ -85,6 +86,7 @@ beforeEach(() => {
   setSession({ token: 't', role: 'admin', school_id: 1, name: '관리자1' })
   for (const t of [...toasts.value]) dismissToast(t.id)
 })
+afterEach(() => w?.unmount())
 
 describe('건물 패널', () => {
   it('n / 26, 미배정은 적색 테두리 배지, 첫 건물이 골라져 있다', async () => {
@@ -217,5 +219,42 @@ describe('건물 패널', () => {
     await mountView()
     expect(w.text()).toContain('건물을 먼저 만드세요')
     expect(w.text()).toContain('강의실을 범위로 추가합니다.')
+  })
+
+  it('첫 불러오기 실패 — 빈 학교로 보이지 않는다: 오류 EmptyState·다시 불러오기, + 건물 잠금, 강의실 표 없음', async () => {
+    rooms.buildings.mockRejectedValue(new ApiError(500, MESSAGES[500]))
+    await mountView()
+    expect(w.text()).not.toContain('건물을 먼저 만드세요')
+    expect(w.text()).toContain('건물 목록을 불러오지 못했습니다')
+    expect((btn(w, '+ 건물').element as HTMLButtonElement).disabled).toBe(true)
+    expect(w.find('tbody').exists()).toBe(false)
+    expect(toasts.value).toHaveLength(1)
+    rooms.buildings.mockRejectedValue(new ApiError(500, MESSAGES[500]))
+    await btn(w, '다시 불러오기').trigger('click')
+    await flushPromises()
+    expect(rooms.buildings).toHaveBeenCalledTimes(2)
+    // 다시 실패해도 danger Toast 를 쌓지 않는다
+    expect(toasts.value).toHaveLength(1)
+    rooms.buildings.mockResolvedValue([B(1, '공학관', 'E', 'm1')])
+    await btn(w, '다시 불러오기').trigger('click')
+    await flushPromises()
+    expect(w.text()).not.toContain('건물 목록을 불러오지 못했습니다')
+    expect(row('공학관').exists()).toBe(true)
+  })
+
+  it('같은 학교 글자 경합 409 — 글자 칸에 건물 문장, 목록을 새로 불러온다', async () => {
+    rooms.createBuilding.mockRejectedValue(
+      new ApiError(409, MESSAGES[409], [], { detail: 'constraint violation' }),
+    )
+    await mountView()
+    await btn(w, '+ 건물').trigger('click')
+    const d = () => dialog('건물 추가')!
+    await control(d(), '이름').setValue('별관')
+    await control(d(), '글자').setValue('q')
+    await btn(d(), '저장').trigger('click')
+    await flushPromises()
+    expect(d().text()).toContain('이미 쓰는 글자입니다. 목록을 새로 불러옵니다.')
+    expect(rooms.buildings).toHaveBeenCalledTimes(2)
+    expect(toasts.value).toHaveLength(0)
   })
 })

@@ -18,10 +18,11 @@ const emit = defineEmits<{ confirm: []; close: [] }>()
 </script>
 
 <template>
-  <Modal :open="open" :title="title" size="sm" @close="emit('close')">
+  <!-- 확인 작업이 도는 동안은 닫지 않는다 — 닫히면 이미 나간 삭제를 취소한 줄 안다 -->
+  <Modal :open="open" :title="title" size="sm" @close="!loading && emit('close')">
     <p v-for="(line, i) in lines" :key="i" class="confirm__line">{{ line }}</p>
     <template #footer>
-      <Button variant="secondary" @click="emit('close')">취소</Button>
+      <Button variant="secondary" :disabled="loading" @click="emit('close')">취소</Button>
       <Button
         :variant="danger ? 'danger' : 'primary'"
         :loading="loading"

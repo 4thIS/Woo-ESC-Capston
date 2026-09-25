@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, useId, watch } from 'vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
@@ -8,6 +8,9 @@ import { ApiError } from '@/api/client'
 import { roomsApi } from '@/api/rooms'
 import type { ExamIn, ExamWithRoom, RoomOut } from '@/api/types'
 import { conflictMessage, examKey, type SavedRow } from './rules'
+
+// 저장 버튼은 Modal 바닥(폼 밖)에 있다 — form 속성으로 이어 Enter 가 폼을 제출하게 (submit 한 길만)
+const formId = useId()
 
 const props = withDefaults(
   defineProps<{
@@ -114,7 +117,7 @@ async function run(list: RoomOut[], body: ExamIn, id?: number): Promise<boolean>
     :close-on-backdrop="!dirty && !running"
     @close="close"
   >
-    <form class="form" novalidate @submit.prevent="submit">
+    <form :id="formId" class="form" novalidate @submit.prevent="submit">
       <p class="form__target">
         대상 <span class="num">{{ rooms.length }}</span
         >곳 · {{ targetText || '없음' }}
@@ -139,7 +142,8 @@ async function run(list: RoomOut[], body: ExamIn, id?: number): Promise<boolean>
         :loading="running"
         :loading-label="progress"
         :disabled="!rooms.length"
-        @click="submit"
+        type="submit"
+        :form="formId"
         >{{ label }}</Button
       >
     </template>

@@ -10,12 +10,16 @@ import { roomsApi } from '@/api/rooms'
 import type { SchoolOut } from '@/api/types'
 import { usePolling } from '@/lib/usePolling'
 import { pendingCount, refreshPending } from './pending'
+import { weekRoom } from './selection'
 
 const router = useRouter()
 const me = computed(() => session.value?.name ?? '')
 // #46 admin-master.md 순서: 건물 · 강의실 · 강의실 설정 · 주간 시간표 · 노드 상태 · 전송 현황 · 회원
 const nav = computed(() => [
   { to: '/master', label: '건물 · 강의실' },
+  { to: '/rooms', label: '강의실 설정' },
+  // 메뉴 항목에 :roomId 를 둘 수 없다 — 마지막으로 본 강의실, 없으면 /week 가 골라 준다
+  { to: weekRoom.value === null ? '/week' : `/rooms/${weekRoom.value}/week`, label: '주간 시간표' },
   { to: '/nodes', label: '노드 상태' },
   { to: '/dashboard', label: '전송 현황' },
   { to: '/users', label: '회원', badge: pendingCount.value },

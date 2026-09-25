@@ -10,6 +10,13 @@ export const routes: RouteRecordRaw[] = [
       // 관리자 기본 화면은 전송 현황 (spec §5)
       { path: '', redirect: '/dashboard' },
       { path: 'master', component: () => import('./views/MasterView.vue') },
+      { path: 'rooms', component: () => import('./views/RoomsView.vue') },
+      { path: 'week', component: () => import('./views/WeekView.vue') },
+      {
+        path: 'rooms/:roomId(\\d+)/week',
+        component: () => import('./views/WeekView.vue'),
+        props: true,
+      },
       { path: 'nodes', component: () => import('./views/NodesView.vue') },
       { path: 'dashboard', component: () => import('./views/DashboardView.vue') },
       { path: 'users', component: () => import('./views/UsersView.vue') },

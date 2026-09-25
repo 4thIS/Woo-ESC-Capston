@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import ExamForm from '@/components/domain/ExamForm.vue'
 import Modal from '@/components/ui/Modal.vue'
@@ -20,11 +20,13 @@ const R = (id: number, room: number): RoomOut => ({
 const rooms = [R(11, 401), R(12, 402), R(13, 405)]
 const body = { date_start: '2026-10-19', date_end: '2026-10-23' }
 
+// 저장 버튼은 form 속성으로 폼에 붙는다 — 문서 안에 있어야 이어진다(버튼 클릭 = 폼 submit)
 let w: VueWrapper
 async function mountForm(props: Record<string, unknown> = {}) {
   w = mount(ExamForm, {
     props: { open: true, rooms, ...props },
     global: { stubs: { teleport: true } },
+    attachTo: document.body,
   })
   await flushPromises()
 }
@@ -45,6 +47,7 @@ beforeEach(() => {
     .mockImplementation(async (roomId: number) => ({ outbox_ids: [roomId * 10], id: roomId + 100 }))
   for (const t of [...toasts.value]) dismissToast(t.id)
 })
+afterEach(() => w?.unmount())
 
 describe('ExamForm', () => {
   it('고른 방마다 id 없이 POST (서버 채번) — 방마다 saved, 끝나면 done·close·Toast', async () => {

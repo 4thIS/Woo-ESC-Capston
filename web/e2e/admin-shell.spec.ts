@@ -12,6 +12,8 @@ test('로그인 → 전송 현황, 사이드바 순서·활성 + 회원 대기 �
   await expect(page).toHaveURL(/\/admin\/dashboard$/)
   await expect(page.locator('nav a')).toHaveText([
     /^건물 · 강의실$/,
+    /^강의실 설정$/,
+    /^주간 시간표$/,
     /^노드 상태$/,
     /^전송 현황$/,
     /^회원\s*\d+$/,

@@ -6,6 +6,7 @@ const API = `http://127.0.0.1:${process.env.E2E_API_PORT ?? '8000'}`
 const WEB_PORT = process.env.E2E_WEB_PORT ?? '5173'
 export default defineConfig({
   testDir: './e2e',
+  // workers 1 은 필수 — monitor.spec 이 beforeAll 에서 다른 건물의 outbox 를 지운다(동시에 도는 spec 이 있으면 그 행이 사라진다)
   workers: 1,
   fullyParallel: false,
   timeout: 30_000,
