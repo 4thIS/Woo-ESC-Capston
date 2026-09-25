@@ -131,6 +131,28 @@ def test_midnight_never_returned_as_until():
     assert RS.room_state([], [Span(M(23), RS.DAY_MIN, 6, "x")], False, M(23, 30)) == (7, None)
 
 
+def test_week_busy_reservation_query_orders_by_id(app, school, students):
+    """id 로 정렬해야 동률 구간의 머리(먼저 나온 것)가 폴마다 안 바뀐다 — 정렬이 없으면 DB 의 스캔
+    순서(인덱스 선택 등)에 맡겨져 달라질 수 있다. 실행된 SQL 에 ORDER BY 가 있는지로 직접 확인한다."""
+    from sqlalchemy import event
+
+    _, ids = _building(app, 1, "E")
+    rid = ids[101]
+    seen = []
+
+    def _capture(conn, cursor, statement, parameters, context, executemany):
+        seen.append(statement)
+
+    with app.state.Session() as s:
+        event.listen(s.bind, "before_cursor_execute", _capture)
+        try:
+            RS.week_busy(s, rid, dt.date(2026, 9, 21), "s1@mju.ac.kr")
+        finally:
+            event.remove(s.bind, "before_cursor_execute", _capture)
+    resv_sql = next(sql for sql in seen if "reservations" in sql and "SELECT" in sql)
+    assert "ORDER BY reservations.id" in resv_sql
+
+
 def test_type_map_and_fmt():
     assert RS.TYPE_TO_LAYOUT == {1: 1, 2: 5, 3: 3, 4: 4, 5: 6, 6: 7} and RS.FREE == 4
     assert RS.fmt_hhmm(M(9, 5)) == "09:05" and RS.fmt_hhmm(None) is None

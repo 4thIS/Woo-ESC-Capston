@@ -172,11 +172,13 @@ def week_busy(s: Session, room_id: int, start: dt.date, viewer_email: str) -> li
         slots[x.day].append(Span(x.s_h * 60 + x.s_m, x.e_h * 60 + x.e_m, x.type, x.subject))
     resvs: dict[dt.date, list[Span]] = defaultdict(list)
     for r in s.scalars(
-        select(Reservation).where(
+        select(Reservation)
+        .where(
             Reservation.room_id == room_id,
             Reservation.date.between(start, end),
             Reservation.status.in_(_BUSY_STATUSES),
         )
+        .order_by(Reservation.id)
     ):
         mine, label = public_label(r, viewer_email)
         st = r.status if mine else None  # 남의 것은 상태도 숨긴다 — 존재만
