@@ -112,6 +112,7 @@ def _seed(app):
                     name="p1",
                     student_no="1",
                     pw_hash=password.hash("password1"),
+                    created_at=NOW - dt.timedelta(minutes=2),
                 ),
                 User(
                     email="p2@mju.ac.kr",
@@ -121,6 +122,7 @@ def _seed(app):
                     name="p2",
                     student_no="2",
                     pw_hash=password.hash("password1"),
+                    created_at=NOW - dt.timedelta(minutes=1),
                 ),
                 User(
                     email="po@other.ac.kr",
@@ -130,6 +132,7 @@ def _seed(app):
                     name="po",
                     student_no="3",
                     pw_hash=password.hash("password1"),
+                    created_at=NOW - dt.timedelta(minutes=1),
                 ),
             ]
         )
