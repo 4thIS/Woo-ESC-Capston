@@ -164,4 +164,23 @@ describe('MyView — /me', () => {
     await flushPromises()
     expect(cards(w)).toHaveLength(1)
   })
+
+  it('체크인 성공 뒤 재조회가 끝날 때까지 카드가 잠긴다 — 옛 체크인 버튼이 다시 눌리지 않게', async () => {
+    let done!: (v: ResvMineOut[]) => void
+    api.mine.mockResolvedValueOnce([resv()]).mockReturnValueOnce(new Promise((ok) => (done = ok)))
+    api.checkin.mockResolvedValue(resv())
+    const { w } = await mountAt(MyView, '/me', '/me')
+    await cards(w)[0].get('button').trigger('click')
+    await flushPromises()
+    expect(api.mine).toHaveBeenCalledTimes(2)
+    const btns = () =>
+      cards(w)[0]
+        .findAll('button')
+        .map((b) => (b.element as HTMLButtonElement).disabled)
+    expect(btns().every(Boolean)).toBe(true)
+    done([resv({ checked_in_at: new Date('2026-10-23T01:42:00Z') })])
+    await flushPromises()
+    expect(cards(w)[0].get('.mc__done').text()).toBe('✓ 10:42 체크인')
+    expect(btns().every((d) => !d)).toBe(true)
+  })
 })

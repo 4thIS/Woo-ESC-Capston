@@ -1,4 +1,3 @@
-```vue
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -44,24 +43,25 @@ async function run(
 ) {
   if (busy.value) return
   busy.value = { id: r.id, kind }
-  let refresh = true
+  // 재조회가 끝날 때까지 잠근다 — 옛 카드의 체크인이 잠깐 다시 눌려 엉뚱한 409 문장이 나지 않게
   try {
-    await call()
-    showToast({ message: ok })
-  } catch (e) {
-    if (!(e instanceof ApiError)) throw e
-    // 401·403 은 client 가 로그인으로 보낸다 — 부를 것이 없다
-    if (e.status === 401 || e.status === 403) refresh = false
-    else
+    try {
+      await call()
+      showToast({ message: ok })
+    } catch (e) {
+      if (!(e instanceof ApiError)) throw e
+      // 401·403 은 client 가 로그인으로 보낸다 — 부를 것이 없다
+      if (e.status === 401 || e.status === 403) return
       showToast({
         tone: 'danger',
         // 서버 원문은 내지 않는다 — 그새 바뀐 상태(409·404, 400 은 방어)는 이 화면의 문장
         message: [400, 404, 409].includes(e.status) ? conflict : e.message,
       })
+    }
+    await reload()
   } finally {
     busy.value = null
   }
-  if (refresh) await reload()
 }
 
 const checkin = (r: ResvMineOut) =>
