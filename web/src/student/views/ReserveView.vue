@@ -10,10 +10,14 @@ import {
   DAILY_TEXT,
   FULL_TEXT,
   MAX_ACTIVE,
+  STALE_LEAD,
   STALE_TEXT,
+  TAKEN_LEAD,
   TAKEN_TEXT,
   activeCount,
 } from '@/components/student/rules'
+import Banner from '@/components/ui/Banner.vue'
+import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { showToast } from '@/components/ui/toast'
@@ -63,7 +67,7 @@ async function explain(e: ApiError) {
     await reload()
     showToast({
       tone: 'danger',
-      message: week.value?.full ? FULL_TEXT : TAKEN_TEXT,
+      message: week.value?.full ? FULL_TEXT : weekError.value ? TAKEN_LEAD : TAKEN_TEXT,
       duration: SETTLED,
     })
   } else if (e.status === 400) {
@@ -71,7 +75,7 @@ async function explain(e: ApiError) {
     await Promise.all([reload(), reloadMine()])
     showToast({
       tone: 'danger',
-      message: count.value >= MAX_ACTIVE ? CAP_TEXT : STALE_TEXT,
+      message: count.value >= MAX_ACTIVE ? CAP_TEXT : weekError.value ? STALE_LEAD : STALE_TEXT,
       duration: SETTLED,
     })
   } else if (e.status === 404) {
@@ -92,6 +96,15 @@ const retry = () => void reload()
       back-label="닫기"
       back-text="✕"
     />
+    <!-- 재조회가 실패하면 옛 구간은 두고 알린다 — RoomView·WeekView 와 같은 모양 -->
+    <Banner
+      v-if="weekError && week"
+      tone="danger"
+      :message="weekError.message"
+      :dismissible="false"
+    >
+      <Button variant="secondary" @click="retry">다시 시도</Button>
+    </Banner>
     <Skeleton v-if="!week && !weekError" :rows="4" />
     <EmptyState
       v-else-if="!week"

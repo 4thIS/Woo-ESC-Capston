@@ -5,7 +5,15 @@ import { mineResv } from '@/api/__fixtures__/mine'
 import { studentApi } from '@/api/student'
 import type { ResvMineOut, WeekOut } from '@/api/types'
 import week from '@/api/__fixtures__/week.json'
-import { CAP_TEXT, DAILY_TEXT, FULL_TEXT, STALE_TEXT, TAKEN_TEXT } from '@/components/student/rules'
+import {
+  CAP_TEXT,
+  DAILY_TEXT,
+  FULL_TEXT,
+  STALE_LEAD,
+  STALE_TEXT,
+  TAKEN_LEAD,
+  TAKEN_TEXT,
+} from '@/components/student/rules'
 import { dismissToast, toasts } from '@/components/ui/toast'
 import ReserveSheet from '@/components/student/ReserveSheet.vue'
 import ReserveView from '@/student/views/ReserveView.vue'
@@ -135,6 +143,34 @@ describe('ReserveView — /:bld/:room/reserve', () => {
     await fillAndSubmit(stale.w)
     expect(texts()).toEqual([STALE_TEXT])
     expect(autoDismissed()).toBe(true)
+  })
+
+  it('409 뒤 재조회가 실패하면 — "새로 불러왔어요"라 하지 않고, 옛 구간 위에 Banner + 다시 시도', async () => {
+    api.requestResv.mockRejectedValue(new ApiError(409, MESSAGES[409]))
+    api.week
+      .mockResolvedValueOnce(WEEK)
+      .mockRejectedValueOnce(new ApiError(500, MESSAGES[500]))
+      .mockResolvedValue(WEEK)
+    const { w } = await mountAt(ReserveView, ...PATH, ROOMS)
+    expect(w.find('.banner').exists()).toBe(false)
+    await fillAndSubmit(w)
+    expect(texts()).toEqual([TAKEN_LEAD])
+    const banner = w.get('.banner')
+    expect(banner.text()).toContain(MESSAGES[500])
+    expect(w.find('.rs__span').exists()).toBe(true) // 옛 구간은 남는다
+    await banner.get('button').trigger('click')
+    await flushPromises()
+    expect(api.week).toHaveBeenCalledTimes(3)
+    expect(w.find('.banner').exists()).toBe(false)
+  })
+
+  it('400 뒤 재조회가 실패하면 STALE 도 "새로 불러왔어요"를 빼고 말한다', async () => {
+    api.requestResv.mockRejectedValue(new ApiError(400, MESSAGES[400]))
+    api.week.mockResolvedValueOnce(WEEK).mockRejectedValue(new ApiError(500, MESSAGES[500]))
+    const { w } = await mountAt(ReserveView, ...PATH, ROOMS)
+    await fillAndSubmit(w)
+    expect(texts()).toEqual([STALE_LEAD])
+    expect(w.find('.banner').exists()).toBe(true)
   })
 
   it('이미 진행 중 3건이면 처음부터 잠겨 있다', async () => {

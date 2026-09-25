@@ -40,8 +40,12 @@ export const CHECKIN_AFTER = 15
 export const FULL_TEXT = '이 강의실은 예약이 다 찼어요'
 export const CAP_TEXT = `신청은 ${MAX_ACTIVE}건까지 할 수 있어요`
 export const DAILY_TEXT = '오늘은 더 신청할 수 없어요. 내일 다시 시도해 주세요'
-export const TAKEN_TEXT = '방금 다른 사람이 먼저 신청했어요. 비어 있는 시간을 새로 불러왔어요.'
-export const STALE_TEXT = '선택한 시간으로 신청할 수 없어요. 비어 있는 시간을 새로 불러왔어요.'
+/** 재조회가 실패하면 앞 문장만 — 새로 불러오지 못했는데 불러왔다고 하지 않는다 */
+export const TAKEN_LEAD = '방금 다른 사람이 먼저 신청했어요.'
+export const STALE_LEAD = '선택한 시간으로 신청할 수 없어요.'
+const RELOADED = '비어 있는 시간을 새로 불러왔어요.'
+export const TAKEN_TEXT = `${TAKEN_LEAD} ${RELOADED}`
+export const STALE_TEXT = `${STALE_LEAD} ${RELOADED}`
 export const CHANGED_TEXT = '이미 처리된 예약이에요. 목록을 새로 불러왔어요.'
 export const CHECKIN_CLOSED_TEXT = '지금은 체크인할 수 없어요. 목록을 새로 불러왔어요.'
 export const DOOR_HINT = '문 앞 화면에는 "학생 예약"으로만 표시돼요'
