@@ -13,7 +13,7 @@ from app.auth import ratelimit
 from app.auth.deps import StudentUser
 from app.auth.models import User
 from app.deps import _DB
-from app.domain import clock, reserve, room_state
+from app.domain import analytics, clock, reserve, room_state
 from app.domain.admin import _mine_out
 from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
 from app.domain.router import _ID_LOCK, _commit_notify, _free_id
@@ -39,17 +39,24 @@ def _student_room(s: Session, user: User, room_id: int) -> tuple[Room, Building]
     return room, b
 
 
-def _state_out(s: Session, room: Room, b: Building, at: dt.datetime) -> dict:
-    layout, until = room_state.state_of(s, room.id, at)
-    return {
-        "room_id": room.id,
-        "building_id": b.id,
-        "building": b.name,
-        "bld": b.bld,
-        "room": room.room,
-        "layout": layout,
-        "until": room_state.fmt_hhmm(until),
-    }
+def _states(s: Session, rows, at: dt.datetime) -> list[dict]:
+    """방들의 현재 상태 — analytics._inputs_range 로 방 수와 무관하게 쿼리 3개 (#49: 방마다 3개였다)."""
+    inputs = analytics._inputs_range(s, [room.id for room, _ in rows], at.date(), at.date())
+    out = []
+    for room, b in rows:
+        layout, until = room_state.room_state(*inputs(room.id, at.date()), at.hour * 60 + at.minute)
+        out.append(
+            {
+                "room_id": room.id,
+                "building_id": b.id,
+                "building": b.name,
+                "bld": b.bld,
+                "room": room.room,
+                "layout": layout,
+                "until": room_state.fmt_hhmm(until),
+            }
+        )
+    return out
 
 
 @router.get("/rooms/free", response_model=list[S.FreeRoomOut])
@@ -64,8 +71,7 @@ def free_rooms(
         at = at.astimezone(clock.SCHOOL_TZ).replace(tzinfo=None)
     at_local = at or clock.local_now()
     out = []
-    for room, b in s.execute(_rooms_q(user, building_id)).all():
-        st = _state_out(s, room, b, at_local)
+    for st in _states(s, s.execute(_rooms_q(user, building_id)).all(), at_local):
         if st["layout"] == room_state.FREE:
             out.append({**st, "free_until": st.pop("until")})
     return out
@@ -74,7 +80,7 @@ def free_rooms(
 @router.get("/rooms", response_model=list[S.RoomStateOut])
 def rooms(building_id: int | None = None, user: User = StudentUser, s: Session = _DB):
     now = clock.local_now()
-    return [_state_out(s, room, b, now) for room, b in s.execute(_rooms_q(user, building_id)).all()]
+    return _states(s, s.execute(_rooms_q(user, building_id)).all(), now)
 
 
 # 9999-12-26 = 그 주 일요일이 date 범위 안인 마지막 날 — 넘기면 week_start+6 이 OverflowError(500)
@@ -112,7 +118,7 @@ def week(id: int, date: dt.date | None = _WEEK_DATE, user: User = StudentUser, s
             }
         )
     return {
-        "room": _state_out(s, room, b, now),
+        "room": _states(s, [(room, b)], now)[0],
         "week_start": start,
         "slots": s.scalars(
             select(Slot).where(Slot.room_id == id).order_by(Slot.day, Slot.s_h, Slot.s_m)
