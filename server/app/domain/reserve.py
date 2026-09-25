@@ -84,15 +84,19 @@ def push_set(s: Session, r: Reservation) -> list[int]:
     return ids
 
 
-def push_del(s: Session, r: Reservation, today: dt.date, date: dt.date | None = None) -> list[int]:
-    """노드에 가 있을 수 있는(보낸 적 있고 아직 안 지난) 예약만 RESV_DEL. 어느 쪽이든 pushed_at 을 비운다.
-    `date` 는 날짜를 옮길 때 옮기기 전 날짜 — 노드가 가진 건 옛 날짜 항목이다."""
-    d = date or r.date
-    # 끝난 예약은 노드가 곧 버린다 — 웨이크 낭비
-    ended = clock.local_dt(d, r.e_h, r.e_m) <= clock.local_now()
+def push_del(
+    s: Session,
+    r: Reservation,
+    now_local: dt.datetime,
+    end: tuple[dt.date, int, int] | None = None,
+) -> list[int]:
+    """노드에 가 있을 수 있는(보낸 적 있고 아직 안 끝난) 예약만 RESV_DEL. 어느 쪽이든 pushed_at 을 비운다.
+    `end` = 노드가 가진 항목의 (날짜, 끝 시, 끝 분) — 옮길 때는 옮기기 전 값. 기본은 행의 현재 값."""
+    d, e_h, e_m = end or (r.date, r.e_h, r.e_m)
     sent = r.pushed_at is not None
     r.pushed_at = None
-    if not sent or d < today or ended:
+    # 지난 날짜·끝난 예약은 노드가 곧 버린다 — 웨이크 낭비
+    if not sent or d < now_local.date() or clock.local_dt(d, e_h, e_m) <= now_local:
         return []
     bld, room, _ = addr(s, r)
     return api.enqueue_resv_del(bld, room, r.id, session=s)
@@ -190,7 +194,7 @@ def cancel(s: Session, r: Reservation, *, by_admin: bool, now_local: dt.datetime
     if not by_admin and start_local(r) <= now_local:
         raise HTTPException(409, "시작된 예약은 취소할 수 없습니다")
     r.status, r.cancelled_at = "cancelled", clock.to_utc(now_local)
-    return push_del(s, r, now_local.date())
+    return push_del(s, r, now_local)
 
 
 def checkin(s: Session, r: Reservation, now_local: dt.datetime) -> None:

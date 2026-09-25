@@ -249,3 +249,35 @@ def test_admin_write_tracks_pushed_at(client, live, app, school, students, monke
     assert client.delete(f"{url}/{i}").json()["outbox_ids"] == []  # 보낸 적 없음
     assert client.delete(f"{url}/999").status_code == 200  # 멱등
     assert types() == ["RESV_SET", "RESV_DEL"]
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "want"),
+    [
+        # 유령: 9/23 10:00~11:00(진행 중) → 10/10 07:00~08:00. 옛 끝 11:00 > 10:30 → DEL 필요
+        (("2026-09-23", 10, 0, 11, 0), (7, 0, 8, 0), ["RESV_DEL"]),
+        # 이미 끝남: 9/23 09:00~09:30 → 10/10 20:00~21:00. 옛 끝 09:30 ≤ 10:30 → DEL 불필요
+        (("2026-09-23", 9, 0, 9, 30), (20, 0, 21, 0), []),
+        # 어제(d < today): 9/22 → 10/10 20:00~21:00 → DEL 불필요
+        (("2026-09-22", 9, 0, 10, 0), (20, 0, 21, 0), []),
+    ],
+    ids=["ghost", "already_ended", "yesterday"],
+)
+def test_move_out_of_window_uses_old_end(
+    client, live, app, school, students, monkeypatch, old, new, want
+):
+    """창 밖으로 옮길 때 '끝났나' 는 노드가 가진 옛 날짜·옛 끝 시각으로 판단한다 (리뷰 fix 1)."""
+    _fix_clock(monkeypatch)  # KST 9/23 10:30
+    _, ids = _building(app, 1, "E", rooms=((302, 1),))  # live FakeTopo: E302 units 1
+    rid = ids[302]
+    d, s_h, s_m, e_h, e_m = old
+    _resv(app, rid, dt.date.fromisoformat(d), s_h, s_m, e_h, e_m, id_=1)
+    with app.state.Session() as s, s.begin():
+        s.get(Reservation, 1).pushed_at = UTC_NOW  # 노드로 보낸 적 있음
+    n_h, n_m, ne_h, ne_m = new
+    body = {"id": 1, "date": "2026-10-10", "s_h": n_h, "s_m": n_m, "e_h": ne_h, "e_m": ne_m}
+    body |= {"type": 6, "subject": "r", "professor": ""}
+    assert client.post(f"/api/rooms/{rid}/reservations", json=body).status_code == 200
+    with live() as s:
+        assert [o.type for o in s.scalars(select(Outbox).order_by(Outbox.id))] == want
+        assert s.get(Reservation, 1).pushed_at is None

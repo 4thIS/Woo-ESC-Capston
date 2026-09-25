@@ -337,17 +337,18 @@ def _write_resv(
     s, room_id, bld, room, mid, body: S.ResvIn, rid: int, obj: Reservation | None
 ) -> dict:
     obj = obj or Reservation(id=rid, room_id=room_id)
-    old_date = obj.date  # 새 행이면 None
+    old_end = (obj.date, obj.e_h, obj.e_m)  # 노드가 가진 옛 항목의 끝 (새 행이면 None 들)
     for k, v in body.model_dump(exclude={"id"}).items():
         setattr(obj, k, v)
     s.add(obj)
-    today = clock.local_today()
+    now = clock.local_now()
+    today = now.date()
     if reserve.in_window(body.date, today):
         if reserve.room_full(s, room_id, today, exclude_id=rid):
             raise HTTPException(409, "이 강의실은 이번 주 예약이 가득 찼습니다(노드 용량 24)")
         ids = reserve.push_set(s, obj)
     else:  # 창 밖으로 옮겼으면 노드의 옛 날짜 항목을 지운다 (r3, 리뷰 🔴1c)
-        ids = reserve.push_del(s, obj, today, date=old_date)
+        ids = reserve.push_del(s, obj, now, end=old_end if old_end[0] else None)
     _commit_notify(s, mid)
     return {"outbox_ids": ids, "id": rid}
 
@@ -360,7 +361,7 @@ def delete_resv(id: int, resv_id: int, user: User = AdminUser, s: Session = _DB)
         if r is None or r.room_id != id:  # 멱등 — 없는 id 에 RESV_DEL 을 보내지 않는다
             return {"outbox_ids": []}
         # 노드로 보낸 적 있는 것만 (r2: 신청·창 밖 예약엔 DEL 없음)
-        ids = reserve.push_del(s, r, clock.local_today())
+        ids = reserve.push_del(s, r, clock.local_now())
         s.delete(r)
         _commit_notify(s, mid)
     return {"outbox_ids": ids}
