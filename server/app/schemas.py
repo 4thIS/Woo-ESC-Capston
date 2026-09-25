@@ -164,6 +164,7 @@ class RequesterOut(BaseModel):
 
 class ResvAdminOut(ResvMineOut):
     requester: RequesterOut | None
+    pushed_at: dt.datetime | None = None  # web A2 — NULL = 노드에 없음, 화면의 '예정' 배지
 
 
 class ExamIn(BaseModel):
@@ -264,6 +265,9 @@ class SlotWithRoom(SlotOut):
 
 class ResvWithRoom(ResvOut):
     room_id: int
+    # web A2 — 관리자 예약 표의 신청자·학번 열과 '예정' 배지. 관리자 전용 라우터에서만 쓴다
+    requester: RequesterOut | None = None  # 관리자가 넣은 예약은 null
+    pushed_at: dt.datetime | None = None
 
 
 class ExamWithRoom(ExamOut):

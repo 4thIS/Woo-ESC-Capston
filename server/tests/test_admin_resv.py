@@ -232,3 +232,12 @@ def test_actions_scope_and_state_conflicts(client, live, app, school, students, 
     assert (
         client.post("/api/admin/reservations/100/reject", json={"reason": "x"}).status_code == 409
     )
+
+
+def test_list_carries_pushed_at(client, app, school, students, monkeypatch):
+    _fix_clock(monkeypatch)
+    _, ids = _building(app, 1, "E")
+    _resv(app, ids[101], dt.date(2026, 9, 24), 13, 0, 14, 0, id_=1, pushed_at=UTC_NOW)
+    _resv(app, ids[101], dt.date(2026, 12, 1), 13, 0, 14, 0, id_=2)  # 창 밖 — 아직 안 보냄
+    got = client.get("/api/admin/reservations?status=approved").json()
+    assert [(x["id"], x["pushed_at"]) for x in got] == [(1, "2026-09-23T01:30:00"), (2, None)]

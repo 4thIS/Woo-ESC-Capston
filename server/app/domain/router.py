@@ -169,11 +169,12 @@ def building_slots(id: int, user: User = AdminUser, s: Session = _DB):
 
 @router.get("/buildings/{id}/reservations", response_model=list[S.ResvWithRoom])
 def building_reservations(id: int, user: User = AdminUser, s: Session = _DB):
-    return s.scalars(
+    return admin.resv_with_room_rows(
+        s,
         select(Reservation)
         .where(Reservation.room_id.in_(_rooms_of(s, id, user)))
-        .order_by(Reservation.room_id, Reservation.date, Reservation.s_h, Reservation.s_m)
-    ).all()
+        .order_by(Reservation.room_id, Reservation.date, Reservation.s_h, Reservation.s_m),
+    )
 
 
 @router.get("/buildings/{id}/exams", response_model=list[S.ExamWithRoom])
@@ -306,12 +307,15 @@ def clear_day(id: int, day: int, user: User = AdminUser, s: Session = _DB):
     return {"outbox_ids": ids}
 
 
-@router.get("/rooms/{id}/reservations", response_model=list[S.ResvOut])
+@router.get("/rooms/{id}/reservations", response_model=list[S.ResvWithRoom])
 def list_resv(id: int, user: User = AdminUser, s: Session = _DB):
     scope.get_scoped(s, Room, id, user.school_id)
-    return s.scalars(
-        select(Reservation).where(Reservation.room_id == id).order_by(Reservation.date)
-    ).all()
+    return admin.resv_with_room_rows(
+        s,
+        select(Reservation)
+        .where(Reservation.room_id == id)
+        .order_by(Reservation.date, Reservation.s_h, Reservation.s_m),
+    )
 
 
 @router.post("/rooms/{id}/reservations", response_model=S.Enqueued)

@@ -161,3 +161,70 @@ def test_building_outbox_excludes_other_school_modem_on_bld_reuse(client, app, s
     assert [x["id"] for x in r.json()] == [mine]
     assert stale not in [x["id"] for x in r.json()]
     assert ids  # 방 조인이 실제로 쓰였는지(참고용)
+
+
+def test_reservation_reads_carry_status_requester_pushed_at(
+    client, app, school, students, other_admin_hdr, student_hdr
+):
+    bid, ids = _building(app, 1, "E")
+    pushed = dt.datetime(2026, 9, 23, 1, 30)  # noqa: DTZ001 — 앱 전역이 naive UTC
+    with app.state.Session() as s, s.begin():
+        s.add_all(
+            [
+                Reservation(
+                    id=1,
+                    room_id=ids[101],
+                    date=dt.date(2026, 9, 24),
+                    s_h=9,
+                    s_m=0,
+                    e_h=10,
+                    e_m=0,
+                    type=6,
+                    subject="행사",
+                    professor="학생처",
+                    pushed_at=pushed,
+                ),
+                Reservation(
+                    id=2,
+                    room_id=ids[101],
+                    date=dt.date(2026, 9, 24),
+                    s_h=13,
+                    s_m=0,
+                    e_h=14,
+                    e_m=0,
+                    type=6,
+                    subject="스터디",
+                    professor="",
+                    status="requested",
+                    requested_by="s1@mju.ac.kr",
+                ),
+                Reservation(
+                    id=3,
+                    room_id=ids[102],
+                    date=dt.date(2026, 12, 1),
+                    s_h=9,
+                    s_m=0,
+                    e_h=10,
+                    e_m=0,
+                    type=6,
+                    subject="창 밖",
+                    professor="",
+                ),
+            ]
+        )
+    s1 = {"email": "s1@mju.ac.kr", "name": "학생1", "student_no": "S1"}
+    got = client.get(f"/api/buildings/{bid}/reservations").json()
+    assert [(x["id"], x["status"], x["requester"], x["pushed_at"]) for x in got] == [
+        (1, "approved", None, "2026-09-23T01:30:00"),
+        (2, "requested", s1, None),
+        (3, "approved", None, None),  # 창 밖 — pushed_at NULL 이 '예정' 배지
+    ]
+    got = client.get(f"/api/rooms/{ids[101]}/reservations").json()
+    assert [(x["id"], x["room_id"], x["requester"], x["pushed_at"]) for x in got] == [
+        (1, ids[101], None, "2026-09-23T01:30:00"),
+        (2, ids[101], s1, None),
+    ]
+    # 신청자 이름·학번은 자기 학교 관리자에게만
+    for path in (f"/api/buildings/{bid}/reservations", f"/api/rooms/{ids[101]}/reservations"):
+        assert client.get(path, headers=other_admin_hdr).status_code == 404, path
+        assert client.get(path, headers=student_hdr).status_code == 403, path
