@@ -6,7 +6,18 @@ import {
   type Page,
 } from '@playwright/test'
 import cfg from './env.json' with { type: 'json' }
-import { SIZES, WEB_URL, apiLogin, ensureModems, login, nextAdmin, shot } from './helpers'
+import {
+  OPS,
+  SIZES,
+  WEB_URL,
+  apiLogin,
+  ensureModems,
+  login,
+  nextAdmin,
+  seedOps,
+  shot,
+  sql,
+} from './helpers'
 
 // 한 파일 = 컨텍스트 둘(우리 학교·다른 학교), 로그인 각 한 번 — 서버의 IP 당 분당 로그인 30회 상한.
 // 화면 이동은 사이드 메뉴 클릭으로 (page.goto 는 새로고침 = 메모리 세션 소실)
@@ -185,4 +196,98 @@ test('범위로 추가 — 이미 있는 호수는 점선·취소선, 눌러서 
   }[]
   for (const r of created.filter((r) => r.building_id === bid))
     await api.delete(`/api/rooms/${r.id}`, { headers })
+})
+
+// ---- 강의실 설정 ----
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- 방 id 는 Task 15–18 테스트가 쓴다
+let ops: Awaited<ReturnType<typeof seedOps>>
+const slotsBlock = () => page.getByRole('region', { name: '시간표' })
+/** 테스트 전용 — 모뎀이 연결되지 않은 E2E 에서 무선 결과(ACK·실패·취소)를 흉내 낸다 */
+const setOutbox = (room: number, state: string, lastError: string | null = null) =>
+  sql(
+    `UPDATE outbox SET state = '${state}', last_error = ${lastError ? `'${lastError}'` : 'NULL'}, ` +
+      `finished_at = strftime('%Y-%m-%d %H:%M:%S', 'now') ` +
+      `WHERE bld = '${OPS.bld}' AND room = ${room} AND state IN ('queued', 'dispatched')`,
+  )
+
+test('강의실 설정 — 트리: 건물 전체, 검색해도 선택 유지, 버튼 라벨이 선택을 말한다', async () => {
+  ops = await seedOps(api)
+  await page.getByRole('link', { name: '강의실 설정' }).click()
+  await expect(page).toHaveURL(/\/admin\/rooms$/)
+  const trigger = page.locator('.tree__trigger')
+  await trigger.click()
+  const tree = page.getByRole('group', { name: '강의실 선택' })
+  await tree.getByRole('button', { name: '전체 해제' }).click()
+  await expect(trigger).toContainText('강의실 선택')
+  await expect(slotsBlock().getByText('위에서 강의실을 고르세요')).toBeVisible()
+  await tree.getByRole('checkbox', { name: OPS.building }).check()
+  await expect(trigger).toContainText(`${OPS.building} 101 외 3곳`)
+  await tree.getByLabel('호수 검색').fill('201')
+  await expect(tree.getByRole('checkbox', { name: '101호' })).toHaveCount(0)
+  await tree.getByRole('checkbox', { name: '201호' }).uncheck()
+  await tree.getByLabel('호수 검색').fill('')
+  await expect(trigger).toContainText(`${OPS.building} 101 · 102 · 202`)
+  await page.keyboard.press('Escape')
+  await expect(tree).toHaveCount(0)
+  await expect(slotsBlock().getByText('이 건물에 등록된 시간표가 없습니다')).toBeVisible()
+})
+
+test('시간표 — 추가, 겹침은 저장 전에 막음, 시작을 바꾸면 옛 행이 남지 않음, 점 대기 → 반영됨', async () => {
+  const slots = slotsBlock()
+  await slots.getByRole('button', { name: '+ 슬롯 추가' }).click()
+  const d = page.getByRole('dialog', { name: '슬롯 추가' })
+  await d.getByLabel('강의실').selectOption({ label: '101호' })
+  await d.getByLabel('요일').selectOption({ label: '월' })
+  await d.getByLabel('시작').fill('09:00')
+  await d.getByLabel('종료').fill('11:00')
+  await d.getByLabel('과목명').fill('캡스톤디자인')
+  await d.getByLabel('교수').fill('김교수')
+  await d.getByRole('button', { name: '저장' }).click()
+  await expect(d).toHaveCount(0)
+  const row = slots.getByRole('row').filter({ hasText: '캡스톤디자인' })
+  await expect(row).toContainText('수동')
+  await expect(row.getByRole('img', { name: '대기' })).toBeVisible()
+  // 겹침 — 서버는 같은 키만 막는다. 폼이 먼저 막는다
+  await slots.getByRole('button', { name: '+ 슬롯 추가' }).click()
+  await d.getByLabel('강의실').selectOption({ label: '101호' })
+  await d.getByLabel('요일').selectOption({ label: '월' })
+  await d.getByLabel('시작').fill('10:00')
+  await d.getByLabel('종료').fill('12:00')
+  await d.getByRole('button', { name: '저장' }).click()
+  await expect(d.getByText('겹칩니다: 09:00–11:00 캡스톤디자인')).toBeVisible()
+  await d.getByRole('button', { name: '취소' }).click()
+  // 시작을 바꾸면 새 행을 넣고 옛 행을 지운다 — 한 줄만 남는다
+  await row.getByRole('button', { name: '수정' }).click()
+  const e = page.getByRole('dialog', { name: '슬롯 수정' })
+  await e.getByLabel('시작').fill('13:00')
+  await e.getByLabel('종료').fill('15:00')
+  await e.getByRole('button', { name: '저장' }).click()
+  await expect(e).toHaveCount(0)
+  await expect(row).toHaveCount(1)
+  await expect(row).toContainText('13:00')
+  setOutbox(101, 'acked')
+  await expect(row.getByRole('img', { name: '반영됨' })).toBeVisible({ timeout: 10_000 })
+})
+
+test('전송 실패 — 점이 실패 + 재전송(방 단위), 관리자 취소는 취소됨', async () => {
+  const slots = slotsBlock()
+  await slots.getByRole('button', { name: '+ 슬롯 추가' }).click()
+  const d = page.getByRole('dialog', { name: '슬롯 추가' })
+  await d.getByLabel('강의실').selectOption({ label: '102호' })
+  await d.getByLabel('요일').selectOption({ label: '화' })
+  await d.getByLabel('과목명').fill('임베디드')
+  await d.getByRole('button', { name: '저장' }).click()
+  const row = slots.getByRole('row').filter({ hasText: '임베디드' })
+  await expect(row.getByRole('img', { name: '대기' })).toBeVisible()
+  setOutbox(102, 'failed', 'max_retries')
+  await expect(row.getByRole('img', { name: '실패' })).toBeVisible({ timeout: 10_000 })
+  await row.getByRole('button', { name: '재전송' }).click()
+  await expect(page.getByText('다시 보냈습니다.')).toBeVisible()
+  await expect(row.getByRole('img', { name: '대기' })).toBeVisible()
+  setOutbox(102, 'failed', 'cancelled')
+  await expect(row.getByRole('img', { name: '취소됨 — 노드에 반영 안 됨' })).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect(row.getByRole('button', { name: '재전송' })).toBeVisible()
+  await shot(page, 'admin-rooms-slots-1440')
 })

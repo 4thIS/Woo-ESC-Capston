@@ -58,12 +58,13 @@ describe('AdminShell', () => {
     const links = w.findAll('nav a')
     expect(links.map((a) => a.text().replace(/\d+/g, '').trim())).toEqual([
       '건물 · 강의실',
+      '강의실 설정',
       '노드 상태',
       '전송 현황',
       '회원',
     ])
-    expect(links[2].attributes('aria-current')).toBe('page')
-    expect(links[3].text()).toContain('2')
+    expect(links[3].attributes('aria-current')).toBe('page')
+    expect(links[4].text()).toContain('2')
     expect(w.text()).toContain('우송대 · net_id 75')
     expect(w.text()).toContain('학교는 CLI 에서만 만든다')
     expect(w.text()).toContain('관리자1')

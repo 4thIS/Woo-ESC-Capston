@@ -105,4 +105,17 @@ describe('useOutboxTracker', () => {
     await t.resync('s11-1-9-0', 11, 3)
     expect(toasts.value.at(-1)).toMatchObject({ tone: 'danger', message: MESSAGES[500] })
   })
+
+  it('재전송 중에는 같은 행을 다시 보내지 않는다 — resyncing 이 끝날 때까지 key 를 든다', async () => {
+    const t = start()
+    let done!: (v: { outbox_ids: number[]; id: null }) => void
+    lora.syncRoom.mockReturnValue(new Promise((r) => (done = r)))
+    const first = t.resync('s11-1-9-0', 11, 3)
+    expect(t.resyncing.has('s11-1-9-0')).toBe(true)
+    await t.resync('s11-1-9-0', 11, 3)
+    expect(lora.syncRoom).toHaveBeenCalledTimes(1)
+    done({ outbox_ids: [9], id: null })
+    await first
+    expect(t.resyncing.has('s11-1-9-0')).toBe(false)
+  })
 })

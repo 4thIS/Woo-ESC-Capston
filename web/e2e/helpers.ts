@@ -254,3 +254,50 @@ export async function ensureModems(request: APIRequestContext, ids: string[]) {
     expect(m.status(), modem_id).toBe(200)
   }
 }
+
+/** 강의실 설정·주간 시간표 E2E 용 — 운영관(K) 101·102·201·202, 학생 예약은 101 만.
+ * 모뎀은 등록만 한다(연결 없음) → outbox 는 대기로 남고, 무선 결과는 테스트가 sql() 로 흉내 낸다 */
+export const OPS = {
+  building: '운영관',
+  bld: 'K',
+  modem: 'e2e-m6',
+  rooms: [101, 102, 201, 202],
+} as const
+
+export async function seedOps(
+  request: APIRequestContext,
+): Promise<{ buildingId: number; roomIds: Record<number, number> }> {
+  const headers = { authorization: `Bearer ${await apiLogin(request, cfg.ADMINS[0])}` }
+  const get = async <T>(p: string): Promise<T> => {
+    const r = await request.get(p, { headers })
+    expect(r.status(), p).toBe(200)
+    return (await r.json()) as T
+  }
+  let b = (await get<{ id: number; bld: string }[]>('/api/buildings')).find(
+    (x) => x.bld === OPS.bld,
+  )
+  if (!b) {
+    await ensureModems(request, [OPS.modem])
+    const r = await request.post('/api/buildings', {
+      headers,
+      data: { school_id: 1, name: OPS.building, bld: OPS.bld, modem_id: OPS.modem },
+    })
+    expect(r.status()).toBe(200)
+    b = (await r.json()) as { id: number; bld: string }
+    for (const room of OPS.rooms) {
+      const rr = await request.post('/api/rooms', {
+        headers,
+        data: { building_id: b.id, room, units: 1, reservable: room === 101 },
+      })
+      expect(rr.status(), String(room)).toBe(200)
+    }
+  }
+  const buildingId = b.id
+  const rooms = await get<{ id: number; building_id: number; room: number }[]>('/api/rooms')
+  return {
+    buildingId,
+    roomIds: Object.fromEntries(
+      rooms.filter((r) => r.building_id === buildingId).map((r) => [r.room, r.id]),
+    ),
+  }
+}

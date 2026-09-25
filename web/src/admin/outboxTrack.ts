@@ -24,6 +24,8 @@ export const worst = (states: DotState[]): DotState =>
 export function useOutboxTracker() {
   const states = reactive(new Map<string, DotState>())
   const live = new Map<string, { buildingId: number; ids: number[]; until: number }>()
+  /** 응답을 기다리는 재전송 — 행 버튼을 잠그고 두 번 보내지 않는다 */
+  const resyncing = reactive(new Set<string>())
 
   /** 빈 ids(7일 창 밖 예약)는 추적하지 않는다 — '예정'은 화면이 pushed_at·날짜로 그린다 */
   function track(key: string, buildingId: number, ids: number[]) {
@@ -57,6 +59,8 @@ export function useOutboxTracker() {
 
   /** 실패·취소 행의 재전송 — 방 단위 (POST /rooms/{id}/sync: 시간표·예약·시험기간 전부) */
   async function resync(key: string, roomId: number, buildingId: number) {
+    if (resyncing.has(key)) return
+    resyncing.add(key)
     try {
       const r = await loraApi.syncRoom(roomId)
       track(key, buildingId, r.outbox_ids)
@@ -64,8 +68,10 @@ export function useOutboxTracker() {
     } catch (e) {
       if (!(e instanceof ApiError)) throw e
       if (e.status !== 401 && e.status !== 403) showToast({ tone: 'danger', message: e.message })
+    } finally {
+      resyncing.delete(key)
     }
   }
 
-  return { states, track, resync }
+  return { states, resyncing, track, resync }
 }
