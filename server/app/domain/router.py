@@ -407,9 +407,10 @@ def _write_exam(
 @router.delete("/rooms/{id}/exams/{exam_id}", response_model=S.Enqueued)
 def delete_exam(id: int, exam_id: int, user: User = AdminUser, s: Session = _DB):
     bld, room, mid = _addr(s, id, user)
-    s.execute(delete(ExamPeriod).where(ExamPeriod.id == exam_id, ExamPeriod.room_id == id))
-    ids = api.enqueue_exam_del(bld, room, exam_id, session=s)
-    _commit_notify(s, mid)
+    with _ID_LOCK:  # 같은 id 수정(put_exam)의 읽기~커밋 사이에 끼어들면 StaleDataError (#48 🟡2)
+        s.execute(delete(ExamPeriod).where(ExamPeriod.id == exam_id, ExamPeriod.room_id == id))
+        ids = api.enqueue_exam_del(bld, room, exam_id, session=s)
+        _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
 

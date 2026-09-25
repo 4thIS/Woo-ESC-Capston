@@ -119,3 +119,32 @@ def test_concurrent_auto_ids_serialized_by_lock(client, app, school, monkeypatch
         )
     assert [r.status_code for r in res] == [200] * 12
     assert sorted(r.json()["id"] for r in res) == list(range(1, 13))
+
+
+def test_delete_exam_waits_for_concurrent_update(client, app, school, monkeypatch):
+    """delete_exam 도 _ID_LOCK 안 — 같은 id 수정이 행을 읽은 뒤 삭제가 끼어들면 UPDATE 0행(StaleDataError) 500 (#48 🟡2)."""
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    _, ids = _building(app, 1, "E")
+    rid = ids[101]
+    eid = client.post(f"/api/rooms/{rid}/exams", json=EXAM).json()["id"]
+    loaded = threading.Event()
+    orig = R._existing_same_room
+
+    def slow_existing(s, model, obj_id, room_id):
+        obj = orig(s, model, obj_id, room_id)
+        loaded.set()
+        time.sleep(0.2)  # 수정이 행을 읽고 쓰기 전 — 삭제가 여기 끼어들 수 있으면 경합
+        return obj
+
+    monkeypatch.setattr(R, "_existing_same_room", slow_existing)
+    body = {**EXAM, "id": eid, "date_end": "2026-10-24"}
+    with ThreadPoolExecutor(1) as ex:
+        put = ex.submit(client.post, f"/api/rooms/{rid}/exams", json=body)
+        assert loaded.wait(5)
+        dele = client.delete(f"/api/rooms/{rid}/exams/{eid}")
+        assert put.result().status_code == 200
+    assert dele.status_code == 200
+    assert client.get(f"/api/rooms/{rid}/exams").json() == []  # 수정 뒤 삭제 — 순서대로 직렬화
