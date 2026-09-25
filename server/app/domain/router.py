@@ -128,8 +128,8 @@ def update_building(
     rooms = list(s.scalars(select(Room.room).where(Room.building_id == obj.id)))
     for k, v in data.items():
         setattr(obj, k, v)
-    # FastAPI 는 background task 를 이 의존성의 teardown(커밋) *전에* 실행한다 — 그래서 여기서 직접
-    # commit 해 둔다. teardown 의 with s.begin() 은 이후 남은 트랜잭션이 없으면 조용히 끝난다.
+    # reassign_queued 가 도메인 쓰기 락과 경합하지 않게 여기서 직접 commit 해 둔다.
+    # teardown 의 with s.begin() 은 이후 남은 트랜잭션이 없으면 조용히 끝난다.
     s.commit()
     if obj.modem_id != before:
         # 커밋 뒤에 부른다 — outbox 재지정 트랜잭션이 방금 끝난 도메인 쓰기 락과 경합하지 않도록.
@@ -255,8 +255,7 @@ def list_slots(id: int, user: User = AdminUser, s: Session = _DB):
     ).all()
 
 
-# 버전·outbox·도메인 write 는 같은 세션(#9). 핸들러가 커밋한 뒤 허브에 알린다 — BackgroundTasks 는
-# get_db 커밋 전에 돌므로 쓰지 않는다.
+# 버전·outbox·도메인 write 는 같은 세션(#9). 핸들러가 커밋한 뒤 허브에 알린다.
 @router.put("/rooms/{id}/slots", response_model=S.Enqueued)
 def put_slot(id: int, body: S.SlotIn, user: User = AdminUser, s: Session = _DB):
     bld, room, mid = _addr(s, id, user)
