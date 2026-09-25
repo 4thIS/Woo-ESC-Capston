@@ -92,6 +92,7 @@ const retry = () => void reload()
               TYPE_LABEL[r.type as SlotType]
             }}</Badge>
             <Badge v-else-if="r.type === 3" tone="neutral" variant="outline" size="sm">휴강</Badge>
+            <Badge v-if="r.requested" tone="neutral" variant="outline" size="sm">대기중</Badge>
             <!-- '지금'은 brand — 적색은 '사용중' 전용 -->
             <Badge v-if="r.now" tone="brand" variant="solid" size="sm" class="num"
               >지금 {{ formatHm(now) }}</Badge

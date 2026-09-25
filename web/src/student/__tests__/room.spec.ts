@@ -61,6 +61,12 @@ describe('RoomView — /:bld/:room', () => {
     )
     expect(w.findAll('.today__row--now')).toHaveLength(1)
     expect(rows[3].get('.today__label').classes()).toContain('today__label--mine')
+    // 내 대기중 신청은 색만이 아니라 글자로도 — 격자의 '대기중'과 같은 말
+    const pending = rows[3].findAll('.badge').find((b) => b.text() === '대기중')
+    expect(pending?.classes()).toEqual(
+      expect.arrayContaining(['badge--neutral', 'badge--outline', 'badge--sm']),
+    )
+    expect(rows[1].text()).not.toContain('대기중')
     const back = w.get('a.sh__back')
     expect(back.attributes('href')).toBe('/E')
     expect(back.attributes('aria-label')).toBe('강의실 목록')
