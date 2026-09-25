@@ -134,6 +134,7 @@ def test_record_provider_only_approved_and_local_window(app, students, monkeypat
                     professor="",
                     status=st,
                     requested_by="s1@mju.ac.kr" if st != "approved" else None,
+                    pushed_at=clock.now_utc() if st == "approved" else None,
                 )
             )
     recs = record_provider(app.state.Session)("E", 101, "resv")
@@ -166,6 +167,7 @@ def test_record_provider_subject_hides_requester(app, students):
                 professor="",
                 status="approved",
                 requested_by="s1@mju.ac.kr",
+                pushed_at=clock.now_utc(),
             )
         )
     recs = record_provider(app.state.Session)("E", 101, "resv")
@@ -199,6 +201,7 @@ def test_record_provider_limits_to_node_resv_max(app, students):
                     subject="x",
                     professor="",
                     status="approved",
+                    pushed_at=clock.now_utc(),
                 )
                 for i in range(1, 26)
             ]
@@ -269,3 +272,31 @@ def test_backfill_pushed_at_needs_resv_set_history(tmp_path):
         rows = dict(c.execute(text("SELECT id, pushed_at FROM reservations")).fetchall())
     assert rows[1] is not None
     assert rows[2] is None
+
+
+def test_record_provider_skips_unpushed_resv(client, app, school, students, monkeypatch):
+    """FILE 에는 노드로 보낸(pushed_at 있는) 예약만 — "노드에 있음 ⇔ pushed_at" (계약 ③, PR #49 리뷰).
+    KST 9/22 23:50 에 9/30 예약(창 밖, RESV_SET 없음) → 9/23 01:30 FILE 재동기에 실리면
+    02:00 삭제가 pushed_at NULL 이라 RESV_DEL 을 안 보내 9/30 까지 유령으로 남는다."""
+    from app.domain.models import Building, Room
+    from app.domain.topology import record_provider
+
+    monkeypatch.setattr(clock, "now_utc", lambda: dt.datetime(2026, 9, 22, 14, 50))  # noqa: DTZ001 — KST 9/22 23:50
+    with app.state.Session() as s, s.begin():
+        b = Building(school_id=1, name="E동", bld="E")
+        s.add(b)
+        s.flush()
+        r = Room(building_id=b.id, room=101, units=1)
+        s.add(r)
+        s.flush()
+        rid = r.id
+    body = {"s_h": 9, "s_m": 0, "e_h": 10, "e_m": 0, "type": 6, "subject": "r", "professor": ""}
+    ghost = client.post(f"/api/rooms/{rid}/reservations", json={**body, "date": "2026-09-30"})
+    assert ghost.status_code == 200 and ghost.json()["outbox_ids"] == []  # 창 밖 → 안 보냄
+    sent = client.post(f"/api/rooms/{rid}/reservations", json={**body, "date": "2026-09-24"})
+    assert sent.json()["outbox_ids"]  # 창 안 → RESV_SET, pushed_at 찍힘
+
+    monkeypatch.setattr(clock, "now_utc", lambda: dt.datetime(2026, 9, 22, 16, 30))  # noqa: DTZ001 — KST 9/23 01:30
+    recs = record_provider(app.state.Session)("E", 101, "resv")
+    # 9/30 은 창 안이 됐어도 미전송이라 제외
+    assert [x.resv_id for x in recs] == [sent.json()["id"]]

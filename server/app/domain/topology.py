@@ -102,6 +102,8 @@ def record_provider(
                         .where(
                             Reservation.room_id == rid,
                             Reservation.status == "approved",
+                            # 노드에 있음 ⇔ pushed_at — 안 보낸 예약을 실으면 push_del 이 DEL 을 못 보내 유령 (계약 ③)
+                            Reservation.pushed_at.is_not(None),
                             Reservation.date >= lo,
                             Reservation.date <= hi,
                         )
