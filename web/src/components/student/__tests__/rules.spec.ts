@@ -152,6 +152,14 @@ describe('내 예약', () => {
     expect(checkinState(resv({ status: 'requested' }), NOW)).toBeNull()
   })
 
+  it('체크인 창 경계 — 정확히 s−10·s+15 는 열림, s+16 은 지남, s−11 은 전 (분 단위 내림의 한 칸 어긋남을 막는다)', () => {
+    // NOW = 10:42
+    expect(checkinState(resv({ s_h: 10, s_m: 52 }), NOW)).toEqual({ kind: 'open' }) // s−10
+    expect(checkinState(resv({ s_h: 10, s_m: 27 }), NOW)).toEqual({ kind: 'open' }) // s+15
+    expect(checkinState(resv({ s_h: 10, s_m: 26 }), NOW)).toEqual({ kind: 'after' }) // s+16
+    expect(checkinState(resv({ s_h: 10, s_m: 53 }), NOW)).toEqual({ kind: 'before', from: '10:43' }) // s−11
+  })
+
   it('취소 — 신청은 철회(시작 뒤에도), 승인은 시작 전만, 그 밖엔 없음', () => {
     expect(cancelKind(resv({ status: 'requested', s_h: 9 }), NOW)).toBe('withdraw')
     expect(cancelKind(resv(), NOW)).toBe('cancel')

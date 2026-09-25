@@ -21,6 +21,11 @@ describe('student router', () => {
     expect((await at('/signup')).meta.gate).toBeUndefined()
   })
 
+  it('전역 sensitive 의 대가 — /login 은 되지만 /LOGIN 은 404 (건물 글자 대소문자를 가르려고 일부러 둔다)', async () => {
+    expect((await at('/login')).matched[0].path).toBe('/login')
+    expect((await at('/LOGIN')).matched[0].path).toBe('/:pathMatch(.*)*')
+  })
+
   it('모르는 주소는 404 화면 (벽 없이 — 보여줄 데이터가 없다)', async () => {
     const r = await at('/no/such/page')
     expect(r.matched[0].path).toBe('/:pathMatch(.*)*')
