@@ -7,6 +7,7 @@ import { loraApi } from '@/api/lora'
 import { roomsApi } from '@/api/rooms'
 import { useResource } from '@/lib/useResource'
 import BuildingPanel from './master/BuildingPanel.vue'
+import RoomPanel from './master/RoomPanel.vue'
 
 // 마스터 데이터는 관리자가 바꿀 때만 바뀐다 — 자동 새로고침 없음 (admin-master.md)
 const { data, error, loading, reload } = useResource(async () => {
@@ -23,6 +24,9 @@ watch(data, (d) => {
   if (d && !d.buildings.some((b) => b.id === selectedId.value))
     selectedId.value = d.buildings[0]?.id ?? null
 })
+const selected = computed(
+  () => data.value?.buildings.find((b) => b.id === selectedId.value) ?? null,
+)
 // reservable 기본값이 꺼짐 — 켜는 것을 잊으면 학생 웹이 빈 채로 남는다
 const noReservable = computed(
   () => !!data.value?.rooms.length && !data.value.rooms.some((r) => r.reservable),
@@ -52,6 +56,14 @@ watch(error, (e) => {
         :loading="loading && !data"
         :selected-id="selectedId"
         @select="selectedId = $event"
+        @changed="reload"
+      />
+      <RoomPanel
+        v-if="selected"
+        :building="selected"
+        :rooms="data?.rooms ?? []"
+        :nodes="data?.nodes ?? []"
+        :loading="loading && !data"
         @changed="reload"
       />
     </div>
