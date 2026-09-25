@@ -116,22 +116,22 @@ class SlotOut(SlotIn, Out):
 
 
 class ResvIn(_Span):
-    id: int = Field(ge=1, le=65535)
+    id: int | None = Field(None, ge=1, le=65535)  # 없으면 서버 채번 (S4b §2.5)
     date: dt.date
 
 
 class ResvOut(ResvIn, Out):
-    pass
+    id: int
 
 
 class ExamIn(BaseModel):
-    id: int = Field(ge=1, le=65535)
+    id: int | None = Field(None, ge=1, le=65535)
     date_start: dt.date
     date_end: dt.date
 
 
 class ExamOut(ExamIn, Out):
-    pass
+    id: int
 
 
 class SyncIn(BaseModel):
@@ -145,6 +145,7 @@ class CmdIn(BaseModel):
 
 class Enqueued(BaseModel):
     outbox_ids: list[int]
+    id: int | None = None  # 예약·시험 채번 결과 (S4b §2.5)
 
 
 class ImportSkipped(BaseModel):
