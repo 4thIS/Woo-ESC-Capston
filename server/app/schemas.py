@@ -120,6 +120,26 @@ class ResvIn(_Span):
     date: dt.date
 
 
+class StudentResvIn(BaseModel):
+    date: dt.date
+    s_h: int = Field(ge=0, le=23)
+    s_m: int = Field(ge=0, le=59, multiple_of=5)
+    e_h: int = Field(ge=0, le=23)
+    e_m: int = Field(ge=0, le=59, multiple_of=5)
+    subject: str = Field(min_length=1)
+
+    @field_validator("subject")
+    @classmethod
+    def _subj(cls, v: str) -> str:
+        return _bytes_max(v, P.SUBJ_MAX, "subject")
+
+    @model_validator(mode="after")
+    def _order(self):
+        if (self.s_h, self.s_m) >= (self.e_h, self.e_m):
+            raise ValueError("시작 < 끝")
+        return self
+
+
 class ResvOut(ResvIn, Out):
     id: int
     status: str = "approved"
