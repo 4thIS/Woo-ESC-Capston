@@ -216,3 +216,16 @@ def test_cli_set_user_password_kills_mail_tokens(tmp_path):
     with TestClient(app) as c:
         r = c.post("/api/auth/reset", json={"token": tok, "password": "hijacked1"})
         assert r.status_code == 400
+
+
+def test_reject_reason_only_on_rejected_rows(client, app, hdr, mails):
+    r = client.post(
+        "/api/admin/users/p1@mju.ac.kr/reject", json={"reason": "학번 불일치"}, headers=hdr
+    )
+    assert r.json()["reject_reason"] == "학번 불일치"
+    rows = {u["email"]: u for u in client.get("/api/admin/users", headers=hdr).json()}
+    assert rows["p1@mju.ac.kr"]["reject_reason"] == "학번 불일치"
+    assert rows["a1@mju.ac.kr"]["reject_reason"] is None
+    assert "o@other.ac.kr" not in rows  # 타 학교 행은 사유째 안 보인다
+    me = client.get("/api/auth/me", headers=_hdr(app, "a1@mju.ac.kr")).json()
+    assert me["reject_reason"] is None  # 학생 본인 응답 — active 만 /me 를 통과한다
