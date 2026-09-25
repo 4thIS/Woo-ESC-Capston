@@ -267,3 +267,89 @@ export interface ImportRowError {
 export interface ImportErrors {
   errors: ImportRowError[]
 }
+
+// ---- F4 학생 웹 — S10 §4.1 + web A3 (busy·free·full) ----
+
+/** 학생 목록의 방 하나 + 지금 상태 (reservable 방만 — S10 §3) */
+export interface RoomStateOut {
+  room_id: number
+  building_id: number
+  building: string
+  bld: string
+  room: number
+  /** e-Paper layout 1~8 — 4 만 '비어있음'(예약 가능). 색은 RED(1·5·6·7) */
+  layout: number
+  /** 다음 상태 변화 'HH:MM' (KST). null = 자정까지 그대로 */
+  until: string | null
+}
+/** 주간 표의 승인 예약 원본 — 남의 학생 예약 label 은 '예약됨' */
+export interface ResvPublicOut {
+  id: number
+  date: string
+  s_h: number
+  s_m: number
+  e_h: number
+  e_m: number
+  mine: boolean
+  label: string
+}
+/** 'HH:MM' 구간 — 서버 alias 그대로 from/to */
+export interface FreeRange {
+  from: string
+  to: string
+}
+/** 서버가 room_state 규칙으로 합친 사용 구간 (web A3). 남의 것은 label '예약됨'·status null */
+export interface BusySpan extends FreeRange {
+  label: string
+  type: SlotType
+  mine: boolean
+  /** 내 예약만 — 격자가 '내 신청(대기)'과 '내 예약'을 가른다 */
+  status: 'requested' | 'approved' | null
+}
+export interface BusyDay {
+  /** 1=월 … 7=일 */
+  day: number
+  spans: BusySpan[]
+}
+/** 신청 가능한 구간 — KST 오늘~+7 여덟 날. 오늘은 지금 이후만, full 이면 전부 빈 목록 */
+export interface FreeDay {
+  date: string
+  spans: FreeRange[]
+}
+export interface WeekOut {
+  room: RoomStateOut
+  week_start: string
+  slots: SlotOut[]
+  reservations: ResvPublicOut[]
+  exams: ExamOut[]
+  busy: BusyDay[]
+  free: FreeDay[]
+  /** 창(오늘~+7) 안 approved+requested 가 노드 용량(24)에 찼다 */
+  full: boolean
+}
+/** 학생 신청 — type(6 대여)·professor('')·id 는 서버가 정한다 */
+export interface StudentResvIn {
+  date: string
+  s_h: number
+  s_m: number
+  e_h: number
+  e_m: number
+  subject: string
+}
+/** 내 예약 (S10 §4.1 _mine_out) */
+export interface ResvMineOut extends ResvOut {
+  requested_at: Date | null
+  decided_at: Date | null
+  reject_reason: string | null
+  checked_in_at: Date | null
+  cancelled_at: Date | null
+  room_id: number
+  building: string
+  room: number
+}
+export const RESV_MINE_DATES = [
+  'requested_at',
+  'decided_at',
+  'checked_in_at',
+  'cancelled_at',
+] as const
