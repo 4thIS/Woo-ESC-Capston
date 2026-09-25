@@ -10,4 +10,7 @@ def get_db(request: Request):
         yield s
 
 
-_DB = Depends(get_db)  # 참고: B008 회피용 모듈 싱글턴 (ruff 권고)
+# scope="function": teardown(커밋·롤백)이 응답 전송 *전에* 돈다. 기본("request")은 응답을 보낸 뒤에
+# 커밋해, 200 을 받은 클라이언트의 곧바른 재조회가 옛 상태를 읽었다(fastapi/routing.py function_stack).
+# BackgroundTasks 는 응답 뒤에 돌므로 이제 커밋 뒤에 실행된다. B008 회피용 모듈 싱글턴 (ruff 권고).
+_DB = Depends(get_db, scope="function")
