@@ -188,6 +188,38 @@ describe('강의실 설정 — 트리와 시간표', () => {
     expect(btn(w, '다시 불러오기')).toBeUndefined()
   })
 
+  it('건물·강의실 목록을 불러오는 동안 — "강의실을 고르세요"가 아니라 Skeleton', async () => {
+    let done!: (v: RoomOut[]) => void
+    api.rooms.mockImplementationOnce(() => new Promise<RoomOut[]>((r) => (done = r)))
+    await mountView()
+    expect(w.get('.rooms').text()).not.toContain('위에서 강의실을 고르세요')
+    expect(slotRows()[0].findComponent({ name: 'Skeleton' }).exists()).toBe(true)
+    done([R(11, 1, 401)])
+    await flushPromises()
+    expect(slotRows()[0].text()).toContain('캡스톤디자인')
+  })
+
+  it('건물·강의실 목록 실패 — 빈 트리로 멈추지 않고 다시 불러오기, 누르면 목록부터 다시', async () => {
+    api.rooms.mockRejectedValueOnce(new ApiError(500, MESSAGES[500]))
+    await mountView()
+    expect(w.get('.rooms').text()).not.toContain('위에서 강의실을 고르세요')
+    await btn(w, '다시 불러오기').trigger('click')
+    await flushPromises()
+    expect(api.rooms).toHaveBeenCalledTimes(2)
+    expect(slotRows()).toHaveLength(1)
+    expect(btn(w, '다시 불러오기')).toBeUndefined()
+  })
+
+  it('다시 불러오기도 실패하면 오류 Toast 를 쌓지 않는다 — 처음 한 번', async () => {
+    api.buildingSlots.mockImplementation(() => Promise.reject(new ApiError(500, MESSAGES[500])))
+    await mountView()
+    await btn(w, '다시 불러오기').trigger('click')
+    await flushPromises()
+    await btn(w, '다시 불러오기').trigger('click')
+    await flushPromises()
+    expect(toasts.value.filter((t) => t.tone === 'danger')).toHaveLength(1)
+  })
+
   it('아직 안 불러온 건물로 바꾸는 동안 — 빈 시간표가 아니라 불러오는 중', async () => {
     await mountView()
     let done!: (v: SlotWithRoom[]) => void

@@ -85,8 +85,14 @@ const fresh = computed(() =>
 const slots = computed(() => inPick(fresh.value?.slots))
 const resv = computed(() => inPick(fresh.value?.resv))
 const exams = computed(() => inPick(fresh.value?.exams))
-const scopeFailed = computed(() => !fresh.value && !!scope.error.value && !scope.loading.value)
-const scopeLoading = computed(() => !fresh.value && !scopeFailed.value)
+// 목록(건물·강의실)이 아직 없으면 고른 방도 없다 — '강의실을 고르세요'가 아니라 불러오는 중·실패로
+const masterFailed = computed(
+  () => !master.data.value && !!master.error.value && !master.loading.value,
+)
+const scopeFailed = computed(
+  () => masterFailed.value || (!fresh.value && !!scope.error.value && !scope.loading.value),
+)
+const scopeLoading = computed(() => !scopeFailed.value && (!master.data.value || !fresh.value))
 function reloadAll() {
   void scope.reload()
   void pending.reload()
@@ -94,8 +100,9 @@ function reloadAll() {
 
 // 오류 — Toast + 재시도. 표는 이전 내용을 지우지 않는다 (useResource 가 data 를 지킨다)
 for (const r of [master, scope, pending])
-  watch(r.error, (e) => {
-    if (e && e.status !== 401 && e.status !== 403)
+  // 다시 불러오기도 실패하면 Toast 를 쌓지 않는다 — 처음 실패할 때 한 번 (MasterView 와 같다)
+  watch(r.error, (e, prev) => {
+    if (e && !prev && e.status !== 401 && e.status !== 403)
       showToast({
         tone: 'danger',
         message: e.message,
@@ -197,7 +204,12 @@ async function syncPicked() {
       <EmptyState
         v-if="scopeFailed"
         message="시간표·예약·시험기간을 불러오지 못했습니다"
-        :actions="[{ label: '다시 불러오기', onClick: () => void scope.reload() }]"
+        :actions="[
+          {
+            label: '다시 불러오기',
+            onClick: () => void (masterFailed ? master.reload() : scope.reload()),
+          },
+        ]"
       />
       <SlotBlock
         v-else
