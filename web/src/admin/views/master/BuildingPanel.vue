@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, useId } from 'vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -23,6 +23,9 @@ import {
   normalizeBld,
   usedBlds,
 } from '../../masterView'
+
+// 저장 버튼은 Modal 바닥(폼 밖)에 있다 — form 속성으로 이어 Enter 가 폼을 제출하게 (submit 한 길만)
+const formId = useId()
 
 const props = defineProps<{
   buildings?: BuildingOut[]
@@ -272,7 +275,7 @@ async function remove() {
       :close-on-backdrop="!dirty"
       @close="formOpen = false"
     >
-      <form class="form" novalidate @submit.prevent="submit">
+      <form :id="formId" class="form" novalidate @submit.prevent="submit">
         <p v-if="errors.form" class="form__error" role="alert">{{ errors.form }}</p>
         <Input v-model="form.name" label="이름" required :error="errors.name" />
         <Input
@@ -294,7 +297,7 @@ async function remove() {
       </form>
       <template #footer>
         <Button variant="secondary" @click="formOpen = false">취소</Button>
-        <Button :loading="saving" @click="submit">저장</Button>
+        <Button type="submit" :form="formId" :loading="saving">저장</Button>
       </template>
     </Modal>
     <ConfirmModal

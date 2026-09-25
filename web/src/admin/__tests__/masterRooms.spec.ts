@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils'
 import MasterView from '@/admin/views/MasterView.vue'
 import { roomsApi } from '@/api/rooms'
@@ -68,9 +68,10 @@ const N = (room_id: number, room: number, unit: number, o: Partial<NodeOut> = {}
   ...o,
 })
 
+// 저장 버튼은 form 속성으로 폼에 붙는다 — 문서 안에 있어야 이어진다(버튼 클릭 = 폼 submit)
 let w: VueWrapper
 async function mountView() {
-  w = mount(MasterView, { global: { stubs: { teleport: true } } })
+  w = mount(MasterView, { global: { stubs: { teleport: true } }, attachTo: document.body })
   await flushPromises()
 }
 type Root = VueWrapper | DOMWrapper<Element>
@@ -114,6 +115,7 @@ beforeEach(() => {
   setSession({ token: 't', role: 'admin', school_id: 1, name: '관리자1' })
   for (const t of [...toasts.value]) dismissToast(t.id)
 })
+afterEach(() => w?.unmount())
 
 describe('강의실 패널', () => {
   it('헤더에 곳 수·학생 웹에 보이는 곳, 층은 호수 ÷ 100, 노드 칸은 서버 판정 문구', async () => {
@@ -193,6 +195,19 @@ describe('강의실 패널', () => {
       units: 1,
       reservable: false,
     })
+  })
+
+  it('Enter 로 저장 — 폼 submit 이 저장 버튼과 같은 길', async () => {
+    await mountView()
+    await btn(panel(), '+ 강의실').trigger('click')
+    const d = () => dialog('강의실 추가')!
+    const save = btn(d(), '저장')
+    expect(save.attributes('type')).toBe('submit')
+    expect(save.attributes('form')).toBe(d().get('form').attributes('id'))
+    await control(d(), '호수').setValue('403')
+    await d().get('form').trigger('submit')
+    await flushPromises()
+    expect(rooms.createRoom).toHaveBeenCalledTimes(1)
   })
 
   it('다른 탭이 같은 호수를 먼저 만들었다(409) — 호수 칸에 방 문장, 목록을 새로', async () => {

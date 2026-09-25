@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, useId, watch } from 'vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
@@ -19,6 +19,9 @@ import {
   type SavedRow,
 } from './rules'
 import { parseHm, slotErrors, type SlotDraft } from './slotForm'
+
+// 저장 버튼은 Modal 바닥(폼 밖)에 있다 — form 속성으로 이어 Enter 가 폼을 제출하게 (submit 한 길만)
+const formId = useId()
 
 const props = withDefaults(
   defineProps<{
@@ -170,7 +173,7 @@ async function save() {
     :close-on-backdrop="!dirty"
     @close="emit('close')"
   >
-    <form class="form" novalidate @submit.prevent="save">
+    <form :id="formId" class="form" novalidate @submit.prevent="save">
       <p v-if="formError" class="form__error" role="alert">{{ formError }}</p>
       <div class="form__grid">
         <Select v-model="draft.roomId" label="강의실" :options="roomOptions" />
@@ -208,7 +211,7 @@ async function save() {
         >삭제</Button
       >
       <Button variant="secondary" @click="emit('close')">취소</Button>
-      <Button :loading="saving" @click="save">저장</Button>
+      <Button type="submit" :form="formId" :loading="saving">저장</Button>
     </template>
   </Modal>
 </template>

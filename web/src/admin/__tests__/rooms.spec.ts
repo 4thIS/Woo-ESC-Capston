@@ -67,6 +67,7 @@ const S = (room_id: number, day: number, s_h: number, subject: string): SlotWith
   source: 2,
 })
 
+// 저장 버튼은 form 속성으로 폼에 붙는다 — 문서 안에 있어야 이어진다(버튼 클릭 = 폼 submit)
 let w: VueWrapper
 async function mountView() {
   const router = createRouter({
@@ -74,7 +75,10 @@ async function mountView() {
     routes: [{ path: '/:p(.*)*', component: { render: () => null } }],
   })
   await router.push('/rooms')
-  w = mount(RoomsView, { global: { plugins: [router], stubs: { teleport: true } } })
+  w = mount(RoomsView, {
+    global: { plugins: [router], stubs: { teleport: true } },
+    attachTo: document.body,
+  })
   await flushPromises()
 }
 type Root = VueWrapper | Omit<DOMWrapper<Element>, 'exists'>

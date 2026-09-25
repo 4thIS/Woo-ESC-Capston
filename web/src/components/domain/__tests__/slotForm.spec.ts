@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import SlotForm from '@/components/domain/SlotForm.vue'
 import Modal from '@/components/ui/Modal.vue'
@@ -44,11 +44,13 @@ const draft = (o: Partial<SlotDraft> = {}): SlotDraft => ({
   ...o,
 })
 
+// 저장 버튼은 form 속성으로 폼에 붙는다 — 문서 안에 있어야 이어진다(버튼 클릭 = 폼 submit)
 let w: VueWrapper
 async function mountForm(props: Record<string, unknown> = {}) {
   w = mount(SlotForm, {
     props: { open: true, rooms, ...props },
     global: { stubs: { teleport: true } },
+    attachTo: document.body,
   })
   await flushPromises()
 }
@@ -70,6 +72,7 @@ beforeEach(() => {
   api.deleteSlot.mockReset().mockResolvedValue({ outbox_ids: [8], id: null })
   for (const t of [...toasts.value]) dismissToast(t.id)
 })
+afterEach(() => w?.unmount())
 
 describe('slotErrors', () => {
   it('종료 ≤ 시작이면 막는다 (자정을 넘기는 슬롯은 없다)', () => {
@@ -89,6 +92,20 @@ describe('slotErrors', () => {
 })
 
 describe('SlotForm', () => {
+  it('Enter 로 저장 — 저장 버튼이 폼의 submit 이라 폼 submit 한 번이 저장 한 번', async () => {
+    await mountForm({ preset: { room_id: 12, day: 3, s_h: 14, s_m: 0 } })
+    const form = w.get('form')
+    const button = w.findAll('button').find((b) => b.text() === '저장')!
+    expect(button.attributes('type')).toBe('submit')
+    expect(button.attributes('form')).toBe(form.attributes('id'))
+    await control('과목명').setValue('캡스톤디자인')
+    api.putSlot.mockReturnValue(new Promise(() => {}))
+    await form.trigger('submit')
+    await form.trigger('submit') // 저장 중 두 번째 Enter 는 무시
+    await flushPromises()
+    expect(api.putSlot).toHaveBeenCalledTimes(1)
+  })
+
   it('추가 — 누른 자리로 채우고(종료 +1시간), source 2 로 저장, 행 키를 알린다', async () => {
     await mountForm({ preset: { room_id: 12, day: 3, s_h: 14, s_m: 0 } })
     expect((control('요일').element as HTMLSelectElement).value).toBe('3')

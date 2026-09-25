@@ -63,6 +63,7 @@ const V = (o: Partial<ResvWithRoom>): ResvWithRoom => ({
   ...o,
 })
 
+// 저장 버튼은 form 속성으로 폼에 붙는다 — 문서 안에 있어야 이어진다(버튼 클릭 = 폼 submit)
 let w: VueWrapper
 async function mountAt(path: string) {
   const router = createRouter({
@@ -77,7 +78,7 @@ async function mountAt(path: string) {
   await router.isReady()
   w = mount(
     { render: () => h(RouterView) },
-    { global: { plugins: [router], stubs: { teleport: true } } },
+    { global: { plugins: [router], stubs: { teleport: true } }, attachTo: document.body },
   )
   await flushPromises()
   return router

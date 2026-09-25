@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils'
 import MasterView from '@/admin/views/MasterView.vue'
 import { roomsApi } from '@/api/rooms'
@@ -54,10 +54,11 @@ const M = (modem_id: string): ModemOut => ({
   school_id: 1,
 })
 
+// 저장 버튼은 form 속성으로 폼에 붙는다 — 문서 안에 있어야 이어진다(버튼 클릭 = 폼 submit)
 let w: VueWrapper
 // teleport 스텁은 갱신마다 슬롯을 다시 그린다 — dialog 를 매번 다시 찾는다 (users.spec 과 같다)
 async function mountView() {
-  w = mount(MasterView, { global: { stubs: { teleport: true } } })
+  w = mount(MasterView, { global: { stubs: { teleport: true } }, attachTo: document.body })
   await flushPromises()
 }
 type Root = VueWrapper | DOMWrapper<Element>
@@ -85,6 +86,7 @@ beforeEach(() => {
   setSession({ token: 't', role: 'admin', school_id: 1, name: '관리자1' })
   for (const t of [...toasts.value]) dismissToast(t.id)
 })
+afterEach(() => w?.unmount())
 
 describe('건물 패널', () => {
   it('n / 26, 미배정은 적색 테두리 배지, 첫 건물이 골라져 있다', async () => {
