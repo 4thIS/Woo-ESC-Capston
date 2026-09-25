@@ -30,7 +30,7 @@
 - **E2E 명령**(Task 1 부터, PowerShell):
   ```powershell
   cd web
-  $env:E2E_SERVER_DIR = 'C:\Users\Monta\AppData\Local\Temp\claude\C--Users-Monta-Desktop-Woo-ESC-Capston\4e11f262-c2d8-493c-87cf-4b4412c9a3ef\scratchpad\srv-wt\server'
+  $env:E2E_SERVER_DIR = 'C:/path/to/server'
   pnpm e2e
   ```
   (통합 서버 워크트리는 `uv sync` 가 끝나 있어야 한다. S4b·S10 이 main 에 머지되면 변수 없이 `pnpm e2e`.)
