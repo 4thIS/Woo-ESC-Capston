@@ -85,8 +85,8 @@ const retry = () => void reload()
             <span
               class="today__label"
               :class="{ 'today__label--off': r.type === 3, 'today__label--mine': r.mine }"
-              >{{ r.label
-              }}<span v-if="r.type === null" class="today__until num"> —{{ r.to }}</span></span
+              ><span class="today__text">{{ r.label }}</span
+              ><span v-if="r.type === null" class="today__until num"> —{{ r.to }}</span></span
             >
             <Badge v-if="isBusy(r.type)" tone="busy" size="sm">{{
               TYPE_LABEL[r.type as SlotType]
@@ -200,7 +200,12 @@ const retry = () => void reload()
 }
 .today__label--off {
   color: var(--room-free-text);
-  text-decoration: line-through;
+}
+/* 취소선은 선으로 그린다 — WeekGrid 휴강과 같은 방식(글자 장식은 굵기·상자에 따라 안 그려진다) */
+.today__label--off .today__text {
+  background: linear-gradient(currentColor, currentColor) 0 55% / 100% 1px no-repeat;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 .today__label--mine {
   color: var(--brand);

@@ -91,9 +91,9 @@ const name = (d: number, b: GridBlock) =>
           :aria-label="name(d, b)"
         >
           <span v-if="wide" class="wg__type">{{ TYPE_LABEL[b.type] }}</span>
-          <span class="wg__label" :class="{ 'wg__label--off': kind(b) === 'off' }">{{
-            b.label
-          }}</span>
+          <span class="wg__label" :class="{ 'wg__label--off': kind(b) === 'off' }"
+            ><span class="wg__text">{{ b.label }}</span></span
+          >
           <span v-if="wide" class="wg__extra num">{{ b.extra }}</span>
         </div>
         <div
@@ -123,6 +123,10 @@ const name = (d: number, b: GridBlock) =>
   display: grid;
 }
 .wg__corner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
   border-bottom: var(--border-thin) solid var(--line-2);
 }
 .wg__day {
@@ -138,12 +142,18 @@ const name = (d: number, b: GridBlock) =>
   color: var(--brand);
   background: var(--brand-tint);
 }
+/* 가로로 밀려도(390 주말) 시각 열은 남는다 — 블록(z-index 없음) 위에 */
 .wg__times {
-  position: relative;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
 }
 .wg__time {
   position: absolute;
-  right: 2px; /* 390 의 시각 열 34px 에 'HH:MM' 이 잘리지 않게 */
+  /* 390 의 시각 열 34px 에 'HH:MM'(12px ≈ 33px)이 잘리지 않게 — 오른쪽에 붙이고 자간을 조금 좁힌다 */
+  right: 0;
+  letter-spacing: -0.02em;
   font-size: var(--font-size-xs);
   line-height: 1;
   color: var(--text-3);
@@ -186,9 +196,12 @@ const name = (d: number, b: GridBlock) =>
   border-color: var(--room-free-line);
   color: var(--room-free-text);
 }
-/* 취소선은 라벨 자체에 — line-clamp 상자는 원자 요소라 바깥 text-decoration 이 안으로 전해지지 않는다 */
-.wg__label--off {
-  text-decoration: line-through;
+/* 취소선은 글자 장식이 아니라 선으로 그린다 — line-clamp 상자 안 굵은 글자에서 text-decoration 이
+   그려지지 않는 브라우저가 있다. 인라인 배경이라 줄마다(clone) 55% 높이에 1px */
+.wg__label--off .wg__text {
+  background: linear-gradient(currentColor, currentColor) 0 55% / 100% 1px no-repeat;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 /* 내가 잡은 것 — brand 1px, 신청(대기)은 점선 */
 .wg__blk--mine {

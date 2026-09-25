@@ -79,6 +79,8 @@ describe('WeekGrid — 요일 가로 × 시간 세로, 겹침은 서버가 합�
     expect(off.classes()).toContain('wg__blk--off')
     // 취소선은 안쪽 라벨에 — line-clamp 상자는 원자 요소라 바깥 text-decoration 이 전해지지 않는다
     expect(off.get('.wg__label').classes()).toContain('wg__label--off')
+    // 선은 인라인 글자 상자(.wg__text)의 배경으로 그린다 — 줄마다 그어진다
+    expect(off.get('.wg__label--off > .wg__text').text()).toBe('운영체제')
     const mine = w.get('[aria-label="금 15:00–16:00 캡스톤 스터디 대기중"]')
     expect(mine.classes()).toEqual(expect.arrayContaining(['wg__blk--mine', 'wg__blk--requested']))
     expect(w.findAll('.wg__col')[4].attributes('aria-label')).toBe('금요일')

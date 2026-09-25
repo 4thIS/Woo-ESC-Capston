@@ -121,9 +121,23 @@ test('이번 주 — 겹친 사용 블록은 한 덩어리 "외 1건", 휴강은
   await expect(
     page.getByRole('listitem', { name: `${day} 10:00–13:00 캡스톤디자인 외 1건` }),
   ).toBeVisible()
-  await expect(page.getByRole('listitem', { name: `${day} 14:00–15:00 운영체제` })).toHaveClass(
-    /wg__blk--off/,
+  const off = page.getByRole('listitem', { name: `${day} 14:00–15:00 운영체제` })
+  await expect(off).toHaveClass(/wg__blk--off/)
+  // 취소선이 실제로 그려지는지 — 계산된 스타일이 아니라 픽셀로. 클래스를 빼면 그림이 달라져야 한다
+  const label = off.locator('.wg__label')
+  const struck = await label.screenshot()
+  await label.evaluate((el: { classList: { remove(c: string): void } }) =>
+    el.classList.remove('wg__label--off'),
   )
+  const plain = await label.screenshot()
+  await label.evaluate((el: { classList: { add(c: string): void } }) =>
+    el.classList.add('wg__label--off'),
+  )
+  expect(struck.equals(plain)).toBe(false)
+  // 가로로 밀려도(주말 오늘) 시각 열은 격자 왼쪽에 남는다
+  const grid = (await page.locator('.wg').boundingBox())!
+  const time = (await page.locator('.wg__time').first().boundingBox())!
+  expect(time.x).toBeGreaterThanOrEqual(grid.x)
   await shot(page, 'student-week-390')
 })
 
