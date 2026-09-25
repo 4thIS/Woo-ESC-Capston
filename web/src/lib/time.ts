@@ -31,6 +31,12 @@ export function formatHm(d: Date): string {
   return `${k.h}:${k.mi}`
 }
 
+/** KST 자정부터 흐른 분 (0..1439) — 학생 화면의 '지금'·체크인 창·오늘 칩 */
+export function kstMinutes(d: Date): number {
+  const k = kst(d)
+  return Number(k.h) * 60 + Number(k.mi)
+}
+
 const KST_MS = 9 * 3600_000
 const kstDay = (d: Date) => Math.floor((d.getTime() + KST_MS) / 86_400_000)
 

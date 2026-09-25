@@ -1,5 +1,13 @@
 import { expect, test, type Page } from '@playwright/test'
-import { SIZES, WEB_URL, createStudent, fillLogin, nextAdmin, shot, uniqEmail } from './helpers'
+import {
+  SIZES,
+  createStudent,
+  expectStudentLanding,
+  fillLogin,
+  nextAdmin,
+  shot,
+  uniqEmail,
+} from './helpers'
 
 // e2e 는 node 타입(tsconfig.node.json) — page.evaluate 콜백은 브라우저에서 도는데 DOM lib 이 없다
 declare const document: { documentElement: { scrollHeight: number } }
@@ -73,6 +81,5 @@ test('next 가 외부 주소면 기본 화면으로 (Review Focus 1)', async ({ 
   const s = await createStudent(request, { approve: true })
   await page.goto('/login?next=//evil.example')
   await fillLogin(page, s.email)
-  await expect(page).toHaveURL(`${WEB_URL}/`)
-  await expect(page.getByText('강의실 화면은 준비 중입니다')).toBeVisible()
+  await expectStudentLanding(page)
 })

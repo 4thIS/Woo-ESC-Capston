@@ -4,6 +4,7 @@ import {
   SIZES,
   apiLogin,
   createStudent,
+  expectStudentLanding,
   fillLogin,
   mailCount,
   mailToken,
@@ -51,7 +52,7 @@ test('가입 신청 → 링크 → 승인 대기 403 → 승인 → 로그인', 
   })
   expect(r.ok()).toBe(true)
   await fillLogin(page, email)
-  await expect(page.getByText('강의실 화면은 준비 중입니다')).toBeVisible()
+  await expectStudentLanding(page)
 })
 
 test('학번 중복 409 → 학번만 고쳐 다시 제출', async ({ page, request }) => {
@@ -112,7 +113,7 @@ test('비밀번호 재설정 → 새 비밀번호로 로그인, 옛 비밀번호
   await fillLogin(page, s.email, PASSWORD)
   await expect(page.getByText('이메일 또는 비밀번호가 틀립니다')).toBeVisible()
   await fillLogin(page, s.email, 'newpassword9')
-  await expect(page.getByText('강의실 화면은 준비 중입니다')).toBeVisible()
+  await expectStudentLanding(page)
 })
 
 test('링크를 연 뒤 앱 안에서 이동하고 뒤로 가도 주소에 토큰이 되살아나지 않는다', async ({

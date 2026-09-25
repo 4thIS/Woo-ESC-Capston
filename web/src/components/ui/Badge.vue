@@ -48,4 +48,9 @@ withDefaults(
   border-color: var(--danger);
   color: var(--danger);
 }
+/* 학생 강의실 화면의 '지금' 배지 — brand 채움 + 흰 글자 (student-room.md 화면 2). 적색은 쓰지 않는다 */
+.badge--brand.badge--solid {
+  background: var(--brand);
+  color: var(--on-brand);
+}
 </style>
