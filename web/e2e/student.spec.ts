@@ -25,7 +25,7 @@ import cfg from './env.json' with { type: 'json' }
 declare const localStorage: { getItem(k: string): string | null }
 
 // 한 파일 = 한 컨텍스트 · 학생 UI 로그인 한 번 — 서버의 IP 당 분당 로그인 30회 상한 (F1 plan Task 13 메모).
-// 로그인 뒤 이동은 링크 클릭으로 (page.goto 는 새로고침 = 메모리 세션 소실)
+// 로그인 뒤 이동은 링크 클릭으로 (page.goto 는 새로고침 — 화면 상태를 새로 시작한다)
 test.describe.configure({ mode: 'serial' })
 let ctx: BrowserContext
 let page: Page

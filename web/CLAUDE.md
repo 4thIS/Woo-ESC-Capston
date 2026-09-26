@@ -57,7 +57,7 @@ web/
   - bash: `E2E_SERVER_DIR='C:\path\to\server' pnpm e2e` (Windows 에서는 `/c/...` 가 아니라 `C:\...` 로)
 - **다른 포트로 돌리기**(수동으로 띄운 서버가 8000·5173 을 쓰고 있을 때): `E2E_API_PORT`(기본 8000) · `E2E_WEB_PORT`(기본 5173). 예: `$env:E2E_API_PORT = '8100'; $env:E2E_WEB_PORT = '5273'; pnpm e2e`. dev 서버 프록시 대상은 `VITE_API_TARGET`(기본 `http://127.0.0.1:8000`)이고 E2E 는 이것을 자동으로 넘긴다. 기본 포트에서는 5173 에 이미 떠 있는 dev 서버를 재사용하므로(CI 제외) 그 서버의 프록시가 8000 을 가리켜야 한다.
 - `e2e/helpers.ts` 의 `sql()` 은 **테스트 전용** — 무선 트래픽(STATUS·pending·ACK)으로만 생기는 행을 E2E DB 에 직접 넣는다. 관리자 REST 로 만들 수 있는 것(건물·방·모뎀)은 REST 로 만든다.
-- 로그인 상한(IP 당 분당 30회) 때문에 새 spec 파일은 `beforeAll` 에서 컨텍스트·로그인을 한 번만 하고 화면 이동은 사이드 메뉴 클릭으로 한다(`page.goto` 는 새로고침 = 메모리 세션 소실).
+- 로그인 상한(IP 당 분당 30회) 때문에 새 spec 파일은 `beforeAll` 에서 컨텍스트·로그인을 한 번만 하고 화면 이동은 사이드 메뉴 클릭으로 한다(세션은 sessionStorage 라 `page.goto` 로도 남지만, 새로고침은 화면 상태·폴링을 새로 시작한다).
 
 ## 계약(Contract) 규칙
 

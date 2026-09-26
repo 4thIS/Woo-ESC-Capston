@@ -29,7 +29,7 @@ declare const window: {
 declare const PopStateEvent: new (type: string) => unknown
 
 // 한 파일 = 컨텍스트 둘(우리 학교·다른 학교), 로그인 각 한 번 — 서버의 IP 당 분당 로그인 30회 상한.
-// 화면 이동은 사이드 메뉴 클릭으로 (page.goto 는 새로고침 = 메모리 세션 소실)
+// 화면 이동은 사이드 메뉴 클릭으로 (page.goto 는 새로고침 — 화면 상태를 새로 시작한다)
 test.describe.configure({ mode: 'serial' })
 let ctx: BrowserContext
 let other: BrowserContext
@@ -543,7 +543,7 @@ test('다른 학교 관리자 — 우리 강의실 주간 주소는 "찾을 수 
   await expect(
     otherPage.getByText('강의실이 없습니다. 건물 · 강의실 화면에서 먼저 만드세요.'),
   ).toBeVisible()
-  // 새로고침 없이 주소만 바꾼다 — page.goto 는 메모리 세션을 잃는다
+  // 새로고침 없이 주소만 바꾼다 — page.goto 는 화면 상태를 새로 시작한다
   await otherPage.evaluate((id) => {
     window.history.pushState({}, '', `/admin/rooms/${id}/week`)
     window.dispatchEvent(new PopStateEvent('popstate'))
