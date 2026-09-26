@@ -39,6 +39,35 @@ describe('SidebarNav', () => {
     expect(links[0].find('.badge').exists()).toBe(false)
     expect(w.find('.f').exists()).toBe(true)
   })
+
+  it('시안 A — 묶음 제목은 바뀔 때 한 번, 아이콘, 머리 슬롯, 대기 숫자 배지', async () => {
+    const router = await withRouter('/nodes')
+    const w = mount(SidebarNav, {
+      props: {
+        items: [
+          { to: '/users', label: '회원', group: '사람', icon: 'users', badge: 2 },
+          { to: '/nodes', label: '노드 상태', group: '모니터링', icon: 'node' },
+        ],
+      },
+      slots: { header: '<p class="h">MJC ESC</p>' },
+      global: { plugins: [router] },
+    })
+    expect(w.findAll('.nav__group').map((g) => g.text())).toEqual(['사람', '모니터링'])
+    expect(w.findAll('a svg.nav__icon')).toHaveLength(2)
+    expect(w.find('.h').exists()).toBe(true)
+    expect(w.get('.nav__count').text()).toBe('2')
+    expect(w.get('.nav__count').attributes('aria-label')).toBe('대기 2건')
+  })
+
+  it('선택 표시(pill)는 하나 — 움직임은 CSS 로, 움직임 줄이기면 끈다', async () => {
+    const router = await withRouter('/users')
+    const w = mount(SidebarNav, {
+      props: { items: [{ to: '/users', label: '회원' }] },
+      global: { plugins: [router] },
+    })
+    expect(w.findAll('.nav__pill')).toHaveLength(1)
+    expect(w.get('.nav__pill').attributes('aria-hidden')).toBe('true')
+  })
 })
 
 describe('StatTile', () => {
