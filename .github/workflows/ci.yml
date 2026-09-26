@@ -1,5 +1,5 @@
 # GitHub Actions — 경로 기반 다층 게이트
-# 원리: paths 필터로 바뀐 영역의 job만 실행한다. main 브랜치 보호에서 이 체크들을 "required"로 켠다.
+# 원리: paths 필터로 바뀐 영역의 job만 실행한다. 브랜치 보호는 설정하지 않으므로(2026-09-26 팀장 결정) 녹색 확인은 머지하는 팀장이 한다.
 #
 # 계약(lora_proto/)이 바뀌면 proto·firmware·server·modempi 네 job이 함께 돈다.
 # 프로토콜 상수의 C++ 헤더 ↔ Python 미러 일치 검사와 test_vectors.json 드리프트 검사는
