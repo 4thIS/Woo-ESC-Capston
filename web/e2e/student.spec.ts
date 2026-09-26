@@ -25,7 +25,7 @@ import cfg from './env.json' with { type: 'json' }
 declare const localStorage: { getItem(k: string): string | null }
 
 // 한 파일 = 한 컨텍스트 · 학생 UI 로그인 한 번 — 서버의 IP 당 분당 로그인 30회 상한 (F1 plan Task 13 메모).
-// 로그인 뒤 이동은 링크 클릭으로 (page.goto 는 새로고침 = 메모리 세션 소실)
+// 로그인 뒤 이동은 링크 클릭으로 (page.goto 는 새로고침 — 화면 상태를 새로 시작한다)
 test.describe.configure({ mode: 'serial' })
 let ctx: BrowserContext
 let page: Page
@@ -122,12 +122,12 @@ test('딥링크 — 소문자는 대문자로, 벽 → 로그인 → 원래 주�
   await expect(page).toHaveURL(new RegExp(`/${STU.bld}$`))
 })
 
-test('강의실 목록 — 빈 곳 개수가 먼저, 빈 강의실만 기본, 즐겨찾기는 고르면 생긴다', async () => {
+test('강의실 목록 — 빈 곳 개수가 먼저, 빈 곳 보기가 기본, 즐겨찾기 보기는 고른 것만', async () => {
   await expect(page.getByRole('heading', { name: '3곳이 지금 비어 있어요' })).toBeVisible()
   await expect(shownRows()).toHaveCount(3)
   await expect(page.getByRole('link', { name: /^101호/ })).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: /^즐겨찾기/ })).toHaveCount(0)
-  await page.getByLabel('빈 강의실만').uncheck()
+  await expect(page.getByRole('button', { name: '빈 곳' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: '전체' }).click()
   await expect(shownRows()).toHaveCount(4)
   await expect(page.getByRole('link', { name: /^101호 특강 / })).toBeVisible()
   const row102 = shownRows().filter({ hasText: '102호' })
@@ -136,9 +136,11 @@ test('강의실 목록 — 빈 곳 개수가 먼저, 빈 강의실만 기본, �
   await expect(star102).toHaveAttribute('aria-pressed', 'false')
   await star102.click()
   await expect(star102).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('heading', { name: '즐겨찾기', exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: '102호 비어있음', exact: true })).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('esc.fav'))).toBe('["H-102"]')
+  await page.getByRole('button', { name: '★ 즐겨찾기' }).click()
+  await expect(shownRows()).toHaveCount(1)
+  await expect(page.getByRole('link', { name: /^102호 비어있음/ })).toBeVisible()
+  await page.getByRole('button', { name: '전체' }).click()
   await expect(page.locator('.rn')).toContainText(/문 앞 e-Paper 와 같은 내용 · \d\d:\d\d 갱신/)
   await shot(page, 'student-list-390')
 })

@@ -76,4 +76,12 @@ function onChange(e: Event) {
   opacity: 0.6;
   cursor: not-allowed;
 }
+.sel__control {
+  cursor: pointer;
+  transition: border-color var(--dur-fast) ease;
+}
+/* 포커스는 전역 2px outline 만 (components.md) — 테두리 색·그림자를 겹치지 않는다 */
+.sel__control:hover:enabled {
+  border-color: var(--text-3);
+}
 </style>

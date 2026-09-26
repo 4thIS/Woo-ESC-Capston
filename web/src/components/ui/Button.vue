@@ -124,4 +124,14 @@ const sizer = computed(() => {
 .btn__ghost {
   visibility: hidden;
 }
+.btn {
+  transition:
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-soft);
+}
+.btn:active:enabled {
+  transform: scale(0.97);
+}
 </style>

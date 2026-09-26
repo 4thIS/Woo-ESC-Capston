@@ -10,7 +10,7 @@ import { nightPref, picked, weekMonday, weekRoom, weekendPref } from '@/admin/se
 
 vi.mock('@/api/users', () => ({ usersApi: { list: vi.fn() } }))
 vi.mock('@/api/rooms', () => ({
-  roomsApi: { schools: vi.fn(async () => [{ id: 1, name: '우송대', net_id: 75 }]) },
+  roomsApi: { schools: vi.fn(async () => [{ id: 1, name: '명지전문대학', net_id: 75 }]) },
 }))
 const list = vi.mocked(usersApi.list)
 // 회원 화면(Task 13)이 /users 에서 실제로 그린다 — 정렬에 쓰는 필드까지 채운다
@@ -52,6 +52,29 @@ beforeEach(() => {
 })
 
 describe('AdminShell', () => {
+  it('자동 로그아웃 경고 — 첫 포커스는 시간 연장(Enter 한 번에 로그아웃되지 않게), 다른 모달 위', async () => {
+    sessionStorage.setItem(
+      'esc.admin.idle',
+      JSON.stringify({ t: 't', at: Date.now() - 9.5 * 60_000 }),
+    )
+    const router = makeRouter(createMemoryHistory())
+    await router.push('/users')
+    await router.isReady()
+    const w = mount(AdminApp, { global: { plugins: [router] }, attachTo: document.body })
+    await flushPromises()
+    await new Promise((r) => setTimeout(r))
+    const dialog = document.querySelector('[role="dialog"]')!
+    expect(dialog.textContent).toContain('곧 자동 로그아웃됩니다')
+    expect(document.activeElement?.textContent?.trim()).toBe('시간 연장')
+    expect(dialog.closest('.modal')!.classList).toContain('modal--top')
+    ;(document.activeElement as HTMLElement).click()
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(session.value).not.toBeNull()
+    w.unmount()
+    sessionStorage.clear()
+  })
+
   it('/ 는 /dashboard 로, 메뉴 순서(#46) · 전송 현황 활성 · 회원 대기 건수 · 학교 읽기 전용', async () => {
     const { w, router } = await mountApp('/')
     expect(router.currentRoute.value.path).toBe('/dashboard')
@@ -68,7 +91,7 @@ describe('AdminShell', () => {
     expect(links[2].attributes('href')).toBe('/week')
     expect(links[4].attributes('aria-current')).toBe('page')
     expect(links[5].text()).toContain('2')
-    expect(w.text()).toContain('우송대 · net_id 75')
+    expect(w.text()).toContain('명지전문대학 · net_id 75')
     expect(w.text()).toContain('학교는 CLI 에서만 만든다')
     expect(w.text()).toContain('관리자1')
   })

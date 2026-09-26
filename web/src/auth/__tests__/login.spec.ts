@@ -33,7 +33,7 @@ async function mountLogin(app: 'admin' | 'student', path = '/login') {
   const w = mount(LoginView, { props: { app }, global: { plugins: [router] } })
   return { w, router }
 }
-async function submit(w: ReturnType<typeof mount>, email = 'a@wsu.ac.kr', pw = 'password1') {
+async function submit(w: ReturnType<typeof mount>, email = 'a@mjc.ac.kr', pw = 'password1') {
   const [e, p] = w.findAll('input')
   await e.setValue(email)
   await p.setValue(pw)
@@ -152,7 +152,7 @@ describe('LoginView', () => {
     login.mockReturnValue(new Promise((r) => (finish = r)))
     const { w } = await mountLogin('student')
     const [e, p] = w.findAll('input')
-    await e.setValue('a@wsu.ac.kr')
+    await e.setValue('a@mjc.ac.kr')
     await p.setValue('password1')
     await w.get('form').trigger('submit')
     await w.get('form').trigger('submit')

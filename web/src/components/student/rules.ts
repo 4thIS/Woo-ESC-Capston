@@ -88,12 +88,19 @@ const startAt = (r: ResvMineOut) => dayMin(r.date) + r.s_h * 60 + r.s_m
 const endAt = (r: ResvMineOut) => dayMin(r.date) + r.e_h * 60 + r.e_m
 const nowAt = (now: Date) => dayMin(kstDateStr(now)) + kstMinutes(now)
 
+const isActive = (r: ResvMineOut, n: number) =>
+  r.status === 'requested' ? startAt(r) > n : r.status === 'approved' && endAt(r) > n
+
 /** 서버 MAX_ACTIVE 판정과 같다 — 시작 전 신청 + 끝나지 않은 승인 */
 export function activeCount(list: ResvMineOut[], now: Date): number {
   const n = nowAt(now)
-  return list.filter((r) =>
-    r.status === 'requested' ? startAt(r) > n : r.status === 'approved' && endAt(r) > n,
-  ).length
+  return list.filter((r) => isActive(r, n)).length
+}
+
+/** 사이드바 '다음 예약' — 진행 중인 것 중 가장 먼저 시작하는 것 */
+export function nextResv(list: ResvMineOut[], now: Date): ResvMineOut | null {
+  const n = nowAt(now)
+  return list.filter((r) => isActive(r, n)).sort((a, b) => startAt(a) - startAt(b))[0] ?? null
 }
 
 export type CheckinState =

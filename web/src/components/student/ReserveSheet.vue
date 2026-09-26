@@ -367,4 +367,16 @@ function submit() {
   font-size: var(--font-size-sm);
   color: var(--text-2);
 }
+.rs__chip,
+.rs__span {
+  transition:
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-soft);
+}
+.rs__chip:active,
+.rs__span:active {
+  transform: scale(0.97);
+}
 </style>

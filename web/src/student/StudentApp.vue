@@ -15,6 +15,11 @@ const gateBld = computed(() =>
 
 <template>
   <LoginGate v-if="gated" :bld="gateBld" :next="route.fullPath" />
-  <RouterView v-else />
+  <!-- 화면 전환 — 관리자와 같은 움직임. 같은 화면의 주소 글자만 바뀌면 다시 그리지 않는다 -->
+  <RouterView v-else v-slot="{ Component, route: r }">
+    <div :key="r.matched[0]?.path" class="page">
+      <component :is="Component" />
+    </div>
+  </RouterView>
   <ToastHost />
 </template>

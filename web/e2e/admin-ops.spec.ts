@@ -29,7 +29,7 @@ declare const window: {
 declare const PopStateEvent: new (type: string) => unknown
 
 // 한 파일 = 컨텍스트 둘(우리 학교·다른 학교), 로그인 각 한 번 — 서버의 IP 당 분당 로그인 30회 상한.
-// 화면 이동은 사이드 메뉴 클릭으로 (page.goto 는 새로고침 = 메모리 세션 소실)
+// 화면 이동은 사이드 메뉴 클릭으로 (page.goto 는 새로고침 — 화면 상태를 새로 시작한다)
 test.describe.configure({ mode: 'serial' })
 let ctx: BrowserContext
 let other: BrowserContext
@@ -429,8 +429,8 @@ test('CSV — 먼저 미리보기, 웹에서 고친 행은 건너뛴다고 말�
     .locator('input[type=file]')
     .setInputFiles(
       csv([
-        '우송대,K,101,월,13:00,15:00,수업,포털수업,박교수',
-        '우송대,K,202,수,09:00,10:00,수업,포털과목,이교수',
+        '명지전문대학,K,101,월,13:00,15:00,수업,포털수업,박교수',
+        '명지전문대학,K,202,수,09:00,10:00,수업,포털과목,이교수',
       ]),
     )
   const d = page.getByRole('dialog', { name: 'CSV 가져오기 — slots.csv' })
@@ -445,7 +445,7 @@ test('CSV — 먼저 미리보기, 웹에서 고친 행은 건너뛴다고 말�
   await expect(slots.getByRole('row').filter({ hasText: '포털수업' })).toHaveCount(0)
   await page
     .locator('input[type=file]')
-    .setInputFiles(csv(['우송대,K,999,월,09:00,10:00,수업,없는방,김교수']))
+    .setInputFiles(csv(['명지전문대학,K,999,월,09:00,10:00,수업,없는방,김교수']))
   const e = page.getByRole('dialog', { name: 'CSV 오류 — 아무것도 적용되지 않았습니다' })
   await expect(e.getByRole('row').filter({ hasText: '999' })).toContainText('2')
   await e.getByRole('button', { name: '닫기' }).click()
@@ -543,7 +543,7 @@ test('다른 학교 관리자 — 우리 강의실 주간 주소는 "찾을 수 
   await expect(
     otherPage.getByText('강의실이 없습니다. 건물 · 강의실 화면에서 먼저 만드세요.'),
   ).toBeVisible()
-  // 새로고침 없이 주소만 바꾼다 — page.goto 는 메모리 세션을 잃는다
+  // 새로고침 없이 주소만 바꾼다 — page.goto 는 화면 상태를 새로 시작한다
   await otherPage.evaluate((id) => {
     window.history.pushState({}, '', `/admin/rooms/${id}/week`)
     window.dispatchEvent(new PopStateEvent('popstate'))

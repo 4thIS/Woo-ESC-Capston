@@ -14,7 +14,7 @@ vi.mock('@/admin/pending', () => ({ refreshPending: vi.fn() }))
 const api = vi.mocked(usersApi)
 
 const u = (over: Partial<UserOut>): UserOut => ({
-  email: 's@wsu.ac.kr',
+  email: 's@mjc.ac.kr',
   school_id: 1,
   role: 'student',
   status: 'pending_approval',
@@ -50,7 +50,7 @@ describe('정렬·검색', () => {
     expect(out.map((x) => x.email)).toEqual(['p1', 'p2', 'b', 'a'])
   })
   it('이름·학번·메일 부분 일치, 대소문자 무시', () => {
-    const x = u({ name: '이정민', student_no: 'AB-12', email: 'Lee@wsu.ac.kr' })
+    const x = u({ name: '이정민', student_no: 'AB-12', email: 'Lee@mjc.ac.kr' })
     expect(matchUser(x, '정민')).toBe(true)
     expect(matchUser(x, 'ab-1')).toBe(true)
     expect(matchUser(x, 'lee@')).toBe(true)
@@ -75,7 +75,7 @@ describe('UsersView', () => {
     const w = await mountView()
     await buttonByText(w, '승인').trigger('click')
     await flushPromises()
-    expect(api.approve).toHaveBeenCalledWith('s@wsu.ac.kr')
+    expect(api.approve).toHaveBeenCalledWith('s@mjc.ac.kr')
     expect(w.find('[role="dialog"]').exists()).toBe(false)
     expect(toasts.value.at(-1)?.message).toBe('승인했습니다. 학생에게 메일이 갑니다.')
     expect(api.list).toHaveBeenCalledTimes(2) // 새로고침
@@ -122,14 +122,14 @@ describe('UsersView', () => {
     expect((submit().element as HTMLButtonElement).disabled).toBe(false)
     await submit().trigger('click')
     await flushPromises()
-    expect(api.reject).toHaveBeenCalledWith('s@wsu.ac.kr', '학번이 잘못되었습니다')
+    expect(api.reject).toHaveBeenCalledWith('s@mjc.ac.kr', '학번이 잘못되었습니다')
     expect(w.find('[role="dialog"]').exists()).toBe(false)
   })
 
   it('정지는 확인 Modal, 관리자 행은 CLI 에서만 변경', async () => {
     api.list.mockResolvedValue([
-      u({ email: 'a@wsu.ac.kr', status: 'active' }),
-      u({ email: 'admin@wsu.ac.kr', role: 'admin', status: 'active', student_no: null }),
+      u({ email: 'a@mjc.ac.kr', status: 'active' }),
+      u({ email: 'admin@mjc.ac.kr', role: 'admin', status: 'active', student_no: null }),
     ])
     api.disable.mockResolvedValue(u({ status: 'disabled' }))
     const w = await mountView()
@@ -143,7 +143,7 @@ describe('UsersView', () => {
       .find((b) => b.text() === '정지')!
     await confirm.trigger('click')
     await flushPromises()
-    expect(api.disable).toHaveBeenCalledWith('a@wsu.ac.kr')
+    expect(api.disable).toHaveBeenCalledWith('a@mjc.ac.kr')
   })
 
   it('정지된 회원은 해제(확인 없음), 정지됨 배지는 적색', async () => {
@@ -153,7 +153,7 @@ describe('UsersView', () => {
     expect(w.get('.badge--danger').text()).toBe('정지됨')
     await buttonByText(w, '해제').trigger('click')
     await flushPromises()
-    expect(api.enable).toHaveBeenCalledWith('s@wsu.ac.kr')
+    expect(api.enable).toHaveBeenCalledWith('s@mjc.ac.kr')
   })
 
   it('필터를 바꾸면 그 상태로 다시 부른다, 전체는 status 없이', async () => {
@@ -242,7 +242,7 @@ describe('UsersView', () => {
     await flushPromises()
     expect((buttonByText(w, '승인').element as HTMLButtonElement).disabled).toBe(true)
     expect((buttonByText(w, '거절').element as HTMLButtonElement).disabled).toBe(true)
-    land([u({ email: 'o@wsu.ac.kr' })])
+    land([u({ email: 'o@mjc.ac.kr' })])
     await flushPromises()
     expect((buttonByText(w, '승인').element as HTMLButtonElement).disabled).toBe(false)
   })
@@ -257,8 +257,8 @@ describe('UsersView', () => {
   })
 
   describe('재시도는 실패한 그 회원만', () => {
-    const A = 'a@wsu.ac.kr'
-    const B = 'b@wsu.ac.kr'
+    const A = 'a@mjc.ac.kr'
+    const B = 'b@mjc.ac.kr'
     const rowButton = (w: ReturnType<typeof mount>, email: string, text: string) =>
       w
         .findAll('tr')
