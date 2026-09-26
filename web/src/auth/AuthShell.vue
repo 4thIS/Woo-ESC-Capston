@@ -11,7 +11,7 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
     <div class="auth__body">
       <!-- 학생 PC(≥640) 는 좌우 분할 — 왼쪽 소개, 오른쪽 폼. 폰에서는 숨긴다 -->
       <aside v-if="surface === 'student'" class="auth__intro">
-        <p class="auth__intro-brand">우송 ESC</p>
+        <p class="auth__intro-brand">MJC ESC</p>
         <p class="auth__intro-lead">학교의 빈 강의실을 확인하고 예약하세요.</p>
         <ul class="auth__intro-list">
           <li>지금 빈 강의실</li>
@@ -21,7 +21,7 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
       </aside>
       <div class="auth__pane">
         <main class="auth__card">
-          <p class="auth__brand">우송 ESC</p>
+          <p class="auth__brand">MJC ESC</p>
           <h1 class="auth__title">
             <RouterLink v-if="back" :to="back" class="auth__back" aria-label="뒤로">‹</RouterLink
             >{{ title }}

@@ -82,11 +82,11 @@ describe('SignupView', () => {
     vi.useFakeTimers()
     api.signup.mockResolvedValue({ status: 'sent' })
     const { w } = await mountView(SignupView)
-    await w.get('input').setValue(' s1@wsu.ac.kr ')
+    await w.get('input').setValue(' s1@mjc.ac.kr ')
     await w.get('form').trigger('submit')
     await flushPromises()
-    expect(api.signup).toHaveBeenCalledWith('s1@wsu.ac.kr')
-    expect(w.text()).toContain('s1@wsu.ac.kr 로 보냈어요')
+    expect(api.signup).toHaveBeenCalledWith('s1@mjc.ac.kr')
+    expect(w.text()).toContain('s1@mjc.ac.kr 로 보냈어요')
     expect(w.text()).toContain('이미 가입한 메일이면 메일이 오지 않습니다. 로그인해 보세요.')
     const resend = () => w.get('button').element as HTMLButtonElement
     expect(resend().disabled).toBe(true)
@@ -105,16 +105,16 @@ describe('VerifyView', () => {
 
   it('열자마자 verify/open, 이메일은 읽기 전용으로', async () => {
     setHash('#token=tok1')
-    api.verifyOpen.mockResolvedValue({ email: 's1@wsu.ac.kr' })
+    api.verifyOpen.mockResolvedValue({ email: 's1@mjc.ac.kr' })
     const { w } = await mountView(VerifyView)
     expect(api.verifyOpen).toHaveBeenCalledWith('tok1')
-    expect(w.text()).toContain('s1@wsu.ac.kr')
+    expect(w.text()).toContain('s1@mjc.ac.kr')
     expect(w.findAll('input')).toHaveLength(3) // 이름·학번·비밀번호 — 이메일은 입력이 아니다
   })
 
   it('409 → 학번 칸만 에러, 나머지 입력은 유지', async () => {
     setHash('#token=tok1')
-    api.verifyOpen.mockResolvedValue({ email: 's1@wsu.ac.kr' })
+    api.verifyOpen.mockResolvedValue({ email: 's1@mjc.ac.kr' })
     api.verify.mockRejectedValue(err(409))
     const { w } = await mountView(VerifyView)
     const [name, no, pw] = w.findAll('input')
@@ -135,7 +135,7 @@ describe('VerifyView', () => {
 
   it('학번 형식·비밀번호 길이는 보내기 전에 막는다', async () => {
     setHash('#token=tok1')
-    api.verifyOpen.mockResolvedValue({ email: 's1@wsu.ac.kr' })
+    api.verifyOpen.mockResolvedValue({ email: 's1@mjc.ac.kr' })
     const { w } = await mountView(VerifyView)
     const [name, no, pw] = w.findAll('input')
     await name.setValue('김민준')
@@ -157,7 +157,7 @@ describe('VerifyView', () => {
 
   it('필드와 맞지 않는 422 → 폼 단위 메시지', async () => {
     setHash('#token=tok1')
-    api.verifyOpen.mockResolvedValue({ email: 's1@wsu.ac.kr' })
+    api.verifyOpen.mockResolvedValue({ email: 's1@mjc.ac.kr' })
     api.verify.mockRejectedValue(new ApiError(422, '입력값을 확인해 주세요', ['token']))
     const { w } = await mountView(VerifyView)
     const [name, no, pw] = w.findAll('input')
@@ -171,7 +171,7 @@ describe('VerifyView', () => {
 
   it('성공 → 승인 대기 화면', async () => {
     setHash('#token=tok1')
-    api.verifyOpen.mockResolvedValue({ email: 's1@wsu.ac.kr' })
+    api.verifyOpen.mockResolvedValue({ email: 's1@mjc.ac.kr' })
     api.verify.mockResolvedValue({ status: 'pending_approval' })
     const { w } = await mountView(VerifyView)
     const [name, no, pw] = w.findAll('input')

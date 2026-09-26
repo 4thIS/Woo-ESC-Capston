@@ -27,7 +27,7 @@ describe('request', () => {
     expect(out[0].created_at).toBeInstanceOf(Date)
     expect(out[0].created_at.toISOString()).toBe('2026-09-25T01:00:00.123Z')
     expect(out[0].approved_at).toBeNull()
-    expect(out[0].email).toBe('s1@wsu.ac.kr')
+    expect(out[0].email).toBe('s1@mjc.ac.kr')
   })
 
   it('세션이 있으면 Bearer, auth:false 면 붙이지 않는다', async () => {

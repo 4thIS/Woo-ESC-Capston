@@ -51,7 +51,7 @@ web/
 
 ## E2E (Playwright)
 
-- `pnpm e2e` — 임시 DB 로 메인Pi 서버(기본 `../server`)와 Vite dev 서버를 띄우고 `e2e/*.spec.ts` 를 돈다. 학교 둘(우송대 id 1 · 타학교 id 2)과 관리자들을 CLI 로 심는다(`e2e/env.json`).
+- `pnpm e2e` — 임시 DB 로 메인Pi 서버(기본 `../server`)와 Vite dev 서버를 띄우고 `e2e/*.spec.ts` 를 돈다. 학교 둘(명지전문대학 id 1 · 타학교 id 2)과 관리자들을 CLI 로 심는다(`e2e/env.json`).
 - **다른 서버 체크아웃으로 돌리기**: `E2E_SERVER_DIR` 에 서버 폴더(web/ 기준 상대 또는 절대 경로). 예: 아직 main 에 없는 API 를 가진 통합 워크트리.
   - PowerShell: `$env:E2E_SERVER_DIR = 'C:\path\to\server'; pnpm e2e`
   - bash: `E2E_SERVER_DIR='C:\path\to\server' pnpm e2e` (Windows 에서는 `/c/...` 가 아니라 `C:\...` 로)

@@ -429,8 +429,8 @@ test('CSV — 먼저 미리보기, 웹에서 고친 행은 건너뛴다고 말�
     .locator('input[type=file]')
     .setInputFiles(
       csv([
-        '우송대,K,101,월,13:00,15:00,수업,포털수업,박교수',
-        '우송대,K,202,수,09:00,10:00,수업,포털과목,이교수',
+        '명지전문대학,K,101,월,13:00,15:00,수업,포털수업,박교수',
+        '명지전문대학,K,202,수,09:00,10:00,수업,포털과목,이교수',
       ]),
     )
   const d = page.getByRole('dialog', { name: 'CSV 가져오기 — slots.csv' })
@@ -445,7 +445,7 @@ test('CSV — 먼저 미리보기, 웹에서 고친 행은 건너뛴다고 말�
   await expect(slots.getByRole('row').filter({ hasText: '포털수업' })).toHaveCount(0)
   await page
     .locator('input[type=file]')
-    .setInputFiles(csv(['우송대,K,999,월,09:00,10:00,수업,없는방,김교수']))
+    .setInputFiles(csv(['명지전문대학,K,999,월,09:00,10:00,수업,없는방,김교수']))
   const e = page.getByRole('dialog', { name: 'CSV 오류 — 아무것도 적용되지 않았습니다' })
   await expect(e.getByRole('row').filter({ hasText: '999' })).toContainText('2')
   await e.getByRole('button', { name: '닫기' }).click()

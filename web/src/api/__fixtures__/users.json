@@ -1,6 +1,6 @@
 [
   {
-    "email": "s1@wsu.ac.kr",
+    "email": "s1@mjc.ac.kr",
     "school_id": 1,
     "role": "student",
     "status": "pending_approval",
@@ -10,7 +10,7 @@
     "approved_at": null
   },
   {
-    "email": "admin@wsu.ac.kr",
+    "email": "admin@mjc.ac.kr",
     "school_id": 1,
     "role": "admin",
     "status": "active",

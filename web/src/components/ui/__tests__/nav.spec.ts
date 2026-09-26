@@ -29,7 +29,7 @@ describe('SidebarNav', () => {
           { to: '/users', label: '회원', badge: 5 },
         ],
       },
-      slots: { footer: '<p class="f">우송대</p>' },
+      slots: { footer: '<p class="f">명지전문대학</p>' },
       global: { plugins: [router] },
     })
     const links = w.findAll('a')

@@ -65,7 +65,7 @@ describe('CSV 가져오기', () => {
     api.importSlots.mockRejectedValue(
       new ApiError(400, MESSAGES[400], [], {
         errors: [
-          { row: 2, error: 'room: 999 없음 (우송대 K)' },
+          { row: 2, error: 'room: 999 없음 (명지전문대학 K)' },
           { row: 0, error: '헤더에 없는 컬럼: professor' },
         ],
       }),
@@ -74,7 +74,7 @@ describe('CSV 가져오기', () => {
     const d = dialog('CSV 오류 — 아무것도 적용되지 않았습니다')!
     const rows = d.findAll('tbody tr').map((r) => r.findAll('td').map((c) => c.text()))
     expect(rows).toEqual([
-      ['2', 'room: 999 없음 (우송대 K)'],
+      ['2', 'room: 999 없음 (명지전문대학 K)'],
       ['—', '헤더에 없는 컬럼: professor'],
     ])
   })

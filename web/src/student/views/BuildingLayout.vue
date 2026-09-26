@@ -71,7 +71,7 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
   <NotFoundView v-if="loaded && !building" back="/" back-label="건물 목록으로" />
   <div v-else class="split" :class="{ 'split--child': hasChild }">
     <section class="split__list" aria-label="강의실 목록">
-      <StudentHeader title="우송 ESC" show-me>
+      <StudentHeader title="MJC ESC" show-me>
         <Select
           v-if="options.length > 1"
           class="split__bld"

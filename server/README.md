@@ -5,8 +5,8 @@
   ```bash
   cp server/.env.example server/.env        # 값 채우기 (아래 표) — 커밋 금지, 이미지에도 안 들어간다(.dockerignore)
   docker compose up -d --build              # 빌드 + 기동. DB 는 볼륨 /data/main.db (SERVER_DB 는 compose 가 고정)
-  docker compose exec server python -m app.cli create-school --name 우송대 --net-id 75 --email-domain wsu.ac.kr
-  docker compose exec server python -m app.cli create-admin --school-id 1 --email admin@wsu.ac.kr --name 관리자
+  docker compose exec server python -m app.cli create-school --name 명지전문대학 --net-id 75 --email-domain mjc.ac.kr
+  docker compose exec server python -m app.cli create-admin --school-id 1 --email admin@mjc.ac.kr --name 관리자
   docker compose logs -f server
   ```
   이미지 정의는 `server/Dockerfile`(빌드 컨텍스트는 리포 루트 — `../lora_proto` path 의존), 설정은 루트 `compose.yaml`(`env_file: server/.env`). 노트북에서도 같은 명령으로 메인Pi 와 똑같은 서버를 띄울 수 있다(Docker Desktop). 아래 `uv run …` 기동·CLI 는 **개발용**이다.
@@ -14,8 +14,8 @@
 - 기동: `uv sync && uv run alembic upgrade head && uv run --env-file .env uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000 --workers 1 --no-server-header`
   (반드시 `--workers 1` — WS 연결 레지스트리와 `lora_service/api.py`의 상태가 프로세스 메모리에 있어 워커가 여러 개면 모뎀Pi 연결·outbox 디스패치가 워커마다 따로 놀아 깨진다. `--no-server-header`로 응답에 서버 버전 노출 안 함)
 - 초기 설정(CLI, `uv run --env-file .env python -m app.cli <cmd>`):
-  - `create-school --name 우송대 --net-id 75 --email-domain wsu.ac.kr` — 도메인은 학생 웹메일 가입 판별에 쓰인다.
-  - `create-admin --school-id 1 --email admin@wsu.ac.kr --name 관리자` — 비밀번호는 프롬프트(getpass)로 입력, argv엔 안 받는다.
+  - `create-school --name 명지전문대학 --net-id 75 --email-domain mjc.ac.kr` — 도메인은 학생 웹메일 가입 판별에 쓰인다.
+  - `create-admin --school-id 1 --email admin@mjc.ac.kr --name 관리자` — 비밀번호는 프롬프트(getpass)로 입력, argv엔 안 받는다.
   - 도메인·이름 변경은 `update-school --id 1 --email-domain ...`. 그 외 `set-user`(관리자 계정 활성/정지·비밀번호 재설정), `assign-modem`(school_id 미배정 모뎀 배정)도 있다.
 - 확인: http://localhost:8000/static/index.html · http://localhost:8000/docs — 이 둘은 **`DEBUG=1`일 때만** 마운트된다(운영에서는 꺼짐). 4주차 Pi↔Pi 통합 확인도 `DEBUG=1`로 띄운 이 페이지로 한다.
 - 인증: `/api/health`·`/api/auth/*`를 뺀 모든 `/api/*`는 `Authorization: Bearer <token>` 필요. 토큰은 `POST /api/auth/login {email, password}` → `{token, role, school_id, name}`. 관리자는 자기 학교 리소스만 보고 고칠 수 있다(타 학교는 404).

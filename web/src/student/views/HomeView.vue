@@ -29,7 +29,7 @@ const retry = () => void reload()
 
 <template>
   <div class="home">
-    <StudentHeader title="우송 ESC" show-me />
+    <StudentHeader title="MJC ESC" show-me />
     <main class="home__body">
       <h2 class="home__h">건물을 고르세요</h2>
       <Skeleton v-if="!data && !error" :rows="5" />
