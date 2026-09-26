@@ -3,21 +3,20 @@ import { computed, provide, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { studentApi } from '@/api/student'
 import type { RoomStateOut } from '@/api/types'
+import NextResvCard from '@/components/student/NextResvCard.vue'
 import RoomListRow from '@/components/student/RoomListRow.vue'
-import { FREE_LAYOUT, layoutLabel, rowState, untilText } from '@/components/student/rules'
+import { FREE_LAYOUT, layoutLabel, nextResv, rowState, untilText } from '@/components/student/rules'
 import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
-import Checkbox from '@/components/ui/Checkbox.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Select from '@/components/ui/Select.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
-import { formatHm } from '@/lib/time'
+import { clearSession, session } from '@/lib/session'
 import { usePolling } from '@/lib/usePolling'
 import { useResource } from '@/lib/useResource'
 import RefreshedNote from '../RefreshedNote.vue'
-import StudentHeader from '../StudentHeader.vue'
 import { BUILDING } from '../building'
-import { POLL_MS } from '../composables'
+import { POLL_MS, useNow } from '../composables'
 import { favKey, favorites, rememberBld, toggleFavorite } from '../favorites'
 import { buildingsOf } from '../roomView'
 import NotFoundView from './NotFoundView.vue'
@@ -44,25 +43,46 @@ watch(
 )
 const rooms = computed(() => all.value.filter((r) => r.bld === bld.value))
 const freeCount = computed(() => rooms.value.filter((r) => r.layout === FREE_LAYOUT).length)
-// '빈 강의실만' 기본 켜짐 — 18개보다 5개가 목적에 맞는다
-const freeOnly = ref(true)
-// 건물을 바꾸면 기본으로 — 앞 건물에서 끈 필터가 따라오지 않게
+// 보기 — '빈 곳' 기본(18개보다 5개가 목적에 맞는다). 즐겨찾기는 건물을 가리지 않는다
+type Filter = 'free' | 'all' | 'fav'
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'free', label: '빈 곳' },
+  { value: 'all', label: '전체' },
+  { value: 'fav', label: '★ 즐겨찾기' },
+]
+const filter = ref<Filter>('free')
+// 건물을 바꾸면 기본으로 — 앞 건물에서 고른 보기가 따라오지 않게
 watch(bld, () => {
-  freeOnly.value = true
+  filter.value = 'free'
 })
-const shown = computed(() =>
-  freeOnly.value ? rooms.value.filter((r) => r.layout === FREE_LAYOUT) : rooms.value,
-)
 const favSet = computed(() => new Set(favorites.value))
-const favRooms = computed(() => all.value.filter((r) => favSet.value.has(favKey(r.bld, r.room))))
-const chipName = (r: RoomStateOut) => `${r.bld === bld.value ? '' : `${r.building} `}${r.room}호`
+const shown = computed(() =>
+  filter.value === 'fav'
+    ? all.value.filter((r) => favSet.value.has(favKey(r.bld, r.room)))
+    : filter.value === 'free'
+      ? rooms.value.filter((r) => r.layout === FREE_LAYOUT)
+      : rooms.value,
+)
+const otherBld = (r: RoomStateOut) => (r.bld === bld.value ? undefined : r.building)
+
+// 사이드바 맨 위 — 나와 다음 예약. 불러오지 못하면 카드만 없다(목록이 본업)
+const me = computed(() => session.value?.name ?? '')
+const mine = useResource(() => studentApi.mine())
+usePolling(mine.reload, POLL_MS)
+const now = useNow()
+const next = computed(() => nextResv(mine.data.value ?? [], now.value))
+const meTo = computed(() => `/${bld.value}/me`)
+function logout() {
+  clearSession()
+  void router.replace('/login')
+}
 const options = computed(() => buildings.value.map((b) => ({ value: b.bld, label: b.name })))
 /** 좁은 폭에서 자식(강의실·주간·예약)이 있으면 목록을 감춘다 — 넓은 폭은 둘 다 (CSS) */
 const hasChild = computed(() => route.matched.length > 1)
 
 const retry = () => void reload()
 const showAll = () => {
-  freeOnly.value = false
+  filter.value = 'all'
 }
 const pickBuilding = (v: string | number) => void router.push(`/${v}`)
 </script>
@@ -71,21 +91,20 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
   <NotFoundView v-if="loaded && !building" back="/" back-label="건물 목록으로" />
   <div v-else class="split" :class="{ 'split--child': hasChild }">
     <section class="split__list" aria-label="강의실 목록">
-      <StudentHeader title="MJC ESC" show-me :me-to="`/${bld}/me`">
-        <Select
-          v-if="options.length > 1"
-          class="split__bld"
-          label="건물"
-          :model-value="bld"
-          :options="options"
-          @update:model-value="pickBuilding"
-        />
-      </StudentHeader>
+      <div class="me">
+        <span class="me__avatar" aria-hidden="true">{{ me.slice(0, 1) || '나' }}</span>
+        <p class="me__who">
+          <b>{{ me }}</b
+          ><span>MJC ESC</span>
+        </p>
+        <RouterLink :to="meTo" class="me__link">내 예약</RouterLink>
+      </div>
       <!-- 오래된 값이라도 지우지 않는다 — 갱신 줄이 오래됐다고 말한다 -->
       <Banner v-if="error && loaded" tone="danger" :message="error.message" :dismissible="false">
         <Button variant="secondary" @click="retry">다시 시도</Button>
       </Banner>
       <div class="list">
+        <NextResvCard v-if="next" :resv="next" :now="now" :to="meTo" />
         <template v-if="!loaded">
           <EmptyState
             v-if="error"
@@ -95,45 +114,40 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
           <Skeleton v-else :rows="5" />
         </template>
         <template v-else-if="building">
-          <h2 class="list__count">
-            <template v-if="freeCount"
-              ><span class="num">{{ freeCount }}곳</span>이 지금 비어 있어요</template
+          <div class="list__head">
+            <h2 class="list__count">
+              <template v-if="freeCount"
+                ><span class="num">{{ freeCount }}곳</span>이 지금 비어 있어요</template
+              >
+              <template v-else>지금 비어 있는 강의실이 없어요</template>
+            </h2>
+            <Select
+              v-if="options.length > 1"
+              class="list__bld"
+              label="건물"
+              :model-value="bld"
+              :options="options"
+              @update:model-value="pickBuilding"
+            />
+          </div>
+          <div class="chips" role="group" aria-label="보기">
+            <button
+              v-for="f in FILTERS"
+              :key="f.value"
+              type="button"
+              class="chips__chip"
+              :aria-pressed="filter === f.value"
+              @click="filter = f.value"
             >
-            <template v-else>지금 비어 있는 강의실이 없어요</template>
-          </h2>
-          <p class="list__sub num">
-            {{ building.name }} {{ rooms.length }}개 강의실<template v-if="refreshedAt">
-              · {{ formatHm(refreshedAt) }} 기준</template
-            >
-          </p>
-
-          <section v-if="favRooms.length" class="fav" aria-labelledby="fav-h">
-            <!-- 안내는 제목 밖 — 제목의 접근 이름은 '즐겨찾기' 만 -->
-            <div class="fav__head">
-              <h3 id="fav-h" class="list__h">즐겨찾기</h3>
-              <span class="list__hint">★ 을 눌러 모아둡니다</span>
-            </div>
-            <ul class="fav__chips">
-              <li v-for="r in favRooms" :key="favKey(r.bld, r.room)">
-                <RouterLink
-                  :to="`/${r.bld}/${r.room}`"
-                  class="fav__chip"
-                  :aria-label="`${chipName(r)} ${layoutLabel(r.layout)}`"
-                >
-                  <span class="fav__star" aria-hidden="true">★</span>
-                  <span class="num">{{ chipName(r) }}</span>
-                  <span class="fav__state">{{ layoutLabel(r.layout) }}</span>
-                </RouterLink>
-              </li>
-            </ul>
-          </section>
-
-          <div class="list__bar">
-            <h3 class="list__h">{{ building.name }} 전체</h3>
-            <Checkbox v-model="freeOnly" label="빈 강의실만" />
+              {{ f.label }}
+            </button>
           </div>
           <EmptyState
-            v-if="!shown.length"
+            v-if="!shown.length && filter === 'fav'"
+            message="★ 을 눌러 자주 가는 강의실을 모아두세요"
+          />
+          <EmptyState
+            v-else-if="!shown.length"
             message="지금은 모든 강의실이 사용 중입니다"
             :actions="[{ label: '전체 보기', onClick: showAll }]"
           />
@@ -143,6 +157,7 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
               :key="r.room_id"
               :to="`/${r.bld}/${r.room}`"
               :room="r.room"
+              :building="otherBld(r)"
               :state="rowState(r.layout)"
               :label="layoutLabel(r.layout)"
               :until="untilText(r.layout, r.until)"
@@ -150,9 +165,12 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
               @toggle-fav="toggleFavorite(favKey(r.bld, r.room))"
             />
           </ul>
-          <RefreshedNote :at="refreshedAt" />
         </template>
       </div>
+      <footer class="foot">
+        <RefreshedNote :at="refreshedAt" />
+        <Button variant="ghost" size="sm" @click="logout">로그아웃</Button>
+      </footer>
     </section>
     <section class="split__main">
       <RouterView v-if="hasChild" v-slot="{ Component, route: r }">
@@ -196,10 +214,80 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
     border-right: var(--border-thin) solid var(--line-2);
   }
 }
-.split__bld {
-  width: 132px;
+.split__list {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh; /* 갱신 줄·로그아웃이 화면 바닥에 */
+  box-sizing: border-box;
+  background: var(--surface);
 }
-.split__bld :deep(.sel__label) {
+.me {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) 0;
+}
+.me__avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--brand-tint);
+  color: var(--brand);
+  font-weight: var(--font-weight-bold);
+}
+.me__who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.me__who b {
+  font-size: var(--font-size-md);
+}
+.me__who span {
+  font-size: var(--font-size-xs);
+  color: var(--text-3);
+}
+.me__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--brand);
+}
+.list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+.list__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.list__count {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--leading-tight);
+}
+.list__count .num {
+  color: var(--brand);
+}
+.list__bld {
+  flex: none;
+  width: 112px;
+}
+.list__bld :deep(.sel__label) {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -207,84 +295,58 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4);
-}
-.list__count {
-  margin: 0;
-  font-size: 24px; /* student-room.md 화면 1 "24px bold" — 치수 토큰에 24 가 없다(xl 20) */
-  font-weight: var(--font-weight-bold);
-  line-height: var(--leading-tight);
-}
-.list__sub {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-3);
-}
-.list__h {
-  margin: 0;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-bold);
-}
-.list__hint {
-  margin-left: var(--space-2);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-regular);
-  color: var(--text-3);
-}
-.list__bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-.fav {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.fav__head {
-  display: flex;
-  align-items: baseline;
-}
-.fav__chips {
+.chips {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
 }
-.fav__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: 48px;
+.chips__chip {
+  min-height: 36px;
   padding: 0 var(--space-3);
   border: var(--border-thin) solid var(--line-2);
   border-radius: var(--radius-full);
   background: var(--surface);
-  color: var(--text-1);
-  font-weight: var(--font-weight-bold);
-  text-decoration: none;
-}
-.fav__star {
-  color: var(--brand);
-}
-.fav__state {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-regular);
   color: var(--text-2);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-soft);
+}
+.chips__chip:hover {
+  background: var(--nav-hover);
+}
+.chips__chip:active {
+  transform: scale(0.97);
+}
+.chips__chip[aria-pressed='true'] {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+  color: var(--brand);
+  font-weight: var(--font-weight-bold);
+}
+.chips__chip:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 .rows {
   margin: 0;
   padding: 0;
   list-style: none;
+  overflow: hidden;
   border: var(--border-thin) solid var(--line-2);
   border-radius: var(--radius-lg);
   background: var(--surface);
+}
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-top: var(--border-thin) solid var(--line-1);
 }
 </style>

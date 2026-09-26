@@ -11,14 +11,23 @@ defineProps<{
   label: string
   until: string
   fav: boolean
+  /** 다른 건물의 즐겨찾기 — 방 번호 앞에 건물 이름 */
+  building?: string
 }>()
 const emit = defineEmits<{ toggleFav: [] }>()
 </script>
 
 <template>
   <li class="row">
-    <RouterLink :to="to" class="row__link" :aria-label="`${room}호 ${label} ${until}`">
-      <span class="row__room num">{{ room }}호</span>
+    <RouterLink
+      :to="to"
+      class="row__link"
+      :aria-label="`${building ? `${building} ` : ''}${room}호 ${label} ${until}`"
+    >
+      <span class="row__room num"
+        ><small v-if="building" class="row__bld">{{ building }}</small
+        >{{ room }}호</span
+      >
       <span class="row__state">
         <Badge v-if="state === 'busy'" tone="busy" size="sm">{{ label }}</Badge>
         <span v-else :class="state === 'free' ? 'row__free' : 'row__other'">{{ label }}</span>
@@ -26,11 +35,25 @@ const emit = defineEmits<{ toggleFav: [] }>()
       <span class="row__until num">{{ until }}</span>
       <span class="row__chev" aria-hidden="true">›</span>
     </RouterLink>
-    <FavoriteStar :on="fav" :name="`${room}호`" @toggle="emit('toggleFav')" />
+    <FavoriteStar
+      :on="fav"
+      :name="`${building ? `${building} ` : ''}${room}호`"
+      @toggle="emit('toggleFav')"
+    />
   </li>
 </template>
 
 <style scoped>
+/* 지금 보고 있는 강의실 — 오른쪽 칸과 짝을 맞춘다(/E/401/week 도 401 행) */
+.row:has(.router-link-active) {
+  background: var(--nav-hover);
+}
+.row__bld {
+  display: block;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  color: var(--text-3);
+}
 .row {
   display: flex;
   align-items: center;

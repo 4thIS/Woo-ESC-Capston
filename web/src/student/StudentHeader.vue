@@ -10,9 +10,8 @@ withDefaults(
     backText?: string
     hideBackWide?: boolean
     showMe?: boolean
-    meTo?: string
   }>(),
-  { backLabel: '뒤로', backText: '‹', hideBackWide: false, showMe: false, meTo: '/me' },
+  { backLabel: '뒤로', backText: '‹', hideBackWide: false, showMe: false },
 )
 </script>
 
@@ -24,7 +23,7 @@ withDefaults(
     <h1 class="sh__title">{{ title }}</h1>
     <div v-if="$slots.default || showMe" class="sh__right">
       <slot />
-      <RouterLink v-if="showMe" :to="meTo" class="sh__me">내 예약</RouterLink>
+      <RouterLink v-if="showMe" to="/me" class="sh__me">내 예약</RouterLink>
     </div>
   </header>
 </template>
