@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { ApiError, MESSAGES } from '@/api/client'
 import { studentApi } from '@/api/student'
+import { clearSession, session, setSession } from '@/lib/session'
 import { favorites } from '@/student/favorites'
 import BuildingLayout from '@/student/views/BuildingLayout.vue'
 import { mineResv } from '@/api/__fixtures__/mine'
@@ -92,6 +93,17 @@ describe('BuildingLayout — /:bld 강의실 목록', () => {
     await chip(w, '★ 즐겨찾기').trigger('click')
     expect(w.findAll('ul.rows a').map((a) => a.attributes('href'))).toEqual(['/E/402', '/K/101'])
     expect(w.findAll('ul.rows a')[1].attributes('aria-label')).toBe('운영관 101호 특강 12:00 까지')
+  })
+
+  it('로그아웃은 사이드바 바닥 — 토큰을 버리고 로그인으로', async () => {
+    setSession({ token: 't', role: 'student', school_id: 1, name: '김민준' })
+    const { w, router } = await mountAt(BuildingLayout, '/E', '/:bld')
+    expect(w.get('.me__who b').text()).toBe('김민준')
+    await w.get('.foot button').trigger('click')
+    await flushPromises()
+    expect(session.value).toBeNull()
+    expect(router.currentRoute.value.path).toBe('/login')
+    clearSession()
   })
 
   it('건물을 바꾸면 보기가 빈 곳으로 돌아온다', async () => {

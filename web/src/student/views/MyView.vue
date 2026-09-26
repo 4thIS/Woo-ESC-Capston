@@ -12,7 +12,6 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import Modal from '@/components/ui/Modal.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { showToast } from '@/components/ui/toast'
-import { clearSession } from '@/lib/session'
 import { usePolling } from '@/lib/usePolling'
 import { useResource } from '@/lib/useResource'
 import RefreshedNote from '../RefreshedNote.vue'
@@ -87,10 +86,6 @@ async function confirmCancel() {
 }
 const retry = () => void reload()
 const goBack = () => void router.push(back)
-function logout() {
-  clearSession()
-  void router.replace('/login')
-}
 </script>
 
 <template>
@@ -123,7 +118,6 @@ function logout() {
         />
       </div>
       <RefreshedNote v-if="data" :at="refreshedAt" :epaper="false" />
-      <Button variant="ghost" class="me__logout" @click="logout">로그아웃</Button>
     </main>
     <!-- 둘 다 확인을 거친다 — 신청 취소는 행이 지워진다는 것을 적는다 (student-room.md §취소와 철회) -->
     <Modal
@@ -163,8 +157,5 @@ function logout() {
 }
 .me__confirm {
   margin: 0;
-}
-.me__logout {
-  align-self: center;
 }
 </style>

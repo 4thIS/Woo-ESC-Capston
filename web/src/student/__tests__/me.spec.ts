@@ -6,7 +6,7 @@ import { studentApi } from '@/api/student'
 import type { ResvMineOut } from '@/api/types'
 import { CHANGED_TEXT, CHECKIN_CLOSED_TEXT } from '@/components/student/rules'
 import { dismissToast, toasts } from '@/components/ui/toast'
-import { clearSession, session, setSession } from '@/lib/session'
+import { clearSession, setSession } from '@/lib/session'
 import MyView from '@/student/views/MyView.vue'
 import { mountAt } from './support'
 
@@ -132,7 +132,7 @@ describe('MyView — /me', () => {
     expect((cards(w)[0].get('button').element as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('비어 있으면 강의실 보러 가기(최근 건물로), 로그아웃은 토큰을 버린다', async () => {
+  it('비어 있으면 강의실 보러 가기(최근 건물로), 로그아웃은 여기 없다(사이드바)', async () => {
     localStorage.setItem('esc.lastBld', 'E')
     setSession({ token: 't', role: 'student', school_id: 1, name: '김민준' })
     api.mine.mockResolvedValue([])
@@ -141,11 +141,7 @@ describe('MyView — /me', () => {
     await w.get('.empty button').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/E')
-    const logout = w.findAll('button').find((b) => b.text() === '로그아웃')!
-    await logout.trigger('click')
-    await flushPromises()
-    expect(session.value).toBeNull()
-    expect(router.currentRoute.value.path).toBe('/login')
+    expect(w.findAll('button').some((b) => b.text() === '로그아웃')).toBe(false)
   })
 
   it('건물 안(/E/me)이면 목록 옆 칸 — 뒤로는 그 건물, 넓은 폭은 ‹ 를 감춘다', async () => {

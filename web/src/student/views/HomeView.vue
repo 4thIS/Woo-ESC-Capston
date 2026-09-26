@@ -2,8 +2,10 @@
 import { computed, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { studentApi } from '@/api/student'
+import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
+import { clearSession } from '@/lib/session'
 import { useResource } from '@/lib/useResource'
 import StudentHeader from '../StudentHeader.vue'
 import { lastBld } from '../favorites'
@@ -25,6 +27,11 @@ watch(
   { once: true },
 )
 const retry = () => void reload()
+// 건물 안에서는 사이드바 바닥에 — 건물을 고르기 전 화면에도 나갈 길을 둔다
+function logout() {
+  clearSession()
+  void router.replace('/login')
+}
 </script>
 
 <template>
@@ -54,6 +61,7 @@ const retry = () => void reload()
           </RouterLink>
         </li>
       </ul>
+      <Button variant="ghost" size="sm" class="home__logout" @click="logout">로그아웃</Button>
     </main>
   </div>
 </template>
@@ -66,6 +74,9 @@ const retry = () => void reload()
   max-width: 640px;
   margin: 0 auto;
   padding: var(--space-4);
+}
+.home__logout {
+  align-self: center;
 }
 .home__h {
   margin: 0;

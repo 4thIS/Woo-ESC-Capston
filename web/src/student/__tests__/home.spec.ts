@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { enableAutoUnmount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { studentApi } from '@/api/student'
 import HomeView from '@/student/views/HomeView.vue'
 import { mountAt, roomState } from './support'
@@ -58,6 +58,10 @@ describe('HomeView — / 첫 진입 (student-room.md 미결 3)', () => {
       '운영관 1개 강의실 · 지금 0곳 비어 있어요',
     ])
     expect(w.get('a.sh__me').attributes('href')).toBe('/me')
+    // 건물을 고르기 전에도 나갈 길 — 사이드바가 없는 화면
+    await w.get('.home__logout').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/login')
   })
 
   it('예약 가능한 방이 없으면 EmptyState, 조회 실패면 다시 시도', async () => {
