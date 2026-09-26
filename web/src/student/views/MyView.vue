@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { studentApi } from '@/api/student'
 import type { ResvMineOut } from '@/api/types'
@@ -27,7 +27,9 @@ const { data, error, refreshedAt, reload } = useResource(() => studentApi.mine()
 usePolling(reload, POLL_MS)
 const now = useNow()
 const list = computed(() => sortMine(data.value ?? [], now.value))
-const last = lastBld()
+// 건물 안(/E/me)이면 목록 옆 칸 — 넓은 폭은 목록이 보이니 ‹ 를 감춘다
+const inBld = useRoute().params.bld as string | undefined
+const last = inBld ?? lastBld()
 const back = last ? `/${last}` : '/'
 const busy = ref<{ id: number; kind: Kind } | null>(null)
 const confirming = ref<ResvMineOut | null>(null)
@@ -93,7 +95,7 @@ function logout() {
 
 <template>
   <div class="me">
-    <StudentHeader title="내 예약" :back="back" />
+    <StudentHeader title="내 예약" :back="back" :hide-back-wide="!!inBld" />
     <Banner v-if="error && data" tone="danger" :message="error.message" :dismissible="false">
       <Button variant="secondary" @click="retry">다시 시도</Button>
     </Banner>

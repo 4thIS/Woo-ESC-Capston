@@ -148,6 +148,14 @@ describe('MyView — /me', () => {
     expect(router.currentRoute.value.path).toBe('/login')
   })
 
+  it('건물 안(/E/me)이면 목록 옆 칸 — 뒤로는 그 건물, 넓은 폭은 ‹ 를 감춘다', async () => {
+    localStorage.setItem('esc.lastBld', 'A')
+    api.mine.mockResolvedValue([])
+    const { w } = await mountAt(MyView, '/E/me', '/:bld([A-Z])/me')
+    expect(w.get('a.sh__back').attributes('href')).toBe('/E')
+    expect(w.get('header').classes()).toContain('sh--nobackwide')
+  })
+
   it('체크인 두 번 연속 — busy 를 await 전에 세워 한 번만 보낸다', async () => {
     api.mine.mockResolvedValue([resv()])
     api.checkin.mockReturnValue(new Promise(() => {}))

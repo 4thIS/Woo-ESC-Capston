@@ -47,6 +47,8 @@ afterEach(() => vi.useRealTimers())
 describe('BuildingLayout — /:bld 강의실 목록', () => {
   it('맨 위는 빈 곳 개수, 빈 강의실만이 기본 — 끄면 전체, 상태를 먼저 말한다', async () => {
     const { w } = await mountAt(BuildingLayout, '/E', '/:bld')
+    // 내 예약은 이 건물 안 — 넓은 폭에서 목록 옆에 펼친다
+    expect(w.get('a.sh__me').attributes('href')).toBe('/E/me')
     expect(w.get('.list__count').text()).toBe('2곳이 지금 비어 있어요')
     expect(w.get('.list__sub').text()).toMatch(/^공학관 3개 강의실 · \d\d:\d\d 기준$/)
     expect(roomNames(w)).toEqual(['402호', '403호'])
