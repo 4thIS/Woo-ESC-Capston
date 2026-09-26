@@ -9,6 +9,7 @@
   docker compose exec server python -m app.cli create-admin --school-id 1 --email admin@mjc.ac.kr --name 관리자
   docker compose logs -f server
   ```
+  컨테이너는 둘이다 — `server`(API·모뎀Pi WS, :8000)와 `web`(학생 `/`·관리자 `/admin`, :80, `/api` 는 server 로 넘긴다 — `../web/Dockerfile`). 웹만 고쳤으면 `docker compose up -d --build web` — 서버가 재시작되지 않아 모뎀Pi 연결이 끊기지 않는다. `STUDENT_WEB_URL` 은 웹 주소(`http://<메인Pi>`, 포트를 바꿨으면 `:<WEB_PORT>`)로.
   이미지 정의는 `server/Dockerfile`(빌드 컨텍스트는 리포 루트 — `../lora_proto` path 의존), 설정은 루트 `compose.yaml`(`env_file: server/.env`). 노트북에서도 같은 명령으로 메인Pi 와 똑같은 서버를 띄울 수 있다(Docker Desktop). 아래 `uv run …` 기동·CLI 는 **개발용**이다.
 - `.env` 준비: `cp .env.example .env` 후 값 채우기 — `JWT_SECRET`(32자 이상, 예 `python -c "import secrets;print(secrets.token_urlsafe(48))"`), `STUDENT_WEB_URL`(학생 웹 오리진), `MAIL_BACKEND=smtp`면 Gmail **앱 비밀번호**(2단계 인증 켠 계정에서 발급)를 `SMTP_USER`/`SMTP_PASSWORD`에. 개발은 `DEBUG=1 MAIL_BACKEND=console`(메일을 콘솔에 출력, SMTP 불필요).
 - 기동: `uv sync && uv run alembic upgrade head && uv run --env-file .env uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000 --workers 1 --no-server-header`

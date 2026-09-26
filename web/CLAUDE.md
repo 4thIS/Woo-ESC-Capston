@@ -49,6 +49,13 @@ web/
 - 서버 계약 소비 로직(`src/api/`)은 응답 픽스처로 테스트한다 — 서버가 필드를 바꾸면 여기가 먼저 빨개져야 한다.
 - 통합 동작은 로컬 실행 환경에서 확인.
 
+## 배포 (Docker)
+
+- 루트 `compose.yaml` 의 `web` 서비스 — `web/Dockerfile` 이 `pnpm build` 결과(`dist/`)를 nginx(`web/nginx.conf`)로 내보낸다. 기본 포트 80(`WEB_PORT` 로 변경).
+- nginx 가 맡는 것: `/admin/*` → `admin.html`, 나머지 → `index.html`(새로고침해도 그 앱), `/api/*` → `server:8000` 프록시, `/assets/*` 1년 캐시(해시 파일명), html 은 `no-cache`.
+- 서버는 `X-Forwarded-For` 를 web 컨테이너(고정 IP `172.30.250.10`)가 준 것만 믿는다(compose 의 `FORWARDED_ALLOW_IPS`) — 로그인 상한이 사람마다 걸리게. nginx 는 이 헤더를 덮어쓴다.
+- 웹만 다시: `docker compose up -d --build web`. 서버를 다시 만들어도 웹은 재시작할 필요가 없다(요청마다 `server` 를 다시 찾는다).
+
 ## E2E (Playwright)
 
 - `pnpm e2e` — 임시 DB 로 메인Pi 서버(기본 `../server`)와 Vite dev 서버를 띄우고 `e2e/*.spec.ts` 를 돈다. 학교 둘(명지전문대학 id 1 · 타학교 id 2)과 관리자들을 CLI 로 심는다(`e2e/env.json`).
