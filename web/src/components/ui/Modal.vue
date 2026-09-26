@@ -124,4 +124,10 @@ function onBackdrop() {
   gap: var(--space-2);
   margin-top: var(--space-5);
 }
+.modal__backdrop {
+  animation: esc-fade-in var(--dur-base) ease;
+}
+.modal__panel {
+  animation: esc-rise-in var(--dur-slow) var(--ease-soft);
+}
 </style>

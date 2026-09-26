@@ -26,3 +26,73 @@ body {
 .num {
   font-variant-numeric: tabular-nums;
 }
+
+/* 초점 테두리가 조금 바깥에서 제자리로 스며든다 */
+:focus-visible {
+  animation: esc-focus-in var(--dur-fast) var(--ease-soft);
+}
+@keyframes esc-focus-in {
+  from {
+    outline-offset: 5px;
+    outline-color: transparent;
+  }
+}
+@keyframes esc-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+/* 모달처럼 가운데에 뜨는 것 — 살짝 작게, 조금 아래에서 */
+@keyframes esc-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+/* 펼침 메뉴 — 누른 자리에서 살짝 내려오며 */
+@keyframes esc-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+/* 알림 — 오른쪽에서 미끄러져 */
+@keyframes esc-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+/* 켜질 때 말랑하게 톡 */
+@keyframes esc-pop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.14);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+/* 화면 전환(관리자·학생 공통) — 새 화면을 감싼 상자가 붙을 때 6px 아래에서 떠오른다.
+   이전 화면을 기다리지 않는다(out-in 은 뿌리가 요소 하나가 아닌 화면에서 멈춘다) */
+.page {
+  animation: esc-page-in var(--dur-slow) var(--ease-soft);
+}
+@keyframes esc-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+/* 운영체제의 '동작 줄이기' — 모든 움직임을 끈다 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

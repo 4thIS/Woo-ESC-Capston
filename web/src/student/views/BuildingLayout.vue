@@ -155,7 +155,11 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
       </div>
     </section>
     <section class="split__main">
-      <RouterView v-if="hasChild" />
+      <RouterView v-if="hasChild" v-slot="{ Component, route: r }">
+        <div :key="r.matched[r.matched.length - 1]?.path" class="page">
+          <component :is="Component" />
+        </div>
+      </RouterView>
       <EmptyState v-else message="왼쪽 목록에서 강의실을 고르세요" />
     </section>
   </div>

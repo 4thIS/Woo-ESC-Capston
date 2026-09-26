@@ -76,4 +76,18 @@ function onChange(e: Event) {
   opacity: 0.6;
   cursor: not-allowed;
 }
+.sel__control {
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-base) var(--ease-soft);
+}
+.sel__control:hover:enabled {
+  border-color: var(--text-3);
+}
+/* 고르는 중 — 파란 테두리가 부드럽게 번진다 */
+.sel__control:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
 </style>

@@ -99,9 +99,9 @@ function logout() {
       />
       <!-- 화면 전환 — 새 화면이 살짝 떠오르듯. 같은 화면의 :id 만 바뀌면(주간 시간표 강의실 이동) 다시 그리지 않는다 -->
       <RouterView v-slot="{ Component, route: r }">
-        <Transition name="page" mode="out-in">
-          <component :is="Component" :key="r.matched[r.matched.length - 1]?.path" />
-        </Transition>
+        <div :key="r.matched[r.matched.length - 1]?.path" class="page">
+          <component :is="Component" />
+        </div>
       </RouterView>
     </div>
   </div>
@@ -220,31 +220,5 @@ function logout() {
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-/* 화면 전환 — 짧게 사라지고, 새 화면은 6px 아래에서 부드럽게 떠오른다 */
-.page-enter-active {
-  transition:
-    opacity 280ms cubic-bezier(0.32, 0.72, 0, 1),
-    transform 380ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-.page-leave-active {
-  transition: opacity 90ms ease;
-}
-.page-enter-from {
-  opacity: 0;
-  transform: translateY(6px);
-}
-.page-leave-to {
-  opacity: 0;
-}
-@media (prefers-reduced-motion: reduce) {
-  .page-enter-active,
-  .page-leave-active,
-  .shell__logout {
-    transition: none;
-  }
-  .page-enter-from {
-    transform: none;
-  }
 }
 </style>

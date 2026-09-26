@@ -114,4 +114,26 @@ function onChange(e: Event) {
   outline: var(--border-thick) solid var(--focus);
   outline-offset: 2px;
 }
+.cb__box {
+  transition:
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-soft);
+}
+.cb:hover .cb__input:not(:checked):enabled + .cb__box {
+  border-color: var(--text-3);
+}
+.cb:active .cb__input:enabled + .cb__box {
+  transform: scale(0.9);
+}
+/* 체크 표시가 톡 */
+.cb__input:checked + .cb__box::after {
+  animation: cb-check var(--dur-base) var(--ease-spring);
+}
+@keyframes cb-check {
+  from {
+    opacity: 0;
+    transform: rotate(45deg) scale(0.3);
+  }
+}
 </style>

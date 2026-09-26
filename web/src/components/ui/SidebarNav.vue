@@ -81,8 +81,6 @@ onScopeDispose(() => window.removeEventListener('resize', place))
 <style scoped>
 /* 움직임 — 애플식 감속(빠르게 출발해 길게 멈춤)과 살짝 튀는 스프링. 모두 transform·opacity 만 */
 .nav {
-  --ease-soft: cubic-bezier(0.32, 0.72, 0, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   display: flex;
   flex-direction: column;
   width: 220px;

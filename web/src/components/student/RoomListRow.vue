@@ -85,4 +85,21 @@ const emit = defineEmits<{ toggleFav: [] }>()
   font-size: var(--font-size-lg);
   color: var(--text-3);
 }
+.row__link {
+  transition:
+    background-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-soft);
+}
+.row__link:hover {
+  background: var(--nav-hover);
+}
+.row__link:active {
+  transform: scale(0.99);
+}
+.row__chev {
+  transition: transform var(--dur-base) var(--ease-spring);
+}
+.row__link:hover .row__chev {
+  transform: translateX(3px);
+}
 </style>
