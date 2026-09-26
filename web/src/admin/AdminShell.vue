@@ -123,14 +123,15 @@ const left = computed(() => mmss(idle.remaining.value))
       title="곧 자동 로그아웃됩니다"
       size="sm"
       :close-on-backdrop="false"
-      @close="idle.extend"
+      top
     >
       <p class="shell__warn num">
         10분 동안 활동이 없어 <b>{{ left }}</b> 뒤 로그아웃됩니다. 계속 쓰려면 시간을 연장하세요.
       </p>
       <template #footer>
         <Button variant="secondary" @click="logout">로그아웃</Button>
-        <Button @click="idle.extend">시간 연장</Button>
+        <!-- 첫 포커스는 연장 — 경고가 뜬 순간 누른 Enter 가 로그아웃이 되지 않게 -->
+        <Button data-autofocus @click="idle.extend">시간 연장</Button>
       </template>
     </Modal>
   </div>

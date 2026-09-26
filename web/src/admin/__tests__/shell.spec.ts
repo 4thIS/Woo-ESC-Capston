@@ -52,6 +52,29 @@ beforeEach(() => {
 })
 
 describe('AdminShell', () => {
+  it('자동 로그아웃 경고 — 첫 포커스는 시간 연장(Enter 한 번에 로그아웃되지 않게), 다른 모달 위', async () => {
+    sessionStorage.setItem(
+      'esc.admin.idle',
+      JSON.stringify({ t: 't', at: Date.now() - 9.5 * 60_000 }),
+    )
+    const router = makeRouter(createMemoryHistory())
+    await router.push('/users')
+    await router.isReady()
+    const w = mount(AdminApp, { global: { plugins: [router] }, attachTo: document.body })
+    await flushPromises()
+    await new Promise((r) => setTimeout(r))
+    const dialog = document.querySelector('[role="dialog"]')!
+    expect(dialog.textContent).toContain('곧 자동 로그아웃됩니다')
+    expect(document.activeElement?.textContent?.trim()).toBe('시간 연장')
+    expect(dialog.closest('.modal')!.classList).toContain('modal--top')
+    ;(document.activeElement as HTMLElement).click()
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(session.value).not.toBeNull()
+    w.unmount()
+    sessionStorage.clear()
+  })
+
   it('/ 는 /dashboard 로, 메뉴 순서(#46) · 전송 현황 활성 · 회원 대기 건수 · 학교 읽기 전용', async () => {
     const { w, router } = await mountApp('/')
     expect(router.currentRoute.value.path).toBe('/dashboard')
