@@ -3,11 +3,14 @@ import { computed, onMounted, onScopeDispose, ref } from 'vue'
 import { RouterView, useRouter } from 'vue-router'
 import SidebarNav from '@/components/ui/SidebarNav.vue'
 import Banner from '@/components/ui/Banner.vue'
+import Button from '@/components/ui/Button.vue'
+import Modal from '@/components/ui/Modal.vue'
 import { clearSession, session } from '@/lib/session'
 import { ApiError } from '@/api/client'
 import { roomsApi } from '@/api/rooms'
 import type { SchoolOut } from '@/api/types'
 import { usePolling } from '@/lib/usePolling'
+import { mmss, useIdleLogout } from './idle'
 import { pendingCount, refreshPending } from './pending'
 import { weekRoom } from './selection'
 
@@ -53,6 +56,10 @@ function logout() {
   clearSession()
   void router.replace('/login')
 }
+
+// 10분 무활동 자동 로그아웃 — 남은 시간과 연장은 늘 사이드바에, 마지막 1분은 모달로 묻는다
+const idle = useIdleLogout()
+const left = computed(() => mmss(idle.remaining.value))
 </script>
 
 <template>
@@ -89,6 +96,12 @@ function logout() {
             </svg>
           </button>
         </div>
+        <div class="shell__idle" :class="{ 'shell__idle--warn': idle.warning.value }">
+          <span
+            >자동 로그아웃 <b class="num" :aria-label="`${left} 남음`">{{ left }}</b></span
+          >
+          <Button variant="ghost" size="sm" @click="idle.extend">시간 연장</Button>
+        </div>
       </template>
     </SidebarNav>
     <div class="shell__main">
@@ -104,6 +117,22 @@ function logout() {
         </div>
       </RouterView>
     </div>
+    <!-- 배경·Esc 로 닫지 않는다 — 닫는 것이 연장인지 아닌지 모호해진다 -->
+    <Modal
+      :open="idle.warning.value"
+      title="곧 자동 로그아웃됩니다"
+      size="sm"
+      :close-on-backdrop="false"
+      @close="idle.extend"
+    >
+      <p class="shell__warn num">
+        10분 동안 활동이 없어 <b>{{ left }}</b> 뒤 로그아웃됩니다. 계속 쓰려면 시간을 연장하세요.
+      </p>
+      <template #footer>
+        <Button variant="secondary" @click="logout">로그아웃</Button>
+        <Button @click="idle.extend">시간 연장</Button>
+      </template>
+    </Modal>
   </div>
 </template>
 
@@ -211,6 +240,25 @@ function logout() {
 .shell__logout:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 1px;
+}
+.shell__idle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--text-3);
+}
+.shell__idle b {
+  color: var(--text-2);
+}
+.shell__idle--warn b {
+  color: var(--danger);
+}
+.shell__warn {
+  margin: 0;
 }
 .shell__logout svg {
   width: 16px;

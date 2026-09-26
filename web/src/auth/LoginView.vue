@@ -66,6 +66,11 @@ async function submit() {
     <template #banner>
       <Banner v-if="notice === 'expired'" message="다시 로그인해 주세요." :dismissible="false" />
       <Banner
+        v-else-if="notice === 'idle'"
+        message="10분 동안 활동이 없어 자동으로 로그아웃했습니다."
+        :dismissible="false"
+      />
+      <Banner
         v-else-if="notice === 'forbidden'"
         tone="danger"
         message="이 화면을 쓸 권한이 없습니다."
