@@ -46,6 +46,7 @@ describe('session — 새로고침에도 남는다', () => {
     m.restoreSession('admin')
     expect(m.session.value).toBeNull()
     expect(sessionStorage.getItem('esc.session.admin')).toBeNull()
+    expect(m.authNotice.value).toBe('expired') // 만료는 말없이 버리지 않는다
 
     sessionStorage.setItem('esc.session.admin', '{broken')
     m = await fresh()

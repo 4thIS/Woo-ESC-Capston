@@ -30,8 +30,10 @@ export function restoreSession(app: Role): void {
   key = `esc.session.${app}`
   try {
     const s = JSON.parse(sessionStorage.getItem(key) ?? 'null') as LoginOut | null
-    if (s && s.role === app && alive(s)) current.value = s
-    else sessionStorage.removeItem(key)
+    if (s && s.role === app && alive(s)) return void (current.value = s)
+    sessionStorage.removeItem(key)
+    // 이 앱의 토큰이 만료돼 버렸다 — 말없이 로그인 화면이 뜨지 않게 401 과 같은 안내
+    if (s?.role === app) authNotice.value = 'expired'
   } catch {
     // 저장소가 막힌 창(사생활 보호 등) — 메모리 세션으로 동작한다
   }
