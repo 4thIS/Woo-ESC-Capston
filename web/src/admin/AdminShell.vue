@@ -98,7 +98,7 @@ const left = computed(() => mmss(idle.remaining.value))
         </div>
         <div class="shell__idle" :class="{ 'shell__idle--warn': idle.warning.value }">
           <span
-            >자동 로그아웃 <b class="num" :aria-label="`${left} 남음`">{{ left }}</b></span
+            >자동 로그아웃 <b class="num">{{ left }}</b></span
           >
           <Button variant="ghost" size="sm" @click="idle.extend">시간 연장</Button>
         </div>
@@ -158,8 +158,9 @@ const left = computed(() => mmss(idle.remaining.value))
   width: 32px;
   height: 32px;
   border-radius: var(--radius-lg);
-  background: var(--brand);
-  color: var(--on-brand);
+  border: var(--border-thin) solid var(--line-2);
+  background: var(--sunken);
+  color: var(--text-1);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   letter-spacing: 0.02em;
@@ -215,8 +216,8 @@ const left = computed(() => mmss(idle.remaining.value))
   width: 32px;
   height: 32px;
   border-radius: var(--radius-full);
-  background: var(--brand-tint);
-  color: var(--brand);
+  background: var(--sunken);
+  color: var(--text-2);
   font-weight: var(--font-weight-bold);
 }
 .shell__logout {
@@ -231,16 +232,12 @@ const left = computed(() => mmss(idle.remaining.value))
   color: var(--text-3);
   cursor: pointer;
   transition:
-    background-color 180ms ease,
-    color 180ms ease;
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
 }
 .shell__logout:hover {
   background: var(--nav-hover);
   color: var(--text-1);
-}
-.shell__logout:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 1px;
 }
 .shell__idle {
   display: flex;

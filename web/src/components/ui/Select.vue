@@ -78,16 +78,10 @@ function onChange(e: Event) {
 }
 .sel__control {
   cursor: pointer;
-  transition:
-    border-color var(--dur-fast) ease,
-    box-shadow var(--dur-base) var(--ease-soft);
+  transition: border-color var(--dur-fast) ease;
 }
+/* 포커스는 전역 2px outline 만 (components.md) — 테두리 색·그림자를 겹치지 않는다 */
 .sel__control:hover:enabled {
   border-color: var(--text-3);
-}
-/* 고르는 중 — 파란 테두리가 부드럽게 번진다 */
-.sel__control:focus {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-tint);
 }
 </style>

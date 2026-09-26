@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onScopeDispose, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import Badge from './Badge.vue'
 
 export type NavIcon = 'building' | 'settings' | 'calendar' | 'node' | 'send' | 'users'
 const props = defineProps<{
@@ -54,21 +55,25 @@ onScopeDispose(() => window.removeEventListener('resize', place))
         aria-hidden="true"
       ></li>
       <template v-for="(i, n) in items" :key="i.to">
-        <li v-if="showGroup(n)" class="nav__group" aria-hidden="true">{{ i.group }}</li>
+        <!-- 묶음 제목은 제목으로 — 스크린리더가 제목 이동으로 묶음을 건넌다 -->
+        <li v-if="showGroup(n)" class="nav__group" role="none">
+          <h2 class="nav__group-h">{{ i.group }}</h2>
+        </li>
         <li>
-          <RouterLink :to="i.to" class="nav__item" active-class="nav__item--active">
+          <RouterLink
+            :to="i.to"
+            class="nav__item"
+            active-class="nav__item--active"
+            :aria-label="i.badge ? `${i.label}, 대기 ${i.badge}건` : undefined"
+          >
             <svg v-if="i.icon" class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
               <path :d="ICONS[i.icon]" />
             </svg>
             <span class="nav__label">{{ i.label }}</span>
             <Transition name="nav-pop">
-              <span
-                v-if="i.badge"
-                :key="i.badge"
-                class="nav__count num"
-                :aria-label="`대기 ${i.badge}건`"
-                >{{ i.badge }}</span
-              >
+              <Badge v-if="i.badge" :key="i.badge" variant="solid" class="nav__count num">{{
+                i.badge
+              }}</Badge>
             </Transition>
           </RouterLink>
         </li>
@@ -86,7 +91,7 @@ onScopeDispose(() => window.removeEventListener('resize', place))
   width: 220px;
   min-height: 100vh;
   padding: var(--space-3) var(--space-2);
-  background: var(--surface);
+  background: var(--sunken);
   border-right: var(--border-thin) solid var(--line-2);
 }
 .nav__header {
@@ -105,6 +110,9 @@ onScopeDispose(() => window.removeEventListener('resize', place))
 }
 .nav__group {
   margin: var(--space-3) var(--space-3) var(--space-1);
+}
+.nav__group-h {
+  margin: 0;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   letter-spacing: 0.06em;
@@ -120,40 +128,30 @@ onScopeDispose(() => window.removeEventListener('resize', place))
   opacity: 0;
   pointer-events: none;
 }
-.nav__pill::before {
-  content: '';
-  position: absolute;
-  left: calc(-1 * var(--space-2));
-  top: 7px;
-  bottom: 7px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--brand);
-}
 .nav__pill--on {
   opacity: 1;
 }
 .nav__pill--ready {
   transition:
-    transform 420ms var(--ease-soft),
-    height 420ms var(--ease-soft),
-    opacity 200ms ease;
+    transform var(--dur-slow) var(--ease-soft),
+    height var(--dur-slow) var(--ease-soft),
+    opacity var(--dur-fast) ease;
 }
 .nav__item {
   position: relative; /* pill 위에 글자가 오도록 */
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  height: 34px;
+  height: var(--control-height-md);
   padding: 0 var(--space-3);
   border-radius: var(--radius-md);
   font-size: var(--font-size-md);
   color: var(--text-2);
   text-decoration: none;
   transition:
-    background-color 180ms ease,
-    color 220ms ease,
-    transform 160ms var(--ease-soft);
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-soft);
 }
 .nav__item:hover:not(.nav__item--active) {
   background: var(--nav-hover);
@@ -161,13 +159,9 @@ onScopeDispose(() => window.removeEventListener('resize', place))
 .nav__item:active {
   transform: scale(0.98);
 }
-.nav__item:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 1px;
-}
 .nav__item--active {
   color: var(--brand);
-  font-weight: var(--font-weight-bold);
+  font-weight: var(--font-weight-medium);
 }
 .nav__icon {
   width: 16px;
@@ -178,7 +172,7 @@ onScopeDispose(() => window.removeEventListener('resize', place))
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transition: transform 260ms var(--ease-spring);
+  transition: transform var(--dur-base) var(--ease-spring);
 }
 .nav__item:hover .nav__icon {
   transform: translateX(1px) scale(1.06);
@@ -187,30 +181,18 @@ onScopeDispose(() => window.removeEventListener('resize', place))
   flex: 1;
   min-width: 0;
 }
-.nav__count {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: var(--radius-full);
-  display: inline-grid;
-  place-items: center;
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  background: var(--danger);
-  color: var(--on-brand);
-}
 /* 숫자가 생기거나 바뀌면 말랑하게 톡 */
 .nav-pop-enter-active {
   transition:
-    transform 360ms var(--ease-spring),
-    opacity 200ms ease;
+    transform var(--dur-base) var(--ease-spring),
+    opacity var(--dur-fast) ease;
 }
 .nav-pop-leave-active {
   position: absolute;
   right: var(--space-3);
   transition:
-    transform 160ms ease,
-    opacity 160ms ease;
+    transform var(--dur-fast) ease,
+    opacity var(--dur-fast) ease;
 }
 .nav-pop-enter-from,
 .nav-pop-leave-to {

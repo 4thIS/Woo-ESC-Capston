@@ -2,9 +2,11 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { ResvMineOut } from '@/api/types'
+import ResvStatusBadge from './ResvStatusBadge.vue'
 import { checkinState, resvWhen } from './rules'
 
-// 사이드바 맨 위 — 누르면 내 예약. 체크인·취소 버튼은 두지 않는다(쓰기는 내 예약 한 곳에서)
+// 사이드바 맨 위 — 누르면 내 예약. 체크인·취소 버튼은 두지 않는다(쓰기는 내 예약 한 곳에서).
+// 상태는 내 예약 카드와 같은 배지로 — brand 채움은 1차 액션 전용이라 카드에 쓰지 않는다(tokens.md)
 const props = defineProps<{ resv: ResvMineOut; now: Date; to: string }>()
 const ci = computed(() => checkinState(props.resv, props.now))
 const hint = computed(() => {
@@ -21,12 +23,12 @@ const hint = computed(() => {
   <RouterLink
     :to="to"
     class="nr"
-    :class="{ 'nr--wait': resv.status === 'requested' }"
     :aria-label="`다음 예약 ${resv.building} ${resv.room}호 ${resvWhen(resv)} ${hint}`"
   >
-    <span class="nr__label"
-      >다음 예약 · {{ resv.status === 'approved' ? '승인됨' : '대기중' }}</span
-    >
+    <span class="nr__head">
+      <span class="nr__label">다음 예약</span>
+      <ResvStatusBadge :status="resv.status" />
+    </span>
     <b class="nr__when num">{{ resvWhen(resv) }}</b>
     <span class="nr__where num">{{ resv.building }} {{ resv.room }}호 · {{ resv.subject }}</span>
     <span v-if="hint" class="nr__hint num">{{ hint }} ›</span>
@@ -39,24 +41,31 @@ const hint = computed(() => {
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-4);
+  border: var(--border-thin) solid var(--line-2);
   border-radius: var(--radius-lg);
-  background: var(--brand);
-  color: var(--on-brand);
+  background: var(--surface);
+  color: var(--text-1);
   text-decoration: none;
-  transition: transform var(--dur-fast) var(--ease-soft);
+  transition:
+    background-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-soft);
+}
+.nr:hover {
+  background: var(--nav-hover);
 }
 .nr:active {
   transform: scale(0.98);
 }
-/* 대기중은 확정이 아니다 — 채움 대신 연한 바탕 */
-.nr--wait {
-  background: var(--brand-tint);
-  color: var(--text-1);
+.nr__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 .nr__label,
 .nr__hint {
   font-size: var(--font-size-xs);
-  opacity: 0.85;
+  color: var(--text-2);
 }
 .nr__when {
   font-size: var(--font-size-lg);

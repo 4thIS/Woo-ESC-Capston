@@ -52,11 +52,17 @@ describe('SidebarNav', () => {
       slots: { header: '<p class="h">MJC ESC</p>' },
       global: { plugins: [router] },
     })
-    expect(w.findAll('.nav__group').map((g) => g.text())).toEqual(['사람', '모니터링'])
+    // 묶음 제목은 제목(h2) — 스크린리더가 묶음을 안다
+    expect(w.findAll('.nav__group h2').map((g) => g.text())).toEqual(['사람', '모니터링'])
     expect(w.findAll('a svg.nav__icon')).toHaveLength(2)
     expect(w.find('.h').exists()).toBe(true)
-    expect(w.get('.nav__count').text()).toBe('2')
-    expect(w.get('.nav__count').attributes('aria-label')).toBe('대기 2건')
+    // 대기 개수는 스펙의 neutral solid Badge — danger 는 삭제·에러·실패 전용
+    const count = w.get('.nav__count')
+    expect(count.text()).toBe('2')
+    expect(count.classes()).toEqual(expect.arrayContaining(['badge--solid', 'badge--neutral']))
+    // 숫자만 읽히지 않게 링크 이름에 '대기 N건'
+    expect(w.findAll('a')[0].attributes('aria-label')).toBe('회원, 대기 2건')
+    expect(w.findAll('a')[1].attributes('aria-label')).toBeUndefined()
   })
 
   it('선택 표시(pill)는 하나 — 움직임은 CSS 로, 움직임 줄이기면 끈다', async () => {

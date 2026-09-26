@@ -234,8 +234,8 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
   width: 36px;
   height: 36px;
   border-radius: var(--radius-full);
-  background: var(--brand-tint);
-  color: var(--brand);
+  background: var(--sunken);
+  color: var(--text-2);
   font-weight: var(--font-weight-bold);
 }
 .me__who {
@@ -255,11 +255,11 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
 .me__link {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
+  min-height: 48px; /* 터치 목표 하한 (tokens.md) */
   padding: 0 var(--space-2);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-bold);
-  color: var(--brand);
+  color: var(--text-1);
 }
 .list {
   flex: 1;
@@ -280,9 +280,6 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
   font-weight: var(--font-weight-bold);
   line-height: var(--leading-tight);
 }
-.list__count .num {
-  color: var(--brand);
-}
 .list__bld {
   flex: none;
   width: 112px;
@@ -301,7 +298,7 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
   gap: var(--space-2);
 }
 .chips__chip {
-  min-height: 36px;
+  min-height: 48px; /* 터치 목표 하한 (tokens.md) */
   padding: 0 var(--space-3);
   border: var(--border-thin) solid var(--line-2);
   border-radius: var(--radius-full);
@@ -327,10 +324,6 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
   background: var(--brand-tint);
   color: var(--brand);
   font-weight: var(--font-weight-bold);
-}
-.chips__chip:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
 }
 .rows {
   margin: 0;

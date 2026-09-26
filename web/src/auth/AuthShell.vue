@@ -58,7 +58,7 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
   display: none;
 }
 @media (min-width: 640px) {
-  /* 좌우 분할 — 왼쪽 brand 패널, 오른쪽 폼을 세로 가운데 */
+  /* 좌우 분할 — 왼쪽 소개 패널(가라앉은 면 — brand 는 1차 액션 전용), 오른쪽 폼을 세로 가운데 */
   .auth--student .auth__body {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -70,8 +70,9 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
     justify-content: center;
     gap: var(--space-5);
     padding: var(--space-7);
-    background: var(--brand);
-    color: var(--on-brand);
+    border-right: var(--border-thin) solid var(--line-2);
+    background: var(--sunken);
+    color: var(--text-1);
   }
   .auth--student .auth__pane {
     display: flex;
