@@ -4,7 +4,8 @@ import { clearSession, session } from '@/lib/session'
 export const IDLE_MS = 10 * 60_000
 export const WARN_MS = 60_000
 const KEY = 'esc.admin.idle'
-const EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] as const
+// 클릭(터치 포함)과 키 입력만 — 마우스 움직임·스크롤은 세지 않는다. 읽기만 하면 끝나 가니 '시간 연장'으로 묻는다
+const EVENTS = ['pointerdown', 'keydown'] as const
 
 /**
  * 관리자 자동 로그아웃 — 마지막 활동에서 10분. 마지막 1분은 경고라 그때부터는 아무 데나 눌러도
@@ -68,7 +69,7 @@ export function useIdleLogout() {
     save()
   }
   function onActivity() {
-    // pointermove 는 초당 수십 번 — 1초 안의 연장은 건너뛴다
+    // 키를 누르고 있으면 반복 입력이 쏟아진다 — 1초 안의 연장은 건너뛴다
     if (!warning.value && Date.now() - (deadline.value - IDLE_MS) > 1000) extend()
   }
 

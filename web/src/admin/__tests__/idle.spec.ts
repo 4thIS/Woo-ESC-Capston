@@ -35,6 +35,17 @@ describe('관리자 10분 자동 로그아웃', () => {
     stop()
   })
 
+  it('마우스 움직임·스크롤은 활동이 아니다 — 클릭·키 입력만', () => {
+    const { idle, stop } = start()
+    vi.advanceTimersByTime(5 * 60_000)
+    window.dispatchEvent(new Event('pointermove'))
+    window.dispatchEvent(new Event('wheel'))
+    expect(idle.remaining.value).toBe(5 * 60_000)
+    window.dispatchEvent(new Event('keydown'))
+    expect(idle.remaining.value).toBe(IDLE_MS)
+    stop()
+  })
+
   it('활동은 연장하지만 경고 중에는 버튼만 연장한다', () => {
     const { idle, stop } = start()
     vi.advanceTimersByTime(5 * 60_000)
