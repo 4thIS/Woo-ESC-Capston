@@ -27,7 +27,6 @@ const router = useRouter()
 const { data, error, refreshedAt, reload } = useResource(() => studentApi.rooms())
 usePolling(reload, POLL_MS)
 const loaded = computed(() => data.value !== undefined)
-provide(BUILDING, { rooms: data, loaded, error, reload })
 
 const bld = computed(() => String(route.params.bld))
 const all = computed(() => data.value ?? [])
@@ -69,6 +68,7 @@ const otherBld = (r: RoomStateOut) => (r.bld === bld.value ? undefined : r.build
 const me = computed(() => session.value?.name ?? '')
 const mine = useResource(() => studentApi.mine())
 usePolling(mine.reload, POLL_MS)
+provide(BUILDING, { rooms: data, loaded, error, reload, mine })
 const now = useNow()
 const next = computed(() => nextResv(mine.data.value ?? [], now.value))
 const meTo = computed(() => `/${bld.value}/me`)
@@ -158,6 +158,7 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
               :to="`/${r.bld}/${r.room}`"
               :room="r.room"
               :building="otherBld(r)"
+              :current="r.bld === bld && String(r.room) === route.params.room"
               :state="rowState(r.layout)"
               :label="layoutLabel(r.layout)"
               :until="untilText(r.layout, r.until)"

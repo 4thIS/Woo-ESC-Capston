@@ -13,12 +13,14 @@ defineProps<{
   fav: boolean
   /** 다른 건물의 즐겨찾기 — 방 번호 앞에 건물 이름 */
   building?: string
+  /** 오른쪽 칸에 떠 있는 강의실 — 강의실·주간·예약 어느 화면이든 (RouterLink 활성은 /E/401 에서만 켜진다) */
+  current?: boolean
 }>()
 const emit = defineEmits<{ toggleFav: [] }>()
 </script>
 
 <template>
-  <li class="row">
+  <li class="row" :class="{ 'row--current': current }">
     <RouterLink
       :to="to"
       class="row__link"
@@ -45,7 +47,7 @@ const emit = defineEmits<{ toggleFav: [] }>()
 
 <style scoped>
 /* 지금 보고 있는 강의실 — 오른쪽 칸과 짝을 맞춘다(/E/401/week 도 401 행) */
-.row:has(.router-link-active) {
+.row--current {
   background: var(--nav-hover);
 }
 .row__bld {

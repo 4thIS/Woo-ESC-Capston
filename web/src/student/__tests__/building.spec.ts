@@ -95,6 +95,12 @@ describe('BuildingLayout — /:bld 강의실 목록', () => {
     expect(w.findAll('ul.rows a')[1].attributes('aria-label')).toBe('운영관 101호 특강 12:00 까지')
   })
 
+  it('지금 보는 강의실 행 — 주간·예약 화면(형제 라우트)에서도 켜진다', async () => {
+    const { w } = await mountAt(BuildingLayout, '/E/402/week', '/:bld/:room/week')
+    const rows = w.findAll('ul.rows > li')
+    expect(rows.map((r) => r.classes().includes('row--current'))).toEqual([true, false])
+  })
+
   it('로그아웃은 사이드바 바닥 — 토큰을 버리고 로그인으로', async () => {
     setSession({ token: 't', role: 'student', school_id: 1, name: '김민준' })
     const { w, router } = await mountAt(BuildingLayout, '/E', '/:bld')

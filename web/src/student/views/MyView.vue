@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { studentApi } from '@/api/student'
@@ -16,14 +16,19 @@ import { usePolling } from '@/lib/usePolling'
 import { useResource } from '@/lib/useResource'
 import RefreshedNote from '../RefreshedNote.vue'
 import StudentHeader from '../StudentHeader.vue'
+import { BUILDING } from '../building'
 import { POLL_MS, useNow } from '../composables'
 import { lastBld } from '../favorites'
 
 type Kind = 'checkin' | 'cancel'
 const router = useRouter()
 // 신청한 뒤 학생이 돌아오는 자리 — 승인·거절 알림이 없어(S10 비목표) 60초마다 다시 본다
-const { data, error, refreshedAt, reload } = useResource(() => studentApi.mine())
-usePolling(reload, POLL_MS)
+// 건물 안(/E/me)이면 레이아웃이 부르는 것을 같이 쓴다 — 두 번 부르지 않고, 취소·체크인 뒤 재조회가
+// 사이드바의 다음 예약 카드에도 바로 닿는다. 열 때 한 번 새로 부른다(방금 신청한 예약)
+const shared = inject(BUILDING, null)?.mine
+const { data, error, refreshedAt, reload } = shared ?? useResource(() => studentApi.mine())
+if (shared) void reload()
+else usePolling(reload, POLL_MS)
 const now = useNow()
 const list = computed(() => sortMine(data.value ?? [], now.value))
 // 건물 안(/E/me)이면 목록 옆 칸 — 넓은 폭은 목록이 보이니 ‹ 를 감춘다

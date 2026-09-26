@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { ApiError, MESSAGES } from '@/api/client'
@@ -150,6 +151,21 @@ describe('MyView — /me', () => {
     const { w } = await mountAt(MyView, '/E/me', '/:bld([A-Z])/me')
     expect(w.get('a.sh__back').attributes('href')).toBe('/E')
     expect(w.get('header').classes()).toContain('sh--nobackwide')
+  })
+
+  it('건물 안이면 레이아웃의 내 예약을 같이 쓴다 — 두 번 부르지 않고, 열 때 한 번 새로 부른다', async () => {
+    api.mine.mockResolvedValue([])
+    const shared = {
+      data: ref([resv({ id: 7 })]),
+      error: ref(null),
+      loading: ref(false),
+      refreshedAt: ref(new Date()),
+      reload: vi.fn(async () => {}),
+    }
+    const { w } = await mountAt(MyView, '/E/me', '/:bld([A-Z])/me', [], { mine: shared as never })
+    expect(api.mine).not.toHaveBeenCalled()
+    expect(shared.reload).toHaveBeenCalledTimes(1)
+    expect(cards(w)).toHaveLength(1)
   })
 
   it('체크인 두 번 연속 — busy 를 await 전에 세워 한 번만 보낸다', async () => {
