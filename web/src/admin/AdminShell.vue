@@ -216,7 +216,8 @@ const left = computed(() => mmss(idle.remaining.value))
   width: 32px;
   height: 32px;
   border-radius: var(--radius-full);
-  background: var(--sunken);
+  border: var(--border-thin) solid var(--line-2);
+  background: var(--surface); /* 사이드바 바탕이 sunken — 같은 색이면 원이 사라진다 */
   color: var(--text-2);
   font-weight: var(--font-weight-bold);
 }
