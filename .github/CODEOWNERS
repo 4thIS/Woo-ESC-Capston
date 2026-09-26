@@ -24,6 +24,11 @@
 /server/                            @leemonta9482
 /server/lora_service/               @ssenu
 
+# ─── 메인Pi 배포(Docker): 인프라는 PM, 서버 이미지는 wj 와 공동 ─────────
+/compose.yaml                       @ssenu @leemonta9482
+/.dockerignore                      @ssenu @leemonta9482
+/server/Dockerfile                  @ssenu @leemonta9482
+
 # ─── modempi: WS 링크는 wj, LoRa 파이프라인은 cw, store/main은 공용(둘 다) ──
 /modempi/                           @leemonta9482
 /modempi/lora/                      @ssenu

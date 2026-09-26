@@ -1,6 +1,15 @@
 # server — 메인Pi
 
 - 설계: `../docs/specs/2026-09-14-s2-server-design.md` · 인증: `../docs/specs/2026-09-23-s4a-auth-design.md`
+- **메인Pi 배포 = Docker** (2026-09-23 팀 결정) — 리포 루트에서:
+  ```bash
+  cp server/.env.example server/.env        # 값 채우기 (아래 표) — 커밋 금지, 이미지에도 안 들어간다(.dockerignore)
+  docker compose up -d --build              # 빌드 + 기동. DB 는 볼륨 /data/main.db (SERVER_DB 는 compose 가 고정)
+  docker compose exec server python -m app.cli create-school --name 우송대 --net-id 75 --email-domain wsu.ac.kr
+  docker compose exec server python -m app.cli create-admin --school-id 1 --email admin@wsu.ac.kr --name 관리자
+  docker compose logs -f server
+  ```
+  이미지 정의는 `server/Dockerfile`(빌드 컨텍스트는 리포 루트 — `../lora_proto` path 의존), 설정은 루트 `compose.yaml`(`env_file: server/.env`). 노트북에서도 같은 명령으로 메인Pi 와 똑같은 서버를 띄울 수 있다(Docker Desktop). 아래 `uv run …` 기동·CLI 는 **개발용**이다.
 - `.env` 준비: `cp .env.example .env` 후 값 채우기 — `JWT_SECRET`(32자 이상, 예 `python -c "import secrets;print(secrets.token_urlsafe(48))"`), `STUDENT_WEB_URL`(학생 웹 오리진), `MAIL_BACKEND=smtp`면 Gmail **앱 비밀번호**(2단계 인증 켠 계정에서 발급)를 `SMTP_USER`/`SMTP_PASSWORD`에. 개발은 `DEBUG=1 MAIL_BACKEND=console`(메일을 콘솔에 출력, SMTP 불필요).
 - 기동: `uv sync && uv run alembic upgrade head && uv run --env-file .env uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000 --workers 1 --no-server-header`
   (반드시 `--workers 1` — WS 연결 레지스트리와 `lora_service/api.py`의 상태가 프로세스 메모리에 있어 워커가 여러 개면 모뎀Pi 연결·outbox 디스패치가 워커마다 따로 놀아 깨진다. `--no-server-header`로 응답에 서버 버전 노출 안 함)

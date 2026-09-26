@@ -489,7 +489,7 @@ S3 렌더 ───┼──▶ S8 노드(awake) ◀── S7 모뎀펌웨어 �
 <li><input type="checkbox" id="fin4"><label for="fin4">노드 2대가 서로 다른 강의실로 동시에 독립 갱신 (타겟 필터 실증)</label></li>
 <li><input type="checkbox" id="fin5"><label for="fin5">배터리 구동 4시간 무교체 리허설 (전날)</label></li>
 <li><input type="checkbox" id="fin6"><label for="fin6">모뎀Pi 인터넷 30분 차단 → 재접속 → 결과 보고 정상 (§4.4)</label></li>
-<li><input type="checkbox" id="fin7"><label for="fin7">Pi 2대 <code>systemd</code> 서비스로 자동 기동, 전원만 꽂으면 뜬다. 두 Pi 연결은 핫스팟 또는 직결 이더넷 — 전시장 Wi-Fi에 의존하지 않는다</label></li>
+<li><input type="checkbox" id="fin7"><label for="fin7">메인Pi는 Docker Compose(<code>restart: unless-stopped</code>), 모뎀Pi는 <code>systemd</code> 서비스로 자동 기동, 전원만 꽂으면 뜬다. 두 Pi 연결은 핫스팟 또는 직결 이더넷 — 전시장 Wi-Fi에 의존하지 않는다</label></li>
 <li><input type="checkbox" id="fin8"><label for="fin8">학생 웹: 별도 도메인으로 진입 → 주간 시간표·빈 강의실 조회. 대시보드: 배정률·공강 차트 <span class="pill wj">wj</span> <span class="pill mh">mh</span></label></li>
 <li><input type="checkbox" id="fin9"><label for="fin9">참가신청서 · 작품보고서 · 판넬 제출 (학과 예선 → 본선)</label></li>
 <li><input type="checkbox" id="fin10"><label for="fin10">시연 스크립트 작성: "웹에서 휴강 등록 → 30초 안에 문 앞 화면 전환"을 심사위원 앞에서 재현. 실패 시 대체 경로(다른 노드, 재시도 설명)</label></li>
