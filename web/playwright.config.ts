@@ -10,7 +10,13 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   timeout: 30_000,
-  use: { baseURL: `http://127.0.0.1:${WEB_PORT}`, trace: 'retain-on-failure', locale: 'ko-KR' },
+  // 동작 줄이기 — 치수·스크린샷을 애니메이션 도중이 아니라 제자리에서 잰다(base.css 의 전역 규칙이 움직임을 끈다)
+  use: {
+    baseURL: `http://127.0.0.1:${WEB_PORT}`,
+    trace: 'retain-on-failure',
+    locale: 'ko-KR',
+    reducedMotion: 'reduce',
+  },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {

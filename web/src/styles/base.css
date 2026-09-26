@@ -75,7 +75,8 @@ body {
     transform: scale(1);
   }
 }
-/* 화면 전환(관리자·학생 공통) — 새 화면을 감싼 상자가 붙을 때 6px 아래에서 떠오른다.
+/* 화면 전환(관리자·학생 공통) — 새 화면을 감싼 상자가 붙을 때 아주 살짝 작게 시작해 제자리로.
+   아래에서 떠오르게 하면 그 사이 화면 밖으로 넘쳐 스크롤바가 깜빡인다(딱 맞는 로그인 화면).
    이전 화면을 기다리지 않는다(out-in 은 뿌리가 요소 하나가 아닌 화면에서 멈춘다) */
 .page {
   animation: esc-page-in var(--dur-slow) var(--ease-soft);
@@ -83,7 +84,7 @@ body {
 @keyframes esc-page-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: scale(0.992);
   }
 }
 /* 운영체제의 '동작 줄이기' — 모든 움직임을 끈다 */
