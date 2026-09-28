@@ -7,8 +7,10 @@ const props = withDefaults(
     title: string
     size?: 'sm' | 'md' | 'lg'
     closeOnBackdrop?: boolean
+    /** 다른 모달 위 — 열려 있는 편집 모달에 가리면 안 되는 확인(자동 로그아웃 경고) */
+    top?: boolean
   }>(),
-  { size: 'md', closeOnBackdrop: true },
+  { size: 'md', closeOnBackdrop: true, top: false },
 )
 const emit = defineEmits<{ close: [] }>()
 const titleId = useId()
@@ -25,11 +27,14 @@ watch(
     if (open) {
       opener = document.activeElement as HTMLElement | null
       await nextTick()
-      // 첫 입력 → 없으면 첫 포커스 대상 (components.md)
+      // data-autofocus → 첫 입력 → 없으면 첫 포커스 대상 (components.md).
+      // data-autofocus 는 안전한 쪽을 고를 때 — 첫 버튼이 되돌릴 수 없는 동작이면 Enter 한 번에 실행된다
       const first =
+        panel.value?.querySelector<HTMLElement>('[data-autofocus]') ??
         panel.value?.querySelector<HTMLElement>(
           'input:not([disabled]),select:not([disabled]),textarea:not([disabled])',
-        ) ?? focusables()[0]
+        ) ??
+        focusables()[0]
       ;(first ?? panel.value)?.focus()
     } else {
       await nextTick()
@@ -60,7 +65,7 @@ function onBackdrop() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="modal">
+    <div v-if="open" class="modal" :class="{ 'modal--top': top }">
       <div class="modal__backdrop" @mousedown.self="onBackdrop" />
       <div
         ref="panel"
@@ -88,6 +93,9 @@ function onBackdrop() {
   display: grid;
   place-items: center;
   padding: var(--space-4);
+}
+.modal--top {
+  z-index: 150; /* 모달(100) 위, 알림(200) 아래 */
 }
 .modal__backdrop {
   position: absolute;
@@ -123,5 +131,11 @@ function onBackdrop() {
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-5);
+}
+.modal__backdrop {
+  animation: esc-fade-in var(--dur-base) ease;
+}
+.modal__panel {
+  animation: esc-rise-in var(--dur-slow) var(--ease-soft);
 }
 </style>

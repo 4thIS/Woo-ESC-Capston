@@ -29,4 +29,12 @@ withDefaults(defineProps<{ to: RouteLocationRaw; compact?: boolean }>(), { compa
 .cta:hover {
   filter: brightness(0.9);
 }
+.cta {
+  transition:
+    background-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-soft);
+}
+.cta:active {
+  transform: scale(0.98);
+}
 </style>

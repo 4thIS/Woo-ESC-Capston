@@ -51,7 +51,7 @@ async function send() {
           label="학교 웹메일"
           type="email"
           autocomplete="email"
-          placeholder="20231234@wsu.ac.kr"
+          placeholder="20231234@mjc.ac.kr"
           :error="emailError"
           required
         />

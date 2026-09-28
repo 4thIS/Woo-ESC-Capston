@@ -70,7 +70,7 @@ afterEach(() => {
 })
 
 describe('ReserveView — /:bld/:room/reserve', () => {
-  it('신청 — 서버 모양으로 한 번, 성공하면 Toast 와 /me', async () => {
+  it('신청 — 서버 모양으로 한 번, 성공하면 Toast 와 목록 옆 내 예약(/E/me)', async () => {
     api.requestResv.mockResolvedValue(reqResv({ date: '2026-10-23', s_h: 13, e_h: 14 }))
     const { w, router } = await mountAt(ReserveView, ...PATH, ROOMS)
     expect(w.get('h1').text()).toBe('공학관 401호 예약')
@@ -87,7 +87,7 @@ describe('ReserveView — /:bld/:room/reserve', () => {
       subject: '스터디',
     })
     expect(texts()).toContain('예약을 신청했어요. 관리자 승인 뒤 확정돼요.')
-    expect(router.currentRoute.value.path).toBe('/me')
+    expect(router.currentRoute.value.path).toBe('/E/me')
   })
 
   it('409 — 재조회한 full 이 false 면 먼저 신청한 사람, 사라진 구간은 선택이 풀린다', async () => {

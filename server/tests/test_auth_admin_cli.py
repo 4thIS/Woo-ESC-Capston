@@ -128,9 +128,9 @@ def _cli(db, *args, stdin=None):
 
 def test_cli_create_update_school_and_admin_then_login(tmp_path):
     db = tmp_path / "cli.db"
-    r = _cli(db, "create-school", "--name", "우송", "--net-id", "77", "--email-domain", "wsu.ac.kr")
+    r = _cli(db, "create-school", "--name", "명지", "--net-id", "77", "--email-domain", "mjc.ac.kr")
     assert r.returncode == 0, r.stderr
-    r = _cli(db, "update-school", "--id", "1", "--email-domain", " WSU2.ac.kr ")  # 정규화
+    r = _cli(db, "update-school", "--id", "1", "--email-domain", " MJC2.ac.kr ")  # 정규화
     assert r.returncode == 0, r.stderr
     r = _cli(
         db,
@@ -138,7 +138,7 @@ def test_cli_create_update_school_and_admin_then_login(tmp_path):
         "--school-id",
         "1",
         "--email",
-        "Admin@WSU.ac.kr",
+        "Admin@MJC.ac.kr",
         "--name",
         "관리",
         stdin="short\n",
@@ -150,7 +150,7 @@ def test_cli_create_update_school_and_admin_then_login(tmp_path):
         "--school-id",
         "1",
         "--email",
-        "Admin@WSU.ac.kr",
+        "Admin@MJC.ac.kr",
         "--name",
         "관리",
         stdin="adminpass1\n",
@@ -162,7 +162,7 @@ def test_cli_create_update_school_and_admin_then_login(tmp_path):
         "--school-id",
         "1",
         "--email",
-        "admin@wsu.ac.kr",
+        "admin@mjc.ac.kr",
         "--name",
         "관리",
         stdin="adminpass1\n",
@@ -173,12 +173,12 @@ def test_cli_create_update_school_and_admin_then_login(tmp_path):
     from app.main import create_app
 
     with TestClient(create_app(str(db))) as c:
-        r = c.post("/api/auth/login", json={"email": "admin@wsu.ac.kr", "password": "adminpass1"})
+        r = c.post("/api/auth/login", json={"email": "admin@mjc.ac.kr", "password": "adminpass1"})
         assert r.status_code == 200 and r.json()["role"] == "admin"
         old = r.json()["token"]
-    r = _cli(db, "set-user", "--email", "admin@wsu.ac.kr", "--password", stdin="newpass12\n")
+    r = _cli(db, "set-user", "--email", "admin@mjc.ac.kr", "--password", stdin="newpass12\n")
     assert r.returncode == 0, r.stderr
-    r = _cli(db, "set-user", "--email", "admin@wsu.ac.kr", "--status", "disabled")
+    r = _cli(db, "set-user", "--email", "admin@mjc.ac.kr", "--status", "disabled")
     assert r.returncode == 0, r.stderr
     with TestClient(create_app(str(db))) as c:
         assert (
@@ -186,7 +186,7 @@ def test_cli_create_update_school_and_admin_then_login(tmp_path):
         )  # tv 증가
         assert (
             c.post(
-                "/api/auth/login", json={"email": "admin@wsu.ac.kr", "password": "newpass12"}
+                "/api/auth/login", json={"email": "admin@mjc.ac.kr", "password": "newpass12"}
             ).status_code
             == 401
         )
@@ -200,18 +200,18 @@ def test_cli_set_user_password_kills_mail_tokens(tmp_path):
     from app.main import create_app
 
     db = tmp_path / "cli.db"
-    assert _cli(db, "create-school", "--name", "우송", "--net-id", "77").returncode == 0
+    assert _cli(db, "create-school", "--name", "명지", "--net-id", "77").returncode == 0
     r = _cli(
         db,
         "create-admin",
-        *("--school-id", "1", "--email", "admin@wsu.ac.kr", "--name", "관리"),
+        *("--school-id", "1", "--email", "admin@mjc.ac.kr", "--name", "관리"),
         stdin="adminpass1\n",
     )
     assert r.returncode == 0, r.stderr
     app = create_app(str(db))
     with app.state.Session() as s, s.begin():
-        tok = tokens.issue(s, "admin@wsu.ac.kr", "reset")
-    r = _cli(db, "set-user", "--email", "admin@wsu.ac.kr", "--password", stdin="newpass12\n")
+        tok = tokens.issue(s, "admin@mjc.ac.kr", "reset")
+    r = _cli(db, "set-user", "--email", "admin@mjc.ac.kr", "--password", stdin="newpass12\n")
     assert r.returncode == 0, r.stderr
     with TestClient(app) as c:
         r = c.post("/api/auth/reset", json={"token": tok, "password": "hijacked1"})

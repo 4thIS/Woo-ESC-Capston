@@ -100,7 +100,7 @@ describe('roomsApi', () => {
     expect(e.status).toBe(400)
     expect((e.detail as typeof importErrors).errors[0]).toEqual({
       row: 2,
-      error: 'room: 999 없음 (우송대 K)',
+      error: 'room: 999 없음 (명지전문대학 K)',
     })
   })
 })

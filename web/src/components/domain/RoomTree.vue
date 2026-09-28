@@ -87,7 +87,7 @@ function onKey(e: KeyboardEvent) {
       <Badge v-if="multi && selected.length" variant="solid" class="num">{{
         selected.length
       }}</Badge>
-      <span aria-hidden="true">▾</span>
+      <span class="tree__chev" aria-hidden="true">▾</span>
     </button>
     <div v-if="open" class="tree__panel" role="group" aria-label="강의실 선택">
       <div class="tree__head">
@@ -337,5 +337,16 @@ function onKey(e: KeyboardEvent) {
 .tree__clear {
   padding: 0;
   color: var(--text-1);
+}
+.tree__chev {
+  display: inline-block;
+  transition: transform var(--dur-base) var(--ease-soft);
+}
+.tree__trigger[aria-expanded='true'] .tree__chev {
+  transform: rotate(180deg);
+}
+.tree__panel {
+  transform-origin: top left;
+  animation: esc-drop-in var(--dur-base) var(--ease-soft);
 }
 </style>

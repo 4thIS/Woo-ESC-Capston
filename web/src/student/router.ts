@@ -34,6 +34,8 @@ export const routes: RouteRecordRaw[] = [
       { path: ':room(\\d+)', component: () => import('./views/RoomView.vue') },
       { path: ':room(\\d+)/week', component: () => import('./views/WeekView.vue') },
       { path: ':room(\\d+)/reserve', component: () => import('./views/ReserveView.vue') },
+      // 넓은 폭에서 목록 옆에 펼친다 — 건물 없이 들어온 /me 는 한 화면 그대로
+      { path: 'me', component: () => import('./views/MyView.vue') },
     ],
   },
   // 없는 주소 — 벽 없이 404 (보여줄 데이터가 없다)

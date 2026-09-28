@@ -49,15 +49,22 @@ web/
 - 서버 계약 소비 로직(`src/api/`)은 응답 픽스처로 테스트한다 — 서버가 필드를 바꾸면 여기가 먼저 빨개져야 한다.
 - 통합 동작은 로컬 실행 환경에서 확인.
 
+## 배포 (Docker)
+
+- 루트 `compose.yaml` 의 `web` 서비스 — `web/Dockerfile` 이 `pnpm build` 결과(`dist/`)를 nginx(`web/nginx.conf`)로 내보낸다. 기본 포트 80(`WEB_PORT` 로 변경).
+- nginx 가 맡는 것: `/admin/*` → `admin.html`, 나머지 → `index.html`(새로고침해도 그 앱), `/api/*` → `server:8000` 프록시, `/assets/*` 1년 캐시(해시 파일명), html 은 `no-cache`.
+- 서버는 `X-Forwarded-For` 를 web 컨테이너(고정 IP `172.30.250.10`)가 준 것만 믿는다(compose 의 `FORWARDED_ALLOW_IPS`) — 로그인 상한이 사람마다 걸리게. nginx 는 이 헤더를 덮어쓴다.
+- 웹만 다시: `docker compose up -d --build web`. 서버를 다시 만들어도 웹은 재시작할 필요가 없다(요청마다 `server` 를 다시 찾는다).
+
 ## E2E (Playwright)
 
-- `pnpm e2e` — 임시 DB 로 메인Pi 서버(기본 `../server`)와 Vite dev 서버를 띄우고 `e2e/*.spec.ts` 를 돈다. 학교 둘(우송대 id 1 · 타학교 id 2)과 관리자들을 CLI 로 심는다(`e2e/env.json`).
+- `pnpm e2e` — 임시 DB 로 메인Pi 서버(기본 `../server`)와 Vite dev 서버를 띄우고 `e2e/*.spec.ts` 를 돈다. 학교 둘(명지전문대학 id 1 · 타학교 id 2)과 관리자들을 CLI 로 심는다(`e2e/env.json`).
 - **다른 서버 체크아웃으로 돌리기**: `E2E_SERVER_DIR` 에 서버 폴더(web/ 기준 상대 또는 절대 경로). 예: 아직 main 에 없는 API 를 가진 통합 워크트리.
   - PowerShell: `$env:E2E_SERVER_DIR = 'C:\path\to\server'; pnpm e2e`
   - bash: `E2E_SERVER_DIR='C:\path\to\server' pnpm e2e` (Windows 에서는 `/c/...` 가 아니라 `C:\...` 로)
 - **다른 포트로 돌리기**(수동으로 띄운 서버가 8000·5173 을 쓰고 있을 때): `E2E_API_PORT`(기본 8000) · `E2E_WEB_PORT`(기본 5173). 예: `$env:E2E_API_PORT = '8100'; $env:E2E_WEB_PORT = '5273'; pnpm e2e`. dev 서버 프록시 대상은 `VITE_API_TARGET`(기본 `http://127.0.0.1:8000`)이고 E2E 는 이것을 자동으로 넘긴다. 기본 포트에서는 5173 에 이미 떠 있는 dev 서버를 재사용하므로(CI 제외) 그 서버의 프록시가 8000 을 가리켜야 한다.
 - `e2e/helpers.ts` 의 `sql()` 은 **테스트 전용** — 무선 트래픽(STATUS·pending·ACK)으로만 생기는 행을 E2E DB 에 직접 넣는다. 관리자 REST 로 만들 수 있는 것(건물·방·모뎀)은 REST 로 만든다.
-- 로그인 상한(IP 당 분당 30회) 때문에 새 spec 파일은 `beforeAll` 에서 컨텍스트·로그인을 한 번만 하고 화면 이동은 사이드 메뉴 클릭으로 한다(`page.goto` 는 새로고침 = 메모리 세션 소실).
+- 로그인 상한(IP 당 분당 30회) 때문에 새 spec 파일은 `beforeAll` 에서 컨텍스트·로그인을 한 번만 하고 화면 이동은 사이드 메뉴 클릭으로 한다(세션은 sessionStorage 라 `page.goto` 로도 남지만, 새로고침은 화면 상태·폴링을 새로 시작한다).
 
 ## 계약(Contract) 규칙
 

@@ -38,9 +38,9 @@ test('1024px 미만 — 가로 스크롤 + 한 번만 뜨는 Banner', async ({ p
   await shot(page, 'admin-narrow-900')
   await page.getByRole('button', { name: '닫기' }).click()
   await expect(banner).toHaveCount(0)
-  // 새로고침하면 메모리 세션이라 다시 로그인 — Banner 는 localStorage 로 기억
+  // 새로고침해도 로그인이 남는다(sessionStorage) — Banner 는 localStorage 로 기억
   await page.reload()
-  await fillLogin(page, nextAdmin())
   await expect(page).toHaveURL(/\/admin\/dashboard$/)
+  await expect(page.getByRole('button', { name: '로그아웃' })).toBeVisible()
   await expect(banner).toHaveCount(0)
 })

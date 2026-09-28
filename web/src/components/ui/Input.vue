@@ -123,4 +123,10 @@ function onInput(e: Event) {
 .field__msg--error {
   color: var(--danger);
 }
+.field__control {
+  transition: border-color var(--dur-fast) ease;
+}
+.field__control:hover:enabled:not([readonly]) {
+  border-color: var(--text-3);
+}
 </style>

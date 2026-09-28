@@ -11,14 +11,25 @@ defineProps<{
   label: string
   until: string
   fav: boolean
+  /** 다른 건물의 즐겨찾기 — 방 번호 앞에 건물 이름 */
+  building?: string
+  /** 오른쪽 칸에 떠 있는 강의실 — 강의실·주간·예약 어느 화면이든 (RouterLink 활성은 /E/401 에서만 켜진다) */
+  current?: boolean
 }>()
 const emit = defineEmits<{ toggleFav: [] }>()
 </script>
 
 <template>
-  <li class="row">
-    <RouterLink :to="to" class="row__link" :aria-label="`${room}호 ${label} ${until}`">
-      <span class="row__room num">{{ room }}호</span>
+  <li class="row" :class="{ 'row--current': current }">
+    <RouterLink
+      :to="to"
+      class="row__link"
+      :aria-label="`${building ? `${building} ` : ''}${room}호 ${label} ${until}`"
+    >
+      <span class="row__room num"
+        ><small v-if="building" class="row__bld">{{ building }}</small
+        >{{ room }}호</span
+      >
       <span class="row__state">
         <Badge v-if="state === 'busy'" tone="busy" size="sm">{{ label }}</Badge>
         <span v-else :class="state === 'free' ? 'row__free' : 'row__other'">{{ label }}</span>
@@ -26,11 +37,25 @@ const emit = defineEmits<{ toggleFav: [] }>()
       <span class="row__until num">{{ until }}</span>
       <span class="row__chev" aria-hidden="true">›</span>
     </RouterLink>
-    <FavoriteStar :on="fav" :name="`${room}호`" @toggle="emit('toggleFav')" />
+    <FavoriteStar
+      :on="fav"
+      :name="`${building ? `${building} ` : ''}${room}호`"
+      @toggle="emit('toggleFav')"
+    />
   </li>
 </template>
 
 <style scoped>
+/* 지금 보고 있는 강의실 — 오른쪽 칸과 짝을 맞춘다(/E/401/week 도 401 행) */
+.row--current {
+  background: var(--nav-hover);
+}
+.row__bld {
+  display: block;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  color: var(--text-3);
+}
 .row {
   display: flex;
   align-items: center;
@@ -84,5 +109,22 @@ const emit = defineEmits<{ toggleFav: [] }>()
   grid-row: 1 / 3;
   font-size: var(--font-size-lg);
   color: var(--text-3);
+}
+.row__link {
+  transition:
+    background-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-soft);
+}
+.row__link:hover {
+  background: var(--nav-hover);
+}
+.row__link:active {
+  transform: scale(0.99);
+}
+.row__chev {
+  transition: transform var(--dur-base) var(--ease-spring);
+}
+.row__link:hover .row__chev {
+  transform: translateX(3px);
 }
 </style>

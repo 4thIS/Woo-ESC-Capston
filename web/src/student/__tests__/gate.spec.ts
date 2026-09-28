@@ -34,6 +34,13 @@ describe('로그인 벽 (student-room.md §로그인 벽)', () => {
     expect(w.text()).not.toContain('강의실 화면')
   })
 
+  it('로그인·가입 화면과 같은 틀 — PC 에서 왼쪽에 소개 패널', async () => {
+    const { w } = await mountApp('/E')
+    expect(w.find('aside.auth__intro').exists()).toBe(true)
+    expect(w.findAll('h1')).toHaveLength(1)
+    expect(w.get('a.cta').text()).toBe('로그인')
+  })
+
   it('건물 글자가 없는 주소는 학교 문장', async () => {
     const { w } = await mountApp('/')
     expect(w.get('h1').text()).toBe('학교의 빈 강의실을 확인하고 예약을 신청할 수 있어요.')

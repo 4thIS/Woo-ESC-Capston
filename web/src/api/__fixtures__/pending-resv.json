@@ -18,7 +18,7 @@
     "room_id": 11,
     "building": "공학관",
     "room": 401,
-    "requester": { "email": "s1@wsu.ac.kr", "name": "김민준", "student_no": "20231234" },
+    "requester": { "email": "s1@mjc.ac.kr", "name": "김민준", "student_no": "20231234" },
     "pushed_at": null
   }
 ]

@@ -59,4 +59,7 @@ const emit = defineEmits<{ dismiss: [] }>()
   font-size: var(--font-size-lg);
   cursor: pointer;
 }
+.toast {
+  animation: esc-slide-in var(--dur-slow) var(--ease-spring);
+}
 </style>

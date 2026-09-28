@@ -13,11 +13,12 @@ import {
 declare const document: { documentElement: { scrollHeight: number } }
 declare const window: { innerHeight: number }
 
-// 카드의 윗여백이 바탕(.auth, min-height 100vh) 밖으로 새면 폼 하나짜리 화면이 스크롤된다
-const noScroll = async (page: Page) =>
-  expect(
-    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
-  ).toBe(true)
+// 카드의 윗여백이 바탕(.auth, min-height 100vh) 밖으로 새면 폼 하나짜리 화면이 스크롤된다.
+// 창 크기를 바꾼 직후 한 프레임은 이전 높이가 남는다 — 제자리를 잡을 때까지 다시 잰다
+const noScroll = (page: Page) =>
+  expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight))
+    .toBe(true)
 
 test('관리자 — 가드가 로그인으로 보내고, 로그인하면 돌아온다', async ({ page }) => {
   await page.setViewportSize(SIZES.admin)

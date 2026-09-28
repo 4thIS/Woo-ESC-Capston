@@ -43,7 +43,7 @@ async function submit(body: StudentResvIn) {
   try {
     await studentApi.requestResv(room.value.room_id, body)
     showToast({ message: '예약을 신청했어요. 관리자 승인 뒤 확정돼요.' })
-    await router.push('/me')
+    await router.push(`/${bld.value}/me`)
   } catch (e) {
     if (!(e instanceof ApiError)) throw e
     await explain(e)

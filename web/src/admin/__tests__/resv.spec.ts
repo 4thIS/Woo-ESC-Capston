@@ -16,7 +16,7 @@ vi.mock('@/api/rooms', () => ({ roomsApi: { deleteResv: vi.fn(), saveResv: vi.fn
 const admin = vi.mocked(adminApi)
 const rooms = vi.mocked(roomsApi)
 
-const requester = { email: 's1@wsu.ac.kr', name: '김민준', student_no: '20231234' }
+const requester = { email: 's1@mjc.ac.kr', name: '김민준', student_no: '20231234' }
 const P = (
   id: number,
   subject: string,
@@ -96,7 +96,7 @@ describe('신청 대기', () => {
     const rows = w.findAll('tbody tr')
     expect(rows[0].text()).toContain('먼저 신청')
     expect(rows[0].text()).toContain('공학관 401')
-    expect(rows[0].get('[title]').attributes('title')).toBe('20231234 · s1@wsu.ac.kr')
+    expect(rows[0].get('[title]').attributes('title')).toBe('20231234 · s1@mjc.ac.kr')
     expect(w.text()).toContain('2건')
   })
 

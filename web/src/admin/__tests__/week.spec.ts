@@ -122,7 +122,7 @@ beforeEach(() => {
       type: 6,
       subject: '스터디',
       status: 'requested',
-      requester: { email: 's@wsu.ac.kr', name: '김민준', student_no: '1' },
+      requester: { email: 's@mjc.ac.kr', name: '김민준', student_no: '1' },
     }),
     V({ id: 9, subject: '거절됨', status: 'rejected' }),
   ])

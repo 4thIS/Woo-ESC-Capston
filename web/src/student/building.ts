@@ -2,7 +2,7 @@ import { computed, inject, watch, type InjectionKey, type Ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { studentApi } from '@/api/student'
 import type { ApiError } from '@/api/client'
-import type { RoomStateOut, WeekOut } from '@/api/types'
+import type { ResvMineOut, RoomStateOut, WeekOut } from '@/api/types'
 import { gridRange, nowTop, visibleDays, weekBlocks } from '@/components/student/grid'
 import { dayOfDate, kstDateStr, kstMinutes, mondayOf } from '@/lib/time'
 import { usePolling } from '@/lib/usePolling'
@@ -15,7 +15,10 @@ export interface BuildingCtx {
   loaded: Readonly<Ref<boolean>>
   error: Readonly<Ref<ApiError | null>>
   reload: () => Promise<void>
+  /** 내 예약 — 사이드바 카드와 옆 칸 내 예약(/E/me)이 같이 쓴다. 레이아웃이 60초마다 부른다 */
+  mine?: MineResource
 }
+export type MineResource = ReturnType<typeof useResource<ResvMineOut[]>>
 export const BUILDING: InjectionKey<BuildingCtx> = Symbol('building')
 
 export function useBuilding(): BuildingCtx {

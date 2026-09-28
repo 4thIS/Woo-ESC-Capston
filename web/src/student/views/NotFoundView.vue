@@ -11,7 +11,7 @@ withDefaults(defineProps<{ back?: string; backLabel?: string }>(), {
 
 <template>
   <div class="nf">
-    <StudentHeader title="우송 ESC" />
+    <StudentHeader title="MJC ESC" />
     <main class="nf__body">
       <h2 class="nf__title">찾을 수 없는 주소예요</h2>
       <p class="nf__text">주소를 잘못 입력했거나, 예약을 받지 않는 강의실이에요.</p>

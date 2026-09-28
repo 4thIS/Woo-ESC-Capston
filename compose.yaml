@@ -3,8 +3,13 @@
 # (docs/guides/2026-09-23-pi-integration-cw10.md §8).
 #
 #   docker compose up -d --build     # 빌드 + 기동(백그라운드). 코드가 바뀌면 같은 명령
-#   docker compose logs -f server    # 로그
+#   docker compose up -d --build web # 웹만 다시 — 서버는 그대로라 모뎀Pi 연결이 끊기지 않는다
+#   docker compose logs -f server    # 로그 (웹은 logs -f web)
 #   docker compose down              # 정지 (데이터는 볼륨에 남는다)
+#
+# 컨테이너 둘: server(API·모뎀Pi WS, :8000) + web(학생 / · 관리자 /admin, :80 — /api 는 server 로 넘긴다).
+# 모뎀Pi 는 지금처럼 ws://<메인Pi>:8000/ws/modem 으로 server 에 바로 붙는다.
+# 웹 포트를 바꾸려면 WEB_PORT=8080 docker compose up -d. server/.env 의 STUDENT_WEB_URL 은 웹 주소(http://<메인Pi>)로.
 #
 # 처음 한 번: cp server/.env.example server/.env 후 값을 채운다(JWT_SECRET·STUDENT_WEB_URL·메일 — server/README.md).
 #   그다음 학교·관리자 계정: docker compose exec server python -m app.cli create-school … / create-admin …
@@ -26,10 +31,37 @@ services:
         required: true             # 없으면 up 이 바로 실패한다(서버가 재시작만 반복하는 대신)
     environment:
       SERVER_DB: /data/main.db     # .env 의 SERVER_DB 보다 우선 — DB 는 항상 볼륨에
+      # web(nginx) 이 준 X-Forwarded-For 만 믿는다(uvicorn 이 읽는 환경 변수). 없으면 모든 요청이 nginx IP 로
+      # 보여 로그인 상한(IP 당 분당 30회)이 모두에게 한 개로 걸린다. :8000 으로 바로 온 요청의 헤더는 믿지 않는다
+      FORWARDED_ALLOW_IPS: 172.30.250.10
+    networks:
+      - esc
     volumes:
       - server-data:/data          # SQLite DB — 컨테이너를 지우고 다시 빌드해도 남는다
     restart: unless-stopped         # Pi 재부팅·크래시 뒤 자동 기동 (systemd 유닛 불필요)
     stop_grace_period: 10s
+
+  web:
+    build:
+      context: web
+      dockerfile: Dockerfile
+    image: woo-esc/web:local
+    container_name: esc-web
+    ports:
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      - server
+    networks:
+      esc:
+        ipv4_address: 172.30.250.10  # server 의 FORWARDED_ALLOW_IPS 와 같아야 한다
+    restart: unless-stopped
+
+# 고정 대역 — web 의 IP 를 server 가 믿을 프록시로 적어 두기 위해. 집·학교 망과 겹치면 두 곳을 함께 바꾼다
+networks:
+  esc:
+    ipam:
+      config:
+        - subnet: 172.30.250.0/24
 
 volumes:
   server-data:

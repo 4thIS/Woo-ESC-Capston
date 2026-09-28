@@ -29,7 +29,7 @@ describe('SidebarNav', () => {
           { to: '/users', label: '회원', badge: 5 },
         ],
       },
-      slots: { footer: '<p class="f">우송대</p>' },
+      slots: { footer: '<p class="f">명지전문대학</p>' },
       global: { plugins: [router] },
     })
     const links = w.findAll('a')
@@ -38,6 +38,41 @@ describe('SidebarNav', () => {
     expect(links[1].text()).toContain('5')
     expect(links[0].find('.badge').exists()).toBe(false)
     expect(w.find('.f').exists()).toBe(true)
+  })
+
+  it('시안 A — 묶음 제목은 바뀔 때 한 번, 아이콘, 머리 슬롯, 대기 숫자 배지', async () => {
+    const router = await withRouter('/nodes')
+    const w = mount(SidebarNav, {
+      props: {
+        items: [
+          { to: '/users', label: '회원', group: '사람', icon: 'users', badge: 2 },
+          { to: '/nodes', label: '노드 상태', group: '모니터링', icon: 'node' },
+        ],
+      },
+      slots: { header: '<p class="h">MJC ESC</p>' },
+      global: { plugins: [router] },
+    })
+    // 묶음 제목은 제목(h2) — 스크린리더가 묶음을 안다
+    expect(w.findAll('.nav__group h2').map((g) => g.text())).toEqual(['사람', '모니터링'])
+    expect(w.findAll('a svg.nav__icon')).toHaveLength(2)
+    expect(w.find('.h').exists()).toBe(true)
+    // 대기 개수는 스펙의 neutral solid Badge — danger 는 삭제·에러·실패 전용
+    const count = w.get('.nav__count')
+    expect(count.text()).toBe('2')
+    expect(count.classes()).toEqual(expect.arrayContaining(['badge--solid', 'badge--neutral']))
+    // 숫자만 읽히지 않게 링크 이름에 '대기 N건'
+    expect(w.findAll('a')[0].attributes('aria-label')).toBe('회원, 대기 2건')
+    expect(w.findAll('a')[1].attributes('aria-label')).toBeUndefined()
+  })
+
+  it('선택 표시(pill)는 하나 — 움직임은 CSS 로, 움직임 줄이기면 끈다', async () => {
+    const router = await withRouter('/users')
+    const w = mount(SidebarNav, {
+      props: { items: [{ to: '/users', label: '회원' }] },
+      global: { plugins: [router] },
+    })
+    expect(w.findAll('.nav__pill')).toHaveLength(1)
+    expect(w.get('.nav__pill').attributes('aria-hidden')).toBe('true')
   })
 })
 

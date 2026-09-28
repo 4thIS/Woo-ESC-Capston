@@ -52,6 +52,22 @@ describe('Modal', () => {
     w.unmount()
   })
 
+  it('data-autofocus 가 있으면 그 대상이 첫 포커스 — 앞에 있는 버튼보다 먼저', async () => {
+    const w = mount(Modal, {
+      props: { open: false, title: 't', top: true },
+      slots: {
+        footer: '<button id="out">로그아웃</button><button id="keep" data-autofocus>연장</button>',
+      },
+      global: { stubs },
+      attachTo: document.body,
+    })
+    await w.setProps({ open: true })
+    await new Promise((r) => setTimeout(r))
+    expect(document.activeElement?.id).toBe('keep')
+    expect(w.get('.modal').classes()).toContain('modal--top')
+    w.unmount()
+  })
+
   it('배경 클릭 — closeOnBackdrop 이 false 면 닫지 않는다', async () => {
     const a = mount(Modal, { props: { open: true, title: 't' }, global: { stubs } })
     await a.get('.modal__backdrop').trigger('mousedown')

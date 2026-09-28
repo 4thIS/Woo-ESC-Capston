@@ -33,7 +33,7 @@ def _session():
 
 
 def _domain(v: str) -> str:
-    """`' WSU.ac.kr '` → `wsu.ac.kr`. 가입 판별은 소문자 정규화된 이메일의 도메인과 정확히 비교한다."""
+    """`' MJC.ac.kr '` → `mjc.ac.kr`. 가입 판별은 소문자 정규화된 이메일의 도메인과 정확히 비교한다."""
     d = v.strip().lower()
     if not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", d):
         raise argparse.ArgumentTypeError(f"도메인 형식이 아닙니다: {v!r}")

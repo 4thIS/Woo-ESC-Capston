@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, inject, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { studentApi } from '@/api/student'
 import type { ResvMineOut } from '@/api/types'
@@ -12,22 +12,28 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import Modal from '@/components/ui/Modal.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { showToast } from '@/components/ui/toast'
-import { clearSession } from '@/lib/session'
 import { usePolling } from '@/lib/usePolling'
 import { useResource } from '@/lib/useResource'
 import RefreshedNote from '../RefreshedNote.vue'
 import StudentHeader from '../StudentHeader.vue'
+import { BUILDING } from '../building'
 import { POLL_MS, useNow } from '../composables'
 import { lastBld } from '../favorites'
 
 type Kind = 'checkin' | 'cancel'
 const router = useRouter()
 // 신청한 뒤 학생이 돌아오는 자리 — 승인·거절 알림이 없어(S10 비목표) 60초마다 다시 본다
-const { data, error, refreshedAt, reload } = useResource(() => studentApi.mine())
-usePolling(reload, POLL_MS)
+// 건물 안(/E/me)이면 레이아웃이 부르는 것을 같이 쓴다 — 두 번 부르지 않고, 취소·체크인 뒤 재조회가
+// 사이드바의 다음 예약 카드에도 바로 닿는다. 열 때 한 번 새로 부른다(방금 신청한 예약)
+const shared = inject(BUILDING, null)?.mine
+const { data, error, refreshedAt, reload } = shared ?? useResource(() => studentApi.mine())
+if (shared) void reload()
+else usePolling(reload, POLL_MS)
 const now = useNow()
 const list = computed(() => sortMine(data.value ?? [], now.value))
-const last = lastBld()
+// 건물 안(/E/me)이면 목록 옆 칸 — 넓은 폭은 목록이 보이니 ‹ 를 감춘다
+const inBld = useRoute().params.bld as string | undefined
+const last = inBld ?? lastBld()
 const back = last ? `/${last}` : '/'
 const busy = ref<{ id: number; kind: Kind } | null>(null)
 const confirming = ref<ResvMineOut | null>(null)
@@ -85,15 +91,11 @@ async function confirmCancel() {
 }
 const retry = () => void reload()
 const goBack = () => void router.push(back)
-function logout() {
-  clearSession()
-  void router.replace('/login')
-}
 </script>
 
 <template>
   <div class="me">
-    <StudentHeader title="내 예약" :back="back" />
+    <StudentHeader title="내 예약" :back="back" :hide-back-wide="!!inBld" />
     <Banner v-if="error && data" tone="danger" :message="error.message" :dismissible="false">
       <Button variant="secondary" @click="retry">다시 시도</Button>
     </Banner>
@@ -121,7 +123,6 @@ function logout() {
         />
       </div>
       <RefreshedNote v-if="data" :at="refreshedAt" :epaper="false" />
-      <Button variant="ghost" class="me__logout" @click="logout">로그아웃</Button>
     </main>
     <!-- 둘 다 확인을 거친다 — 신청 취소는 행이 지워진다는 것을 적는다 (student-room.md §취소와 철회) -->
     <Modal
@@ -161,8 +162,5 @@ function logout() {
 }
 .me__confirm {
   margin: 0;
-}
-.me__logout {
-  align-self: center;
 }
 </style>

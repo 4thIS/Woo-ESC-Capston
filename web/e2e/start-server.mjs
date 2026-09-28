@@ -46,7 +46,15 @@ function cli(args, input) {
 }
 
 // CLI 가 alembic upgrade head 를 먼저 돈다. 비밀번호는 stdin(비TTY)으로
-cli(['create-school', '--name', '우송대', '--net-id', '75', '--email-domain', cfg.SCHOOL_DOMAIN])
+cli([
+  'create-school',
+  '--name',
+  '명지전문대학',
+  '--net-id',
+  '75',
+  '--email-domain',
+  cfg.SCHOOL_DOMAIN,
+])
 cfg.ADMINS.forEach((email, i) =>
   cli(
     ['create-admin', '--school-id', '1', '--email', email, '--name', `관리자${i + 1}`],

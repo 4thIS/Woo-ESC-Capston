@@ -74,5 +74,9 @@ describe('student router', () => {
     expect((await at('/e')).matched[0].path).toBe('/:bld([A-Z])')
     expect((await at('/e')).path).toBe('/E')
     expect((await at('/me')).matched[0].path).not.toBe('/:bld([A-Z])')
+    // 건물 안의 내 예약 — 목록 옆 칸
+    const me = await at('/E/me')
+    expect(me.matched[1].path).toBe('/:bld([A-Z])/me')
+    expect(me.meta.gate).toBe(true)
   })
 })

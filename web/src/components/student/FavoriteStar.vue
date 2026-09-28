@@ -39,4 +39,16 @@ const emit = defineEmits<{ toggle: [] }>()
 .star:hover {
   background: var(--sunken);
 }
+.star {
+  transition:
+    color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-soft);
+}
+.star:active {
+  transform: scale(0.9);
+}
+/* 즐겨찾기에 넣으면 별이 톡 */
+.star--on {
+  animation: esc-pop var(--dur-slow) var(--ease-spring);
+}
 </style>
