@@ -19,6 +19,8 @@ platformio-local.ini
 *.map
 # 단, 폰트·이미지 리소스로 커밋하는 바이너리는 예외
 !firmware/src/fonts/**
+# firmware/tools/embed_fonts.py 가 빌드 직전 src/fonts/*.bin 에서 만드는 C 배열 — 생성물이라 커밋하지 않는다.
+firmware/lib/font_data/
 # render_preview.py 가 픽스처마다 뽑는 PNG — 산출물이라 커밋하지 않는다.
 firmware/test/fixtures/render/_out/
 
