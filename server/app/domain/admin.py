@@ -196,6 +196,8 @@ def resv_with_room_rows(s: Session, q) -> list[dict]:
             "room_id": r.room_id,
             "requester": _requester(users.get(r.requested_by)),
             "pushed_at": r.pushed_at,
+            "checked_in_at": r.checked_in_at,
+            "checked_out_at": r.checked_out_at,
         }
         for r in rows
     ]

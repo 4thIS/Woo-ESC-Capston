@@ -276,7 +276,7 @@ def checkin(s: Session, r: Reservation, now_local: dt.datetime) -> None:
 
 
 def checkout(s: Session, r: Reservation, now_local: dt.datetime) -> list[int]:
-    """조기 퇴실 — 끝 시각을 퇴실 분으로 당겨 바로 빈 강의실·예약 가능으로 만든다.
+    """조기 퇴실 — 끝 시각을 퇴실 분으로 당겨 바로 빈 강의실·예약 가능으로 만든다. 체크인했으면 시작 전에도 된다.
     끝을 당기므로 현재 상태·주간·승격·재동기화·통계·빈 구간이 그대로 맞는다(early-checkout spec §2).
     RESV_DEL 판단은 당기기 전의 원래 끝으로 — 노드에 가 있고 아직 안 끝난 예약만."""
     _require(r, "approved")
@@ -284,13 +284,15 @@ def checkout(s: Session, r: Reservation, now_local: dt.datetime) -> list[int]:
         raise HTTPException(409, "체크인한 예약만 퇴실할 수 있습니다")
     if r.checked_out_at is not None:
         raise HTTPException(409, "이미 퇴실했습니다")
-    if now_local < start_local(r):
-        raise HTTPException(409, "시작 전에는 취소를 쓰세요")
     if now_local >= end_local(r):
         raise HTTPException(409, "이미 끝난 예약입니다")
     old_end = (r.date, r.e_h, r.e_m)
     # 끝 = 퇴실한 분(초 버림). 시작 분 안이면 길이 0 — 끝이 지금 이하라 모든 곳에서 바로 빈 강의실이고,
     # 새 신청은 늘 지금 뒤에 시작하니 길이 0 이 막는 신청도 없다. (+1분으로 두면 그 1분 동안 '사용중'이었다)
     r.e_h, r.e_m = now_local.hour, now_local.minute
+    if now_local < start_local(r):
+        # 일찍 체크인하고 시작 전에 나감 — 체크인하면 취소 대신 퇴실이다. 시작도 지금으로 모아 길이 0:
+        # 원래 시작에 남은 길이 0 은 그 시각을 걸치는 신청을 막는다(_hit)
+        r.s_h, r.s_m = r.e_h, r.e_m
     r.checked_out_at = clock.to_utc(now_local)
     return push_del(s, r, now_local, end=old_end)

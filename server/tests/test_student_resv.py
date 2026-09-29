@@ -316,8 +316,6 @@ def test_checkout_rejects(client, live, app, school, student_hdr, monkeypatch):
 
     _resv(app, rid, dt.date(2026, 9, 23), 10, 0, 11, 0, id_=1, requested_by="s1@mju.ac.kr")
     assert post(1).json()["detail"] == "체크인한 예약만 퇴실할 수 있습니다"
-    _checked_in(app, rid, 2, 10, 35, 11, 30)  # 10:35 시작, 지금 10:30(일찍 체크인)
-    assert post(2).json()["detail"] == "시작 전에는 취소를 쓰세요"
     _checked_in(app, rid, 3, 9, 0, 10, 30)  # 10:30 끝 — 지금이 끝
     assert post(3).json()["detail"] == "이미 끝난 예약입니다"
     _resv(
@@ -334,7 +332,7 @@ def test_checkout_rejects(client, live, app, school, student_hdr, monkeypatch):
     )
     r = post(4)
     assert r.status_code == 409 and "requested" in r.json()["detail"]
-    assert {post(i).status_code for i in (1, 2, 3)} == {409}
+    assert {post(i).status_code for i in (1, 3)} == {409}
     with live() as s:
         assert list(s.scalars(select(Outbox))) == []  # 거절은 노드에 아무것도 보내지 않는다
 
@@ -356,3 +354,38 @@ def test_checkout_same_minute_and_unpushed(client, live, app, school, student_hd
     body = {"date": "2026-09-23", "s_h": 10, "s_m": 35, "e_h": 11, "e_m": 0, "subject": "다음"}
     r2 = client.post(f"/api/student/rooms/{ids[301]}/reservations", json=body, headers=student_hdr)
     assert r2.status_code == 201, r2.text
+
+
+def test_checkout_before_start_frees_now(client, live, app, school, student_hdr, monkeypatch):
+    """일찍 체크인(시작 10분 전부터)한 뒤 시작 전에 나가도 조기 퇴실 — 체크인하면 취소 대신 퇴실이다.
+    시작·끝을 퇴실 분으로 모아 길이 0 — 원래 시작 시각에 걸린 길이 0 은 그 시각을 걸치는 신청을 막는다."""
+    _fix_clock(monkeypatch)  # 10:30
+    _, ids = _building(app, 1, "E", rooms=((301, 1),))
+    rid = ids[301]
+    a = _checked_in(app, rid, 1, 10, 35, 11, 30)  # 10:35 시작, 10:30 에 체크인
+    r = client.post(f"/api/student/me/reservations/{a}/checkout", headers=student_hdr)
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert (j["s_h"], j["s_m"], j["e_h"], j["e_m"]) == (10, 30, 10, 30)
+    with live() as s:
+        assert [o.type for o in s.scalars(select(Outbox))] == ["RESV_DEL", "RESV_DEL"]
+    rooms = client.get("/api/student/rooms", headers=student_hdr).json()
+    assert [x["layout"] for x in rooms if x["room_id"] == rid] == [4]
+    body = {"date": "2026-09-23", "s_h": 10, "s_m": 35, "e_h": 11, "e_m": 0, "subject": "다음"}
+    r2 = client.post(f"/api/student/rooms/{rid}/reservations", json=body, headers=student_hdr)
+    assert r2.status_code == 201, r2.text  # 원래 시간대를 바로 다시 신청할 수 있다
+
+
+def test_admin_resv_list_shows_checkin_and_checkout(
+    client, live, app, school, student_hdr, monkeypatch
+):
+    """관리자 예약 표가 사용중·조기 퇴실을 가릴 수 있게 — 두 시각을 싣는다"""
+    _fix_clock(monkeypatch)
+    _, ids = _building(app, 1, "E", rooms=((301, 1),))
+    rid = ids[301]
+    _checked_in(app, rid, 1, 10, 0, 12, 0)
+    _checked_in(app, rid, 2, 12, 0, 13, 0)
+    client.post("/api/student/me/reservations/1/checkout", headers=student_hdr)
+    rows = {x["id"]: x for x in client.get(f"/api/rooms/{rid}/reservations").json()}
+    assert rows[1]["checked_in_at"] and rows[1]["checked_out_at"]
+    assert rows[2]["checked_in_at"] and rows[2]["checked_out_at"] is None

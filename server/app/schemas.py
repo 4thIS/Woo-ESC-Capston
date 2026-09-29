@@ -269,6 +269,9 @@ class ResvWithRoom(ResvOut):
     # web A2 — 관리자 예약 표의 신청자·학번 열과 '예정' 배지. 관리자 전용 라우터에서만 쓴다
     requester: RequesterOut | None = None  # 관리자가 넣은 예약은 null
     pushed_at: dt.datetime | None = None
+    # 관리자 예약 표의 상태 열 — 사용중·조기 퇴실·미체크인을 가린다 (early-checkout)
+    checked_in_at: dt.datetime | None = None
+    checked_out_at: dt.datetime | None = None
 
 
 class ExamWithRoom(ExamOut):
