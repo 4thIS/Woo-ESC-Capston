@@ -41,6 +41,35 @@ describe('MyResvCard', () => {
     expect(w.emitted('cancel')).toHaveLength(1)
   })
 
+  it('체크인하고 사용 중 — 조기 퇴실만, 누르면 알린다', async () => {
+    const inUse = resv({ s_m: 0, checked_in_at: new Date('2026-10-23T01:01:00Z') }) // 10:00–12:00, 10:01 체크인
+    const w = mount(MyResvCard, { props: { resv: inUse, now: NOW } })
+    expect(buttons(w)).toEqual(['조기 퇴실']) // 시작이 지나 취소는 없다
+    expect(w.findAll('button')[0].classes()).toContain('btn--secondary')
+    await w.findAll('button')[0].trigger('click')
+    expect(w.emitted('checkout')).toHaveLength(1)
+  })
+
+  it('퇴실했으면 퇴실 시각 한 줄만 — 체크인 줄·버튼이 다시 생기지 않는다', () => {
+    const out = resv({
+      s_m: 0,
+      e_h: 10,
+      e_m: 23,
+      checked_in_at: new Date('2026-10-23T01:01:00Z'),
+      checked_out_at: new Date('2026-10-23T01:23:00Z'),
+    })
+    const w = mount(MyResvCard, { props: { resv: out, now: NOW } })
+    expect(w.text()).toContain('✓ 10:23 퇴실')
+    expect(w.text()).not.toContain('체크인')
+    expect(w.findAll('button')).toHaveLength(0)
+  })
+
+  it('퇴실 중 — 버튼이 loading, 다른 쓰기 중이면 disabled', () => {
+    const inUse = resv({ s_m: 0, checked_in_at: new Date('2026-10-23T01:01:00Z') })
+    const busy = mount(MyResvCard, { props: { resv: inUse, now: NOW, busy: 'checkout' } })
+    expect(busy.get('button').attributes('aria-busy')).toBe('true')
+  })
+
   it('창 밖 — 숨기지 않고 disabled + 언제부터', () => {
     const w = mount(MyResvCard, { props: { resv: resv({ s_h: 11, s_m: 0 }), now: NOW } })
     const ci = w.findAll('button')[0]
@@ -50,7 +79,7 @@ describe('MyResvCard', () => {
     expect(w.get('.mc__hint').text()).toBe('10:50부터 체크인할 수 있어요')
   })
 
-  it('체크인했으면 버튼 자리가 시각으로, 시작 뒤엔 취소가 없다', () => {
+  it('체크인했으면 버튼 자리가 시각으로, 시작 뒤엔 취소 대신 조기 퇴실만', () => {
     const w = mount(MyResvCard, {
       props: {
         resv: resv({ s_h: 10, s_m: 30, checked_in_at: new Date('2026-10-23T01:32:00Z') }),
@@ -58,7 +87,7 @@ describe('MyResvCard', () => {
       },
     })
     expect(w.get('.mc__done').text()).toBe('✓ 10:32 체크인')
-    expect(w.findAll('button')).toHaveLength(0)
+    expect(buttons(w)).toEqual(['조기 퇴실']) // 사용 중(10:30–12:00) — early-checkout spec
   })
 
   it('대기중 — 신청 취소만, 체크인 없음', () => {

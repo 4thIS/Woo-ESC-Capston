@@ -3,15 +3,21 @@ import { computed } from 'vue'
 import type { ResvMineOut } from '@/api/types'
 import Button from '@/components/ui/Button.vue'
 import ResvStatusBadge from './ResvStatusBadge.vue'
-import { cancelKind, checkinState, resvWhen } from './rules'
+import { cancelKind, checkinState, checkoutState, resvWhen } from './rules'
 
-// 체크인 창(시작 −10 ~ +15분)과 취소/철회 구분을 이 카드가 진다 (student-room.md §내 예약)
+// 체크인 창(시작 −10 ~ +15분)·취소/철회 구분·조기 퇴실을 이 카드가 진다 (student-room.md §내 예약)
 const props = withDefaults(
-  defineProps<{ resv: ResvMineOut; now: Date; busy?: 'checkin' | 'cancel' | null }>(),
+  defineProps<{
+    resv: ResvMineOut
+    now: Date
+    busy?: 'checkin' | 'cancel' | 'checkout' | null
+  }>(),
   { busy: null },
 )
-const emit = defineEmits<{ checkin: []; cancel: [] }>()
-const ci = computed(() => checkinState(props.resv, props.now))
+const emit = defineEmits<{ checkin: []; cancel: []; checkout: [] }>()
+const co = computed(() => checkoutState(props.resv, props.now))
+// 퇴실했으면 체크인 줄은 접는다 — 한 카드에 '✓ 체크인'·'✓ 퇴실' 두 줄이 겹치지 않게
+const ci = computed(() => (co.value?.kind === 'done' ? null : checkinState(props.resv, props.now)))
 const cancel = computed(() => cancelKind(props.resv, props.now))
 </script>
 
@@ -27,7 +33,7 @@ const cancel = computed(() => cancelKind(props.resv, props.now))
       사유: {{ resv.reject_reason }}
     </p>
     <p v-if="resv.status === 'expired'" class="mc__note">승인 전에 시간이 지났어요</p>
-    <div v-if="ci || cancel" class="mc__actions">
+    <div v-if="ci || cancel || co" class="mc__actions">
       <p v-if="ci?.kind === 'done'" class="mc__done num">✓ {{ ci.at }} 체크인</p>
       <Button
         v-else-if="ci"
@@ -36,6 +42,16 @@ const cancel = computed(() => cancelKind(props.resv, props.now))
         :loading="busy === 'checkin'"
         @click="emit('checkin')"
         >체크인</Button
+      >
+      <p v-if="co?.kind === 'done'" class="mc__done num">✓ {{ co.at }} 퇴실</p>
+      <!-- 퇴실은 되돌릴 수 없다 — primary 로 부추기지 않는다. 확인 창은 화면(MyView)이 띄운다 -->
+      <Button
+        v-else-if="co"
+        variant="secondary"
+        :disabled="busy !== null"
+        :loading="busy === 'checkout'"
+        @click="emit('checkout')"
+        >조기 퇴실</Button
       >
       <Button
         v-if="cancel"

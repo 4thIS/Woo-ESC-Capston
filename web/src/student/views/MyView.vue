@@ -20,7 +20,7 @@ import { BUILDING } from '../building'
 import { POLL_MS, useNow } from '../composables'
 import { lastBld } from '../favorites'
 
-type Kind = 'checkin' | 'cancel'
+type Kind = 'checkin' | 'cancel' | 'checkout'
 const router = useRouter()
 // 신청한 뒤 학생이 돌아오는 자리 — 승인·거절 알림이 없어(S10 비목표) 60초마다 다시 본다
 // 건물 안(/E/me)이면 레이아웃이 부르는 것을 같이 쓴다 — 두 번 부르지 않고, 취소·체크인 뒤 재조회가
@@ -89,6 +89,20 @@ async function confirmCancel() {
   confirming.value = null
   await run(r, 'cancel', () => studentApi.cancel(r.id), '취소했어요', CHANGED_TEXT)
 }
+// 조기 퇴실 — 되돌릴 수 없고 남의 예약을 여는 일이라 확인을 거친다 (early-checkout spec §5)
+const leaving = ref<ResvMineOut | null>(null)
+const askCheckout = (r: ResvMineOut) => {
+  if (!busy.value) leaving.value = r
+}
+const closeLeave = () => {
+  leaving.value = null
+}
+async function confirmCheckout() {
+  const r = leaving.value
+  if (!r) return
+  leaving.value = null
+  await run(r, 'checkout', () => studentApi.checkout(r.id), '퇴실했어요', CHANGED_TEXT)
+}
 const retry = () => void reload()
 const goBack = () => void router.push(back)
 </script>
@@ -120,6 +134,7 @@ const goBack = () => void router.push(back)
           :busy="busy?.id === r.id ? busy.kind : null"
           @checkin="checkin(r)"
           @cancel="askCancel(r)"
+          @checkout="askCheckout(r)"
         />
       </div>
       <RefreshedNote v-if="data" :at="refreshedAt" :epaper="false" />
@@ -141,6 +156,15 @@ const goBack = () => void router.push(back)
         <Button variant="danger" @click="confirmCancel">{{
           withdraw ? '신청 취소' : '예약 취소'
         }}</Button>
+      </template>
+    </Modal>
+    <Modal :open="leaving !== null" title="조기 퇴실" size="sm" @close="closeLeave">
+      <p class="me__confirm">
+        퇴실하면 문 앞 화면에서 예약이 지워지고, 남은 시간은 다른 사람이 예약할 수 있어요.
+      </p>
+      <template #footer>
+        <Button variant="secondary" @click="closeLeave">닫기</Button>
+        <Button @click="confirmCheckout">조기 퇴실</Button>
       </template>
     </Modal>
   </div>
