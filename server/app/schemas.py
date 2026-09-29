@@ -405,6 +405,8 @@ class LoginOut(BaseModel):
     token: str
     role: str
     school_id: int
+    # 로그인 뒤 화면이 보일 학교 이름 — 로그인 전 화면은 학교를 몰라 학교 무관 'ESC' 로 쓴다
+    school_name: str = ""
     name: str
 
 

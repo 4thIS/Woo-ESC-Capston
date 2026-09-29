@@ -143,6 +143,7 @@ def login(body: S.LoginIn, request: Request):
     # ponytail: 분리된(detached) User 를 값 묶음으로 쓴다 — 컬럼은 get 이 모두 읽어 둔다
     with request.app.state.Session() as s:
         user = s.get(User, body.email)
+        school = s.get(School, user.school_id) if user is not None else None
     if user is None:
         password.dummy_verify(body.password)  # 응답 시간으로 가입 여부가 새지 않게
         log.info("login 실패 %s", body.email)
@@ -158,6 +159,7 @@ def login(body: S.LoginIn, request: Request):
         "token": tokens.jwt_encode(request.app.state.settings, user),
         "role": user.role,
         "school_id": user.school_id,
+        "school_name": school.name if school else "",
         "name": user.name,
     }
 

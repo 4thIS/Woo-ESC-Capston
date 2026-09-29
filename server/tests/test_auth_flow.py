@@ -66,6 +66,8 @@ def test_two_step_signup_then_login(client_raw, app, schools, mails):
     assert r.status_code == 200
     body = r.json()
     assert body["role"] == "student" and body["school_id"] == 1 and body["name"] == "학생"
+    # 로그인 전 화면은 학교를 모른다(학교 무관 'ESC') — 로그인 뒤 사이드바가 이 이름을 쓴다
+    assert body["school_name"]
     me = c.get("/api/auth/me", headers={"Authorization": f"Bearer {body['token']}"})
     assert (
         me.status_code == 200 and me.json()["email"] == "stu@mju.ac.kr" and "pw_hash" not in me.text
