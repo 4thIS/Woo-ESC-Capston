@@ -346,6 +346,13 @@ def test_checkout_same_minute_and_unpushed(client, live, app, school, student_hd
     a = _checked_in(app, ids[301], 1, 10, 30, 11, 0, pushed=False)  # 노드에 안 간 예약
     r = client.post(f"/api/student/me/reservations/{a}/checkout", headers=student_hdr)
     assert r.status_code == 200, r.text
-    assert (r.json()["e_h"], r.json()["e_m"]) == (10, 31)  # 길이 0 이 아니라 +1분
+    # 끝 = 퇴실 분(10:30) — 시작과 같아 길이 0. 시작+1분으로 두면 그 1분 동안 '사용중'으로 남았다(실측)
+    assert (r.json()["e_h"], r.json()["e_m"]) == (10, 30)
     with live() as s:
         assert list(s.scalars(select(Outbox))) == []  # 보낸 적 없으니 RESV_DEL 도 없다
+    rooms = client.get("/api/student/rooms", headers=student_hdr).json()
+    assert [x["layout"] for x in rooms if x["room_id"] == ids[301]] == [4]  # 바로 빈 강의실
+    # 길이 0 은 새 신청을 막지 않는다 — 신청은 늘 지금 뒤에 시작한다
+    body = {"date": "2026-09-23", "s_h": 10, "s_m": 35, "e_h": 11, "e_m": 0, "subject": "다음"}
+    r2 = client.post(f"/api/student/rooms/{ids[301]}/reservations", json=body, headers=student_hdr)
+    assert r2.status_code == 201, r2.text

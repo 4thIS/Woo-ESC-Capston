@@ -173,13 +173,13 @@ describe('내 예약', () => {
     expect(checkoutState(resv(out), NOW)).toEqual({ kind: 'done', at: '10:23' })
   })
 
-  it('다음 예약은 퇴실한 예약을 건너뛴다 — 시작+1분으로 당긴 끝이 아직 안 지났어도', () => {
+  it('다음 예약은 퇴실한 예약을 건너뛴다 — 끝이 아직 안 지나 보여도 퇴실 기록으로', () => {
     const out = resv({
       id: 1,
       s_h: 10,
       s_m: 42,
       e_h: 10,
-      e_m: 43, // 시작 분 안에 퇴실 → 끝 +1분, 지금(10:42)보다 뒤
+      e_m: 43, // 끝이 지금(10:42)보다 뒤여도
       checked_in_at: new Date('2026-10-23T01:42:00Z'),
       checked_out_at: new Date('2026-10-23T01:42:00Z'),
     })

@@ -4,7 +4,7 @@
 
 **Goal:** 체크인한 학생이 예약 진행 중에 조기 퇴실하면 끝 시각이 퇴실 분으로 당겨지고, 문 앞 노드에서 예약이 지워지며, 남은 시간이 바로 빈 강의실·예약 가능 구간이 된다.
 
-**Architecture:** 서버는 `reservations.checked_out_at` 컬럼을 더하고 `reserve.checkout()` 이 `e_h`·`e_m` 을 max(퇴실 분, 시작+1분)으로 당긴 뒤 원래 끝 시각으로 `push_del`(RESV_DEL)을 부른다. 끝 시각을 당기므로 현재 상태·주간·승격·재동기화·통계·빈 구간은 코드 수정 없이 맞는다. 웹은 내 예약 카드에 조기 퇴실 버튼과 확인 창을 더한다.
+**Architecture:** 서버는 `reservations.checked_out_at` 컬럼을 더하고 `reserve.checkout()` 이 `e_h`·`e_m` 을 퇴실 분으로 당긴 뒤 원래 끝 시각으로 `push_del`(RESV_DEL)을 부른다. 끝 시각을 당기므로 현재 상태·주간·승격·재동기화·통계·빈 구간은 코드 수정 없이 맞는다. 웹은 내 예약 카드에 조기 퇴실 버튼과 확인 창을 더한다.
 
 **Tech Stack:** FastAPI + SQLAlchemy + alembic + pytest (uv) / Vue 3 + TypeScript + Vitest (pnpm)
 
@@ -15,7 +15,7 @@
 - 공중 프로토콜(`lora_proto/`)·펌웨어·모뎀Pi·`server/app/lora_service/` 는 바꾸지 않는다 — 기존 `api.enqueue_resv_del` 만 쓴다.
 - 새 상태를 만들지 않는다 — 퇴실한 예약도 `status == 'approved'`. `ck_resv_status` 그대로.
 - `checked_out_at` 은 UTC naive datetime(`clock.to_utc`), `checked_in_at` 과 같은 규칙.
-- 새 끝 시각 = max(퇴실한 분(초 버림), 시작 + 1분).
+- 새 끝 시각 = 퇴실한 분(초 버림). (실행 중 수정: 처음 계획한 '시작 + 1분' 하한은 그 1분 동안 '사용중'이 남아 제거 — spec §3)
 - 409 문구(정확히): "체크인한 예약만 퇴실할 수 있습니다" · "이미 퇴실했습니다" · "시작 전에는 취소를 쓰세요" · "이미 끝난 예약입니다". 상태가 approved 가 아니면 기존 `_require` 문구.
 - 웹 문구(정확히): 버튼 "조기 퇴실", 확인 창 제목 "조기 퇴실", 본문 "퇴실하면 문 앞 화면에서 예약이 지워지고, 남은 시간은 다른 사람이 예약할 수 있어요.", 성공 알림 "퇴실했어요", 카드 "✓ HH:MM 퇴실".
 - 커밋 메시지에 AI 저작 표기·Co-Authored-By 를 넣지 않는다. `lora_proto/` 수정 금지. force push·reset --hard 금지.
@@ -23,7 +23,7 @@
 
 ## Review Focus
 
-1. 시작한 그 분 안에 퇴실(예: 10:00 시작, 10:00:30 퇴실) → 끝 10:01, 길이 0 이 아니다 (Task 2 테스트).
+1. 시작한 그 분 안에 퇴실(예: 10:30 시작, 10:30:40 퇴실) → 끝 10:30(길이 0), 바로 빈 강의실이고 다음 신청을 막지 않는다 (Task 2 테스트).
 2. 노드로 보낸 적 없는 예약(pushed_at NULL)을 퇴실 → RESV_DEL 이 나가지 않는다 (Task 2 테스트).
 3. 퇴실과 관리자 취소가 거의 동시에 → 취소된 행에 퇴실이 찍히지 않는다: `_ID_LOCK` 안에서 `_require("approved")` (Task 2 — 상태 409 테스트로 고정).
 4. 퇴실 직후 사이드바 '다음 예약' 카드와 체크인 한도 — 퇴실한 예약은 다음 예약이 아니다 (Task 3 테스트).

@@ -289,8 +289,8 @@ def checkout(s: Session, r: Reservation, now_local: dt.datetime) -> list[int]:
     if now_local >= end_local(r):
         raise HTTPException(409, "이미 끝난 예약입니다")
     old_end = (r.date, r.e_h, r.e_m)
-    # 초 버림, 시작 분 안이면 +1분 — 길이 0 도 겹침 검사에서 그 시각을 걸치는 신청을 막는다
-    new_end = max(now_local.hour * 60 + now_local.minute, r.s_h * 60 + r.s_m + 1)
-    r.e_h, r.e_m = divmod(new_end, 60)
+    # 끝 = 퇴실한 분(초 버림). 시작 분 안이면 길이 0 — 끝이 지금 이하라 모든 곳에서 바로 빈 강의실이고,
+    # 새 신청은 늘 지금 뒤에 시작하니 길이 0 이 막는 신청도 없다. (+1분으로 두면 그 1분 동안 '사용중'이었다)
+    r.e_h, r.e_m = now_local.hour, now_local.minute
     r.checked_out_at = clock.to_utc(now_local)
     return push_del(s, r, now_local, end=old_end)

@@ -100,7 +100,7 @@ export function activeCount(list: ResvMineOut[], now: Date): number {
 /** 사이드바 '다음 예약' — 진행 중인 것 중 가장 먼저 시작하는 것 */
 export function nextResv(list: ResvMineOut[], now: Date): ResvMineOut | null {
   const n = nowAt(now)
-  // 퇴실한 예약은 다음 예약이 아니다 — 시작 분 안의 퇴실은 끝이 +1분이라 아직 안 끝나 보인다
+  // 퇴실한 예약은 다음 예약이 아니다 — 끝이 당겨져 보통은 이미 끝났지만, 기록으로 한 번 더 거른다
   return (
     list
       .filter((r) => !r.checked_out_at && isActive(r, n))
