@@ -59,6 +59,8 @@ const V = (o: Partial<ResvWithRoom>): ResvWithRoom => ({
   status: 'approved',
   requester: null,
   pushed_at: new Date(),
+  checked_in_at: null,
+  checked_out_at: null,
   ...o,
 })
 const roomList: RoomOut[] = [{ id: 11, building_id: 1, room: 401, units: 1, reservable: true }]
@@ -202,6 +204,33 @@ describe('예약 블록', () => {
     expect(rows[0].findAll('td')[6].text()).toBe('—')
     expect(rows[1].findAll('td')[6].text()).toBe('김민준')
     expect(rows[1].findAll('td')[7].text()).toBe('20231234')
+  })
+
+  it('상태 열 — 사용중·조기 퇴실을 가린다, 관리자가 넣은 예약은 —', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-27T07:30:00Z')) // KST 16:30
+    await mountBlock([
+      V({ id: 1 }),
+      V({ id: 2, subject: '스터디', requester, checked_in_at: new Date('2026-09-27T07:01:00Z') }),
+      V({
+        id: 3,
+        subject: '회의',
+        requester,
+        s_h: 15,
+        e_h: 16,
+        e_m: 20,
+        checked_in_at: new Date('2026-09-27T06:01:00Z'),
+        checked_out_at: new Date('2026-09-27T07:20:00Z'),
+      }),
+    ])
+    const state = (i: number) => w.findAll('tbody tr')[i].findAll('td')[9]
+    const rows = w.findAll('tbody tr').map((r) => r.text())
+    const at = (subject: string) => rows.findIndex((t) => t.includes(subject))
+    expect(state(at('신입생 OT')).text()).toBe('—')
+    expect(state(at('스터디')).text()).toBe('사용중')
+    expect(state(at('스터디')).find('.badge--busy').exists()).toBe(true) // 실제로 쓰이는 방은 적색 틴트
+    expect(state(at('회의')).text()).toBe('조기 퇴실 16:20')
+    vi.useRealTimers()
   })
 
   it('창 밖·노드에 안 간 예약은 예정 배지 (툴팁) — 추적 중이면 그 점', async () => {

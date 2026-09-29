@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { defaultPick, groupExams, resvDot, roomLabeler, roomsLabel } from '@/admin/roomsView'
+import {
+  defaultPick,
+  groupExams,
+  resvDot,
+  resvUse,
+  roomLabeler,
+  roomsLabel,
+} from '@/admin/roomsView'
 import type { BuildingOut, ExamWithRoom, ResvWithRoom, RoomOut } from '@/api/types'
 
 const B = (id: number, name: string, bld: string): BuildingOut => ({
@@ -49,6 +56,8 @@ describe('resvDot — 예약 행의 점', () => {
     status: 'approved',
     requester: null,
     pushed_at: null,
+    checked_in_at: null,
+    checked_out_at: null,
     ...o,
   })
   it('창 밖이고 노드에 안 간 것(pushed_at null)만 예정 — 실패로 그리지 않는다', () => {
@@ -85,5 +94,56 @@ describe('시험기간 묶기', () => {
   it('셋까지 나열, 넘으면 외 N곳', () => {
     expect(roomsLabel(['401', '402'])).toBe('401, 402')
     expect(roomsLabel(['401', '402', '405', '406', '407'])).toBe('401, 402, 405 외 2곳')
+  })
+})
+
+describe('resvUse — 예약 표의 상태 (사용중·조기 퇴실을 가린다)', () => {
+  // 지금 = KST 2026-10-05(월) 10:42
+  const NOW = new Date('2026-10-05T01:42:00Z')
+  const who = { email: 's1@mjc.ac.kr', name: '김민준', student_no: '20231234' }
+  const r = (o: Partial<ResvWithRoom>): ResvWithRoom => ({
+    id: 7,
+    room_id: 11,
+    date: '2026-10-05',
+    s_h: 10,
+    s_m: 0,
+    e_h: 12,
+    e_m: 0,
+    type: 6,
+    subject: '스터디',
+    professor: '',
+    status: 'approved',
+    requester: who,
+    pushed_at: null,
+    checked_in_at: null,
+    checked_out_at: null,
+    ...o,
+  })
+  const inAt = new Date('2026-10-05T01:01:00Z') // 10:01 체크인
+  it('학생 예약 — 체크인·퇴실·시각으로 여섯 상태', () => {
+    expect(resvUse(r({ s_h: 11 }), NOW)).toEqual({ label: '예정', tone: 'neutral' })
+    expect(resvUse(r({ s_h: 10, s_m: 50 }), NOW)).toEqual({ label: '체크인 대기', tone: 'neutral' })
+    expect(resvUse(r({ s_h: 10, s_m: 27 }), NOW)).toEqual({ label: '체크인 대기', tone: 'neutral' }) // s+15
+    expect(resvUse(r({ s_h: 10, s_m: 26 }), NOW)).toEqual({ label: '미체크인', tone: 'neutral' }) // s+16
+    expect(resvUse(r({ checked_in_at: inAt }), NOW)).toEqual({ label: '사용중', tone: 'busy' })
+    expect(resvUse(r({ e_h: 10, e_m: 30, checked_in_at: inAt }), NOW)).toEqual({
+      label: '사용 완료',
+      tone: 'neutral',
+    })
+    const out = r({
+      e_h: 10,
+      e_m: 23,
+      checked_in_at: inAt,
+      checked_out_at: new Date('2026-10-05T01:23:00Z'),
+    })
+    expect(resvUse(out, NOW)).toEqual({ label: '조기 퇴실 10:23', tone: 'neutral' })
+    expect(resvUse(r({ date: '2026-10-04', s_h: 9 }), NOW)).toEqual({
+      label: '미체크인',
+      tone: 'neutral',
+    }) // 어제
+    expect(resvUse(r({ date: '2026-10-06' }), NOW)).toEqual({ label: '예정', tone: 'neutral' }) // 내일
+  })
+  it('관리자가 넣은 예약은 체크인이 없다 — 상태 없음', () => {
+    expect(resvUse(r({ requester: null }), NOW)).toBeNull()
   })
 })

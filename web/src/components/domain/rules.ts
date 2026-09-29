@@ -10,6 +10,9 @@ export const PROF_MAX = 12
 export const RESV_HORIZON_DAYS = 7
 
 export const DAYS = ['월', '화', '수', '목', '금', '토', '일'] as const
+/** 체크인 창(분) — 서버 reserve.CHECKIN_BEFORE·AFTER. 학생 카드와 관리자 예약 표가 같이 쓴다 */
+export const CHECKIN_BEFORE = 10
+export const CHECKIN_AFTER = 15
 export const DAY_OPTIONS = DAYS.map((label, i) => ({ value: i + 1, label }))
 
 /** 배지 라벨 (components.md TypeBadge) */

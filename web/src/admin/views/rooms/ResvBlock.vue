@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Table from '@/components/ui/Table.vue'
@@ -15,7 +16,7 @@ import { roomsApi } from '@/api/rooms'
 import type { ResvWithRoom, RoomOut } from '@/api/types'
 import { dayOfDate, hm, kstDateStr } from '@/lib/time'
 import ConfirmModal from '../../ConfirmModal.vue'
-import { resvDot } from '../../roomsView'
+import { resvDot, resvUse } from '../../roomsView'
 import RowDot from './RowDot.vue'
 
 const props = withDefaults(
@@ -36,7 +37,8 @@ const emit = defineEmits<{
   resync: [roomId: number, key: string]
 }>()
 
-const today = kstDateStr(new Date())
+const now = new Date()
+const today = kstDateStr(now)
 // 예약 블록은 approved 만 — 신청은 위의 신청 대기, 거절·취소·만료는 그리지 않는다 (admin-rooms.md)
 const rows = computed(() =>
   props.resv
@@ -57,6 +59,7 @@ const COLUMNS = [
   { key: 'who', label: '신청자', width: '96px' },
   { key: 'no', label: '학번', width: '88px' },
   { key: 'type', label: '유형', width: '80px' },
+  { key: 'use', label: '상태', width: '120px' },
   { key: 'actions', label: '작업', width: '104px', align: 'right' as const },
 ]
 const asV = (row: Record<string, unknown>) => row as unknown as ResvWithRoom & { key: string }
@@ -152,6 +155,16 @@ async function remove() {
         ><span class="num">{{ asV(row).requester?.student_no ?? '—' }}</span></template
       >
       <template #cell-type="{ row }"><TypeBadge :type="asV(row).type" /></template>
+      <!-- 학생 예약의 사용 상태 — 사용중은 실제로 쓰이는 방이라 적색 틴트, 조기 퇴실은 시각까지 (early-checkout) -->
+      <template #cell-use="{ row }">
+        <template v-if="resvUse(asV(row), now)">
+          <Badge v-if="resvUse(asV(row), now)!.tone === 'busy'" tone="busy" size="sm" class="num">{{
+            resvUse(asV(row), now)!.label
+          }}</Badge>
+          <span v-else class="blk__use num">{{ resvUse(asV(row), now)!.label }}</span>
+        </template>
+        <template v-else>—</template>
+      </template>
       <template #cell-actions="{ row }">
         <div class="blk__actions">
           <RowDot
@@ -194,6 +207,10 @@ async function remove() {
 </template>
 
 <style scoped>
+.blk__use {
+  font-size: var(--font-size-sm);
+  color: var(--text-2);
+}
 .blk {
   overflow: hidden;
   border: var(--border-thin) solid var(--line-2);

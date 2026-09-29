@@ -1,7 +1,8 @@
 import type { BuildingOut, ExamWithRoom, ResvWithRoom, RoomOut } from '@/api/types'
 import type { DotState } from '@/components/domain/OutboxDot.vue'
 import { buildTree } from '@/components/domain/roomTree'
-import { resvWindow } from '@/components/domain/rules'
+import { CHECKIN_AFTER, CHECKIN_BEFORE, resvWindow } from '@/components/domain/rules'
+import { formatHm, kstDateStr, kstMinutes } from '@/lib/time'
 
 /** 첫 진입 — 첫 건물의 첫 층. 건물 전체는 행이 너무 많다 (admin-rooms.md "층이나 강의실 몇 개만 고르는 것이 기본") */
 export function defaultPick(buildings: BuildingOut[], rooms: RoomOut[]): number[] {
@@ -60,3 +61,24 @@ export const roomsLabel = (labels: string[]) =>
   labels.length <= 3
     ? labels.join(', ')
     : `${labels.slice(0, 3).join(', ')} 외 ${labels.length - 3}곳`
+
+export interface ResvUse {
+  label: string
+  /** busy = 지금 강의실이 실제로 쓰인다(room.busy 틴트) */
+  tone: 'busy' | 'neutral'
+}
+const dayMin = (date: string) => Date.parse(`${date}T00:00:00Z`) / 60_000
+/** 예약 표의 상태 — 학생 예약만(관리자가 넣은 예약은 체크인이 없다 → null). 'KST 달력 날짜의 분'으로 비교 */
+export function resvUse(r: ResvWithRoom, now: Date): ResvUse | null {
+  if (!r.requester) return null
+  if (r.checked_out_at) return { label: `조기 퇴실 ${formatHm(r.checked_out_at)}`, tone: 'neutral' }
+  const n = dayMin(kstDateStr(now)) + kstMinutes(now)
+  const s = dayMin(r.date) + r.s_h * 60 + r.s_m
+  const e = dayMin(r.date) + r.e_h * 60 + r.e_m
+  if (r.checked_in_at)
+    return n < e ? { label: '사용중', tone: 'busy' } : { label: '사용 완료', tone: 'neutral' }
+  if (n < s - CHECKIN_BEFORE) return { label: '예정', tone: 'neutral' }
+  return n <= s + CHECKIN_AFTER
+    ? { label: '체크인 대기', tone: 'neutral' }
+    : { label: '미체크인', tone: 'neutral' }
+}

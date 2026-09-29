@@ -39,6 +39,8 @@ const V = (o: Partial<ResvWithRoom>): ResvWithRoom => ({
   status: 'approved',
   requester: null,
   pushed_at: null,
+  checked_in_at: null,
+  checked_out_at: null,
   ...o,
 })
 const monday = '2026-09-21'

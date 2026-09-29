@@ -215,8 +215,11 @@ export interface ResvWithRoom extends ResvOut {
   room_id: number
   requester: RequesterOut | null
   pushed_at: Date | null
+  /** 관리자 예약 표의 상태 열 — 사용중·조기 퇴실 (early-checkout) */
+  checked_in_at: Date | null
+  checked_out_at: Date | null
 }
-export const RESV_DATES = ['pushed_at'] as const
+export const RESV_DATES = ['pushed_at', 'checked_in_at', 'checked_out_at'] as const
 /** 관리자 신청 목록·승인·거절·취소 응답 (S10 §4.2 + web A2) */
 export interface ResvAdminOut extends ResvOut {
   requested_at: Date | null
