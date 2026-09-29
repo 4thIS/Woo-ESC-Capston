@@ -308,6 +308,16 @@ describe('예약 로그 블록', () => {
     expect(rows.find((t) => t.includes('회의'))).toContain('조기 퇴실 16:20')
     expect(rows.find((t) => t.includes('거절한 것'))).toContain('거절됨 · 학과 행사')
     expect(rows.find((t) => t.includes('취소한 것'))).toContain('취소됨')
+    // 유형 칸도 결과로 — 거절된 예약이 '대여중'으로 보이지 않게
+    const typeOf = (subject: string) =>
+      w
+        .findAll('tbody tr')
+        .find((r) => r.text().includes(subject))!
+        .findAll('td')[8]
+        .text()
+    expect(typeOf('거절한 것')).toBe('거절')
+    expect(typeOf('취소한 것')).toBe('취소')
+    expect(typeOf('회의')).toBe('조기 퇴실')
     expect(w.findAll('tbody button')).toHaveLength(0)
   })
   it('기본 최근 30일 — 전체 보기로 펼친다', async () => {

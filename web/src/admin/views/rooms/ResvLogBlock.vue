@@ -8,7 +8,7 @@ import TypeBadge from '@/components/domain/TypeBadge.vue'
 import { DAYS } from '@/components/domain/rules'
 import type { ResvWithRoom } from '@/api/types'
 import { dayOfDate, hm } from '@/lib/time'
-import { LOG_DAYS, logResult, splitResv } from '../../roomsView'
+import { LOG_DAYS, logResult, logType, splitResv } from '../../roomsView'
 
 // 예약 로그 — 끝난 승인(사용 완료·조기 퇴실·미체크인)과 취소·거절·만료. 읽기 전용, 최근 것부터
 const props = defineProps<{
@@ -73,7 +73,7 @@ const asV = (row: Record<string, unknown>) => row as unknown as ResvWithRoom
         ><span class="num">{{ asV(row).requester?.student_no ?? '—' }}</span></template
       >
       <template #cell-type="{ row }">
-        <Badge v-if="asV(row).checked_out_at" variant="outline">조기 퇴실</Badge>
+        <Badge v-if="logType(asV(row))" variant="outline">{{ logType(asV(row)) }}</Badge>
         <TypeBadge v-else :type="asV(row).type" />
       </template>
       <template #cell-result="{ row }"

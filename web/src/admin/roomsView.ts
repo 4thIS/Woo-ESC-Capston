@@ -111,3 +111,12 @@ export function logResult(r: ResvWithRoom): string {
   if (r.checked_out_at) return `조기 퇴실 ${formatHm(r.checked_out_at)}`
   return r.checked_in_at ? '사용 완료' : '미체크인'
 }
+
+/** 예약 로그의 유형 칸 — 대여가 이뤄지지 않았거나 도중에 끝난 예약은 원래 유형('대여중') 대신 결과로.
+ * null 이면 원래 유형(TypeBadge) 그대로 — 끝까지 쓴 예약·관리자가 넣은 예약 */
+export function logType(r: ResvWithRoom): string | null {
+  if (r.status === 'rejected') return '거절'
+  if (r.status === 'cancelled') return '취소'
+  if (r.status === 'expired') return '만료'
+  return r.checked_out_at ? '조기 퇴실' : null
+}

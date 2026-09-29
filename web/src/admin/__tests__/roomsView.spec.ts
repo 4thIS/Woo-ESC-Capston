@@ -3,6 +3,7 @@ import {
   defaultPick,
   groupExams,
   logResult,
+  logType,
   resvDot,
   resvUse,
   roomLabeler,
@@ -210,5 +211,14 @@ describe('예약 / 예약 로그 나누기', () => {
     expect(res(7)).toBe('만료됨')
     expect(res(10)).toBe('종료')
     expect(logResult(r(11, { date: '2026-10-04' }))).toBe('미체크인')
+  })
+  it('로그의 유형 — 대여가 안 된 예약은 결과로(거절·취소·만료·조기 퇴실), 끝까지 쓴 예약은 원래 유형', () => {
+    const t = (id: number) => logType(rows.find((x) => x.id === id)!)
+    expect(t(6)).toBe('거절')
+    expect(t(5)).toBe('취소')
+    expect(t(7)).toBe('만료')
+    expect(t(3)).toBe('조기 퇴실')
+    expect(t(4)).toBeNull() // 사용 완료 — TypeBadge 그대로
+    expect(t(10)).toBeNull() // 관리자가 넣은 예약
   })
 })
