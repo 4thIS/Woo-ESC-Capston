@@ -4,6 +4,8 @@ import {
   activeCount,
   cancelKind,
   checkinState,
+  checkoutState,
+  nextResv,
   chipDay,
   dateLabel,
   defaultEnd,
@@ -38,6 +40,7 @@ const resv = (over: Partial<ResvMineOut> = {}): ResvMineOut => ({
   decided_at: null,
   reject_reason: null,
   checked_in_at: null,
+  checked_out_at: null,
   cancelled_at: null,
   room_id: 11,
   building: '공학관',
@@ -150,6 +153,38 @@ describe('내 예약', () => {
     })
     expect(checkinState(resv({ s_h: 9, s_m: 0, e_h: 10, e_m: 0 }), NOW)).toBeNull()
     expect(checkinState(resv({ status: 'requested' }), NOW)).toBeNull()
+  })
+
+  it('조기 퇴실 — 체크인했고 시작~끝 사이만, 퇴실하면 그 시각', () => {
+    // NOW = 10:42
+    const inUse = {
+      s_h: 10,
+      s_m: 0,
+      e_h: 12,
+      e_m: 0,
+      checked_in_at: new Date('2026-10-23T01:01:00Z'),
+    }
+    expect(checkoutState(resv(inUse), NOW)).toEqual({ kind: 'open' })
+    expect(checkoutState(resv({ ...inUse, checked_in_at: null }), NOW)).toBeNull() // 체크인 안 함
+    expect(checkoutState(resv({ ...inUse, s_h: 10, s_m: 50 }), NOW)).toBeNull() // 시작 전
+    expect(checkoutState(resv({ ...inUse, e_h: 10, e_m: 42 }), NOW)).toBeNull() // 끝남(끝 = 지금)
+    expect(checkoutState(resv({ ...inUse, status: 'cancelled' }), NOW)).toBeNull()
+    const out = { ...inUse, e_h: 10, e_m: 23, checked_out_at: new Date('2026-10-23T01:23:00Z') }
+    expect(checkoutState(resv(out), NOW)).toEqual({ kind: 'done', at: '10:23' })
+  })
+
+  it('다음 예약은 퇴실한 예약을 건너뛴다 — 시작+1분으로 당긴 끝이 아직 안 지났어도', () => {
+    const out = resv({
+      id: 1,
+      s_h: 10,
+      s_m: 42,
+      e_h: 10,
+      e_m: 43, // 시작 분 안에 퇴실 → 끝 +1분, 지금(10:42)보다 뒤
+      checked_in_at: new Date('2026-10-23T01:42:00Z'),
+      checked_out_at: new Date('2026-10-23T01:42:00Z'),
+    })
+    const later = resv({ id: 2, s_h: 15, s_m: 0, e_h: 16, e_m: 0 })
+    expect(nextResv([out, later], NOW)?.id).toBe(2)
   })
 
   it('체크인 창 경계 — 정확히 s−10·s+15 는 열림, s+16 은 지남, s−11 은 전 (분 단위 내림의 한 칸 어긋남을 막는다)', () => {

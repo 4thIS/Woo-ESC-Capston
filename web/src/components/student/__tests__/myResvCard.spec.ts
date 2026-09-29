@@ -19,6 +19,7 @@ const resv = (over: Partial<ResvMineOut> = {}): ResvMineOut => ({
   decided_at: null,
   reject_reason: null,
   checked_in_at: null,
+  checked_out_at: null,
   cancelled_at: null,
   room_id: 11,
   building: '공학관',

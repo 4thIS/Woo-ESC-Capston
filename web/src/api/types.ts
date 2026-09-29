@@ -223,6 +223,7 @@ export interface ResvAdminOut extends ResvOut {
   decided_at: Date | null
   reject_reason: string | null
   checked_in_at: Date | null
+  checked_out_at: Date | null
   cancelled_at: Date | null
   room_id: number
   building: string
@@ -234,6 +235,7 @@ export const RESV_ADMIN_DATES = [
   'requested_at',
   'decided_at',
   'checked_in_at',
+  'checked_out_at',
   'cancelled_at',
   'pushed_at',
 ] as const
@@ -342,6 +344,7 @@ export interface ResvMineOut extends ResvOut {
   decided_at: Date | null
   reject_reason: string | null
   checked_in_at: Date | null
+  checked_out_at: Date | null
   cancelled_at: Date | null
   room_id: number
   building: string
@@ -351,5 +354,6 @@ export const RESV_MINE_DATES = [
   'requested_at',
   'decided_at',
   'checked_in_at',
+  'checked_out_at',
   'cancelled_at',
 ] as const
