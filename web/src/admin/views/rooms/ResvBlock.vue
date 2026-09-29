@@ -154,7 +154,11 @@ async function remove() {
       <template #cell-no="{ row }"
         ><span class="num">{{ asV(row).requester?.student_no ?? '—' }}</span></template
       >
-      <template #cell-type="{ row }"><TypeBadge :type="asV(row).type" /></template>
+      <!-- 조기 퇴실한 예약은 원래 유형(대여중 등)이 아니다 — 사용이 끝났다 (사용자 결정) -->
+      <template #cell-type="{ row }">
+        <Badge v-if="asV(row).checked_out_at" variant="outline">조기 퇴실</Badge>
+        <TypeBadge v-else :type="asV(row).type" />
+      </template>
       <!-- 학생 예약의 사용 상태 — 사용중은 실제로 쓰이는 방이라 적색 틴트, 조기 퇴실은 시각까지 (early-checkout) -->
       <template #cell-use="{ row }">
         <template v-if="resvUse(asV(row), now)">

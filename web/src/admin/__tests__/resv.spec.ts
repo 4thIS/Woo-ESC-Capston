@@ -230,6 +230,10 @@ describe('예약 블록', () => {
     expect(state(at('스터디')).text()).toBe('사용중')
     expect(state(at('스터디')).find('.badge--busy').exists()).toBe(true) // 실제로 쓰이는 방은 적색 틴트
     expect(state(at('회의')).text()).toBe('조기 퇴실 16:20')
+    // 유형 칸 — 퇴실한 예약은 '대여중'이 아니라 조기 퇴실, 사용 중인 예약은 원래 유형 그대로
+    const type = (i: number) => w.findAll('tbody tr')[i].findAll('td')[8]
+    expect(type(at('회의')).text()).toBe('조기 퇴실')
+    expect(type(at('스터디')).text()).not.toBe('조기 퇴실')
     vi.useRealTimers()
   })
 
