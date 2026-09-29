@@ -4,17 +4,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import replace
 from pathlib import Path
 
 import sqlalchemy.exc
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.auth import password
+from app.auth.router import admin as admin_router
+from app.auth.router import router as auth_router
 from app.db import make_engine, make_session_factory
+from app.domain import daily
+from app.domain.admin_resv_router import router as admin_resv_router
+from app.domain.admin_router import router as admin_api_router
 from app.domain.router import router as domain_router
+from app.domain.student_router import router as student_router
 from app.domain.topology import DomainTopology, record_provider
 from app.lora_service import api
 from app.lora_service.hub import Hub
@@ -33,6 +41,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        password.warm()
         api.configure(Session)
         api.reset_connections()
         api.set_hub(hub)
@@ -40,24 +49,50 @@ def create_app(db_path: str | None = None) -> FastAPI:
         api.set_record_provider(record_provider(Session))
         hub.start(asyncio.get_running_loop())
         sweeper = asyncio.ensure_future(hub.sweep_loop(SWEEP_INTERVAL_S))
+        daily_task = asyncio.ensure_future(daily.daily_loop(Session))
         try:
             yield
         finally:
             sweeper.cancel()
+            daily_task.cancel()
+            with suppress(
+                asyncio.CancelledError
+            ):  # 경고만 없앤다 — to_thread 로 도는 실행은 못 멈춘다
+                await daily_task
             await hub.stop()
 
-    app = FastAPI(title="Woo-ESC-Capston 메인Pi", lifespan=lifespan)
+    # /docs·/openapi.json 은 내부 엔드포인트 목록 — DEBUG 에서만 (S4a §3.2)
+    app = FastAPI(
+        title="Woo-ESC-Capston 메인Pi",
+        lifespan=lifespan,
+        docs_url="/docs" if settings.debug else None,
+        redoc_url="/redoc" if settings.debug else None,
+        openapi_url="/openapi.json" if settings.debug else None,
+    )
     app.state.settings = settings
     app.state.engine = engine
     app.state.Session = Session
     app.state.hub = hub
+    if settings.cors_origins:  # 빈 값 = 차단 (미들웨어 없음)
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     app.include_router(lora_router)
     app.include_router(domain_router)
-    app.mount(
-        "/static",
-        StaticFiles(directory=Path(__file__).resolve().parents[1] / "static"),
-        name="static",
-    )
+    app.include_router(auth_router)
+    app.include_router(admin_router)
+    app.include_router(admin_api_router)
+    app.include_router(admin_resv_router)
+    app.include_router(student_router)
+    if settings.debug:
+        app.mount(
+            "/static",
+            StaticFiles(directory=Path(__file__).resolve().parents[1] / "static"),
+            name="static",
+        )
 
     @app.exception_handler(api.NotFound)
     async def _nf(_r: Request, e: api.NotFound):
@@ -67,13 +102,22 @@ def create_app(db_path: str | None = None) -> FastAPI:
     async def _bad(_r: Request, e: api.ValidationError):
         return JSONResponse({"detail": str(e)}, status_code=400)
 
+    @app.exception_handler(password.Busy)
+    async def _busy(_r: Request, _e: password.Busy):
+        return JSONResponse({"detail": "잠시 후 다시 시도하세요"}, status_code=503)
+
     @app.exception_handler(sqlalchemy.exc.IntegrityError)
     async def _conflict(_r: Request, e: sqlalchemy.exc.IntegrityError):
         log.warning("IntegrityError: %s", e)
         return JSONResponse({"detail": "constraint violation"}, status_code=409)
 
+    @app.exception_handler(Exception)
+    async def _internal(_r: Request, e: Exception):
+        log.exception("unhandled")  # 내용은 로그에만 — 클라이언트엔 고정 문구 (S4a §3.4)
+        return JSONResponse({"detail": "internal error"}, status_code=500)
+
     @app.get("/api/health")
     def health() -> dict:
-        return {"ok": True}
+        return {"ok": True}  # 이 이상 넣지 않는다 (S4a §3.2)
 
     return app

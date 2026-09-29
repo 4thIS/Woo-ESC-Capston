@@ -1,0 +1,10 @@
+{
+  "detail": [
+    {
+      "type": "string_pattern_mismatch",
+      "loc": ["body", "student_no"],
+      "msg": "String should match pattern '^[0-9A-Za-z-]+$'",
+      "input": "2023 1234"
+    }
+  ]
+}

@@ -18,7 +18,9 @@ def utcnow() -> datetime:
 
 def make_engine(path: str) -> Engine:
     eng = create_engine(
-        f"sqlite:///{path}", connect_args={"timeout": 5, "check_same_thread": False}
+        f"sqlite:///{path}",
+        connect_args={"timeout": 5, "check_same_thread": False},
+        hide_parameters=True,
     )
 
     @event.listens_for(eng, "connect")

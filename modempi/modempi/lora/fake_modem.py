@@ -94,10 +94,13 @@ class FakeModem:
         self.unprovisioned: dict[bytes, NodeState] = {}
         self.log: list[tuple[str, dict]] = []
         self.stats = {"tx": 0, "acked": 0, "no_ack": 0, "cad_busy": 0, "rx": 0}
+        self.cfg_count = 0  # 받은 cfg 줄 수
+        self.radio: dict = {}  # 마지막 cfg 의 인자(op 제외) — 모뎀 시리얼 이름 그대로(v2 §4.2)
         self._script: list[str] = []
         self._out: asyncio.Queue[str] = asyncio.Queue()
         self._inflight: asyncio.Task | None = None
         self._rng = random.Random(1)
+        self._drop_file_seq: int | None = None
         self._emit(
             {"op": "ready", "fw": fw, "sf": P.RADIO["RP_SF"], "freq": P.RADIO["RP_FREQ_MHZ"]}
         )
@@ -107,6 +110,23 @@ class FakeModem:
         n = NodeState(bld, room, unit, **kw)
         self.nodes[(bld, room, unit)] = n
         return n
+
+    def apply_config(self, config: dict) -> None:
+        """메인Pi `config`(계약 ⑥)의 `nodes`(`[{bld: "E", room, unit}]`)를 가상 노드로, `net_id` 를 망 번호로.
+
+        `--fake` 로 Pi↔Pi 통합을 돌릴 때 main.py 가 기동 때 한 번 + `store.on_config_changed` 로 부른다 — 가상
+        노드가 없으면 모든 작업이 no_ack 로 끝난다. 이미 있는 노드는 그대로 둔다(버전 유지), config 에서 빠진
+        노드도 지우지 않는다. 링크 수신 루프 안에서 불리므로 동기·즉시 끝난다.
+        """
+        self.net_id = int(config.get("net_id", P.NET_ID))
+        for n in config.get("nodes") or []:
+            try:
+                key = (ord(n["bld"]), int(n["room"]), int(n["unit"]))
+            except (KeyError, TypeError, ValueError):
+                self._emit({"op": "log", "level": "warn", "msg": f"bad config node {n!r}"})
+                continue
+            if key not in self.nodes:
+                self.add_node(*key)
 
     def add_unprovisioned(self, mac: bytes, **kw) -> NodeState:
         n = NodeState(P.BLD_UNPROVISIONED, 0, 0, ident_ver=0, **kw)
@@ -118,6 +138,10 @@ class FakeModem:
         if bad:
             raise ValueError(f"알 수 없는 스크립트 토큰 {bad}; 허용: {sorted(_TOKENS)}")
         self._script.extend(outcomes)
+
+    def drop_next_file_data(self, seq: int) -> None:
+        """다음 FILE 세션에서 이 seq 의 DATA 를 한 번 버린다 → 노드가 END 에 FILE_MISSING(seq) 로 답한다."""
+        self._drop_file_seq = seq
 
     def inject_uplink(self, frame: bytes, *, rssi: int = -100, snr: float = 5.0) -> None:
         self.stats["rx"] += 1
@@ -148,8 +172,9 @@ class FakeModem:
                     "freq": P.RADIO["RP_FREQ_MHZ"],
                 }
             )
-        elif op == "cfg":
-            pass  # §4.2: 응답 없음. 기록만.
+        elif op == "cfg":  # §4.2: 응답 없음. 적용만 한다.
+            self.cfg_count += 1
+            self.radio = {k: v for k, v in msg.items() if k != "op"}
         elif op == "tx":
             if self._inflight and not self._inflight.done():
                 self._emit(
@@ -217,7 +242,8 @@ class FakeModem:
             forced = P.AckStatus[tok[4:]] if tok.startswith("ack:") else None
             ack = node.ack(forced) if forced is not None else self._apply(node, h, pb)
             ack_frame = C.encode_frame(
-                C.Header(P.Type.ACK, h.bld, h.room, h.unit, h.txn), C.encode_payload(ack)
+                C.Header(P.Type.ACK, h.bld, h.room, h.unit, h.txn, net_id=self.net_id),
+                C.encode_payload(ack),
             )
             self.stats["acked"] += 1
             self._emit(
@@ -233,7 +259,7 @@ class FakeModem:
             )
             if h.type == P.Type.CMD and C.decode_payload(h.type, pb).cmd == P.Cmd.REQUEST_STATUS:
                 st = C.encode_frame(
-                    C.Header(P.Type.STATUS, node.bld, node.room, node.unit, 0),
+                    C.Header(P.Type.STATUS, node.bld, node.room, node.unit, 0, net_id=self.net_id),
                     C.encode_payload(node.status()),
                 )
                 self.inject_uplink(st)
@@ -254,6 +280,10 @@ class FakeModem:
 
     def _apply(self, node: NodeState, h: C.Header, pb: bytes) -> C.Ack:
         """v2 §3.5 멱등·§3.4 상태 규칙대로 가상 노드에 적용하고 ACK 를 만든다."""
+        if h.type == P.Type.TIME:
+            # TIME 은 버전이 없고 멱등이라 txn=0 으로 오며 DUP 판정도 lastTxn 갱신도 하지 않는다
+            # (v2 §3.5, 2026-09-23 결정). 안 그러면 타겟 TIME 이 그 노드의 재송을 DUP 에서 떨어뜨린다.
+            return node.ack(P.AckStatus.OK)
         if node.last_txn == h.txn:
             return node.ack(P.AckStatus.DUP)
         node.last_txn = h.txn
@@ -276,6 +306,9 @@ class FakeModem:
                 "chunks": {},
             }
             return node.ack(P.AckStatus.OK)
+        if t == P.Type.FILE_DATA and self._drop_file_seq == pb[0]:
+            self._drop_file_seq = None
+            return node.ack(P.AckStatus.OK)  # 받은 척하고 버린다 (pb[0] = seq)
         if t == P.Type.FILE_DATA:
             if node._file is None:
                 return node.ack(P.AckStatus.BAD_PAYLOAD)

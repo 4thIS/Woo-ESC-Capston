@@ -10,7 +10,7 @@
 - 장비 명칭: **메인Pi**(웹서버·DB 원본, 전체 1대) · **모뎀Pi**(학교 건물당 1대, Heltec 모뎀 USB 연결, 메인Pi에 WebSocket 접속) · **ESP노드**(강의실 문마다, Heltec V3 + e-Paper). 이 세 이름만 쓴다.
 - 스택: 노드·모뎀 펌웨어 = PlatformIO / C++ (ESP32-S3 + SX1262, RadioLib + GxEPD2) · 메인Pi 서버 = FastAPI / Python(uv) · 모뎀Pi 서비스 = Python asyncio(uv) · 웹 = Vue 3 / TypeScript(pnpm) · 프로토콜 계약 = `lora_proto/` (C++ 헤더 + Python 미러)
 - 호스팅: https://github.com/4thIS/Woo-ESC-Capston
-- 배포: 메인Pi·모뎀Pi 모두 Raspberry Pi(보유). 개발·데모는 노트북, 4주차 Pi↔Pi 통합부터 실기. 자동 배포 파이프라인은 S11 시점에 확정한다. 현재 CI는 검증까지만 수행한다.
+- 배포: 메인Pi·모뎀Pi 모두 Raspberry Pi(보유). 개발·데모는 노트북, 4주차 Pi↔Pi 통합부터 실기. **메인Pi 서버는 Docker Compose**(루트 `compose.yaml` + `server/Dockerfile`, 2026-09-23 팀 결정) — 노트북에서도 같은 명령(`docker compose up -d --build`)으로 똑같이 띄운다. **모뎀Pi 는 systemd**(USB 시리얼·시계 동기에 직접 붙어야 해서). 자동 배포 파이프라인은 S11 시점에 확정한다. 현재 CI는 검증까지만 수행한다.
 
 ## 역할 분담
 
@@ -42,12 +42,13 @@ Woo-ESC-Capston/
 ├── server/       ← 메인Pi: FastAPI 백엔드 + outbox·버전·WS 허브
 ├── modempi/      ← 모뎀Pi: WS 링크(wj) + LoRa 파이프라인(cw)
 ├── web/          ← Vue 3 학생/관리자 웹 (wj 전체)
+├── compose.yaml  ← 메인Pi 배포(Docker). 서버 이미지는 server/Dockerfile
 └── docs/         ← 사람·AI 공용 문서 (specs/·plans/·design/ 포함. design/ 은 mh의 디자인 스펙)
 ```
 
 ## 브랜치 전략
 
-- `main`은 protected. **직접 push 금지.**
+- `main`에 **직접 push 금지.** GitHub 브랜치 보호(Branch protection·Rulesets)는 **설정하지 않는다**(2026-09-26 팀장 결정) — 기술적으로 막혀 있지 않으니 규칙은 각자 지킨다.
 - 담당자별 상시 작업 브랜치: `cw` / `dh` / `wj` / `mh`. 각자 자기 브랜치에서 작업하고 `main`으로 PR을 연다.
 - 한 브랜치에 작업이 겹쳐 커지면 자기 브랜치에서 `feature/<slug>`를 분기해 PR 단위를 쪼갠다.
 - 머지는 **Squash merge**. 리뷰 반영은 추가 커밋으로 — force push 금지.
@@ -96,12 +97,12 @@ docs: ...               # 문서
 5. 자기 영역만 수정 — 타 영역이 필요하면 코드로 침범하지 말고 이슈로 요청.
 6. **머지는 팀장(cw @ssenu)만 한다.** 영역 담당자의 승인(CODEOWNERS 리뷰)은 "머지해도 된다"는 신호이지 머지 자체가 아니다. 승인이 끝난 PR은 팀장에게 알리고 기다린다. 팀장 본인의 PR도 영역 담당자 승인을 받은 뒤 스스로 머지한다.
    - 왜: `main`에 무엇이 언제 들어가는지를 한 사람이 알고 있어야 계약(lockstep) 순서와 릴리스 시점을 통제할 수 있다.
-   - 강제: GitHub 브랜치 보호에서 *Restrict who can push to matching branches*를 `ssenu`로 제한한다(PR 머지도 push 권한을 따른다).
+   - 강제 수단 없음: 브랜치 보호를 걸지 않으므로(2026-09-26 팀장 결정) 팀장 외에는 **머지 버튼을 누르지 않는 것을 합의로 지킨다.**
 
 ## 절대 하지 말 것
 
 1. 비밀키·`.env`·인증서 커밋 금지 (pre-commit 훅이 차단)
-2. `main` 직접 push 금지 (Protected Branch). **PR 머지도 팀장(@ssenu) 외에는 금지** — 승인 버튼까지가 담당자의 역할이다.
+2. `main` 직접 push 금지 (브랜치 보호는 걸지 않는다 — 각자 지킨다). **PR 머지도 팀장(@ssenu) 외에는 금지** — 승인 버튼까지가 담당자의 역할이다.
 3. 계약(`lora_proto/`) 변경과 그 계약에 의존하는 코드를 같은 PR에 섞지 않음 — **계약 먼저 머지 후 코드**(lockstep)
 4. 계층 규율 경로를 기준 대조 없이 수정 금지
 5. `git push --force`, `git reset --hard` 금지

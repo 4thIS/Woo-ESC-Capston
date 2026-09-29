@@ -340,3 +340,17 @@ def test_put_uplink_ids_increase(db):
     a = db.put_uplink({"kind": "HELLO"})
     b = db.put_uplink({"kind": "STATUS"})
     assert b > a
+
+
+# ---- newer_pending (쌓인 TIME 정리, #35 리뷰 4) ----
+
+
+def test_newer_pending_sees_only_later_received_rows_of_same_node_and_type(db, clk):
+    put(db, "time-1", bld="", room=0, unit=0, type="TIME", priority=0, new_ver=None)
+    clk.now += 1
+    put(db, "time-2", bld="", room=0, unit=0, type="TIME", priority=0, new_ver=None)
+    put(db, "time-3-E301-1", bld="E", room=301, unit=1, type="TIME", priority=0, new_ver=None)
+    assert db.newer_pending(db.get_job("time-1")) is True
+    assert db.newer_pending(db.get_job("time-2")) is False  # 다른 노드의 TIME 은 무관
+    db.update("time-2", state="acked")
+    assert db.newer_pending(db.get_job("time-1")) is False  # 끝난 행은 세지 않는다

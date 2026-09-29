@@ -34,7 +34,7 @@ modempi/
 
 ## 계층 책임
 
-- **`link/`와 `lora/`는 서로 import하지 않는다.** 둘 사이의 유일한 통로는 `store.py`(SQLite 파일 하나)다. 링크는 `put_job/cancel_job/pending_results/mark_uploaded/set_config/pending_uplinks/mark_uplinks_uploaded/get_meta`, 파이프라인은 `recover/pick_next/get_job/update/next_txn/get_config/on_config_changed/put_uplink/set_meta/prune`만 쓴다. 구현은 `modempi/modempi/store.py`의 `SqliteStore`(로드맵 §4.3 "계약 ⑦ 구현").
+- **`link/`와 `lora/`는 서로 import하지 않는다.** 둘 사이의 유일한 통로는 `store.py`(SQLite 파일 하나)다. 링크는 `put_job/cancel_job/pending_results/mark_uploaded/set_config/pending_uplinks/mark_uplinks_uploaded/get_meta`, 파이프라인은 `recover/pick_next/get_job/newer_pending/update/next_txn/get_config/on_config_changed/put_uplink/set_meta/prune`만 쓴다. 구현은 `modempi/modempi/store.py`의 `SqliteStore`(로드맵 §4.3 "계약 ⑦ 구현").
 - `link/`는 프레임·무선을 모른다. 받은 `job` JSON을 검증 없이 그대로 저장한다(검증은 파이프라인이 codec으로 한다). 메인Pi에 올릴 결과도 `store`에 있는 그대로 올린다.
 - `lora/`는 인터넷·메인Pi·인증을 모른다. `store`에서 `received`를 집어 `acked`/`failed`로 끝내는 것이 전부다. TIME 행은 스스로 만든다(매시 `:00:05`, NTP 시계 기준).
 - `lora/modem.py`는 실물 시리얼과 `fake_modem.py`를 같은 인터페이스(`tx()`, `rx` 스트림, `ping`)로 다룬다. 워커 코드는 어느 쪽인지 모른다.

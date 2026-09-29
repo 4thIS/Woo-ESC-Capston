@@ -1,0 +1,109 @@
+{
+  "room": {
+    "room_id": 11,
+    "building_id": 3,
+    "building": "공학관",
+    "bld": "E",
+    "room": 401,
+    "layout": 1,
+    "until": "10:50"
+  },
+  "week_start": "2026-10-19",
+  "slots": [
+    {
+      "id": 1,
+      "day": 5,
+      "s_h": 10,
+      "s_m": 0,
+      "e_h": 12,
+      "e_m": 0,
+      "type": 1,
+      "subject": "알고리즘",
+      "professor": "김교수",
+      "source": 1
+    },
+    {
+      "id": 2,
+      "day": 2,
+      "s_h": 9,
+      "s_m": 0,
+      "e_h": 10,
+      "e_m": 0,
+      "type": 3,
+      "subject": "운영체제",
+      "professor": "이교수",
+      "source": 1
+    }
+  ],
+  "reservations": [
+    {
+      "id": 7,
+      "date": "2026-10-23",
+      "s_h": 11,
+      "s_m": 0,
+      "e_h": 13,
+      "e_m": 0,
+      "mine": false,
+      "label": "예약됨"
+    }
+  ],
+  "exams": [],
+  "busy": [
+    { "day": 1, "spans": [] },
+    {
+      "day": 2,
+      "spans": [
+        {
+          "from": "09:00",
+          "to": "10:00",
+          "label": "운영체제",
+          "type": 3,
+          "mine": false,
+          "status": null
+        }
+      ]
+    },
+    { "day": 3, "spans": [] },
+    { "day": 4, "spans": [] },
+    {
+      "day": 5,
+      "spans": [
+        {
+          "from": "10:00",
+          "to": "13:00",
+          "label": "알고리즘 외 1건",
+          "type": 1,
+          "mine": false,
+          "status": null
+        },
+        {
+          "from": "15:00",
+          "to": "16:00",
+          "label": "캡스톤 스터디",
+          "type": 6,
+          "mine": true,
+          "status": "requested"
+        }
+      ]
+    },
+    { "day": 6, "spans": [] },
+    { "day": 7, "spans": [] }
+  ],
+  "free": [
+    {
+      "date": "2026-10-23",
+      "spans": [
+        { "from": "13:00", "to": "15:00" },
+        { "from": "16:00", "to": "21:00" }
+      ]
+    },
+    { "date": "2026-10-24", "spans": [] },
+    { "date": "2026-10-25", "spans": [{ "from": "09:00", "to": "21:00" }] },
+    { "date": "2026-10-26", "spans": [{ "from": "09:00", "to": "21:00" }] },
+    { "date": "2026-10-27", "spans": [{ "from": "09:00", "to": "21:00" }] },
+    { "date": "2026-10-28", "spans": [{ "from": "09:00", "to": "21:00" }] },
+    { "date": "2026-10-29", "spans": [{ "from": "09:00", "to": "21:00" }] },
+    { "date": "2026-10-30", "spans": [{ "from": "09:00", "to": "21:00" }] }
+  ],
+  "full": false
+}

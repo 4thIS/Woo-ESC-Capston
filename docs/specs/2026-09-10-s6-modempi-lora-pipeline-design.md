@@ -48,6 +48,9 @@ S1이 만드는 것에 의존한다: `lora_proto.codec`(프레임·페이로드�
 - 에어타임: SF9 기준 wake 프레임 1개 ≈ 4.3 s. 같은 노드로의 연속 작업 사이에 추가 대기는 두지 않지만, ACK 대기(`ack_ms=3000`)가 끝나야 다음을 보낸다.
 - `unit=0`(호수 전체)은 노드가 없다. 유닛 분해는 메인Pi `api._insert`가 하므로 여기 오지 않는다 — TIME이 아닌 `unit=0` 작업은 `failed(last_error="unit0")`로 닫는다(r3).
 - 모뎀Pi RTC 없음 → NTP 동기 전엔 TIME을 내지 않는다(v2 §5.2 `clockValid`와 같은 기준: `time.time() > 1_700_000_000` 이고 최근 NTP 동기 성공).
+  - **구현(2026-09-23, `lora/clock.py`)**: 임계값만으로는 부족하다 — 전원이 나갔다 켜지면 fake-hwclock이 **옛 시각**을 복원하고 그 값도 임계값을 넘는다. 그래서 systemd-timesyncd가 있으면 이번 부팅의 동기 표시(`/run/systemd/timesync/synchronized`)가 생긴 뒤에만 믿는다. 스케줄러는 믿을 수 없으면 TIME 행을 넣지 않고 1분마다 다시 보며(동기 직후 곧바로 1회), 워커는 메인의 `time_now`로 들어온 TIME도 시계를 믿을 수 없으면 60 s 미룬다. **S11 Pi 이식 시 timesyncd를 쓴다**(chrony면 표시 파일이 없어 임계값만 보게 된다).
+  - 시계를 못 믿는 동안: **브로드캐스트 TIME은 미루고, 타겟 TIME(CLOCK_STALE)은 닫는다**(`last_error="clock_untrusted"`). 타겟 TIME은 job_id가 숫자가 아니라 그 노드 FIFO의 머리에 서므로, 미루기만 하면 그 노드의 다른 작업이 영영 못 나간다(#37 셀프 리뷰 1). 노드는 동기 직후 스케줄러의 브로드캐스트 TIME으로 복구된다. `REQUEST_STATUS`가 붙은 TIME은 더 새 TIME이 있어도 버리지 않는다(#37 리뷰 2).
+  - **운영(S11)**: 인터넷 없이 두 Pi를 직결하는 전시 구성에서는 모뎀Pi에 동기 표시가 영영 생기지 않는다 → **메인Pi를 NTP 서버로** 두고 모뎀Pi timesyncd가 그쪽을 보게 한다.
 
 ## 4. 모듈
 
@@ -118,7 +121,8 @@ loop:
   job = store.pick_next()     # 노드마다 머리 행만(메인 job_id 순 FIFO, 머리가 대기 중이면 노드 전체 대기),
                               # 노드끼리는 priority ASC, received_at ASC — store 가 보장 (로드맵 §4.3)
   없으면 0.5 s 대기
-  if job.type == 'TIME': 더 오래된 TIME 행을 acked(last_error='superseded') 로 닫고, epoch 는 지금 시각으로
+  if job.type == 'TIME' and store.newer_pending(job): acked(last_error='superseded') 로 닫고 다음 — 같은 대상에 더 새 TIME 이 있을 때만
+                              # (나이로 버리면 가장 새 것까지 사라진다, #35 리뷰 4). 보낼 때 epoch 는 지금 시각으로
   units = preprocess(job)
   txn = job.txn or store.next_txn(...)   # 비-FILE: 첫 송신에서만 새 TXN. 재송(no_ack·BUSY·재기동)은 jobs.txn 재사용
   store.update(job.job_id, expect_state='received', state='sending', txn=txn)   # False 면 cancel 됨 → continue
@@ -161,6 +165,19 @@ loop:
 
 ### 4.6 `pipeline.py`
 - `run(store_path, transport_factory, config_getter)`: `ModemClient.start()` → `cfg(config.radio)` → 태스크 3개(worker, time_sched, uplink) 기동. `on_config_changed`로 `cfg` 재전송 + 노드 목록 갱신.
+- **구현 규칙(2026-09-23, cw-09 Task 6)**
+  - **`config.radio` → 모뎀 `cfg` 이름 변환**: 계약 ⑥의 `radio`는 `{sf, bw, cr, tx_dbm, preamble_wake_ms}`, 계약 ②(모뎀 시리얼 v2 §4.2)의 `cfg`는 `{sf, bw, cr, power, freq, wake_ms}`다. `pipeline.radio_to_cfg()`가 ⑥→② 경계에서 `tx_dbm→power`, `preamble_wake_ms→wake_ms`로 옮기고 `freq`는 `lora_proto` `RP_FREQ_MHZ`에서 넣는다. ⑥ 메시지 자체는 바꾸지 않는다. `radio` 값이 그대로면 `cfg`를 다시 보내지 않는다(`nodes`만 바뀐 config).
+  - **NET_ID는 `config.net_id`에서** — 워커 헤더·ACK 해석·업링크 해석 모두 프레임마다 읽는다(학교마다 메인Pi가 배정, 로드맵 §3). config에 없을 때만 `lora_proto` 기본값.
+  - **감시**: 자식 태스크(워커·스케줄러·업링크·핑·설정·정리) 하나가 죽으면 전체를 멈추고 그 예외를 올린다 — 반쯤 죽은 채 도는 것보다 systemd 재기동이 낫다. 워치독 `ping`은 config 대기 중에도 돈다(모뎀 30 s 워치독).
+  - **깨진 ACK는 무응답과 같다**: ACK 프레임을 못 읽으면 적용 여부를 모르므로 `no_ack`(`last_error="bad_ack"`)로 보고 같은 TXN으로 재시도한다.
+  - **`cfg`도 송신 슬롯을 잡는다**: 응답은 없지만 전파를 쏘는 도중 무선 설정이 바뀌면 안 된다.
+  - `prune`은 기동 직후 1회 + 매일.
+- **구현 규칙(2026-09-23, cw-09 Task 7 — 실물 시리얼·`main.py`)**
+  - 진입점 `modempi/modempi/main.py`: `modempi [--store PATH] (--port DEV | --fake)`. 링크(`link.run.main`)와 파이프라인이 `SqliteStore` 하나를 공유한다. 둘 중 하나가 예외로 끝나면 다른 쪽을 멈추고 exit 1 → systemd `Restart=always`. SIGTERM은 정상 종료(exit 0).
+  - **USB 끊김은 서비스를 재기동시키지 않는다**: `SerialTransport`가 2 s마다 재연결, 끊긴 동안 `tx`는 `error/modem_disconnected` → 워커는 **재시도 횟수를 깎지 않고** 5 s 뒤 다시(프레임이 공중에 나가지 않았다). 무응답 `modem_timeout`은 나갔을 수 있어 횟수를 센다.
+  - **부팅 때 모뎀이 없어도 죽지 않는다**: 포트를 못 열면 경고 후 재연결 루프에 맡기고, 파이프라인은 `ready`를 끝없이 기다리며 60 s마다 경고한다. 그동안 링크는 살아 결과·업링크를 계속 올린다. 기다리는 중에도 `stop`으로 멈춘다.
+  - 모뎀 읽기 태스크가 끝나면 파이프라인 예외로 올린다(#37 리뷰 3) — 반쯤 죽은 채 돌지 않는다.
+  - `--fake`: 가짜 모뎀의 가상 노드·NET_ID를 `config`(`nodes`, `net_id`)에 맞춘다 — Pi↔Pi 통합(cw-10)은 메인Pi `config.nodes`에 대상 강의실이 있어야 acked가 난다.
 - `transport_factory`가 fake면 `--fake` 모드. `main.py` CLI: `modempi --store /var/lib/modempi/jobs.db --port /dev/lora-modem` 또는 `--fake`.
 
 ## 5. 영역별 영향
@@ -187,7 +204,10 @@ loop:
 - S7 이후: 실물 모뎀으로 같은 pytest 시나리오 중 하드웨어 무관 항목 통과, 벤치 v2 §10.2-1.
 
 ## 9. 열린 결정 (plan 단계)
-- FILE 세션 중 `BUSY`가 몇 번까지 허용되는지(렌더 15~20 s 고려 → 5 s × 5회 제안).
+- **S7 모뎀 펌웨어 요구(2026-09-23, Task 7에서 도출)**: USB 재연결 뒤 호스트는 모뎀의 `ready`를 받아야 `cfg`를 다시 보낸다. Heltec V3의 CP2102 자동 리셋이 포트 열 때 ESP32를 리셋해 `ready`를 내는지 벤치에서 확인하고, 안 되면 **호스트 연결(DTR) 시 `ready`를 다시 내거나** 호스트가 재연결 후 `reset`을 보내는 쪽으로 정한다. 그렇지 않으면 무선 설정이 모뎀 기본값에 머문다.
+- 첫 `hello.modem_fw`는 실기에서 모뎀 `ready`가 늦으면 `"unknown"`일 수 있다(다음 링크 재접속 때 바로잡힘). 필요하면 S5 쪽에서 `modem_fw` 변경 시 hello 재전송을 검토.
+- **FILE_END 의 ACK 유실 → 적용된 파일이 실패로 보고된다** (#35 셀프 리뷰 3, 노드 FW S8 과 함께 결정). FILE 프레임은 재송 때 새 TXN 이라 DUP 으로 걸러지지 않고, 노드는 이미 커밋·세션 종료했으므로 END 재송에 `BAD_PAYLOAD`(fake 기준)로 답한다 → `failed(ack_bad_payload)`. 후보: v2 §3.4 에 "세션 없는 END 수신 시 CRC16·NEW_VER 가 현재 파일과 같으면 DUP" 규칙을 두고 노드 FW(S8)·fake 모뎀·워커가 함께 따른다. **S8 착수 전 확정.**
+- ~~FILE 세션 중 `BUSY`가 몇 번까지 허용되는지~~ → **확정(2026-09-23): 한 프레임당 5회**(`FILE_BUSY_MAX`). 초과하면 세션 실패로 보고 일반 재시도 정책(5·20·60 s, 3회)에 맡긴다 — 그냥 BUSY로 되돌리면 노드가 계속 바쁠 때 그 행이 노드 FIFO의 머리에 영원히 남아 같은 노드의 뒤 작업이 전부 막힌다.
 - `next_txn` 롤링에서 0 건너뛰기 외에, 노드 `lastTxn`과 우연히 같아지는(255 주기) DUP 오판 — 프레임 간 최소 2개 이상 차이를 두는 규칙 필요 여부. 현재 v2 §3.5는 "같은 TXN 재수신 = DUP"만 정의.
 - ~~`split` 대신 부모 행을 삭제할지~~ → r3에서 모뎀Pi 유닛 분해 자체를 삭제.
-- CLOCK_STALE 타겟 TIME이 노드 TXN을 소비하면 "재송은 같은 TXN" 가정이 깨진다 — 타겟 TIME을 `txn=0`으로 보낼지(노드 DUP 판정이 0을 무시하는지 v2 §5 확인).
+- ~~CLOCK_STALE 타겟 TIME이 노드 TXN을 소비하면 "재송은 같은 TXN" 가정이 깨진다~~ → **확정(2026-09-23): TIME은 브로드캐스트·타겟 모두 `txn=0`**, 노드는 TIME에 DUP 판정을 적용하지 않고 `lastTxn`도 갱신하지 않는다(v2 §3.5에 반영). 워커는 TIME이면 `next_txn()`을 부르지 않는다 — 모뎀Pi의 노드별 TXN 카운터도 소비되지 않는다. 노드 펌웨어(S8, cw)가 지켜야 할 규칙이다.

@@ -2,6 +2,10 @@
 
 lora_service 는 domain 을 import 하지 않는다. 방·모뎀 조회는 Topology, FILE 레코드는 RecordProvider,
 허브 호출은 HubPort — 셋 다 기동 시 주입된다.
+
+`enqueue_*` 8개는 키워드 `session=` 을 받으면 호출자 트랜잭션에서 flush 까지만 하고,
+커밋·`api.notify(modem_id)` 는 호출자 몫이다(#9). `session` 생략 시(기본 None)는 기존대로
+자체 세션에서 커밋까지 하고 알린다 — additive, 이 경로는 그대로다.
 """
 
 from __future__ import annotations
@@ -188,11 +192,20 @@ def _insert(
 
 
 def _enqueue(
-    bld: str, room: int, unit: int, type_: str, make: Callable[[int | None], object]
+    bld: str,
+    room: int,
+    unit: int,
+    type_: str,
+    make: Callable[[int | None], object],
+    session: Session | None = None,
 ) -> list[int]:
-    """버전 +1 → codec 객체 생성·인코딩(검증) → outbox 삽입. 전부 한 트랜잭션."""
+    """버전 +1 → codec 객체 생성·인코딩(검증) → outbox 삽입. 전부 한 트랜잭션.
+    `session` 이 주어지면 그 안에서 flush 까지만 — 커밋·notify 는 호출자 몫(#9 원자화).
+    호출자는 커밋 뒤 `notify(modem_id)` 를 불러야 허브가 새 작업을 본다.
+    예외 시 호출자는 롤백해야 한다 — 잡고 커밋하면 버전만 오르고 outbox 행은 없는 상태가 남는다."""
     info = _room(bld, room)
-    with _Session() as s, s.begin():
+
+    def body(s: Session) -> list[int]:
         kind = KIND_OF.get(type_)
         new_ver = _bump_ver(s, bld, room, kind) if kind else None
         obj = make(new_ver)
@@ -200,10 +213,21 @@ def _enqueue(
             C.encode_payload(obj)  # 실패면 여기서 롤백 — 모뎀Pi의 bad_payload 를 서버에서 막는다
         except C.FrameError as e:
             raise ValidationError(str(e)) from e
-        ids = _insert(s, info, bld, room, unit, type_, _to_json(obj), new_ver)
+        return _insert(s, info, bld, room, unit, type_, _to_json(obj), new_ver)
+
+    if session is not None:
+        return body(session)
+    with _Session() as s, s.begin():
+        ids = body(s)
     if info.modem_id:
         _hub.notify(info.modem_id)
     return ids
+
+
+def notify(modem_id: str | None) -> None:
+    """라우터가 s.commit() 한 뒤 직접 부른다 (session 모드의 짝). _hub.notify 는 call_soon_threadsafe 라 threadpool 에서도 안전."""
+    if modem_id:
+        _hub.notify(modem_id)
 
 
 # ---------- v2 §8.6 ----------
@@ -219,6 +243,8 @@ def enqueue_slot_set(
     subject: str,
     professor: str,
     unit: int = 0,
+    *,
+    session: Session | None = None,
 ) -> list[int]:
     return _enqueue(
         bld,
@@ -226,17 +252,28 @@ def enqueue_slot_set(
         unit,
         "SLOT_SET",
         lambda v: C.SlotSet(v, day, start[0], start[1], end[0], end[1], type_, subject, professor),
+        session,
     )
 
 
 def enqueue_slot_del(
-    bld: str, room: int, day: int, start: tuple[int, int], unit: int = 0
+    bld: str,
+    room: int,
+    day: int,
+    start: tuple[int, int],
+    unit: int = 0,
+    *,
+    session: Session | None = None,
 ) -> list[int]:
-    return _enqueue(bld, room, unit, "SLOT_DEL", lambda v: C.SlotDel(v, day, start[0], start[1]))
+    return _enqueue(
+        bld, room, unit, "SLOT_DEL", lambda v: C.SlotDel(v, day, start[0], start[1]), session
+    )
 
 
-def enqueue_day_clear(bld: str, room: int, day: int, unit: int = 0) -> list[int]:
-    return _enqueue(bld, room, unit, "DAY_CLEAR", lambda v: C.DayClear(v, day))
+def enqueue_day_clear(
+    bld: str, room: int, day: int, unit: int = 0, *, session: Session | None = None
+) -> list[int]:
+    return _enqueue(bld, room, unit, "DAY_CLEAR", lambda v: C.DayClear(v, day), session)
 
 
 def enqueue_resv_set(
@@ -250,6 +287,8 @@ def enqueue_resv_set(
     subject: str,
     professor: str,
     unit: int = 0,
+    *,
+    session: Session | None = None,
 ) -> list[int]:
     return _enqueue(
         bld,
@@ -270,15 +309,25 @@ def enqueue_resv_set(
             subject,
             professor,
         ),
+        session,
     )
 
 
-def enqueue_resv_del(bld: str, room: int, resv_id: int, unit: int = 0) -> list[int]:
-    return _enqueue(bld, room, unit, "RESV_DEL", lambda v: C.ResvDel(v, resv_id))
+def enqueue_resv_del(
+    bld: str, room: int, resv_id: int, unit: int = 0, *, session: Session | None = None
+) -> list[int]:
+    return _enqueue(bld, room, unit, "RESV_DEL", lambda v: C.ResvDel(v, resv_id), session)
 
 
 def enqueue_exam_set(
-    bld: str, room: int, exam_id: int, date_start: dt.date, date_end: dt.date, unit: int = 0
+    bld: str,
+    room: int,
+    exam_id: int,
+    date_start: dt.date,
+    date_end: dt.date,
+    unit: int = 0,
+    *,
+    session: Session | None = None,
 ) -> list[int]:
     return _enqueue(
         bld,
@@ -295,15 +344,26 @@ def enqueue_exam_set(
             date_end.month,
             date_end.day,
         ),
+        session,
     )
 
 
-def enqueue_exam_del(bld: str, room: int, exam_id: int, unit: int = 0) -> list[int]:
-    return _enqueue(bld, room, unit, "EXAM_DEL", lambda v: C.ExamDel(v, exam_id))
+def enqueue_exam_del(
+    bld: str, room: int, exam_id: int, unit: int = 0, *, session: Session | None = None
+) -> list[int]:
+    return _enqueue(bld, room, unit, "EXAM_DEL", lambda v: C.ExamDel(v, exam_id), session)
 
 
-def enqueue_cmd(bld: str, room: int, cmd: int, args: bytes = b"", unit: int = 0) -> list[int]:
-    return _enqueue(bld, room, unit, "CMD", lambda v: C.Cmd(cmd, args))
+def enqueue_cmd(
+    bld: str,
+    room: int,
+    cmd: int,
+    args: bytes = b"",
+    unit: int = 0,
+    *,
+    session: Session | None = None,
+) -> list[int]:
+    return _enqueue(bld, room, unit, "CMD", lambda v: C.Cmd(cmd, args), session)
 
 
 FILE_KIND = {"schedule": 1, "resv": 2, "exam": 3}

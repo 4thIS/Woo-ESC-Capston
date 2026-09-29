@@ -1,0 +1,8 @@
+/* self-host — 메인Pi 가 오프라인일 수 있다 (tokens.md). 서브셋 범위는 assets/fonts/README.md */
+@font-face {
+  font-family: 'Pretendard Variable';
+  src: url('../assets/fonts/PretendardVariable.subset.woff2') format('woff2-variations');
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+}
