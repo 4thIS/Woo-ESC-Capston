@@ -273,3 +273,24 @@ def checkin(s: Session, r: Reservation, now_local: dt.datetime) -> None:
             409, f"체크인은 시작 {CHECKIN_BEFORE}분 전부터 {CHECKIN_AFTER}분 후까지입니다"
         )
     r.checked_in_at = clock.to_utc(now_local)
+
+
+def checkout(s: Session, r: Reservation, now_local: dt.datetime) -> list[int]:
+    """조기 퇴실 — 끝 시각을 퇴실 분으로 당겨 바로 빈 강의실·예약 가능으로 만든다.
+    끝을 당기므로 현재 상태·주간·승격·재동기화·통계·빈 구간이 그대로 맞는다(early-checkout spec §2).
+    RESV_DEL 판단은 당기기 전의 원래 끝으로 — 노드에 가 있고 아직 안 끝난 예약만."""
+    _require(r, "approved")
+    if r.checked_in_at is None:
+        raise HTTPException(409, "체크인한 예약만 퇴실할 수 있습니다")
+    if r.checked_out_at is not None:
+        raise HTTPException(409, "이미 퇴실했습니다")
+    if now_local < start_local(r):
+        raise HTTPException(409, "시작 전에는 취소를 쓰세요")
+    if now_local >= end_local(r):
+        raise HTTPException(409, "이미 끝난 예약입니다")
+    old_end = (r.date, r.e_h, r.e_m)
+    # 초 버림, 시작 분 안이면 +1분 — 길이 0 도 겹침 검사에서 그 시각을 걸치는 신청을 막는다
+    new_end = max(now_local.hour * 60 + now_local.minute, r.s_h * 60 + r.s_m + 1)
+    r.e_h, r.e_m = divmod(new_end, 60)
+    r.checked_out_at = clock.to_utc(now_local)
+    return push_del(s, r, now_local, end=old_end)

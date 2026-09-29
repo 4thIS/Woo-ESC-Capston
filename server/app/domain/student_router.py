@@ -214,3 +214,14 @@ def checkin_resv(id: int, user: User = StudentUser, s: Session = _DB):
         out = _mine_out(s, r)
         s.commit()
     return out
+
+
+@router.post("/me/reservations/{id}/checkout", response_model=S.ResvMineOut)
+def checkout_resv(id: int, user: User = StudentUser, s: Session = _DB):
+    with _ID_LOCK:  # 관리자 취소와 엇갈려 cancelled 행에 퇴실이 찍히지 않게
+        r = _my_resv(s, user, id)
+        mid = reserve.addr(s, r)[2]
+        reserve.checkout(s, r, clock.local_now())
+        out = _mine_out(s, r)
+        _commit_notify(s, mid)
+    return out
