@@ -198,6 +198,7 @@ def resv_with_room_rows(s: Session, q) -> list[dict]:
             "pushed_at": r.pushed_at,
             "checked_in_at": r.checked_in_at,
             "checked_out_at": r.checked_out_at,
+            "reject_reason": r.reject_reason,
         }
         for r in rows
     ]

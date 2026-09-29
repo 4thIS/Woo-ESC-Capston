@@ -389,3 +389,28 @@ def test_admin_resv_list_shows_checkin_and_checkout(
     rows = {x["id"]: x for x in client.get(f"/api/rooms/{rid}/reservations").json()}
     assert rows[1]["checked_in_at"] and rows[1]["checked_out_at"]
     assert rows[2]["checked_in_at"] and rows[2]["checked_out_at"] is None
+
+
+def test_admin_resv_list_shows_reject_reason(client, app, school, student_hdr, monkeypatch):
+    """관리자 예약 로그의 '거절됨' 에 사유를 붙인다"""
+    _fix_clock(monkeypatch)
+    _, ids = _building(app, 1, "E", rooms=((301, 1),))
+    rid = ids[301]
+    _resv(
+        app,
+        rid,
+        dt.date(2026, 9, 24),
+        13,
+        0,
+        14,
+        0,
+        id_=1,
+        status="requested",
+        requested_by="s1@mju.ac.kr",
+    )
+    assert (
+        client.post("/api/admin/reservations/1/reject", json={"reason": "학과 행사"}).status_code
+        == 200
+    )
+    rows = client.get(f"/api/rooms/{rid}/reservations").json()
+    assert rows[0]["status"] == "rejected" and rows[0]["reject_reason"] == "학과 행사"

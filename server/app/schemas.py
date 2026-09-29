@@ -272,6 +272,7 @@ class ResvWithRoom(ResvOut):
     # 관리자 예약 표의 상태 열 — 사용중·조기 퇴실·미체크인을 가린다 (early-checkout)
     checked_in_at: dt.datetime | None = None
     checked_out_at: dt.datetime | None = None
+    reject_reason: str | None = None  # 예약 로그의 '거절됨' 사유
 
 
 class ExamWithRoom(ExamOut):
