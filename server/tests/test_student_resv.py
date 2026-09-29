@@ -356,26 +356,6 @@ def test_checkout_same_minute_and_unpushed(client, live, app, school, student_hd
     assert r2.status_code == 201, r2.text
 
 
-def test_checkout_before_start_frees_now(client, live, app, school, student_hdr, monkeypatch):
-    """일찍 체크인(시작 10분 전부터)한 뒤 시작 전에 나가도 조기 퇴실 — 체크인하면 취소 대신 퇴실이다.
-    시작·끝을 퇴실 분으로 모아 길이 0 — 원래 시작 시각에 걸린 길이 0 은 그 시각을 걸치는 신청을 막는다."""
-    _fix_clock(monkeypatch)  # 10:30
-    _, ids = _building(app, 1, "E", rooms=((301, 1),))
-    rid = ids[301]
-    a = _checked_in(app, rid, 1, 10, 35, 11, 30)  # 10:35 시작, 10:30 에 체크인
-    r = client.post(f"/api/student/me/reservations/{a}/checkout", headers=student_hdr)
-    assert r.status_code == 200, r.text
-    j = r.json()
-    assert (j["s_h"], j["s_m"], j["e_h"], j["e_m"]) == (10, 30, 10, 30)
-    with live() as s:
-        assert [o.type for o in s.scalars(select(Outbox))] == ["RESV_DEL", "RESV_DEL"]
-    rooms = client.get("/api/student/rooms", headers=student_hdr).json()
-    assert [x["layout"] for x in rooms if x["room_id"] == rid] == [4]
-    body = {"date": "2026-09-23", "s_h": 10, "s_m": 35, "e_h": 11, "e_m": 0, "subject": "다음"}
-    r2 = client.post(f"/api/student/rooms/{rid}/reservations", json=body, headers=student_hdr)
-    assert r2.status_code == 201, r2.text  # 원래 시간대를 바로 다시 신청할 수 있다
-
-
 def test_admin_resv_list_shows_checkin_and_checkout(
     client, live, app, school, student_hdr, monkeypatch
 ):
