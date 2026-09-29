@@ -21,6 +21,8 @@ platformio-local.ini
 !firmware/src/fonts/**
 # firmware/tools/embed_fonts.py 가 빌드 직전 src/fonts/*.bin 에서 만드는 C 배열 — 생성물이라 커밋하지 않는다.
 firmware/lib/font_data/
+# firmware/tools/embed_images.py 가 빌드 직전 src/fonts/images/*.bin 에서 만드는 C 배열 — 위와 같은 이유.
+firmware/lib/image_data/
 # render_preview.py 가 픽스처마다 뽑는 PNG — 산출물이라 커밋하지 않는다.
 firmware/test/fixtures/render/_out/
 
