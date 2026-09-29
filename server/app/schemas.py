@@ -150,6 +150,7 @@ class ResvMineOut(ResvOut):
     decided_at: dt.datetime | None
     reject_reason: str | None
     checked_in_at: dt.datetime | None
+    checked_out_at: dt.datetime | None
     cancelled_at: dt.datetime | None
     room_id: int
     building: str

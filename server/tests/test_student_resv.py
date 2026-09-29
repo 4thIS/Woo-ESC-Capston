@@ -96,6 +96,7 @@ def test_request_list_withdraw(client, app, school, student_hdr, other_student_h
     r = client.post(f"/api/student/rooms/{rid}/reservations", json=BODY, headers=student_hdr)
     assert r.status_code == 201, r.text
     j = r.json()
+    assert j["checked_out_at"] is None  # 조기 퇴실 칸 — 새 신청은 비어 있다
     assert (
         j["status"] == "requested"
         and j["id"] == 1
