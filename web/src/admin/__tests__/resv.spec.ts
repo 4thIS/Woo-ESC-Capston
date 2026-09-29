@@ -3,6 +3,7 @@ import { flushPromises, mount, type DOMWrapper, type VueWrapper } from '@vue/tes
 import { createMemoryHistory, createRouter } from 'vue-router'
 import PendingBlock from '@/admin/views/rooms/PendingBlock.vue'
 import ResvBlock from '@/admin/views/rooms/ResvBlock.vue'
+import ResvLogBlock from '@/admin/views/rooms/ResvLogBlock.vue'
 import { adminApi } from '@/api/admin'
 import { roomsApi } from '@/api/rooms'
 import { ApiError, MESSAGES } from '@/api/client'
@@ -61,6 +62,7 @@ const V = (o: Partial<ResvWithRoom>): ResvWithRoom => ({
   pushed_at: new Date(),
   checked_in_at: null,
   checked_out_at: null,
+  reject_reason: null,
   ...o,
 })
 const roomList: RoomOut[] = [{ id: 11, building_id: 1, room: 401, units: 1, reservable: true }]
@@ -179,6 +181,11 @@ describe('신청 대기', () => {
 })
 
 describe('예약 블록', () => {
+  // 예약은 안 끝난 것만 — 고정 픽스처(9/27)가 실제 오늘에 따라 로그로 넘어가지 않게 시각을 고정
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-26T00:00:00Z'))
+  })
   async function mountBlock(resv: ResvWithRoom[], states = new Map()) {
     const router = createRouter({
       history: createMemoryHistory(),
@@ -206,8 +213,7 @@ describe('예약 블록', () => {
     expect(rows[1].findAll('td')[7].text()).toBe('20231234')
   })
 
-  it('상태 열 — 사용중·조기 퇴실을 가린다, 관리자가 넣은 예약은 —', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
+  it('상태 열 — 사용중을 가리고 관리자가 넣은 예약은 —, 조기 퇴실한 예약은 로그로', async () => {
     vi.setSystemTime(new Date('2026-09-27T07:30:00Z')) // KST 16:30
     await mountBlock([
       V({ id: 1 }),
@@ -229,11 +235,8 @@ describe('예약 블록', () => {
     expect(state(at('신입생 OT')).text()).toBe('—')
     expect(state(at('스터디')).text()).toBe('사용중')
     expect(state(at('스터디')).find('.badge--busy').exists()).toBe(true) // 실제로 쓰이는 방은 적색 틴트
-    expect(state(at('회의')).text()).toBe('조기 퇴실 16:20')
-    // 유형 칸 — 퇴실한 예약은 '대여중'이 아니라 조기 퇴실, 사용 중인 예약은 원래 유형 그대로
-    const type = (i: number) => w.findAll('tbody tr')[i].findAll('td')[8]
-    expect(type(at('회의')).text()).toBe('조기 퇴실')
-    expect(type(at('스터디')).text()).not.toBe('조기 퇴실')
+    // 조기 퇴실한 예약은 끝났다(끝 = 퇴실 분) — 예약 블록이 아니라 예약 로그로 간다
+    expect(at('회의')).toBe(-1)
     vi.useRealTimers()
   })
 
@@ -267,5 +270,60 @@ describe('예약 블록', () => {
     await btn(dialog('예약 삭제')!, '삭제').trigger('click')
     await flushPromises()
     expect(rooms.deleteResv).toHaveBeenCalledWith(11, 1)
+  })
+})
+
+describe('예약 로그 블록', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-27T07:30:00Z')) // KST 9/27 16:30
+  })
+  function mountLog(resv: ResvWithRoom[]) {
+    w = mount(ResvLogBlock, {
+      props: { label: () => '401', resv, loading: false },
+      global: { stubs: { teleport: true } },
+    })
+  }
+  it('끝난 승인·취소·거절만, 결과 한 줄 — 안 끝난 예약과 신청 대기는 없다, 버튼 없음', () => {
+    mountLog([
+      V({ id: 1, subject: '진행', requester, s_h: 16, e_h: 18 }), // 안 끝남 → 예약 블록
+      V({
+        id: 2,
+        subject: '회의',
+        requester,
+        s_h: 15,
+        e_h: 16,
+        e_m: 20,
+        checked_in_at: new Date('2026-09-27T06:01:00Z'),
+        checked_out_at: new Date('2026-09-27T07:20:00Z'),
+      }),
+      V({ id: 3, subject: '취소한 것', requester, status: 'cancelled', date: '2026-09-30' }),
+      V({ id: 4, subject: '거절한 것', requester, status: 'rejected', reject_reason: '학과 행사' }),
+      V({ id: 5, subject: '대기', requester, status: 'requested' }),
+    ])
+    const rows = w.findAll('tbody tr').map((r) => r.text())
+    expect(rows).toHaveLength(3)
+    expect(rows.join()).not.toContain('진행')
+    expect(rows.join()).not.toContain('대기')
+    expect(rows.find((t) => t.includes('회의'))).toContain('조기 퇴실 16:20')
+    expect(rows.find((t) => t.includes('거절한 것'))).toContain('거절됨 · 학과 행사')
+    expect(rows.find((t) => t.includes('취소한 것'))).toContain('취소됨')
+    expect(w.findAll('tbody button')).toHaveLength(0)
+  })
+  it('기본 최근 30일 — 전체 보기로 펼친다', async () => {
+    mountLog([V({ id: 1, subject: '지난달', requester, status: 'cancelled', date: '2026-08-01' })])
+    expect(
+      w
+        .findAll('tbody tr')
+        .map((r) => r.text())
+        .join(),
+    ).not.toContain('지난달')
+    await btn(w, '전체 보기').trigger('click')
+    expect(
+      w
+        .findAll('tbody tr')
+        .map((r) => r.text())
+        .join(),
+    ).toContain('지난달')
   })
 })

@@ -27,6 +27,7 @@ const resv = (o: Partial<ResvWithRoom> = {}): ResvWithRoom => ({
   pushed_at: null,
   checked_in_at: null,
   checked_out_at: null,
+  reject_reason: null,
   ...o,
 })
 const draft = (o: Partial<ResvDraft> = {}): ResvDraft => ({
