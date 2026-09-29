@@ -23,17 +23,27 @@ const cancel = computed(() => cancelKind(props.resv, props.now))
 
 <template>
   <article class="mc" :aria-label="`${resv.building} ${resv.room}호 ${resvWhen(resv)}`">
-    <p class="mc__head">
+    <div class="mc__head">
       <ResvStatusBadge :status="resv.status" />
       <span class="mc__room num">{{ resv.building }} {{ resv.room }}호</span>
-    </p>
+      <!-- 되돌릴 수 없는 행동 — 오른쪽 위 빨간 버튼 (사용자 결정). 확인 창은 화면(MyView)이 띄운다 -->
+      <Button
+        v-if="co?.kind === 'open'"
+        class="mc__leave"
+        variant="danger"
+        :disabled="busy !== null"
+        :loading="busy === 'checkout'"
+        @click="emit('checkout')"
+        >조기 퇴실</Button
+      >
+    </div>
     <p class="mc__when num">{{ resvWhen(resv) }}</p>
     <p class="mc__subject">{{ resv.subject }}</p>
     <p v-if="resv.status === 'rejected' && resv.reject_reason" class="mc__note">
       사유: {{ resv.reject_reason }}
     </p>
     <p v-if="resv.status === 'expired'" class="mc__note">승인 전에 시간이 지났어요</p>
-    <div v-if="ci || cancel || co" class="mc__actions">
+    <div v-if="ci || cancel || co?.kind === 'done'" class="mc__actions">
       <p v-if="ci?.kind === 'done'" class="mc__done num">✓ {{ ci.at }} 체크인</p>
       <Button
         v-else-if="ci"
@@ -44,15 +54,6 @@ const cancel = computed(() => cancelKind(props.resv, props.now))
         >체크인</Button
       >
       <p v-if="co?.kind === 'done'" class="mc__done num">✓ {{ co.at }} 퇴실</p>
-      <!-- 퇴실은 되돌릴 수 없다 — primary 로 부추기지 않는다. 확인 창은 화면(MyView)이 띄운다 -->
-      <Button
-        v-else-if="co"
-        variant="secondary"
-        :disabled="busy !== null"
-        :loading="busy === 'checkout'"
-        @click="emit('checkout')"
-        >조기 퇴실</Button
-      >
       <Button
         v-if="cancel"
         variant="secondary"
@@ -88,6 +89,9 @@ const cancel = computed(() => cancelKind(props.resv, props.now))
 }
 .mc__room {
   font-weight: var(--font-weight-bold);
+}
+.mc__leave {
+  margin-left: auto;
 }
 .mc__subject,
 .mc__note {

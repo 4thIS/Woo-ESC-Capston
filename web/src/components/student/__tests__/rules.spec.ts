@@ -166,11 +166,18 @@ describe('내 예약', () => {
     }
     expect(checkoutState(resv(inUse), NOW)).toEqual({ kind: 'open' })
     expect(checkoutState(resv({ ...inUse, checked_in_at: null }), NOW)).toBeNull() // 체크인 안 함
-    expect(checkoutState(resv({ ...inUse, s_h: 10, s_m: 50 }), NOW)).toBeNull() // 시작 전
+    // 일찍 체크인한 시작 전에도 — 체크인하면 취소 대신 퇴실 (사용자 결정)
+    expect(checkoutState(resv({ ...inUse, s_h: 10, s_m: 50 }), NOW)).toEqual({ kind: 'open' })
     expect(checkoutState(resv({ ...inUse, e_h: 10, e_m: 42 }), NOW)).toBeNull() // 끝남(끝 = 지금)
     expect(checkoutState(resv({ ...inUse, status: 'cancelled' }), NOW)).toBeNull()
     const out = { ...inUse, e_h: 10, e_m: 23, checked_out_at: new Date('2026-10-23T01:23:00Z') }
     expect(checkoutState(resv(out), NOW)).toEqual({ kind: 'done', at: '10:23' })
+  })
+
+  it('체크인했으면 취소가 없다 — 시작 전이어도 조기 퇴실로', () => {
+    const early = resv({ s_h: 10, s_m: 50, checked_in_at: new Date('2026-10-23T01:41:00Z') })
+    expect(cancelKind(early, NOW)).toBeNull()
+    expect(cancelKind(resv({ s_h: 10, s_m: 50 }), NOW)).toBe('cancel') // 체크인 전엔 그대로
   })
 
   it('다음 예약은 퇴실한 예약을 건너뛴다 — 끝이 아직 안 지나 보여도 퇴실 기록으로', () => {

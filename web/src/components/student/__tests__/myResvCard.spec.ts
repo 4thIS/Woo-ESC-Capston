@@ -45,9 +45,18 @@ describe('MyResvCard', () => {
     const inUse = resv({ s_m: 0, checked_in_at: new Date('2026-10-23T01:01:00Z') }) // 10:00–12:00, 10:01 체크인
     const w = mount(MyResvCard, { props: { resv: inUse, now: NOW } })
     expect(buttons(w)).toEqual(['조기 퇴실']) // 시작이 지나 취소는 없다
-    expect(w.findAll('button')[0].classes()).toContain('btn--secondary')
+    // 카드 오른쪽 위(머리 줄)에 빨간 버튼 (사용자 결정)
+    const btn = w.get('.mc__head button')
+    expect(btn.text()).toBe('조기 퇴실')
+    expect(btn.classes()).toContain('btn--danger')
     await w.findAll('button')[0].trigger('click')
     expect(w.emitted('checkout')).toHaveLength(1)
+  })
+
+  it('일찍 체크인한 시작 전 — 취소 대신 조기 퇴실', () => {
+    const early = resv({ s_h: 10, s_m: 50, checked_in_at: new Date('2026-10-23T01:41:00Z') })
+    const w = mount(MyResvCard, { props: { resv: early, now: NOW } })
+    expect(buttons(w)).toEqual(['조기 퇴실'])
   })
 
   it('퇴실했으면 퇴실 시각 한 줄만 — 체크인 줄·버튼이 다시 생기지 않는다', () => {
