@@ -1,7 +1,8 @@
 import type { BuildingOut, ExamWithRoom, ResvWithRoom, RoomOut } from '@/api/types'
 import type { DotState } from '@/components/domain/OutboxDot.vue'
 import { buildTree } from '@/components/domain/roomTree'
-import { resvWindow } from '@/components/domain/rules'
+import { CHECKIN_AFTER, CHECKIN_BEFORE, resvWindow } from '@/components/domain/rules'
+import { formatHm, kstDateStr, kstMinutes } from '@/lib/time'
 
 /** 첫 진입 — 첫 건물의 첫 층. 건물 전체는 행이 너무 많다 (admin-rooms.md "층이나 강의실 몇 개만 고르는 것이 기본") */
 export function defaultPick(buildings: BuildingOut[], rooms: RoomOut[]): number[] {
@@ -60,3 +61,62 @@ export const roomsLabel = (labels: string[]) =>
   labels.length <= 3
     ? labels.join(', ')
     : `${labels.slice(0, 3).join(', ')} 외 ${labels.length - 3}곳`
+
+export interface ResvUse {
+  label: string
+  /** busy = 지금 강의실이 실제로 쓰인다(room.busy 틴트) */
+  tone: 'busy' | 'neutral'
+}
+const dayMin = (date: string) => Date.parse(`${date}T00:00:00Z`) / 60_000
+/** 예약 표의 상태 — 학생 예약만(관리자가 넣은 예약은 체크인이 없다 → null). 'KST 달력 날짜의 분'으로 비교 */
+export function resvUse(r: ResvWithRoom, now: Date): ResvUse | null {
+  if (!r.requester) return null
+  if (r.checked_out_at) return { label: `조기 퇴실 ${formatHm(r.checked_out_at)}`, tone: 'neutral' }
+  const n = dayMin(kstDateStr(now)) + kstMinutes(now)
+  const s = dayMin(r.date) + r.s_h * 60 + r.s_m
+  const e = dayMin(r.date) + r.e_h * 60 + r.e_m
+  if (r.checked_in_at)
+    return n < e ? { label: '사용중', tone: 'busy' } : { label: '사용 완료', tone: 'neutral' }
+  if (n < s - CHECKIN_BEFORE) return { label: '예정', tone: 'neutral' }
+  return n <= s + CHECKIN_AFTER
+    ? { label: '체크인 대기', tone: 'neutral' }
+    : { label: '미체크인', tone: 'neutral' }
+}
+
+/** 예약 로그 기본 범위(일) — 한 학기면 수백 건이라 최근 것만. '전체 보기'로 펼친다 */
+export const LOG_DAYS = 30
+const endMin = (r: ResvWithRoom) => dayMin(r.date) + r.e_h * 60 + r.e_m
+const startMin = (r: ResvWithRoom) => dayMin(r.date) + r.s_h * 60 + r.s_m
+
+/** 예약(안 끝난 승인, 시작 순) / 예약 로그(끝난 승인·취소·거절·만료, 최근 것부터). 신청 대기는 어느 쪽도 아니다 */
+export function splitResv(rows: ResvWithRoom[], now: Date, all: boolean) {
+  const n = dayMin(kstDateStr(now)) + kstMinutes(now)
+  const from = kstDateStr(now, -LOG_DAYS)
+  const live = rows
+    .filter((r) => r.status === 'approved' && endMin(r) > n)
+    .sort((a, b) => startMin(a) - startMin(b) || a.room_id - b.room_id)
+  const log = rows
+    .filter((r) => (r.status === 'approved' ? endMin(r) <= n : r.status !== 'requested'))
+    .filter((r) => all || r.date >= from)
+    .sort((a, b) => startMin(b) - startMin(a) || b.id - a.id)
+  return { live, log }
+}
+
+/** 예약 로그의 결과 한 줄 */
+export function logResult(r: ResvWithRoom): string {
+  if (r.status === 'cancelled') return '취소됨'
+  if (r.status === 'rejected') return r.reject_reason ? `거절됨 · ${r.reject_reason}` : '거절됨'
+  if (r.status === 'expired') return '만료됨'
+  if (!r.requester) return '종료'
+  if (r.checked_out_at) return `조기 퇴실 ${formatHm(r.checked_out_at)}`
+  return r.checked_in_at ? '사용 완료' : '미체크인'
+}
+
+/** 예약 로그의 유형 칸 — 대여가 이뤄지지 않았거나 도중에 끝난 예약은 원래 유형('대여중') 대신 결과로.
+ * null 이면 원래 유형(TypeBadge) 그대로 — 끝까지 쓴 예약·관리자가 넣은 예약 */
+export function logType(r: ResvWithRoom): string | null {
+  if (r.status === 'rejected') return '거절'
+  if (r.status === 'cancelled') return '취소'
+  if (r.status === 'expired') return '만료'
+  return r.checked_out_at ? '조기 퇴실' : null
+}

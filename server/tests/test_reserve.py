@@ -170,6 +170,15 @@ def test_student_transitions(app, students, monkeypatch):
     c = _resv(app, rid, d23, 10, 14, 11, 0, id_=3, **S1)
     with app.state.Session() as s, s.begin(), pytest.raises(HTTPException):
         reserve.checkin(s, s.get(Reservation, c), clock.local_now())  # 10:14 시작 +16분 → 창 밖
+    # 체크인은 시작 시각부터 — 시작 전에는 그 방을 앞 수업·예약이 쓰고 있을 수 있다 (2026-09-29 결정)
+    early = _resv(app, rid, d23, 10, 35, 11, 0, id_=4, **S1)  # 지금 10:30, 5분 전
+    with app.state.Session() as s, s.begin(), pytest.raises(HTTPException) as e:
+        reserve.checkin(s, s.get(Reservation, early), clock.local_now())
+    assert e.value.detail == "체크인은 시작 시각부터 15분 후까지입니다"
+    on_time = _resv(app, rid, d23, 10, 30, 11, 30, id_=5, **S1)  # 지금이 시작
+    with app.state.Session() as s, s.begin():
+        reserve.checkin(s, s.get(Reservation, on_time), clock.local_now())
+        assert s.get(Reservation, on_time).checked_in_at is not None
 
 
 def test_approve_reject_cancel_enqueue_in_same_session(db, hub, app, students, monkeypatch):

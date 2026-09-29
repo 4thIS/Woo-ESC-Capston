@@ -203,7 +203,7 @@ test('넓은 폭 — /week 는 강의실로, 목록 340px 상주, 격자는 같�
   await expect(list).toBeHidden()
 })
 
-test('내 예약 — 승인됨·대기중·거절됨, 신청 취소는 기록이 남지 않는다, 창 안이면 체크인', async () => {
+test('내 예약 — 승인됨·대기중·거절됨, 신청 취소는 기록이 남지 않는다, 체크인은 시작 시각부터', async () => {
   const r1 = await created(
     await requestAs(A.email, room(103), kstDate(2), '10:00', '11:00', '팀 회의'),
   )
@@ -211,7 +211,7 @@ test('내 예약 — 승인됨·대기중·거절됨, 신청 취소는 기록이
     await requestAs(A.email, room(104), kstDate(3), '14:00', '15:00', '동아리'),
   )
   await adminPost(`/api/admin/reservations/${r3.id}/reject`, { reason: '학과 행사와 겹칩니다' })
-  // 체크인 창 안에서 곧 시작하는 오늘 예약 — 자정 가까이는 만들 수 없다(Global Constraints 시간대)
+  // 곧 시작하는 오늘 예약 — 체크인은 시작 시각부터라 아직 잠겨 있어야 한다(자정 가까이는 만들 수 없다)
   const start = Math.ceil((kstMinutesNow() + 2) / 5) * 5
   const canCheckin = start + 15 <= 23 * 60 + 55
   if (canCheckin) {
@@ -242,9 +242,9 @@ test('내 예약 — 승인됨·대기중·거절됨, 신청 취소는 기록이
     params: { status: 'cancelled' },
   })
   expect(((await mine.json()) as { id: number }[]).map((r) => r.id)).not.toContain(r1.id)
-  test.skip(!canCheckin, '자정 가까이는 체크인 창 안의 오늘 예약을 만들 수 없다')
-  await card('스터디').getByRole('button', { name: '체크인' }).click()
-  await expect(card('스터디')).toContainText(/✓ \d\d:\d\d 체크인/)
+  test.skip(!canCheckin, '자정 가까이는 곧 시작하는 오늘 예약을 만들 수 없다')
+  await expect(card('스터디').getByRole('button', { name: '체크인' })).toBeDisabled()
+  await expect(card('스터디')).toContainText(`${hmOf(start)}부터 체크인할 수 있어요`)
   await shot(page, 'student-me-checkin-390')
 })
 
@@ -259,7 +259,7 @@ test('승인된 예약 취소 — 확인 뒤 취소됨으로 남는다 (신청 �
   await page.getByRole('link', { name: '내 예약' }).click()
   await expect(card('발표 연습').getByText('승인됨')).toBeVisible()
   await expect(card('발표 연습').getByRole('button', { name: '체크인' })).toBeDisabled()
-  await expect(card('발표 연습')).toContainText('09:50부터 체크인할 수 있어요')
+  await expect(card('발표 연습')).toContainText('10:00부터 체크인할 수 있어요')
   await card('발표 연습').getByRole('button', { name: '취소', exact: true }).click()
   const dlg = page.getByRole('dialog', { name: '예약 취소' })
   await expect(dlg).toContainText('취소하면 문 앞 화면에서도 지워져요')

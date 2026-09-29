@@ -1,7 +1,7 @@
 // 학생 웹 규칙 한 곳 — 서버 S10 §2.4·§4.1(reserve.py) 과 같은 값.
 // 판정(빈 구간·겹침·합치기)은 서버가 하고, 여기는 표시·고르기·문장만 (student-room.md §데이터)
 import type { FreeRange, ResvMineOut } from '@/api/types'
-import { DAYS } from '@/components/domain/rules'
+import { CHECKIN_AFTER, CHECKIN_BEFORE, DAYS } from '@/components/domain/rules'
 import { dayOfDate, formatHm, hm, kstDateStr, kstMinutes, md } from '@/lib/time'
 
 /** e-Paper layout (terminal-epaper.md) — 4 만 '비어있음'(예약 가능, 개수·필터) */
@@ -33,8 +33,7 @@ export const MAX_ACTIVE = 3
 export const MIN_MIN = 15
 export const MAX_MIN = 120
 export const STEP_MIN = 5
-export const CHECKIN_BEFORE = 10
-export const CHECKIN_AFTER = 15
+export { CHECKIN_AFTER, CHECKIN_BEFORE } from '@/components/domain/rules'
 
 // 서버 원문 대신 (spec §4.1) — student-room.md §화면이 거는 제약
 export const FULL_TEXT = '이 강의실은 예약이 다 찼어요'
@@ -100,7 +99,12 @@ export function activeCount(list: ResvMineOut[], now: Date): number {
 /** 사이드바 '다음 예약' — 진행 중인 것 중 가장 먼저 시작하는 것 */
 export function nextResv(list: ResvMineOut[], now: Date): ResvMineOut | null {
   const n = nowAt(now)
-  return list.filter((r) => isActive(r, n)).sort((a, b) => startAt(a) - startAt(b))[0] ?? null
+  // 퇴실한 예약은 다음 예약이 아니다 — 끝이 당겨져 보통은 이미 끝났지만, 기록으로 한 번 더 거른다
+  return (
+    list
+      .filter((r) => !r.checked_out_at && isActive(r, n))
+      .sort((a, b) => startAt(a) - startAt(b))[0] ?? null
+  )
 }
 
 export type CheckinState =
@@ -120,10 +124,20 @@ export function checkinState(r: ResvMineOut, now: Date): CheckinState | null {
   return n <= s + CHECKIN_AFTER ? { kind: 'open' } : { kind: 'after' }
 }
 
+export type CheckoutState = { kind: 'open' } | { kind: 'done'; at: string }
+/** 조기 퇴실 — 체크인한 승인 예약이 끝나기 전이면 (시작 전 포함, early-checkout spec §3). 퇴실했으면 그 시각 */
+export function checkoutState(r: ResvMineOut, now: Date): CheckoutState | null {
+  if (r.checked_out_at) return { kind: 'done', at: formatHm(r.checked_out_at) }
+  if (r.status !== 'approved' || !r.checked_in_at) return null
+  return nowAt(now) < endAt(r) ? { kind: 'open' } : null
+}
+
 export type CancelKind = 'withdraw' | 'cancel'
 /** requested → 철회(행 삭제), approved → 시작 전만 취소 (S10 §2.1) */
 export function cancelKind(r: ResvMineOut, now: Date): CancelKind | null {
   if (r.status === 'requested') return 'withdraw'
+  // 체크인했으면 취소가 아니라 조기 퇴실이다 — 일찍 체크인한 시작 전에도 (early-checkout spec §3)
+  if (r.checked_in_at) return null
   return r.status === 'approved' && startAt(r) > nowAt(now) ? 'cancel' : null
 }
 

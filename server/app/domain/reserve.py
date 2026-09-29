@@ -21,7 +21,8 @@ MAX_ACTIVE = 3
 MIN_MIN, MAX_MIN = 15, 120
 OPEN_MIN, CLOSE_MIN = 9 * 60, 21 * 60  # 운영 시간 KST (S10 §2.6) — analytics 도 이 값을 쓴다
 STEP_MIN = 5  # StudentResvIn 의 s_m·e_m multiple_of=5
-CHECKIN_BEFORE, CHECKIN_AFTER = 10, 15  # 분
+# 분 — 시작 시각부터(전에는 그 방을 앞 수업·예약이 쓰고 있을 수 있다, 2026-09-29 결정) +15분까지
+CHECKIN_BEFORE, CHECKIN_AFTER = 0, 15
 STUDENT_TYPE = 6  # 대여
 _LIVE = ("approved", "requested")
 STATUSES = frozenset(
@@ -269,7 +270,25 @@ def checkin(s: Session, r: Reservation, now_local: dt.datetime) -> None:
     st = start_local(r)
     lo, hi = st - dt.timedelta(minutes=CHECKIN_BEFORE), st + dt.timedelta(minutes=CHECKIN_AFTER)
     if not (lo <= now_local <= hi):
-        raise HTTPException(
-            409, f"체크인은 시작 {CHECKIN_BEFORE}분 전부터 {CHECKIN_AFTER}분 후까지입니다"
-        )
+        raise HTTPException(409, f"체크인은 시작 시각부터 {CHECKIN_AFTER}분 후까지입니다")
     r.checked_in_at = clock.to_utc(now_local)
+
+
+def checkout(s: Session, r: Reservation, now_local: dt.datetime) -> list[int]:
+    """조기 퇴실 — 끝 시각을 퇴실 분으로 당겨 바로 빈 강의실·예약 가능으로 만든다.
+    체크인이 시작 시각부터라 퇴실도 늘 시작 뒤다(끝 ≥ 시작).
+    끝을 당기므로 현재 상태·주간·승격·재동기화·통계·빈 구간이 그대로 맞는다(early-checkout spec §2).
+    RESV_DEL 판단은 당기기 전의 원래 끝으로 — 노드에 가 있고 아직 안 끝난 예약만."""
+    _require(r, "approved")
+    if r.checked_in_at is None:
+        raise HTTPException(409, "체크인한 예약만 퇴실할 수 있습니다")
+    if r.checked_out_at is not None:
+        raise HTTPException(409, "이미 퇴실했습니다")
+    if now_local >= end_local(r):
+        raise HTTPException(409, "이미 끝난 예약입니다")
+    old_end = (r.date, r.e_h, r.e_m)
+    # 끝 = 퇴실한 분(초 버림). 시작 분 안이면 길이 0 — 끝이 지금 이하라 모든 곳에서 바로 빈 강의실이고,
+    # 새 신청은 늘 지금 뒤에 시작하니 길이 0 이 막는 신청도 없다. (+1분으로 두면 그 1분 동안 '사용중'이었다)
+    r.e_h, r.e_m = now_local.hour, now_local.minute
+    r.checked_out_at = clock.to_utc(now_local)
+    return push_del(s, r, now_local, end=old_end)
