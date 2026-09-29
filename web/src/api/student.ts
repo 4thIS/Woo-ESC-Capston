@@ -38,7 +38,7 @@ export const studentApi = {
   /** requested → 행 삭제(철회), approved → 시작 전 취소. 그 밖 409 */
   cancel: (id: number) =>
     request<ResvMineOut>('POST', `/api/student/me/reservations/${id}/cancel`, undefined, mineOpts),
-  /** 시작 −10 ~ +15분 안의 approved 만. 그 밖·이미 함 409 */
+  /** 시작 ~ +15분 안의 approved 만. 그 밖·이미 함 409 */
   checkin: (id: number) =>
     request<ResvMineOut>('POST', `/api/student/me/reservations/${id}/checkin`, undefined, mineOpts),
   /** 체크인했고 시작~끝 사이의 approved 만 — 끝 시각을 퇴실 분으로 당긴다. 그 밖 409 */

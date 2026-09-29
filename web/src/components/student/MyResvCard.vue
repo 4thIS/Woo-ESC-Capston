@@ -5,7 +5,7 @@ import Button from '@/components/ui/Button.vue'
 import ResvStatusBadge from './ResvStatusBadge.vue'
 import { cancelKind, checkinState, checkoutState, resvWhen } from './rules'
 
-// 체크인 창(시작 −10 ~ +15분)·취소/철회 구분·조기 퇴실을 이 카드가 진다 (student-room.md §내 예약)
+// 체크인 창(시작 ~ +15분)·취소/철회 구분·조기 퇴실을 이 카드가 진다 (student-room.md §내 예약)
 const props = withDefaults(
   defineProps<{
     resv: ResvMineOut

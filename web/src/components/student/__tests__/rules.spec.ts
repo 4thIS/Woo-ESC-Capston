@@ -139,13 +139,13 @@ describe('내 예약', () => {
     expect(activeCount(list, NOW)).toBe(2)
   })
 
-  it('체크인 창 — 시작 −10 ~ +15분, 밖이면 언제부터인지, 끝난 예약은 없음', () => {
-    expect(checkinState(resv({ s_h: 10, s_m: 50 }), NOW)).toEqual({ kind: 'open' })
-    expect(checkinState(resv({ s_h: 11, s_m: 0 }), NOW)).toEqual({ kind: 'before', from: '10:50' })
+  it('체크인 창 — 시작 ~ +15분(시작 전엔 방을 남이 쓰고 있을 수 있다), 밖이면 언제부터인지, 끝난 예약은 없음', () => {
+    expect(checkinState(resv({ s_h: 10, s_m: 40 }), NOW)).toEqual({ kind: 'open' })
+    expect(checkinState(resv({ s_h: 10, s_m: 50 }), NOW)).toEqual({ kind: 'before', from: '10:50' })
     expect(checkinState(resv({ s_h: 10, s_m: 20 }), NOW)).toEqual({ kind: 'after' })
     expect(checkinState(resv({ date: '2026-10-24', s_h: 10, s_m: 0 }), NOW)).toEqual({
       kind: 'before',
-      from: '09:50',
+      from: '10:00',
     })
     expect(checkinState(resv({ checked_in_at: new Date('2026-10-23T01:52:00Z') }), NOW)).toEqual({
       kind: 'done',
@@ -194,12 +194,12 @@ describe('내 예약', () => {
     expect(nextResv([out, later], NOW)?.id).toBe(2)
   })
 
-  it('체크인 창 경계 — 정확히 s−10·s+15 는 열림, s+16 은 지남, s−11 은 전 (분 단위 내림의 한 칸 어긋남을 막는다)', () => {
+  it('체크인 창 경계 — 정확히 시작·s+15 는 열림, s+16 은 지남, s−1 은 전 (분 단위 내림의 한 칸 어긋남을 막는다)', () => {
     // NOW = 10:42
-    expect(checkinState(resv({ s_h: 10, s_m: 52 }), NOW)).toEqual({ kind: 'open' }) // s−10
+    expect(checkinState(resv({ s_h: 10, s_m: 42 }), NOW)).toEqual({ kind: 'open' }) // 시작 정각
     expect(checkinState(resv({ s_h: 10, s_m: 27 }), NOW)).toEqual({ kind: 'open' }) // s+15
     expect(checkinState(resv({ s_h: 10, s_m: 26 }), NOW)).toEqual({ kind: 'after' }) // s+16
-    expect(checkinState(resv({ s_h: 10, s_m: 53 }), NOW)).toEqual({ kind: 'before', from: '10:43' }) // s−11
+    expect(checkinState(resv({ s_h: 10, s_m: 43 }), NOW)).toEqual({ kind: 'before', from: '10:43' }) // s−1
   })
 
   it('취소 — 신청은 철회(시작 뒤에도), 승인은 시작 전만, 그 밖엔 없음', () => {

@@ -27,7 +27,7 @@ enableAutoUnmount(afterEach)
 
 // 공용 빌더(M1) — 오늘 10:50 시작, 결정 전 시각 없음
 const resv = (over: Partial<ResvMineOut> = {}): ResvMineOut =>
-  mineResv({ date: '2026-10-23', s_m: 50, requested_at: null, decided_at: null, ...over })
+  mineResv({ date: '2026-10-23', s_m: 40, requested_at: null, decided_at: null, ...over })
 const texts = () => toasts.value.map((t) => t.message)
 const cards = (w: VueWrapper) => w.findAll('article')
 const confirm = async (w: VueWrapper) => {

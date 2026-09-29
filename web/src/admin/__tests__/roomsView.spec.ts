@@ -127,7 +127,8 @@ describe('resvUse — 예약 표의 상태 (사용중·조기 퇴실을 가린�
   const inAt = new Date('2026-10-05T01:01:00Z') // 10:01 체크인
   it('학생 예약 — 체크인·퇴실·시각으로 여섯 상태', () => {
     expect(resvUse(r({ s_h: 11 }), NOW)).toEqual({ label: '예정', tone: 'neutral' })
-    expect(resvUse(r({ s_h: 10, s_m: 50 }), NOW)).toEqual({ label: '체크인 대기', tone: 'neutral' })
+    expect(resvUse(r({ s_h: 10, s_m: 43 }), NOW)).toEqual({ label: '예정', tone: 'neutral' }) // 시작 1분 전
+    expect(resvUse(r({ s_h: 10, s_m: 42 }), NOW)).toEqual({ label: '체크인 대기', tone: 'neutral' }) // 시작 정각
     expect(resvUse(r({ s_h: 10, s_m: 27 }), NOW)).toEqual({ label: '체크인 대기', tone: 'neutral' }) // s+15
     expect(resvUse(r({ s_h: 10, s_m: 26 }), NOW)).toEqual({ label: '미체크인', tone: 'neutral' }) // s+16
     expect(resvUse(r({ checked_in_at: inAt }), NOW)).toEqual({ label: '사용중', tone: 'busy' })

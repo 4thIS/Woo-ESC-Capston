@@ -29,15 +29,22 @@ const resv = (over: Partial<ResvMineOut> = {}): ResvMineOut => ({
 const buttons = (w: VueWrapper) => w.findAll('button').map((b) => b.text())
 
 describe('MyResvCard', () => {
-  it('승인 · 창 안 — 체크인(primary) + 취소, 읽는 이름에 방·시각', async () => {
-    const w = mount(MyResvCard, { props: { resv: resv(), now: NOW } })
-    expect(w.get('article').attributes('aria-label')).toBe('공학관 401호 10/23 금 10:50–12:00')
+  it('승인 · 창 안(시작 뒤) — 체크인(primary)만, 시작이 지나 취소는 없다, 읽는 이름에 방·시각', async () => {
+    const w = mount(MyResvCard, { props: { resv: resv({ s_m: 40 }), now: NOW } })
+    expect(w.get('article').attributes('aria-label')).toBe('공학관 401호 10/23 금 10:40–12:00')
     expect(w.get('.badge').text()).toBe('승인됨')
-    expect(buttons(w)).toEqual(['체크인', '취소'])
+    expect(buttons(w)).toEqual(['체크인'])
     expect(w.findAll('button')[0].classes()).toContain('btn--primary')
     await w.findAll('button')[0].trigger('click')
-    await w.findAll('button')[1].trigger('click')
     expect(w.emitted('checkin')).toHaveLength(1)
+  })
+
+  it('승인 · 시작 전 — 체크인은 잠기고 시작 시각부터, 취소는 된다', async () => {
+    const w = mount(MyResvCard, { props: { resv: resv(), now: NOW } }) // 10:50 시작, 지금 10:42
+    expect(buttons(w)).toEqual(['체크인', '취소'])
+    expect((w.findAll('button')[0].element as HTMLButtonElement).disabled).toBe(true)
+    expect(w.get('.mc__hint').text()).toBe('10:50부터 체크인할 수 있어요')
+    await w.findAll('button')[1].trigger('click')
     expect(w.emitted('cancel')).toHaveLength(1)
   })
 
@@ -85,7 +92,7 @@ describe('MyResvCard', () => {
     expect(ci.text()).toBe('체크인')
     expect((ci.element as HTMLButtonElement).disabled).toBe(true)
     expect(ci.classes()).toContain('btn--secondary')
-    expect(w.get('.mc__hint').text()).toBe('10:50부터 체크인할 수 있어요')
+    expect(w.get('.mc__hint').text()).toBe('11:00부터 체크인할 수 있어요')
   })
 
   it('체크인했으면 버튼 자리가 시각으로, 시작 뒤엔 취소 대신 조기 퇴실만', () => {
