@@ -18,6 +18,8 @@ export interface LoginOut {
   token: string
   role: Role
   school_id: number
+  /** 로그인 뒤 화면의 학교 이름. 이 필드 전에 저장된 세션에는 없다 */
+  school_name?: string
   name: string
 }
 

@@ -102,9 +102,16 @@ describe('BuildingLayout — /:bld 강의실 목록', () => {
   })
 
   it('로그아웃은 사이드바 바닥 — 토큰을 버리고 로그인으로', async () => {
-    setSession({ token: 't', role: 'student', school_id: 1, name: '김민준' })
+    setSession({
+      token: 't',
+      role: 'student',
+      school_id: 1,
+      school_name: '명지전문대학',
+      name: '김민준',
+    })
     const { w, router } = await mountAt(BuildingLayout, '/E', '/:bld')
     expect(w.get('.me__who b').text()).toBe('김민준')
+    expect(w.get('.me__who span').text()).toBe('명지전문대학') // 로그인한 학생의 실제 학교
     await w.get('.foot button').trigger('click')
     await flushPromises()
     expect(session.value).toBeNull()
