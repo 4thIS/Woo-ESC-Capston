@@ -1,0 +1,14 @@
+{
+  "symbol": "kImgChipSiheom",
+  "text": "시험",
+  "family": "Nanum Gothic",
+  "weight": 700,
+  "px": 16,
+  "tracking_em": 0.04,
+  "ttf_sha256": "d81d6344e36f05ff1fe42b18cc9d18feece8283ae1132e1ef890b5f421eefb4a",
+  "ink_threshold": 128,
+  "w": 28,
+  "h": 16,
+  "bytes_per_row": 4,
+  "baseline": 14
+}
