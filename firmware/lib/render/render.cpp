@@ -199,7 +199,7 @@ void drawSetup(Adafruit_GFX& g, const RenderModel& m) {
   drawText(g, kNanum20Bold, "미설정 단말", kPad, kHeaderBase, GxEPD_BLACK);
 
   const BitmapImage& title = kImgTitleSeoljeongdaegi;
-  const bool hasTag = m.newTag[0] != ' ';
+  const bool hasTag = m.newTag[0] != '\0';
   const int16_t chipH = (int16_t)(2 * kSetupChipPadY + kNanum62ExtraBold.cellH);
   const int16_t blockH =
       (int16_t)(title.h + kSetupTitleGap + kNanum20Regular.cellH + (hasTag ? kSetupBlockGap + chipH : 0));
