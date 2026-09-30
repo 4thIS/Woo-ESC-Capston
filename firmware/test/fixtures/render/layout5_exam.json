@@ -1,0 +1,15 @@
+{
+  "name": "layout5_exam",
+  "layout": 5, "bld": "E", "room": 301, "unit": 1,
+  "now_str": "14:30", "date_str": "09.30", "weekday": 3,
+  "prev": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "cur":  {"subj": "운영체제", "prof": "정교수", "s_h": 14, "s_m": 0, "e_h": 15, "e_m": 50, "type": 2, "flags": 3},
+  "next": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "n_today": 2,
+  "today": [
+    {"s_h": 9, "s_m": 0, "e_h": 10, "e_m": 50, "subj": "자료구조", "type": 1},
+    {"s_h": 14, "s_m": 0, "e_h": 15, "e_m": 50, "subj": "운영체제", "type": 2}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}

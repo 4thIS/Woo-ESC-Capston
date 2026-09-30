@@ -11,16 +11,16 @@ void test_pipeline_end_to_end() {
   RenderModel m{};
   char name[64];
   // PlatformIO native 테스트의 CWD 는 firmware/ (test_codec/vectors_path.h 와 같은 전제).
-  TEST_ASSERT_TRUE(parseFixtureFile("test/fixtures/render/smoke_basic.json", m, name, sizeof(name)));
+  TEST_ASSERT_TRUE(parseFixtureFile("test/fixtures/render/layout1_class.json", m, name, sizeof(name)));
   HostGfx g;
   renderLayout(g, m);
   TEST_ASSERT_EQUAL(HColor::RED, g.pixelAt(10, 60));     // layout 1 = RED 상태 띠
   TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(400, 50));  // 헤더 하단선
-  TEST_ASSERT_TRUE(g.savePNG("smoke_basic_out.png"));
-  FILE* f = fopen("smoke_basic_out.png", "rb");
+  TEST_ASSERT_TRUE(g.savePNG("layout1_class_out.png"));
+  FILE* f = fopen("layout1_class_out.png", "rb");
   TEST_ASSERT_NOT_NULL(f);
   fclose(f);
-  remove("smoke_basic_out.png");
+  remove("layout1_class_out.png");
 }
 
 int main() {

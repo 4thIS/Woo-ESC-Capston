@@ -1,0 +1,25 @@
+{
+  "name": "layout6_special",
+  "layout": 6, "bld": "E", "room": 301, "unit": 1,
+  "now_str": "14:10", "date_str": "09.30", "weekday": 3,
+  "prev": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "cur":  {"subj": "AI 특강", "prof": "외부강사", "s_h": 14, "s_m": 0, "e_h": 14, "e_m": 50, "type": 5, "flags": 1},
+  "next": {"subj": "알고리즘", "prof": "한교수", "s_h": 15, "s_m": 0, "e_h": 15, "e_m": 50, "type": 1, "flags": 1},
+  "n_today": 12,
+  "today": [
+    {"s_h": 8, "s_m": 0, "e_h": 8, "e_m": 50, "subj": "자료구조", "type": 1},
+    {"s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "subj": "운영체제", "type": 1},
+    {"s_h": 10, "s_m": 0, "e_h": 10, "e_m": 50, "subj": "데이터베이스", "type": 1},
+    {"s_h": 11, "s_m": 0, "e_h": 11, "e_m": 50, "subj": "네트워크", "type": 1},
+    {"s_h": 12, "s_m": 0, "e_h": 12, "e_m": 50, "subj": "웹프로그래밍", "type": 1},
+    {"s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "subj": "캡스톤디자인", "type": 1},
+    {"s_h": 14, "s_m": 0, "e_h": 14, "e_m": 50, "subj": "AI 특강", "type": 5},
+    {"s_h": 15, "s_m": 0, "e_h": 15, "e_m": 50, "subj": "알고리즘", "type": 1},
+    {"s_h": 16, "s_m": 0, "e_h": 16, "e_m": 50, "subj": "임베디드", "type": 1},
+    {"s_h": 17, "s_m": 0, "e_h": 17, "e_m": 50, "subj": "스터디", "type": 6},
+    {"s_h": 18, "s_m": 0, "e_h": 18, "e_m": 45, "subj": "영어회화", "type": 1},
+    {"s_h": 19, "s_m": 0, "e_h": 19, "e_m": 45, "subj": "자료구조Ⅱ", "type": 2}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}
