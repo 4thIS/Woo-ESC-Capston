@@ -97,21 +97,44 @@ void drawStatusBand(Adafruit_GFX& g, const RenderModel& m) {
              fg);
 }
 
-void drawInfoRow(Adafruit_GFX& g, int row, const char* label, const char* value) {
+constexpr int16_t kInfoChipLift = 18;     // ⚠️ 값 베이스라인 → 변경 칩 윗변
+constexpr int16_t kNextLabelGap = 10;     // "다음 수업" ↔ 아래 줄
+constexpr int16_t kNextTimeGap = 16;      // 시작 시각 ↔ 과목명
+constexpr int16_t kNoScheduleBase = 338;  // ⚠️ 정보 영역 세로 중앙
+
+int16_t drawInfoRow(Adafruit_GFX& g, int row, const char* label, const char* value) {
   drawText(g, kNanum20Regular, label, kLabelX, kInfoRowBase[row], GxEPD_BLACK);
-  drawText(g, kNanum28Bold, value, kValueX, kInfoRowBase[row], GxEPD_BLACK, kTrack28);
+  return drawText(g, kNanum28Bold, value, kValueX, kInfoRowBase[row], GxEPD_BLACK, kTrack28);
 }
 
 void drawInfoA(Adafruit_GFX& g, const RenderModel& m) {
   g.drawFastHLine(0, kDivider1Y, kSplitX, GxEPD_BLACK);
   g.drawFastHLine(0, kDivider2Y, kSplitX, GxEPD_BLACK);
-  drawInfoRow(g, 0, "과목명", m.cur.subj);
+  const int16_t subjW = drawInfoRow(g, 0, "과목명", m.cur.subj);
+  if (m.cur.flags & 0x02)
+    drawChip(g, kImgChipByeongyeong, (int16_t)(kValueX + subjW + 10),
+             (int16_t)(kInfoRowBase[0] - kInfoChipLift));
   drawInfoRow(g, 1, "담당교수", m.cur.prof);
   char s[6], e[6], range[24];
   formatHM(m.cur.sH, m.cur.sM, s, sizeof s);
   formatHM(m.cur.eH, m.cur.eM, e, sizeof e);
   snprintf(range, sizeof range, "%s \xE2\x80\x93 %s", s, e);  // U+2013 en dash
   drawInfoRow(g, 2, "강의시간", range);
+}
+
+void drawInfoB(Adafruit_GFX& g, const RenderModel& m) {
+  if (!(m.next.flags & 0x01)) {
+    drawText(g, kNanum28Bold, "오늘 일정 없음", kPad, kNoScheduleBase, GxEPD_BLACK, kTrack28);
+    return;
+  }
+  const int16_t blockH = (int16_t)(kNanum20Regular.cellH + kNextLabelGap + kNanum62ExtraBold.cellH);
+  const int16_t top = (int16_t)(kInfoY + (kInfoH - blockH) / 2);
+  drawText(g, kNanum20Regular, "다음 수업", kPad, (int16_t)(top + kNanum20Regular.baseline), GxEPD_BLACK);
+  const int16_t base = (int16_t)(top + kNanum20Regular.cellH + kNextLabelGap + kNanum62ExtraBold.baseline);
+  char hm[6];
+  formatHM(m.next.sH, m.next.sM, hm, sizeof hm);
+  const int16_t tw = drawText(g, kNanum62ExtraBold, hm, kPad, base, GxEPD_BLACK, kTrack62);
+  drawText(g, kNanum28Bold, m.next.subj, (int16_t)(kPad + tw + kNextTimeGap), base, GxEPD_BLACK, kTrack28);
 }
 
 void drawTodayList(Adafruit_GFX& g, const RenderModel& m) {
@@ -166,9 +189,13 @@ void drawFooter(Adafruit_GFX& g, const RenderModel& m) {
 
 void renderLayout(Adafruit_GFX& gfx, const RenderModel& m) {
   gfx.fillScreen(GxEPD_WHITE);
+  if (m.layout < 1 || m.layout > 7) return;  // 8 은 Task 5.2, 그 밖은 흰 화면(⚠️ 열린 질문 5)
   drawHeader(gfx, m);
   drawStatusBand(gfx, m);
-  drawInfoA(gfx, m);
+  if (m.layout == 4)
+    drawInfoB(gfx, m);
+  else
+    drawInfoA(gfx, m);
   drawTodayList(gfx, m);
   gfx.fillRect(kSplitX, kBandY, 2, (int16_t)(kFooterY - kBandY), GxEPD_BLACK);
   drawFooter(gfx, m);

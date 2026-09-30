@@ -4,8 +4,14 @@
 #include <cstring>
 #include <initializer_list>
 
+#include "font_data.h"
 #include "host_gfx.h"
 #include "render.h"
+#include "text.h"
+
+static int16_t textWidthForTest(const char* s) {
+  return textWidth(kNanum28Bold, s, -1);
+}
 
 static int countColor(const HostGfx& g, int x0, int y0, int x1, int y1, HColor c) {
   int n = 0;
@@ -133,6 +139,56 @@ void test_today_overflow_shows_more_rows() {
   TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(795, 209));
 }
 
+static RenderModel layout4Model() {
+  RenderModel m = layout1Model();
+  m.layout = 4;  // 빈강의실 — 형태 B
+  m.cur = RenderSlot{};
+  strcpy(m.next.subj, "캡스톤디자인");
+  m.next.sH = 13;
+  m.next.flags = 1;
+  return m;
+}
+
+void test_form_b_has_no_dividers_and_big_time() {
+  HostGfx g;
+  renderLayout(g, layout4Model());
+  TEST_ASSERT_LESS_THAN_INT(
+      498, countColor(g, 0, 291, 498, 292, HColor::BLACK));  // 형태 B 는 행 구분선이 없다(⚠️ 열린 질문 3)
+  TEST_ASSERT_LESS_THAN_INT(498, countColor(g, 0, 365, 498, 366, HColor::BLACK));
+  TEST_ASSERT_GREATER_THAN_INT(300, countColor(g, 24, 310, 200, 372, HColor::BLACK));  // "13:00" 62/800
+}
+
+void test_form_b_without_next_says_no_schedule() {
+  RenderModel m = layout4Model();
+  m.next.flags = 0;
+  HostGfx g;
+  renderLayout(g, m);
+  TEST_ASSERT_LESS_THAN_INT(498,
+                            countColor(g, 0, 291, 498, 292, HColor::BLACK));  // 형태 A 로 그려지지 않았다
+  TEST_ASSERT_GREATER_THAN_INT(80,
+                               countColor(g, 24, 310, 400, 345, HColor::BLACK));  // "오늘 일정 없음" 28/700
+}
+
+void test_change_chip_after_subject() {
+  RenderModel m = layout1Model();
+  m.cur.flags = 0x03;  // 존재 + 변경 배지
+  HostGfx g;
+  renderLayout(g, m);
+  const int16_t x = (int16_t)(146 + textWidthForTest(m.cur.subj) + 10);
+  TEST_ASSERT_EQUAL(HColor::BLACK,
+                    g.pixelAt((int16_t)(x + 1), (int16_t)(263 - 18 + 1)));  // 칩 흑 바탕 모서리
+}
+
+void test_out_of_range_layout_is_blank() {
+  RenderModel m = layout1Model();
+  for (uint8_t layout : {0, 9, 255}) {
+    m.layout = layout;
+    HostGfx g;
+    renderLayout(g, m);
+    TEST_ASSERT_EQUAL_INT(800 * 480, countColor(g, 0, 0, 800, 480, HColor::WHITE));
+  }
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_skeleton_lines_and_footer);
@@ -144,5 +200,9 @@ int main() {
   RUN_TEST(test_today_type_chip_right_aligned);
   RUN_TEST(test_today_empty_message);
   RUN_TEST(test_today_overflow_shows_more_rows);
+  RUN_TEST(test_form_b_has_no_dividers_and_big_time);
+  RUN_TEST(test_form_b_without_next_says_no_schedule);
+  RUN_TEST(test_change_chip_after_subject);
+  RUN_TEST(test_out_of_range_layout_is_blank);
   return UNITY_END();
 }
