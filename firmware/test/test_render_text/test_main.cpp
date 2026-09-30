@@ -29,9 +29,16 @@ void test_truncated_multibyte_stops_at_nul() {
   // '가'의 앞 2바이트만 있고 NUL. 그 뒤의 'A'를 읽으면 버퍼 밖 접근이다.
   const char buf[] = {(char)0xEA, (char)0xB0, 0, 'A'};
   const char* p = buf;
-  TEST_ASSERT_EQUAL_UINT32('?', utf8Next(p));  // 0xEA 뒤가 연속 바이트지만 그다음이 NUL
-  TEST_ASSERT_EQUAL_UINT32('?', utf8Next(p));  // 0xB0 은 단독으로 올 수 없는 바이트
+  TEST_ASSERT_EQUAL_UINT32('?', utf8Next(p));  // 잘린 글자 자리에 '?' 하나 — 고아 연속 바이트도 함께 넘긴다
   TEST_ASSERT_EQUAL_UINT32(0, utf8Next(p));    // NUL 에서 멈춘다 — 'A'를 읽지 않는다
+}
+
+void test_orphan_continuation_bytes_give_single_question_mark() {
+  const char buf[] = {(char)0xB0, (char)0xB1, 'A', 0};  // 리드 자리에 연속 바이트가 연달아 온다
+  const char* p = buf;
+  TEST_ASSERT_EQUAL_UINT32('?', utf8Next(p));
+  TEST_ASSERT_EQUAL_UINT32('A', utf8Next(p));
+  TEST_ASSERT_EQUAL_UINT32(0, utf8Next(p));
 }
 
 void test_width_is_sum_of_advances() {
@@ -66,6 +73,7 @@ int main() {
   UNITY_BEGIN();
   RUN_TEST(test_ascii_and_multibyte_decode);
   RUN_TEST(test_truncated_multibyte_stops_at_nul);
+  RUN_TEST(test_orphan_continuation_bytes_give_single_question_mark);
   RUN_TEST(test_width_is_sum_of_advances);
   RUN_TEST(test_tracking_applies_between_glyphs_only);
   RUN_TEST(test_unknown_glyph_is_skipped);

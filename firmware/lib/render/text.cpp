@@ -1,5 +1,14 @@
 #include "text.h"
 
+// 실패한 시퀀스: 리드 바이트와 뒤따르는 고아 연속 바이트(0x80~0xBF)를 NUL 전까지 함께 넘기고 '?' 하나.
+static uint32_t skipBadSequence(const char*& p) {
+  const uint8_t* s = reinterpret_cast<const uint8_t*>(p);
+  int i = 1;
+  while ((s[i] & 0xC0) == 0x80) i++;  // NUL(0x00)은 연속 바이트가 아니라 여기서 멈춘다
+  p += i;
+  return '?';
+}
+
 uint32_t utf8Next(const char*& p) {
   const uint8_t* s = reinterpret_cast<const uint8_t*>(p);
   const uint8_t c = s[0];
@@ -20,15 +29,11 @@ uint32_t utf8Next(const char*& p) {
     n = 3;
     cp = c & 0x07;
   } else {
-    p += 1;
-    return '?';
+    return skipBadSequence(p);
   }
   // s[i] 는 s[i-1] 이 NUL 이 아닌 연속 바이트임을 확인한 뒤에만 읽는다 — NUL 너머를 읽지 않는다.
   for (int i = 1; i <= n; i++) {
-    if ((s[i] & 0xC0) != 0x80) {
-      p += 1;
-      return '?';
-    }
+    if ((s[i] & 0xC0) != 0x80) return skipBadSequence(p);
     cp = (cp << 6) | (s[i] & 0x3F);
   }
   p += n + 1;
