@@ -61,6 +61,7 @@ repos:
       - id: prettier
         name: prettier (web)
         # web/ 스캐폴드(package.json) 전에는 건너뛴다 — CLAUDE.md 같은 .md 만 있어도 훅이 걸리기 때문
-        entry: bash -c 'cd web && { [ -f package.json ] || exit 0; } && pnpm exec prettier --write "$@"' --
+        # pre-commit 이 넘기는 경로는 repo-root 기준(web/xxx)인데 cd web 이후에도 그대로 쓰면 못 찾는다 — "web/" 접두를 벗긴다
+        entry: bash -c 'cd web && { [ -f package.json ] || exit 0; } && printf "%s\n" "$@" | sed "s#^web/##" | xargs -r pnpm exec prettier --write' --
         language: system
         files: '^web/.*\.(ts|tsx|js|jsx|vue|json|css|scss|md)$'

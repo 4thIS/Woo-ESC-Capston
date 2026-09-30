@@ -1,0 +1,42 @@
+[
+  {
+    "id": 7,
+    "date": "2026-10-24",
+    "s_h": 10,
+    "s_m": 0,
+    "e_h": 12,
+    "e_m": 0,
+    "type": 6,
+    "subject": "캡스톤 스터디",
+    "professor": "",
+    "status": "approved",
+    "requested_at": "2026-10-22T01:00:00",
+    "decided_at": "2026-10-22T02:30:00",
+    "reject_reason": null,
+    "checked_in_at": null,
+    "cancelled_at": null,
+    "room_id": 11,
+    "building": "공학관",
+    "room": 401
+  },
+  {
+    "id": 9,
+    "date": "2026-10-26",
+    "s_h": 14,
+    "s_m": 0,
+    "e_h": 16,
+    "e_m": 0,
+    "type": 6,
+    "subject": "동아리",
+    "professor": "",
+    "status": "rejected",
+    "requested_at": "2026-10-22T03:00:00",
+    "decided_at": "2026-10-22T04:00:00",
+    "reject_reason": "학과 행사와 겹칩니다",
+    "checked_in_at": null,
+    "cancelled_at": null,
+    "room_id": 12,
+    "building": "공학관",
+    "room": 405
+  }
+]

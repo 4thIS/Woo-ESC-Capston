@@ -99,7 +99,7 @@ job_runs
 |---|---|---|
 | 1 | 만료 | `requested` · 시작 시각 < 지금 → `expired` |
 | 2 | 승격 | `approved` · **오늘 ≤ KST 날짜 ≤ 오늘+7** · **`pushed_at IS NULL`**(아직 노드로 안 보냄) → `push_set`(RESV_SET + `pushed_at`), **예약마다 자기 트랜잭션**·커밋 뒤 알림. 이미 보낸 예약은 다시 안 보낸다(배터리, 리뷰 🔴7). 서버가 꺼져 하루를 놓쳐도 다음 실행이 따라잡고, outbox 이력을 보지 않아 지운 예약의 id 재사용에도 속지 않는다(r3). 한 건이 실패하면 `pushed_at` NULL 로 남아 다음 날 재시도 |
-| 3 | 실패 재동기 | 지난 24 h `failed` outbox(`last_error ≠ 'cancelled'`) 의 **`(bld, room, unit)`** 마다 실패한 kind 집합으로 `enqueue_full_sync(bld, room, kinds, unit=u)` 1회. FILE 은 `payload.kind` 로 kind 를 얻는다(`KIND_OF` 엔 FILE 이 없음 — 가장 필요한 CSV·GAP FILE 실패를 놓치던 것). `CMD`·`SET_ROOM`·`TIME` 제외. 방마다 try — 한 방의 NotFound 가 나머지를 멈추지 않음(리뷰 🔴8) |
+| 3 | 실패 재동기 | 지난 24 h `failed` outbox(`last_error ≠ 'cancelled'`) 의 **`(bld, room, unit)`** 마다 실패한 kind 집합으로 `enqueue_full_sync(bld, room, kinds, unit=u)` 1회. FILE 은 `payload.kind` 로 kind 를 얻는다(`KIND_OF` 엔 FILE 이 없음 — 가장 필요한 CSV·GAP FILE 실패를 놓치던 것). `CMD`·`SET_ROOM`·`TIME` 제외. 방마다 try — 한 방의 NotFound 가 나머지를 멈추지 않음(리뷰 🔴8). 재동기 FILE 자체가 실패하면 그 실패가 다음 실행의 24 h 창에 다시 잡혀 **매일 다시 나간다** — 계속 실패하는 노드는 매일 깨운다(연속 실패 상한은 후속 검토) |
 | 4 | 정리 | `reservations.date < 오늘−90` 삭제 · 거절·만료 신청은 `date < 오늘−7` 삭제(id 반환) · `job_runs.ran_at < 오늘−90` 삭제 · `email_tokens.expires_at < 지금−7일` 삭제 |
 | 5 | 기록 | `job_runs(name="daily", result={"expired": n, "promoted": n, "resynced": [[bld, room, unit, kinds], …], "pruned": {"reservations": n, "job_runs": n, "email_tokens": n}, "errors": [str, …]})` |
 
@@ -128,7 +128,7 @@ RESV_SET 이 enqueue 뒤 노드에서 실패해도 `pushed_at` 은 남는다 —
 |---|---|
 | 배정률 | 방·날짜의 **운영 시간 `OPEN_HOUR=9`~`CLOSE_HOUR=21`(KST)** 중 배정된 분 / 720 분. `room_state` 의 **layout ∈ {1,2,3,5,6,7} 이면 배정, 4 면 빈**(쉬는시간 2 는 수업 사이라 배정으로 봄). 휴강(3)은 "배정됐으나 안 씀"이라 배정률에는 넣고 `unused_min` 으로 따로 센다 |
 | 공강 | 방·요일의 빈 구간(layout 4) 목록 — 운영 시간 안에서 구간 병합 |
-| 예약 통계 | 기간(`date` 기준) 내 `requested_at` 있는 예약의 상태별 수 + No-show(§2.1) + 체크인 수. **학생이 결정 전에 철회한 신청은 행이 지워져 집계에 없다**(`cancelled` 는 승인 뒤 취소만), 거절·만료는 7일 뒤 정리돼 그 이전 기간 수에서 빠진다(r3 명시). `no_show_rate = no_show / (approved 종료분)`, `checkin_rate = checked_in / (approved 종료분)` |
+| 예약 통계 | 기간(`date` 기준) 내 `requested_at` 있는 예약의 상태별 수 + No-show(§2.1) + 체크인 수. **`requested` = 받은 신청 전체(현재 상태 무관)** — 나머지 키는 현재 상태별 수라 `requested ≥ approved + rejected + cancelled + expired`. **학생이 결정 전에 철회한 신청은 행이 지워져 집계에 없다**(`cancelled` 는 승인 뒤 취소만), 거절·만료는 7일 뒤 정리돼 그 이전 기간 수에서 빠진다(r3 명시). `no_show_rate = no_show / (approved 종료분)`, `checkin_rate = checked_in / (approved 종료분)` |
 | 갱신 지연 | outbox `state='acked'` · `type ∈ {SLOT_SET, RESV_SET}` · `created_at ∈ 기간` → `seconds = finished_at − created_at`. bin 경계 `[0,10,20,30,45,60,90,120,∞)`, `p50/p95/max/n`, `within_30s`·`within_90s` 비율(로드맵 §7.1 기준) |
 
 기간은 KST 날짜 `from~to`(양끝 포함), 기본 최근 30일, 최대 90일(정리 규칙과 동일). 시험기간·슬롯 계산은 `room_state` 를 하루 단위로 **구간 병합**해 분을 센다(분 단위 루프 아님).

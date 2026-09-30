@@ -73,53 +73,86 @@ Pi 에서는 **`main` 만 받는다**(작업 브랜치 체크아웃 금지 — P
 
 ---
 
-## 3. 메인Pi — 서버 띄우기 (약 10분)
+## 3. 메인Pi — 서버 띄우기: Docker (약 15분)
+
+> **2026-09-23 팀 결정: 메인Pi 서버는 Docker(Compose)로 돌린다.** 모뎀Pi 는 Docker 를 쓰지 않는다(USB 시리얼·시계 동기 상태에 직접 붙어야 해서 §8 의 systemd). 이미지는 amd64(노트북)·arm64(Pi) 둘 다 빌드된다.
 
 ```bash
 ssh admin@ESC-main.local
-cd ~/Woo-ESC-Capston/server
-uv sync
-mkdir -p ~/data
-export SERVER_DB=~/data/main.db
-uv run alembic upgrade head
-uv run uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000
+
+# 3-1. Docker 설치 (1회) — 공식 설치 스크립트
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker admin
+exit                                   # 그룹 반영을 위해 한 번 나갔다가
+ssh admin@ESC-main.local               # 다시 접속
+docker run --rm hello-world            # "Hello from Docker!" 가 나오면 OK
+
+# 3-2. 서버 설정 파일 server/.env (1회) — 비밀값이라 커밋하지 않고 이미지에도 안 들어간다
+cd ~/Woo-ESC-Capston
+git pull
+cp server/.env.example server/.env
+nano server/.env
+#   JWT_SECRET=<아래 명령 출력 — 32자 이상>     python3 -c "import secrets;print(secrets.token_urlsafe(48))"
+#   STUDENT_WEB_URL=http://ESC-main.local:5173   (학생 웹 주소 — 아직 없으니 이 값으로 둔다)
+#   MAIL_BACKEND=console                         (통합 단계는 메일을 로그로 — SMTP 불필요)
+#   DEBUG=1                                      (통신 확인 페이지·/docs 를 연다. 운영(S11)에서는 0)
+chmod 600 server/.env
+
+# 3-3. 서버 빌드·기동 — 리포 루트에서 (compose.yaml 이 루트에 있다)
+docker compose up -d --build           # 첫 빌드는 Pi 에서 수 분
+docker compose ps                      # STATUS 가 "healthy" 가 될 때까지 (약 20 s)
+docker compose logs -f server          # 로그 보기 (Ctrl+C 로 빠져나옴 — 서버는 계속 돈다)
 ```
-> **워커는 반드시 1개(기본값)** — WS 연결·outbox 디스패치 상태가 프로세스 메모리에 있다(`server/README.md`). `--workers` 를 주지 않는다.
+- DB 는 Docker 볼륨(`woo-esc_server-data`)에 있다. `docker compose down` 해도 남고, **`down -v` 는 DB 까지 지운다** — 쓰지 않는다.
+- 코드가 바뀌면: `git pull && docker compose up -d --build`
+- 마이그레이션(`alembic upgrade head`)은 컨테이너가 시작할 때마다 자동으로 돈다. 워커는 1 개로 고정돼 있다.
+- 서버가 `healthy` 가 안 되고 재시작만 하면 `docker compose logs server` — 대개 `server/.env` 의 필수값(`JWT_SECRET` 32자 이상·`STUDENT_WEB_URL`, `MAIL_BACKEND=console` 이면 `DEBUG=1`)이 빠진 것이다.
+- **이미 §3 을 `uv run uvicorn` 으로 해 두었다면**: 그 터미널에서 `Ctrl+C` 로 끄고(포트 8000 을 비워야 한다) 위를 한다. 그 DB(`~/data/main.db`)는 쓰지 않으므로 **§4 데이터 등록을 한 번 더** 한다(5 분).
 
 노트북 브라우저에서 확인:
 - http://ESC-main.local:8000/api/health → `{"ok": true}`
-- http://ESC-main.local:8000/docs → API 목록
-- http://ESC-main.local:8000/static/index.html → **"메인Pi — 통신 확인"** 페이지(모뎀 목록·outbox·시간표 저장 폼). 이 문서의 "대시보드"는 이 페이지다.
+- http://ESC-main.local:8000/docs → API 목록 (`DEBUG=1` 일 때만)
+- http://ESC-main.local:8000/static/index.html → **"메인Pi — 통신 확인"** 페이지(로그인·모뎀 목록·outbox·시간표 저장 폼, `DEBUG=1` 일 때만). 이 문서의 "대시보드"는 이 페이지다. §4 에서 만든 관리자 계정으로 **먼저 로그인**한다.
 
-이 터미널은 서버 로그를 보는 용도로 열어 둔다. 아래 §4 는 **노트북(또는 새 SSH 창)** 에서 한다.
+아래 §4 는 **노트북(또는 새 SSH 창)** 에서 한다.
 
 ---
 
-## 4. 메인Pi — 데이터 등록 (약 5분)
+## 4. 메인Pi — 데이터 등록 (약 10분)
 
-노트북 터미널에서(Windows 면 Git Bash). `H=http://ESC-main.local:8000`.
+S4a(#42) 이후 `/api/health`·`/api/auth/*` 를 뺀 모든 API 는 **관리자 로그인 토큰**이 필요하다. 학교와 첫 관리자는 **CLI** 로 만든다.
 
+**4-1. 학교·관리자 (메인Pi SSH 에서, 1회)**
+```bash
+cd ~/Woo-ESC-Capston
+# 학교 — net_id 는 75(0x4B, lora_proto 기본값)로. 나중에 실물 ESP노드와 맞추기 위해서다
+docker compose exec server python -m app.cli create-school --name 명지전문대 --net-id 75 --email-domain mjc.ac.kr
+#   → school id=1 …
+# 관리자 — 비밀번호(8자 이상)는 프롬프트로 입력한다(명령줄에 쓰지 않는다)
+docker compose exec server python -m app.cli create-admin --school-id 1 --email admin@mjc.ac.kr --name 관리자
+```
+
+**4-2. 로그인 → 모뎀·건물·강의실 (노트북 터미널에서, Windows 면 Git Bash)**
 ```bash
 H=http://ESC-main.local:8000
+T=$(curl -s -X POST $H/api/auth/login -H 'content-type: application/json' \
+      -d '{"email":"admin@mjc.ac.kr","password":"<4-1 의 비밀번호>"}' | python -c "import sys,json;print(json.load(sys.stdin)['token'])")
+A="Authorization: Bearer $T"            # 이후 모든 요청에 붙인다 (토큰은 24 시간 유효)
 
-# 4-1. 모뎀Pi 등록 → 토큰 (평문은 이때 한 번만 보인다 — 바로 적어 둔다)
-curl -s -X POST $H/api/lora/modems -H 'content-type: application/json' \
+# 모뎀Pi 등록 → 모뎀 토큰 (평문은 이때 한 번만 보인다 — 바로 적어 둔다)
+curl -s -X POST $H/api/lora/modems -H "$A" -H 'content-type: application/json' \
      -d '{"modem_id":"mjc-eng"}'
-#   → {"modem_id":"mjc-eng","token":"……"}   ← 이 token 을 §5 에서 쓴다
+#   → {"modem_id":"mjc-eng","token":"……"}   ← 이 token 을 §5 에서 쓴다 (로그인 토큰과 다르다)
 
-# 4-2. 학교 — net_id 는 75(0x4B, lora_proto 기본값)로. 나중에 실물 ESP노드와 맞추기 위해서다
-curl -s -X POST $H/api/schools -H 'content-type: application/json' \
-     -d '{"name":"명지전문대","net_id":75}'
-
-# 4-3. 건물 — 이 건물을 위 모뎀Pi 가 맡는다
-curl -s -X POST $H/api/buildings -H 'content-type: application/json' \
+# 건물 — 이 건물을 위 모뎀Pi 가 맡는다
+curl -s -X POST $H/api/buildings -H "$A" -H 'content-type: application/json' \
      -d '{"school_id":1,"name":"공학관","bld":"E","modem_id":"mjc-eng"}'
 
-# 4-4. 강의실 — 이게 모뎀Pi config.nodes 에 들어가야 가짜 모뎀에 가상 노드가 생긴다
-curl -s -X POST $H/api/rooms -H 'content-type: application/json' \
+# 강의실 — 이게 모뎀Pi config.nodes 에 들어가야 가짜 모뎀에 가상 노드가 생긴다
+curl -s -X POST $H/api/rooms -H "$A" -H 'content-type: application/json' \
      -d '{"building_id":1,"room":301,"units":1}'
 ```
-id 가 1 이 아니면 응답의 `id` 를 다음 명령에 넣는다.
+id 가 1 이 아니면 응답의 `id` 를 다음 명령에 넣는다. `401` 이 나오면 토큰이 없거나 만료된 것 — 로그인부터 다시.
 
 ---
 
@@ -143,7 +176,7 @@ uv run modempi --fake
 2. `lora.pipeline INFO 모뎀 cfg 전송: {'sf': 9, 'bw': 125.0, 'cr': 5, 'power': 14, 'freq': 922.5, 'wake_ms': 3000}` — 메인Pi config 를 받아 가짜 모뎀에 무선 설정을 보냈다
 3. (시계가 동기돼 있으면) 곧바로 TIME 한 건: `lora.worker INFO job time-… → TIME ALL txn=0 frame=…`
 
-통신 확인 페이지(또는 `curl -s $H/api/lora/modems`)에서 **`mjc-eng` 가 `"connected": true`**, `modem_fw` 가 `"gw-2.0.0"` 이어야 한다.
+통신 확인 페이지(로그인 후) 또는 `curl -s $H/api/lora/modems -H "$A"` 에서 **`mjc-eng` 가 `"connected": true`**, `modem_fw` 가 `"gw-2.0.0"` 이어야 한다.
 
 ---
 
@@ -151,13 +184,13 @@ uv run modempi --fake
 
 통신 확인 페이지의 시간표 폼으로 저장하거나, 노트북에서:
 ```bash
-curl -s -X PUT $H/api/rooms/1/slots -H 'content-type: application/json' \
+curl -s -X PUT $H/api/rooms/1/slots -H "$A" -H 'content-type: application/json' \
      -d '{"day":1,"s_h":9,"s_m":0,"e_h":9,"e_m":50,"type":1,"subject":"자료구조","professor":"김교수"}'
 #   → {"outbox_ids":[1]}
 
-curl -s "$H/api/lora/outbox?limit=5"
+curl -s "$H/api/lora/outbox?limit=5" -H "$A"
 ```
-`state` 가 **`queued` → `dispatched` → `acked`** 로 바뀌면 성공(보통 몇 초), `ack_status: 0`(OK). 노드 쪽 버전은 `curl -s $H/api/lora/status` 에서 E301-1 의 `sched_ver: 1` 로 확인한다.
+`state` 가 **`queued` → `dispatched` → `acked`** 로 바뀌면 성공(보통 몇 초), `ack_status: 0`(OK). 노드 쪽 버전은 `curl -s $H/api/lora/status -H "$A"` 에서 E301-1 의 `sched_ver: 1` 로 확인한다.
 
 모뎀Pi 로그에는 이렇게 세 줄이 찍힌다(프레임 hex 가 합격 기준의 "모뎀Pi 로그의 프레임"):
 ```
@@ -165,6 +198,8 @@ lora.worker INFO job 1 → SLOT_SET E301-1 txn=1 frame=214b0245012d01…
 lora.worker INFO job 1 ← acked OK rssi=-94 snr=6.0
 lora.worker INFO job 1 끝: acked
 ```
+
+> ⚠ **알려진 버그 #43 (서버, 수정 중)** — 모뎀Pi 가 **붙어 있는 동안** 저장하면 요청이 16~20 s 걸리고 결과가 `dispatched` 에서 멈출 수 있다(DB 잠금 교착). 수정 전까지는 **모뎀Pi 를 `Ctrl+C` 로 잠시 끄고 저장 → 다시 켜기**로 확인한다(그 순서면 `acked` 까지 정상 — §7-1 과 같은 흐름). outbox 가 `dispatched` 에서 멈췄다면 이 버그다.
 
 **여기까지 되면 4주차 마일스톤의 핵심은 통과다.** 이 화면(outbox JSON + 두 Pi 로그)을 캡처해 둔다.
 
@@ -180,7 +215,7 @@ lora.worker INFO job 1 끝: acked
 5. 재접속 즉시 몰아 받아 → 두 건 모두 `acked`.
 
 **7-2. 메인Pi 서버가 재시작됐을 때**
-1. 모뎀Pi 는 켜 둔 채 메인Pi 서버를 `Ctrl+C` 후 다시 `uv run uvicorn …`.
+1. 모뎀Pi 는 켜 둔 채 메인Pi 에서 `docker compose restart server`.
 2. 모뎀Pi 로그에 재접속(백오프 뒤 `hello`)이 찍히고, 그 사이 못 올린 결과가 있으면 몰아 올린다(`hello.pending_results`).
 3. 새로 저장한 시간표도 `acked`.
 
@@ -190,24 +225,9 @@ lora.worker INFO job 1 끝: acked
 
 지금까지는 터미널에 띄워 확인했다. 전원만 켜면 뜨게 한다.
 
-**8-1. 메인Pi** — `/etc/systemd/system/esc-server.service`
-```ini
-[Unit]
-Description=Woo-ESC 메인Pi 서버
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=admin
-WorkingDirectory=/home/admin/Woo-ESC-Capston/server
-Environment=SERVER_DB=/home/admin/data/main.db
-ExecStartPre=/home/admin/Woo-ESC-Capston/server/.venv/bin/alembic upgrade head
-ExecStart=/home/admin/Woo-ESC-Capston/server/.venv/bin/uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8000
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
+**8-1. 메인Pi** — 따로 할 것이 없다. `compose.yaml` 의 `restart: unless-stopped` 와 Docker 서비스(설치 스크립트가 부팅 자동 시작으로 등록)가 재부팅 뒤 서버를 다시 띄운다. 확인만 한다:
+```bash
+systemctl is-enabled docker            # enabled
 ```
 
 **8-2. 모뎀Pi** — 비밀값은 파일로 분리한다(권한 600).
@@ -243,17 +263,16 @@ WantedBy=multi-user.target
 **8-3. 켜기 + 재부팅 시험**
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now esc-server     # 메인Pi
 sudo systemctl enable --now modempi        # 모뎀Pi
 journalctl -u modempi -f                   # 로그 보기 (Ctrl+C 로 빠져나옴)
 ```
-두 Pi 를 `sudo reboot` 하고, 1~2분 뒤 §6 을 다시 해서 `acked` 가 나오면 끝.
+두 Pi 를 `sudo reboot` 하고, 1~2분 뒤 메인Pi 에서 `docker compose ps` 가 healthy, 모뎀Pi 에서 `systemctl status modempi` 가 active 인지 본 다음 §6 을 다시 해서 `acked` 가 나오면 끝.
 
 ---
 
 ## 9. 기록 · PR
 
-- 캡처: §6·§7 의 outbox JSON, 두 Pi 로그(`journalctl -u … --since "10 min ago"`), 통신 확인 페이지 스크린샷
+- 캡처: §6·§7 의 outbox JSON, 두 Pi 로그(메인Pi `docker compose logs --since 10m server`, 모뎀Pi `journalctl -u modempi --since "10 min ago"`), 통신 확인 페이지 스크린샷
 - 진행표 `docs/progress.html` 의 cw-10·wj-08 체크 + PR 번호
 - PR 본문에 위 캡처 첨부 (cw-10 DoD "결과를 PR에 첨부")
 
@@ -270,4 +289,9 @@ journalctl -u modempi -f                   # 로그 보기 (Ctrl+C 로 빠져나
 | outbox 가 계속 `queued` | 모뎀 목록에서 `mjc-eng` 가 `"connected": true` 인지, 건물의 `modem_id` 가 `mjc-eng` 인지 |
 | `dispatched` 에서 멈추고 결국 `failed(no_ack)` | 강의실이 등록돼 `config.nodes` 에 들어갔는지(가짜 모뎀은 config 의 노드만 가상으로 만든다). 모뎀Pi 로그의 `job … ← no_ack` 줄로 확인 |
 | TIME 이 안 나감(로그에 "시계를 믿을 수 없다") | `timedatectl status` 가 synchronized 인지. 인터넷 없는 직결이면 메인Pi 를 NTP 서버로(S6 spec §3) — 이번 통합의 합격 기준은 아니다 |
-| `uv sync` 가 오래 걸림 | Pi 3 은 첫 설치가 수 분 걸릴 수 있다. 정상 |
+| `uv sync`·`docker compose up --build` 가 오래 걸림 | Pi 의 첫 빌드는 수 분 걸릴 수 있다. 정상. 두 번째부터는 캐시로 빠르다 |
+| API 가 `401` | 로그인 토큰이 없거나 24 시간이 지났다 — §4-2 로그인부터 다시(`A=…` 도 다시) |
+| `/static`·`/docs` 가 `404` | `server/.env` 의 `DEBUG=1` 확인 후 `docker compose up -d` |
+| `docker: permission denied` | `usermod -aG docker admin` 뒤 SSH 를 다시 접속했는지 |
+| `port is already allocated` (8000) | 예전 `uv run uvicorn` 이 아직 돌고 있다 — 그 터미널에서 `Ctrl+C` |
+| outbox 가 `dispatched` 에서 멈춤 | 버그 #43 — §6 의 우회(모뎀Pi 끄고 저장 → 켜기) |

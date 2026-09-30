@@ -1,0 +1,11 @@
+[
+  {
+    "mac": "A1B2C3D4E5F6",
+    "modem_id": "gonghak-01",
+    "fw": 3,
+    "batt_mv": 4100,
+    "rssi": -68,
+    "first_seen_at": "2026-09-24T22:00:00",
+    "last_seen_at": "2026-09-25T00:59:00"
+  }
+]

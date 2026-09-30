@@ -1,0 +1,12 @@
+/* 학생 웹 — 이름은 같고 값만 갈린다 (tokens.md 「치수」). 색은 재정의하지 않는다 */
+[data-surface='student'] {
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-md: 15px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --control-height-md: 48px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}

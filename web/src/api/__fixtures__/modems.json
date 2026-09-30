@@ -1,0 +1,18 @@
+[
+  {
+    "modem_id": "gonghak-01",
+    "agent_ver": "0.4.1",
+    "modem_fw": "1.2.0",
+    "last_seen_at": "2026-09-25T01:00:00.5",
+    "connected": true,
+    "school_id": 1
+  },
+  {
+    "modem_id": "sahoe-01",
+    "agent_ver": null,
+    "modem_fw": null,
+    "last_seen_at": null,
+    "connected": false,
+    "school_id": 1
+  }
+]

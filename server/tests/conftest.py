@@ -89,6 +89,58 @@ def other_admin_hdr(app, school):
 
 
 @pytest.fixture
+def students(app, school):
+    """학생 3명 (학교 1 에 2명, 학교 2 에 1명). school 과 분리 — 사용자 목록 단언을 건드리지 않게."""
+    with app.state.Session() as s, s.begin():
+        s.add_all(
+            [
+                User(
+                    email="s1@mju.ac.kr",
+                    school_id=1,
+                    role="student",
+                    status="active",
+                    name="학생1",
+                    student_no="S1",
+                    pw_hash=password.hash("password1"),
+                ),
+                User(
+                    email="s2@mju.ac.kr",
+                    school_id=1,
+                    role="student",
+                    status="active",
+                    name="학생2",
+                    student_no="S2",
+                    pw_hash=password.hash("password1"),
+                ),
+                User(
+                    email="s3@other.ac.kr",
+                    school_id=2,
+                    role="student",
+                    status="active",
+                    name="타교생",
+                    student_no="S3",
+                    pw_hash=password.hash("password1"),
+                ),
+            ]
+        )
+
+
+@pytest.fixture
+def student_hdr(app, students):
+    return _hdr(app, "s1@mju.ac.kr")
+
+
+@pytest.fixture
+def other_student_hdr(app, students):
+    return _hdr(app, "s2@mju.ac.kr")
+
+
+@pytest.fixture
+def student_hdr_school2(app, students):
+    return _hdr(app, "s3@other.ac.kr")
+
+
+@pytest.fixture
 def client_raw(app):
     with TestClient(app) as c:
         yield c
