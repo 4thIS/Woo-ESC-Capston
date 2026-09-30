@@ -185,11 +185,54 @@ void drawFooter(Adafruit_GFX& g, const RenderModel& m) {
   drawText(g, kNanum16Regular, s, kPad, kFooterBase, GxEPD_WHITE);
 }
 
+// layout 8 — terminal-epaper.md "layout 8 — 설정 대기 (전폭)"
+constexpr int16_t kSetupPad = 48;
+constexpr int16_t kSetupTitleGap = 8;   // 제목 ↔ 부제
+constexpr int16_t kSetupBlockGap = 22;  // 부제 ↔ NEW 칩
+constexpr int16_t kSetupChipPadY = 14;
+constexpr int16_t kSetupChipPadX = 24;
+constexpr int16_t kSetupChipTextGap = 20;  // NEW 칩 ↔ 안내 2줄
+constexpr int16_t kSetupLineGap = 8;       // ⚠️ 안내 2줄 사이
+
+void drawSetup(Adafruit_GFX& g, const RenderModel& m) {
+  g.fillRect(0, kHeaderLineY, kW, 2, GxEPD_BLACK);
+  drawText(g, kNanum20Bold, "미설정 단말", kPad, kHeaderBase, GxEPD_BLACK);
+
+  const BitmapImage& title = kImgTitleSeoljeongdaegi;
+  const bool hasTag = m.newTag[0] != ' ';
+  const int16_t chipH = (int16_t)(2 * kSetupChipPadY + kNanum62ExtraBold.cellH);
+  const int16_t blockH =
+      (int16_t)(title.h + kSetupTitleGap + kNanum20Regular.cellH + (hasTag ? kSetupBlockGap + chipH : 0));
+  const int16_t top = (int16_t)(kBandY + (kH - kBandY - blockH) / 2);
+  drawImage(g, title, kSetupPad, top, GxEPD_BLACK);
+  drawText(g, kNanum20Regular, "아직 어느 강의실에도 배정되지 않았습니다", kSetupPad,
+           (int16_t)(top + title.h + kSetupTitleGap + kNanum20Regular.baseline), GxEPD_BLACK);
+  if (!hasTag) return;
+
+  const int16_t chipTop = (int16_t)(top + title.h + kSetupTitleGap + kNanum20Regular.cellH + kSetupBlockGap);
+  const int16_t chipW = (int16_t)(textWidth(kNanum62ExtraBold, m.newTag, kTrack62) + 2 * kSetupChipPadX);
+  g.fillRect(kSetupPad, chipTop, chipW, chipH, GxEPD_BLACK);
+  drawText(g, kNanum62ExtraBold, m.newTag, (int16_t)(kSetupPad + kSetupChipPadX),
+           (int16_t)(chipTop + kSetupChipPadY + kNanum62ExtraBold.baseline), GxEPD_WHITE, kTrack62);
+
+  const int16_t tx = (int16_t)(kSetupPad + chipW + kSetupChipTextGap);
+  const int16_t linesTop = (int16_t)(chipTop + (chipH - (2 * kNanum20Regular.cellH + kSetupLineGap)) / 2);
+  drawText(g, kNanum20Regular, "관리자 화면에서", tx, (int16_t)(linesTop + kNanum20Regular.baseline),
+           GxEPD_BLACK);
+  drawText(g, kNanum20Regular, "이 번호를 강의실에 배정하세요", tx,
+           (int16_t)(linesTop + kNanum20Regular.cellH + kSetupLineGap + kNanum20Regular.baseline),
+           GxEPD_BLACK);
+}
+
 }  // namespace
 
 void renderLayout(Adafruit_GFX& gfx, const RenderModel& m) {
   gfx.fillScreen(GxEPD_WHITE);
-  if (m.layout < 1 || m.layout > 7) return;  // 8 은 Task 5.2, 그 밖은 흰 화면(⚠️ 열린 질문 5)
+  if (m.layout == 8) {
+    drawSetup(gfx, m);
+    return;
+  }
+  if (m.layout < 1 || m.layout > 7) return;  // 범위 밖은 흰 화면(⚠️ 열린 질문 5)
   drawHeader(gfx, m);
   drawStatusBand(gfx, m);
   if (m.layout == 4)

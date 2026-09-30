@@ -189,6 +189,42 @@ void test_out_of_range_layout_is_blank() {
   }
 }
 
+static RenderModel layout8Model() {
+  RenderModel m{};
+  m.layout = 8;
+  strcpy(m.newTag, "NEW-1A7F");
+  return m;
+}
+
+void test_layout8_has_no_split_list_footer() {
+  HostGfx g;
+  renderLayout(g, layout8Model());
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(400, 50));   // 헤더 하단선은 있다
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(498, 100));  // 좌우 분할 없음
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(790, 470));  // 푸터 없음
+  TEST_ASSERT_EQUAL_INT(0, countColor(g, 0, 0, 800, 480, HColor::RED));
+  TEST_ASSERT_GREATER_THAN_INT(30, countColor(g, 24, 5, 200, 48, HColor::BLACK));  // "미설정 단말"
+}
+
+void test_layout8_title_and_new_tag_chip() {
+  HostGfx g;
+  renderLayout(g, layout8Model());
+  TEST_ASSERT_GREATER_THAN_INT(1000, countColor(g, 48, 150, 300, 240, HColor::BLACK));  // "설정 대기" 62/800
+  TEST_ASSERT_GREATER_THAN_INT(3000, countColor(g, 48, 260, 400, 380, HColor::BLACK));  // NEW 칩 흑 바탕
+  TEST_ASSERT_GREATER_THAN_INT(500, countColor(g, 48, 260, 400, 380, HColor::WHITE));   // 칩 안 흰 글자
+}
+
+void test_layout8_empty_tag_omits_chip() {
+  RenderModel m = layout8Model();
+  m.newTag[0] = '\0';
+  HostGfx g;
+  renderLayout(g, m);
+  // 태그가 없으면 제목·부제 두 덩어리만 세로 중앙(y 221~310)에 온다.
+  TEST_ASSERT_GREATER_THAN_INT(1000, countColor(g, 48, 200, 300, 290, HColor::BLACK));  // 제목은 그린다
+  TEST_ASSERT_EQUAL_INT(0,
+                        countColor(g, 48, 320, 800, 480, HColor::BLACK));  // 칩·안내 2줄 없음(⚠️ 열린 질문 7)
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_skeleton_lines_and_footer);
@@ -203,6 +239,9 @@ int main() {
   RUN_TEST(test_form_b_has_no_dividers_and_big_time);
   RUN_TEST(test_form_b_without_next_says_no_schedule);
   RUN_TEST(test_change_chip_after_subject);
+  RUN_TEST(test_layout8_has_no_split_list_footer);
+  RUN_TEST(test_layout8_title_and_new_tag_chip);
+  RUN_TEST(test_layout8_empty_tag_omits_chip);
   RUN_TEST(test_out_of_range_layout_is_blank);
   return UNITY_END();
 }
