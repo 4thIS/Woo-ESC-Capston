@@ -19,6 +19,7 @@ vi.mock('@/api/student', () => ({
     requestResv: vi.fn(),
     cancel: vi.fn(),
     checkin: vi.fn(),
+    checkout: vi.fn(),
   },
 }))
 const api = vi.mocked(studentApi, true)
@@ -26,7 +27,7 @@ enableAutoUnmount(afterEach)
 
 // 공용 빌더(M1) — 오늘 10:50 시작, 결정 전 시각 없음
 const resv = (over: Partial<ResvMineOut> = {}): ResvMineOut =>
-  mineResv({ date: '2026-10-23', s_m: 50, requested_at: null, decided_at: null, ...over })
+  mineResv({ date: '2026-10-23', s_m: 40, requested_at: null, decided_at: null, ...over })
 const texts = () => toasts.value.map((t) => t.message)
 const cards = (w: VueWrapper) => w.findAll('article')
 const confirm = async (w: VueWrapper) => {
@@ -43,6 +44,7 @@ beforeEach(() => {
   api.mine.mockReset()
   api.cancel.mockReset()
   api.checkin.mockReset()
+  api.checkout.mockReset()
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -166,6 +168,44 @@ describe('MyView — /me', () => {
     expect(api.mine).not.toHaveBeenCalled()
     expect(shared.reload).toHaveBeenCalledTimes(1)
     expect(cards(w)).toHaveLength(1)
+  })
+
+  it('조기 퇴실 — 확인 창을 거쳐 한 번 보내고, 알림 뒤 다시 부른다', async () => {
+    const inUse = resv({ id: 7, s_m: 0, checked_in_at: new Date('2026-10-23T01:01:00Z') })
+    api.mine.mockResolvedValue([inUse])
+    api.checkout.mockResolvedValue({ ...inUse, checked_out_at: new Date() })
+    const { w } = await mountAt(MyView, '/me', '/me')
+    await w
+      .findAll('button')
+      .find((b) => b.text() === '조기 퇴실')!
+      .trigger('click')
+    const dlg = w.get('[role="dialog"]')
+    expect(dlg.text()).toContain('조기 퇴실')
+    expect(dlg.text()).toContain('남은 시간은 다른 사람이 예약할 수 있어요')
+    // 푸터 = secondary 닫기 + danger 조기 퇴실 (student-room.md §조기 퇴실)
+    const foot = dlg.findAll('.modal__footer button')
+    expect(foot.map((b) => b.text())).toEqual(['닫기', '조기 퇴실'])
+    expect(foot[1].classes()).toContain('btn--danger')
+    expect(api.checkout).not.toHaveBeenCalled() // 확인 전에는 보내지 않는다
+    await confirm(w)
+    expect(api.checkout).toHaveBeenCalledWith(7)
+    expect(api.checkout).toHaveBeenCalledTimes(1)
+    expect(texts()).toContain('퇴실했어요')
+    expect(api.mine).toHaveBeenCalledTimes(2)
+  })
+
+  it('조기 퇴실 409(그새 끝남·관리자 취소) — 문장 + 재조회', async () => {
+    const inUse = resv({ id: 7, s_m: 0, checked_in_at: new Date('2026-10-23T01:01:00Z') })
+    api.mine.mockResolvedValue([inUse])
+    api.checkout.mockRejectedValue(new ApiError(409, MESSAGES[409]))
+    const { w } = await mountAt(MyView, '/me', '/me')
+    await w
+      .findAll('button')
+      .find((b) => b.text() === '조기 퇴실')!
+      .trigger('click')
+    await confirm(w)
+    expect(texts()).toContain(CHANGED_TEXT)
+    expect(api.mine).toHaveBeenCalledTimes(2)
   })
 
   it('체크인 두 번 연속 — busy 를 await 전에 세워 한 번만 보낸다', async () => {

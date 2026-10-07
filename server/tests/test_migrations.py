@@ -180,3 +180,14 @@ def test_rejected_row_does_not_hold_student_no(tmp_path):
         c.execute(text(row.format(e="y@a.kr", st="pending_approval")))  # 거절 행과 같은 학번 OK
     with pytest.raises(sqlalchemy.exc.IntegrityError), eng.begin() as c:
         c.execute(text(row.format(e="z@a.kr", st="active")))
+
+
+def test_resv_checkout_column(tmp_path):
+    db = tmp_path / "c.db"
+    _upgrade(db)
+    eng = create_engine(f"sqlite:///{db}")
+    cols = {c["name"]: c for c in inspect(eng).get_columns("reservations")}
+    assert cols["checked_out_at"]["nullable"] is True
+    # batch 재생성이 기존 CHECK 를 잃지 않았다 — 상태·id 범위 제약이 그대로
+    checks = {c["name"] for c in inspect(eng).get_check_constraints("reservations")}
+    assert {"ck_resv_id", "ck_resv_status"} <= checks

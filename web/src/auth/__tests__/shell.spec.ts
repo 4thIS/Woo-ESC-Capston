@@ -28,6 +28,13 @@ describe('AuthShell — 학생 PC 는 좌우 분할(소개 패널 + 폼)', () =>
     expect(w.get('h1').text()).toBe('로그인')
   })
 
+  it('로그인 전에는 학교를 모른다 — 학교 이름 없이 서비스 이름(ESC)만', () => {
+    const w = mountShell('student')
+    expect(w.get('.auth__intro-brand').text()).toBe('ESC')
+    expect(w.get('.auth__brand').text()).toBe('ESC')
+    expect(w.text()).not.toContain('MJC')
+  })
+
   it('관리자 로그인은 지금처럼 카드 하나 — 소개 패널 없음', () => {
     expect(mountShell('admin').find('aside.auth__intro').exists()).toBe(false)
   })
