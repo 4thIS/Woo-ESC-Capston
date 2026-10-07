@@ -60,10 +60,10 @@ describe('MyResvCard', () => {
     expect(w.emitted('checkout')).toHaveLength(1)
   })
 
-  it('일찍 체크인한 시작 전 — 취소 대신 조기 퇴실', () => {
+  it('옛 규칙으로 일찍 체크인된 시작 전 — 취소도 퇴실도 없다(시작하면 퇴실)', () => {
     const early = resv({ s_h: 10, s_m: 50, checked_in_at: new Date('2026-10-23T01:41:00Z') })
     const w = mount(MyResvCard, { props: { resv: early, now: NOW } })
-    expect(buttons(w)).toEqual(['조기 퇴실'])
+    expect(buttons(w)).toEqual([])
   })
 
   it('퇴실했으면 퇴실 시각 한 줄만 — 체크인 줄·버튼이 다시 생기지 않는다', () => {

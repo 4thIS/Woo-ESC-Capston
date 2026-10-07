@@ -237,6 +237,15 @@ describe('예약 블록', () => {
     expect(state(at('스터디')).find('.badge--busy').exists()).toBe(true) // 실제로 쓰이는 방은 적색 틴트
     // 조기 퇴실한 예약은 끝났다(끝 = 퇴실 분) — 예약 블록이 아니라 예약 로그로 간다
     expect(at('회의')).toBe(-1)
+    // 다시 불러오면 지금 시각도 새로 — 17:01 이면 스터디(16~17)는 끝나 예약에서 빠진다
+    vi.setSystemTime(new Date('2026-09-27T08:01:00Z'))
+    await w.setProps({ resv: (w.props() as { resv: ResvWithRoom[] }).resv.map((r) => ({ ...r })) })
+    expect(
+      w
+        .findAll('tbody tr')
+        .map((r) => r.text())
+        .join(),
+    ).not.toContain('스터디')
     vi.useRealTimers()
   })
 
@@ -320,6 +329,40 @@ describe('예약 로그 블록', () => {
     expect(typeOf('회의')).toBe('조기 퇴실')
     expect(w.findAll('tbody button')).toHaveLength(0)
   })
+  it('긴 거절 사유는 한 줄 말줄임, 전체는 title 로', () => {
+    const long = '학과 행사와 겹칩니다. '.repeat(15)
+    mountLog([V({ id: 1, subject: '긴 사유', requester, status: 'rejected', reject_reason: long })])
+    const cell = w.get('.blk__result')
+    expect(cell.classes()).toContain('blk__result')
+    expect(cell.attributes('title')).toBe(`거절됨 · ${long}`)
+  })
+
+  it('다시 불러오면 지금 시각도 다시 잡는다 — 끝난 예약이 로그로 넘어간다', async () => {
+    const ending = V({
+      id: 1,
+      subject: '곧 끝',
+      requester,
+      s_h: 16,
+      e_h: 17,
+      checked_in_at: new Date('2026-09-27T07:01:00Z'),
+    })
+    mountLog([ending])
+    expect(
+      w
+        .findAll('tbody tr')
+        .map((r) => r.text())
+        .join(),
+    ).not.toContain('곧 끝') // 16:30 — 아직 사용중
+    vi.setSystemTime(new Date('2026-09-27T08:01:00Z')) // 17:01
+    await w.setProps({ resv: [{ ...ending }] }) // reloadAll 이 새 배열을 준다
+    expect(
+      w
+        .findAll('tbody tr')
+        .map((r) => r.text())
+        .join(),
+    ).toContain('곧 끝')
+  })
+
   it('기본 최근 30일 — 전체 보기로 펼친다', async () => {
     mountLog([V({ id: 1, subject: '지난달', requester, status: 'cancelled', date: '2026-08-01' })])
     expect(

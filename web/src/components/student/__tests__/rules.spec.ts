@@ -166,8 +166,8 @@ describe('내 예약', () => {
     }
     expect(checkoutState(resv(inUse), NOW)).toEqual({ kind: 'open' })
     expect(checkoutState(resv({ ...inUse, checked_in_at: null }), NOW)).toBeNull() // 체크인 안 함
-    // 일찍 체크인한 시작 전에도 — 체크인하면 취소 대신 퇴실 (사용자 결정)
-    expect(checkoutState(resv({ ...inUse, s_h: 10, s_m: 50 }), NOW)).toEqual({ kind: 'open' })
+    // 시작 전엔 없다 — 서버도 409. 옛 규칙(10분 전)으로 체크인된 채 남은 행
+    expect(checkoutState(resv({ ...inUse, s_h: 10, s_m: 50 }), NOW)).toBeNull()
     expect(checkoutState(resv({ ...inUse, e_h: 10, e_m: 42 }), NOW)).toBeNull() // 끝남(끝 = 지금)
     expect(checkoutState(resv({ ...inUse, status: 'cancelled' }), NOW)).toBeNull()
     const out = { ...inUse, e_h: 10, e_m: 23, checked_out_at: new Date('2026-10-23T01:23:00Z') }

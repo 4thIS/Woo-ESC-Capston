@@ -182,6 +182,10 @@ describe('MyView — /me', () => {
     const dlg = w.get('[role="dialog"]')
     expect(dlg.text()).toContain('조기 퇴실')
     expect(dlg.text()).toContain('남은 시간은 다른 사람이 예약할 수 있어요')
+    // 푸터 = secondary 닫기 + danger 조기 퇴실 (student-room.md §조기 퇴실)
+    const foot = dlg.findAll('.modal__footer button')
+    expect(foot.map((b) => b.text())).toEqual(['닫기', '조기 퇴실'])
+    expect(foot[1].classes()).toContain('btn--danger')
     expect(api.checkout).not.toHaveBeenCalled() // 확인 전에는 보내지 않는다
     await confirm(w)
     expect(api.checkout).toHaveBeenCalledWith(7)

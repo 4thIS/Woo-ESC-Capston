@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -7,6 +7,7 @@ import Table from '@/components/ui/Table.vue'
 import TypeBadge from '@/components/domain/TypeBadge.vue'
 import { DAYS } from '@/components/domain/rules'
 import type { ResvWithRoom } from '@/api/types'
+import { useNow } from '@/lib/useNow'
 import { dayOfDate, hm } from '@/lib/time'
 import { LOG_DAYS, logResult, logType, splitResv } from '../../roomsView'
 
@@ -18,9 +19,14 @@ const props = defineProps<{
 }>()
 
 const all = ref(false)
-const now = new Date()
+// 지금 시각은 주기적으로 + 다시 불러올 때 새로 — 켜 둔 화면에서도 사용중·체크인 대기가 넘어가고 끝난 예약이 로그로 간다
+const now = useNow(30_000)
+watch(
+  () => props.resv,
+  () => (now.value = new Date()),
+)
 const rows = computed(() =>
-  splitResv(props.resv, now, all.value).log.map((r) => ({ ...r, key: `log-${r.id}` })),
+  splitResv(props.resv, now.value, all.value).log.map((r) => ({ ...r, key: `log-${r.id}` })),
 )
 const COLUMNS = [
   { key: 'room', label: '호수', width: '72px' },
@@ -77,7 +83,9 @@ const asV = (row: Record<string, unknown>) => row as unknown as ResvWithRoom
         <TypeBadge v-else :type="asV(row).type" />
       </template>
       <template #cell-result="{ row }"
-        ><span class="blk__result num">{{ logResult(asV(row)) }}</span></template
+        ><span class="blk__result num" :title="logResult(asV(row))">{{
+          logResult(asV(row))
+        }}</span></template
       >
     </Table>
   </section>
@@ -109,6 +117,12 @@ const asV = (row: Record<string, unknown>) => row as unknown as ResvWithRoom
   margin-left: auto;
 }
 .blk__result {
+  /* 거절 사유는 200자까지 — 한 줄로 자르고 전체는 title (admin-rooms.md) */
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--font-size-sm);
   color: var(--text-2);
 }

@@ -164,7 +164,7 @@ const goBack = () => void router.push(back)
       </p>
       <template #footer>
         <Button variant="secondary" @click="closeLeave">닫기</Button>
-        <Button @click="confirmCheckout">조기 퇴실</Button>
+        <Button variant="danger" @click="confirmCheckout">조기 퇴실</Button>
       </template>
     </Modal>
   </div>

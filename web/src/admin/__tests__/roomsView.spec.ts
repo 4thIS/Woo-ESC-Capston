@@ -126,8 +126,8 @@ describe('resvUse — 예약 표의 상태 (사용중·조기 퇴실을 가린�
   })
   const inAt = new Date('2026-10-05T01:01:00Z') // 10:01 체크인
   it('학생 예약 — 체크인·퇴실·시각으로 여섯 상태', () => {
-    expect(resvUse(r({ s_h: 11 }), NOW)).toEqual({ label: '예정', tone: 'neutral' })
-    expect(resvUse(r({ s_h: 10, s_m: 43 }), NOW)).toEqual({ label: '예정', tone: 'neutral' }) // 시작 1분 전
+    expect(resvUse(r({ s_h: 11 }), NOW)).toEqual({ label: '체크인 전', tone: 'neutral' })
+    expect(resvUse(r({ s_h: 10, s_m: 43 }), NOW)).toEqual({ label: '체크인 전', tone: 'neutral' }) // 시작 1분 전
     expect(resvUse(r({ s_h: 10, s_m: 42 }), NOW)).toEqual({ label: '체크인 대기', tone: 'neutral' }) // 시작 정각
     expect(resvUse(r({ s_h: 10, s_m: 27 }), NOW)).toEqual({ label: '체크인 대기', tone: 'neutral' }) // s+15
     expect(resvUse(r({ s_h: 10, s_m: 26 }), NOW)).toEqual({ label: '미체크인', tone: 'neutral' }) // s+16
@@ -147,7 +147,7 @@ describe('resvUse — 예약 표의 상태 (사용중·조기 퇴실을 가린�
       label: '미체크인',
       tone: 'neutral',
     }) // 어제
-    expect(resvUse(r({ date: '2026-10-06' }), NOW)).toEqual({ label: '예정', tone: 'neutral' }) // 내일
+    expect(resvUse(r({ date: '2026-10-06' }), NOW)).toEqual({ label: '체크인 전', tone: 'neutral' }) // 내일
   })
   it('관리자가 넣은 예약은 체크인이 없다 — 상태 없음', () => {
     expect(resvUse(r({ requester: null }), NOW)).toBeNull()

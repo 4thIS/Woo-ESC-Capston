@@ -125,11 +125,12 @@ export function checkinState(r: ResvMineOut, now: Date): CheckinState | null {
 }
 
 export type CheckoutState = { kind: 'open' } | { kind: 'done'; at: string }
-/** 조기 퇴실 — 체크인한 승인 예약이 끝나기 전이면 (시작 전 포함, early-checkout spec §3). 퇴실했으면 그 시각 */
+/** 조기 퇴실 — 체크인한 승인 예약이 시작~끝 사이일 때 (서버와 같다, early-checkout spec §3). 퇴실했으면 그 시각 */
 export function checkoutState(r: ResvMineOut, now: Date): CheckoutState | null {
   if (r.checked_out_at) return { kind: 'done', at: formatHm(r.checked_out_at) }
   if (r.status !== 'approved' || !r.checked_in_at) return null
-  return nowAt(now) < endAt(r) ? { kind: 'open' } : null
+  const n = nowAt(now)
+  return startAt(r) <= n && n < endAt(r) ? { kind: 'open' } : null
 }
 
 export type CancelKind = 'withdraw' | 'cancel'

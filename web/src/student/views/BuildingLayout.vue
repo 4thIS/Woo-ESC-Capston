@@ -16,7 +16,7 @@ import { usePolling } from '@/lib/usePolling'
 import { useResource } from '@/lib/useResource'
 import RefreshedNote from '../RefreshedNote.vue'
 import { BUILDING } from '../building'
-import { POLL_MS, useNow } from '../composables'
+import { POLL_MS, schoolTitle, useNow } from '../composables'
 import { favKey, favorites, rememberBld, toggleFavorite } from '../favorites'
 import { buildingsOf } from '../roomView'
 import NotFoundView from './NotFoundView.vue'
@@ -66,8 +66,7 @@ const otherBld = (r: RoomStateOut) => (r.bld === bld.value ? undefined : r.build
 
 // 사이드바 맨 위 — 나와 다음 예약. 불러오지 못하면 카드만 없다(목록이 본업)
 const me = computed(() => session.value?.name ?? '')
-// 로그인한 학생의 학교 — 이 이름을 모르는 옛 세션이면 서비스 이름
-const school = computed(() => session.value?.school_name || 'ESC')
+const school = schoolTitle
 const mine = useResource(() => studentApi.mine())
 usePolling(mine.reload, POLL_MS)
 provide(BUILDING, { rooms: data, loaded, error, reload, mine })

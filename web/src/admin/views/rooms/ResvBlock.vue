@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
@@ -14,6 +14,7 @@ import { ApiError } from '@/api/client'
 import { adminApi } from '@/api/admin'
 import { roomsApi } from '@/api/rooms'
 import type { ResvWithRoom, RoomOut } from '@/api/types'
+import { useNow } from '@/lib/useNow'
 import { dayOfDate, hm, kstDateStr } from '@/lib/time'
 import ConfirmModal from '../../ConfirmModal.vue'
 import { resvDot, resvUse, splitResv } from '../../roomsView'
@@ -37,11 +38,16 @@ const emit = defineEmits<{
   resync: [roomId: number, key: string]
 }>()
 
-const now = new Date()
-const today = kstDateStr(now)
+// 지금 시각은 주기적으로 + 다시 불러올 때 새로 — 켜 둔 화면에서도 사용중·체크인 대기가 넘어가고 끝난 예약이 로그로 간다
+const now = useNow(30_000)
+watch(
+  () => props.resv,
+  () => (now.value = new Date()),
+)
+const today = computed(() => kstDateStr(now.value))
 // 예약 블록은 안 끝난 approved 만 — 신청은 위의 신청 대기, 끝난 것·거절·취소·만료는 아래 예약 로그
 const rows = computed(() =>
-  splitResv(props.resv, now, true).live.map((r) => ({ ...r, key: resvKey(r.id) })),
+  splitResv(props.resv, now.value, true).live.map((r) => ({ ...r, key: resvKey(r.id) })),
 )
 const COLUMNS = [
   { key: 'room', label: '호수', width: '72px' },

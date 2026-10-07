@@ -77,7 +77,8 @@ export function resvUse(r: ResvWithRoom, now: Date): ResvUse | null {
   const e = dayMin(r.date) + r.e_h * 60 + r.e_m
   if (r.checked_in_at)
     return n < e ? { label: '사용중', tone: 'busy' } : { label: '사용 완료', tone: 'neutral' }
-  if (n < s - CHECKIN_BEFORE) return { label: '예정', tone: 'neutral' }
+  // '예정'은 OutboxDot(7일 밖·미전송) 배지와 겹친다 — 같은 줄에 두 뜻이 나오지 않게 (admin-rooms.md)
+  if (n < s - CHECKIN_BEFORE) return { label: '체크인 전', tone: 'neutral' }
   return n <= s + CHECKIN_AFTER
     ? { label: '체크인 대기', tone: 'neutral' }
     : { label: '미체크인', tone: 'neutral' }
