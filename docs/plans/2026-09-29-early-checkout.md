@@ -16,7 +16,7 @@
 - 새 상태를 만들지 않는다 — 퇴실한 예약도 `status == 'approved'`. `ck_resv_status` 그대로.
 - `checked_out_at` 은 UTC naive datetime(`clock.to_utc`), `checked_in_at` 과 같은 규칙.
 - 새 끝 시각 = 퇴실한 분(초 버림). (실행 중 수정: 처음 계획한 '시작 + 1분' 하한은 그 1분 동안 '사용중'이 남아 제거 — spec §3)
-- 409 문구(정확히): "체크인한 예약만 퇴실할 수 있습니다" · "이미 퇴실했습니다" · "시작 전에는 취소를 쓰세요" · "이미 끝난 예약입니다". 상태가 approved 가 아니면 기존 `_require` 문구.
+- 409 문구(정확히): "체크인한 예약만 퇴실할 수 있습니다" · "이미 퇴실했습니다" · "시작 전에는 퇴실할 수 없습니다" · "이미 끝난 예약입니다". 상태가 approved 가 아니면 기존 `_require` 문구.
 - 웹 문구(정확히): 버튼 "조기 퇴실", 확인 창 제목 "조기 퇴실", 본문 "퇴실하면 문 앞 화면에서 예약이 지워지고, 남은 시간은 다른 사람이 예약할 수 있어요.", 성공 알림 "퇴실했어요", 카드 "✓ HH:MM 퇴실".
 - 커밋 메시지에 AI 저작 표기·Co-Authored-By 를 넣지 않는다. `lora_proto/` 수정 금지. force push·reset --hard 금지.
 - Windows `core.autocrlf=true` — prettier 는 고친 파일에만 `--end-of-line auto` 로, 실제 변경은 `git diff --ignore-cr-at-eol` 로 확인.
@@ -153,7 +153,7 @@ def test_checkout_rejects(client, live, app, school, student_hdr, monkeypatch):
           requested_by="s1@mju.ac.kr")  # 체크인 안 함
     assert post(1).json()["detail"] == "체크인한 예약만 퇴실할 수 있습니다"
     _checked_in(app, rid, 2, 10, 35, 11, 30)  # 10:35 시작, 지금 10:30(일찍 체크인)
-    assert post(2).json()["detail"] == "시작 전에는 취소를 쓰세요"
+    assert post(2).json()["detail"] == "시작 전에는 퇴실할 수 없습니다"
     _checked_in(app, rid, 3, 9, 0, 10, 30)  # 10:30 끝 — 지금이 끝
     assert post(3).json()["detail"] == "이미 끝난 예약입니다"
     _resv(app, rid, dt.date(2026, 9, 23), 10, 0, 11, 0, id_=4, status="requested",
@@ -168,7 +168,7 @@ def test_checkout_same_minute_and_unpushed(client, live, app, school, student_hd
     _, ids = _building(app, 1, "E", rooms=((301, 1),))
     a = _checked_in(app, ids[301], 1, 10, 30, 11, 0, pushed=False)  # 10:30 시작, 노드에 안 감
     j = client.post(f"/api/student/me/reservations/{a}/checkout", headers=student_hdr).json()
-    assert (j["e_h"], j["e_m"]) == (10, 31)  # 시작 분 안의 퇴실 — 길이 0 이 아니라 +1분
+    assert (j["e_h"], j["e_m"]) == (10, 30)  # 시작 분 안의 퇴실 — 끝 = 퇴실 분(길이 0, 바로 빈 강의실)
     with live() as s:
         assert list(s.scalars(select(Outbox))) == []  # 보낸 적 없으니 RESV_DEL 도 없다
 ```
@@ -191,13 +191,12 @@ def checkout(s: Session, r: Reservation, now_local: dt.datetime) -> list[int]:
         raise HTTPException(409, "이미 퇴실했습니다")
     st, en = start_local(r), end_local(r)
     if now_local < st:
-        raise HTTPException(409, "시작 전에는 취소를 쓰세요")
+        raise HTTPException(409, "시작 전에는 퇴실할 수 없습니다")
     if now_local >= en:
         raise HTTPException(409, "이미 끝난 예약입니다")
     old_end = (r.date, r.e_h, r.e_m)
-    # 초 버림, 시작 분 안이면 +1분 — 길이 0 은 겹침 검사에서 그 시각을 걸치는 신청을 막는다
-    new_end = max(now_local.hour * 60 + now_local.minute, r.s_h * 60 + r.s_m + 1)
-    r.e_h, r.e_m = divmod(new_end, 60)
+    # 끝 = 퇴실한 분(초 버림). 시작 분 안이면 길이 0 — 새 신청은 늘 지금 뒤라 막는 신청이 없다
+    r.e_h, r.e_m = now_local.hour, now_local.minute
     r.checked_out_at = clock.to_utc(now_local)
     return push_del(s, r, now_local, end=old_end)
 ```
