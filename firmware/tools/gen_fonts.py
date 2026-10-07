@@ -3,18 +3,21 @@
 오프라인 도구다. 빌드 때 돌지 않는다 — 빌드는 여기서 만든 .bin/.json 을 embed_fonts.py 가
 C 배열로 바꿀 뿐이다. 글자 집합·크기·굵기를 바꿀 때만 다시 돌리고, 결과(.bin/.json)를 커밋한다.
 
-필요 패키지: Pillow, fontTools (PlatformIO 파이썬에는 없다 — 임시 가상환경에서 실행).
+필요 패키지: Pillow==12.3.0, fontTools==4.66.1 (PlatformIO 파이썬에는 없다 — 임시 가상환경에서 실행).
+버전이 다르면 래스터 결과가 달라질 수 있어 시작할 때 확인하고 멈춘다(PINNED_VERSIONS).
     python firmware/tools/gen_fonts.py [--cache-dir DIR]
 
 - 글자 집합의 단일 진실원은 lora_proto/lora_proto/charset.txt 다(이슈 #34). 순서(코드포인트 오름차순)가
   곧 글리프 저장 순서이고, 펌웨어는 그 순서를 이진탐색한다 — 그래서 frozenset 인 charset.py 가 아니라
-  txt 를 직접 파싱한다. 작은 자산(16/32/62 px)의 글자도 반드시 charset.txt 안에 있어야 한다.
+  txt 를 직접 파싱한다. 줄마다 첫 칸(16진 코드)만 읽는다 — 둘째 칸은 사람용 표기다(embed_fonts.py 와 같다). 작은 자산(16/32/62 px)의 글자도 반드시 charset.txt 안에 있어야 한다.
 - 굵기·크기는 docs/design/screens/terminal-epaper.md "타입 — 6단계 고정" 표가 근거다.
 - 각 크기를 **그 픽셀 크기에서 네이티브로** 래스터한다. 큰 크기로 그린 뒤 축소하지 않는다
   (축소는 임계값 정책만 바꿔도 획 위상이 21~97% 로 요동한다 — dh-04 plan §4.4).
   래스터 후 커버리지 128 이상을 잉크로 본다(이전 스파이크들과 같은 규칙).
-- TTF 는 커밋하지 않는다. Google Fonts CSS2 API 에서 받아 캐시 폴더에만 둔다. 브라우저 User-Agent 를
-  보내면 API 가 woff2 조각(unicode-range 분할)을 주므로 일부러 UA 를 보내지 않는다 → 단일 TTF.
+- TTF 는 커밋하지 않는다. TTF_SOURCES 에 고정한 gstatic URL 에서 받아 캐시 폴더에만 두고, 받은(또는
+  캐시에 있던) TTF 의 sha256 을 같은 표와 대조해 다르면 멈춘다. URL 을 Google Fonts CSS2 API 로 그때그때
+  찾지 않는 이유: API 는 최신 버전 URL 을 준다 — 2026-10 에 Noto Sans KR 이 v39 → v40 으로 바뀌어 같은
+  요청이 다른 파일을 받아 왔다. (URL 은 CSS2 API 에 User-Agent 없이 요청해 얻은 단일 TTF 다.)
 """
 
 from __future__ import annotations
@@ -22,7 +25,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import sys
 import tempfile
 import urllib.request
@@ -44,6 +46,33 @@ PRIMARY = "Nanum Gothic"
 # 붙이는 안은 "VIII" 가 셀 폭을 키워 28px 자산이 +55% 라 기각). 대체된 코드포인트는
 # JSON 의 fallback_codepoints 에 남는다. 라이선스 원문: src/fonts/NotoSansKR-OFL.txt
 FALLBACK = "Noto Sans KR"
+
+# 현재 자산을 구운 TTF — (URL, sha256). 값은 커밋된 .json 의 ttf_url·ttf_sha256(fallback_* 포함)과 같다.
+# 바꾸려면 새 TTF 로 자산 전체를 다시 굽고 이 표를 함께 고친다. gen_images.py 도 이 표를 쓴다.
+_GSTATIC = "https://fonts.gstatic.com/s/"
+TTF_SOURCES: dict[tuple[str, int], tuple[str, str]] = {
+    (PRIMARY, 400): (
+        _GSTATIC + "nanumgothic/v26/PN_3Rfi-oW3hYwmKDpxS7F_z_g.ttf",
+        "370dbd31aa8abd8f8c057f7d41a71d38f2e71f070fa50a8cc20fecef88a9baab",
+    ),
+    (PRIMARY, 700): (
+        _GSTATIC + "nanumgothic/v26/PN_oRfi-oW3hYwmKDpxS7F_LQv37zg.ttf",
+        "d81d6344e36f05ff1fe42b18cc9d18feece8283ae1132e1ef890b5f421eefb4a",
+    ),
+    (PRIMARY, 800): (
+        _GSTATIC + "nanumgothic/v26/PN_oRfi-oW3hYwmKDpxS7F_LXv77zg.ttf",
+        "a732615c8a3ebb33ed32d64b695c7ac852537f4d8fd9dc09a6c12e01a5820af0",
+    ),
+    (FALLBACK, 400): (
+        _GSTATIC + "notosanskr/v39/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzuoyeLQ.ttf",
+        "c733940a7dc687142848b30a491e97138ed58dc58c4cae33c44e3ee52da411cb",
+    ),
+    (FALLBACK, 700): (
+        _GSTATIC + "notosanskr/v39/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzg01eLQ.ttf",
+        "5ebb0def0fe9e7c853253eca8ec9c1066adc479f2e248533b412ed0c6a663abc",
+    ),
+}
+PINNED_VERSIONS = {"Pillow": "12.3.0", "fontTools": "4.66.1"}
 
 ASCII = "".join(chr(c) for c in range(0x20, 0x7F))
 
@@ -71,35 +100,18 @@ def read_charset() -> list[int]:
     for line in CHARSET_TXT.read_text(encoding="utf-8").splitlines():
         if not line or line.startswith("#"):
             continue
-        hex_code, _, glyph = line.partition(" ")
-        cp = int(hex_code, 16)
-        expected = " " if glyph == "(공백)" else glyph
-        if chr(cp) != expected:
-            sys.exit(f"charset.txt 줄 불일치: {line!r}")
-        cps.append(cp)
+        cps.append(int(line.split(" ", 1)[0], 16))
     if cps != sorted(set(cps)):
         sys.exit("charset.txt 가 코드포인트 오름차순·중복 없음이 아니다")
     return cps
 
 
 class FontSource:
-    """Google Fonts 한 패밀리의 굵기별 TTF. 필요할 때만 받아 캐시에 둔다."""
+    """한 패밀리의 굵기별 TTF(TTF_SOURCES 고정). 필요할 때만 받아 캐시에 둔다."""
 
     def __init__(self, family: str, cache_dir: Path) -> None:
-        url = (
-            "https://fonts.googleapis.com/css2?family="
-            + family.replace(" ", "+")
-            + ":wght@400;700;800"
-        )
-        with urllib.request.urlopen(url) as resp:
-            css = resp.read().decode("utf-8")
-        found = re.findall(r"font-weight:\s*(\d+);\s*src:\s*url\((\S+?\.ttf)\)", css)
-        if len(found) != 3:
-            sys.exit(
-                f"{family}: CSS2 응답에서 TTF 3개를 찾지 못했다(다른 포맷을 줬을 수 있음):\n{css}"
-            )
         self.family = family
-        self.urls = {int(w): u for w, u in found}
+        self.urls = {w: url for (f, w), (url, _) in TTF_SOURCES.items() if f == family}
         self.cache_dir = cache_dir
 
     def ttf(self, weight: int) -> Path:
@@ -108,7 +120,31 @@ class FontSource:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             with urllib.request.urlopen(self.urls[weight]) as resp:
                 path.write_bytes(resp.read())
+        check_ttf_sha256(path, self.family, weight)
         return path
+
+
+def check_ttf_sha256(path: Path, family: str, weight: int) -> None:
+    """TTF 가 TTF_SOURCES 에 고정한 파일인지 확인한다. 다르면 멈춘다."""
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    expected = TTF_SOURCES[(family, weight)][1]
+    if actual != expected:
+        sys.exit(
+            f"{path}: sha256 {actual} ≠ 고정값 {expected} ({family} {weight}) — "
+            "캐시가 다른 파일이다(지우고 다시 받을 것). 의도한 교체면 자산 전체를 다시 굽고 TTF_SOURCES 를 고칠 것"
+        )
+
+
+def check_versions() -> None:
+    """래스터 결과를 좌우하는 패키지 버전이 고정값과 같은지 확인한다."""
+    import fontTools
+    import PIL
+
+    actual = {"Pillow": PIL.__version__, "fontTools": fontTools.version}
+    if actual != PINNED_VERSIONS:
+        sys.exit(
+            f"패키지 버전 {actual} ≠ 고정값 {PINNED_VERSIONS} — 같은 버전의 가상환경에서 실행할 것"
+        )
 
 
 def render_ink(font: ImageFont.FreeTypeFont, ch: str, px: int) -> Image.Image:
@@ -206,6 +242,7 @@ def main() -> int:
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
+    check_versions()
 
     charset = read_charset()
     charset_set = set(charset)

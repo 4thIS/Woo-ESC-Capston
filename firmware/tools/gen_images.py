@@ -9,14 +9,15 @@ gen_fonts.py(dh-04 Task 3 Phase A)와 같은 파이프라인·같은 임계값(1
 RenderModel 문자열이 아니라 고정 어휘라 조회가 필요 없다(docs/design/screens/terminal-epaper.md
 "필요한 자산").
 
-필요 패키지: Pillow (PlatformIO 파이썬에는 없다 — gen_fonts.py 가 쓰던 임시 가상환경 재사용).
+필요 패키지: gen_fonts.py 와 같다(Pillow==12.3.0, fontTools==4.66.1 — gen_fonts.py 의 고정값·TTF 해시 표를
+가져다 쓰므로 같은 임시 가상환경에서 실행).
     python firmware/tools/gen_images.py [--ttf-cache-dir DIR]
 
 - 굵기·크기·자간은 docs/design/screens/terminal-epaper.md "타입 — 6단계 고정" 표가 근거다
   (78·62px 는 -0.03~-0.04em, 칩류 16px 는 +0.04em). 이 도구는 각 구간의 중간값 -0.035em 을 쓴다.
 - 각 크기를 그 픽셀 크기에서 네이티브로 래스터한다(gen_fonts.py 와 같은 이유로 축소 금지).
-- TTF 는 커밋하지 않는다. gen_fonts.py 가 이미 받아 둔 캐시(기본 %TEMP%/dh04-fonts)의
-  NanumGothic-<weight>.ttf 를 그대로 쓴다 — 이 스크립트는 네트워크를 새로 열지 않는다
+- TTF 는 커밋하지 않는다. gen_fonts.py 가 이미 받아 둔 캐시(기본 %TEMP%/woo-esc-font-cache, gen_fonts.py 와
+  같은 곳)의 NanumGothic-<weight>.ttf 를 sha256 대조 후 그대로 쓴다 — 이 스크립트는 네트워크를 새로 열지 않는다
   (8종 문구 전부 주 폰트 cmap 안에 있음을 사전 확인했다 — Noto 대체 불필요).
 """
 
@@ -29,12 +30,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+from gen_fonts import PRIMARY, check_ttf_sha256, check_versions
 from PIL import Image, ImageDraw, ImageFont
 
 FIRMWARE = Path(__file__).resolve().parents[1]
 OUT_DIR = FIRMWARE / "src" / "fonts" / "images"
 INK_THRESHOLD = 128
-FAMILY = "Nanum Gothic"
+FAMILY = PRIMARY
 
 # (파일 이름, C 심벌, 픽셀 크기, 굵기, 문구). 근거: terminal-epaper.md 타입표 + "필요한 자산" 표.
 IMAGES: list[tuple[str, str, int, int, str]] = [
@@ -127,12 +129,13 @@ def main() -> int:
     ap.add_argument(
         "--ttf-cache-dir",
         type=Path,
-        default=Path(tempfile.gettempdir()) / "dh04-fonts",
+        default=Path(tempfile.gettempdir()) / "woo-esc-font-cache",
         help="gen_fonts.py 가 받아 둔 NanumGothic-<weight>.ttf 캐시 폴더",
     )
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
+    check_versions()
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     ttf_by_weight: dict[int, Path] = {}
@@ -141,6 +144,7 @@ def main() -> int:
             path = args.ttf_cache_dir / f"NanumGothic-{weight}.ttf"
             if not path.exists():
                 sys.exit(f"{path} 없음 — 먼저 gen_fonts.py 로 캐시를 채울 것")
+            check_ttf_sha256(path, FAMILY, weight)
             ttf_by_weight[weight] = path
 
     for name, symbol, px, weight, text in IMAGES:
