@@ -97,13 +97,15 @@ S4a는 가입을 둘로 쪼갰다 — ① 웹메일만 받아 링크를 보내�
 
 ```
 ┌ /login ─────────────────────────┐
-│ 우송 ESC                         │
+│ ESC                              │
 │ 학교 웹메일 [                 ]  │
 │ 비밀번호    [                 ]  │
 │ [        로그인            ]     │
 │ 가입 신청 · 비밀번호를 잊었어요   │
 └─────────────────────────────────┘
 ```
+
+**브랜드는 학교 이름 없이 `ESC` 다.** 로그인 전이라 화면은 학교를 모른다 — `/signup`·`/forgot`·`/reset` 과 학생 웹의 로그인 벽도 같다. 로그인 뒤 화면은 반대로 로그인 응답의 `school_name` 만 적는다([student-room.md](student-room.md) §내 정보 줄).
 
 실패 응답이 둘뿐이고, **둘을 다르게 다뤄야 한다**(S4a §3.4):
 
@@ -191,7 +193,7 @@ Input(email · password · text), Button(`primary` 제출), Banner(`neutral` 승
 | 가입 신청 | `POST /api/auth/signup` `{email}` | 202 `{"status": "sent"}` · 422(형식) · 400(학교 웹메일 아님) · 429 |
 | 링크 확인 | `POST /api/auth/verify/open` `{token}` | `{email}` · 400 |
 | 가입 완료 | `POST /api/auth/verify` `{token, name, student_no, password}` | `{"status": "pending_approval"}` · 400 · 409 |
-| 로그인 | `POST /api/auth/login` `{email, password}` | `{token, role, school_id, name}` · 401 · 403 |
+| 로그인 | `POST /api/auth/login` `{email, password}` | `{token, role, school_id, name, school_name}` · 401 · 403. `school_name` 은 PR #67 에서 추가(additive) |
 | 재설정 요청 | `POST /api/auth/forgot` `{email}` | **항상 202** · 422(형식) · 429 |
 | 재설정 | `POST /api/auth/reset` `{token, password}` | 200 · 400 |
 | 내 정보 | `GET /api/auth/me` (Bearer) | `UserOut` |
