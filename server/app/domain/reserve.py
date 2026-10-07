@@ -276,7 +276,7 @@ def checkin(s: Session, r: Reservation, now_local: dt.datetime) -> None:
 
 def checkout(s: Session, r: Reservation, now_local: dt.datetime) -> list[int]:
     """조기 퇴실 — 끝 시각을 퇴실 분으로 당겨 바로 빈 강의실·예약 가능으로 만든다.
-    체크인이 시작 시각부터라 퇴실도 늘 시작 뒤다(끝 ≥ 시작).
+    시작 전 퇴실은 409 — 끝 ≥ 시작을 여기서 지킨다.
     끝을 당기므로 현재 상태·주간·승격·재동기화·통계·빈 구간이 그대로 맞는다(early-checkout spec §2).
     RESV_DEL 판단은 당기기 전의 원래 끝으로 — 노드에 가 있고 아직 안 끝난 예약만."""
     _require(r, "approved")
@@ -284,6 +284,10 @@ def checkout(s: Session, r: Reservation, now_local: dt.datetime) -> list[int]:
         raise HTTPException(409, "체크인한 예약만 퇴실할 수 있습니다")
     if r.checked_out_at is not None:
         raise HTTPException(409, "이미 퇴실했습니다")
+    if now_local < start_local(r):
+        # 체크인이 시작 시각부터라 보통은 없지만, 옛 규칙(시작 10분 전)으로 체크인된 채 남은 행이
+        # 시작 전에 퇴실하면 끝이 시작보다 앞으로 뒤집힌다 (PR #67 리뷰)
+        raise HTTPException(409, "시작 전에는 퇴실할 수 없습니다")
     if now_local >= end_local(r):
         raise HTTPException(409, "이미 끝난 예약입니다")
     old_end = (r.date, r.e_h, r.e_m)

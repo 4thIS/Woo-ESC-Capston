@@ -318,6 +318,9 @@ def test_checkout_rejects(client, live, app, school, student_hdr, monkeypatch):
     assert post(1).json()["detail"] == "체크인한 예약만 퇴실할 수 있습니다"
     _checked_in(app, rid, 3, 9, 0, 10, 30)  # 10:30 끝 — 지금이 끝
     assert post(3).json()["detail"] == "이미 끝난 예약입니다"
+    # 옛 규칙(시작 10분 전 체크인)으로 체크인된 채 남은 행 — 시작 전 퇴실은 막는다(끝이 시작보다 앞으로 뒤집힘)
+    _checked_in(app, rid, 5, 10, 35, 11, 30)  # 10:35 시작, 지금 10:30
+    assert post(5).json()["detail"] == "시작 전에는 퇴실할 수 없습니다"
     _resv(
         app,
         rid,
@@ -332,7 +335,7 @@ def test_checkout_rejects(client, live, app, school, student_hdr, monkeypatch):
     )
     r = post(4)
     assert r.status_code == 409 and "requested" in r.json()["detail"]
-    assert {post(i).status_code for i in (1, 3)} == {409}
+    assert {post(i).status_code for i in (1, 3, 5)} == {409}
     with live() as s:
         assert list(s.scalars(select(Outbox))) == []  # 거절은 노드에 아무것도 보내지 않는다
 
