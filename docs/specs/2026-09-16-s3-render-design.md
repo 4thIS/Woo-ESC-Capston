@@ -73,17 +73,26 @@ firmware/
 │   ├── host_gfx/                    # Adafruit_GFX 파생, drawPixel()만 구현하는 800×480×3색 프레임버퍼
 │   │   ├── host_gfx.h / host_gfx.cpp
 │   │   └── vendor/stb_image_write.h # PNG 인코더, 단일 헤더 (§9)
-│   └── fixture_parse/               # 픽스처 JSON → RenderModel 파싱 (ArduinoJson)
-│       └── fixture_parse.h / fixture_parse.cpp
+│   ├── fixture_parse/               # 픽스처 JSON → RenderModel 파싱 (ArduinoJson)
+│   │   └── fixture_parse.h / fixture_parse.cpp
+│   ├── bitmap_font/                 # 서브셋 1비트 폰트 조회·글자 그리기 (dh-04)
+│   ├── bitmap_image/                # 고정 문구 1비트 이미지 구조체 (dh-04, 헤더 전용)
+│   ├── font_data/ · image_data/     # 빌드 직전 생성되는 C 배열 (gitignore, 커밋 안 함)
+├── src/fonts/                       # 폰트·이미지 원본 .bin(+.json), OFL 원문 (dh-04)
+│   └── images/
 ├── tools/
 │   ├── render_preview.cpp           # argv[1]=픽스처 JSON 경로, argv[2]=출력 PNG 경로 → 파싱 → renderLayout() → PNG 저장
-│   └── render_preview.py            # 위 실행파일을 firmware/test/fixtures/render/*.json 전체에 일괄 호출
+│   ├── render_preview.py            # 위 실행파일을 firmware/test/fixtures/render/*.json 전체에 일괄 호출
+│   ├── gen_fonts.py · gen_images.py # src/fonts/ 의 .bin 을 굽는 오프라인 생성기 (dh-04)
+│   └── embed_fonts.py · embed_images.py # extra_scripts=pre: — .bin 을 lib/font_data·image_data 로 (dh-04)
 └── test/fixtures/render/*.json      # 픽스처 (로드맵 §6.3에 경로 명시됨)
 ```
 
 > **경로 정정 (Task 3 실행 중 확인)**: 이 문서 최초 작성 시점의 초안은 `host_gfx`·`fixture_parse`를 `firmware/tools/`에 두려 했으나, `.cpp`가 있는 코드는 `firmware/lib/` 밑에 있어야 `pio test`의 LDF가 컴파일·링크 대상으로 잡는다(`tools/`는 헤더 전용일 때만 `-I` 플래그로 충분). 구현 중 `tools/host_gfx.cpp`가 undefined reference로 링크 실패하는 것을 실제로 재현해 확인하고 `lib/`로 옮겼다. `render_preview.cpp`는 `main()`을 가져 `pio test`가 링크하면 안 되므로 `tools/`에 그대로 둔다. 상세는 `docs/plans/2026-09-16-s3-render.md`의 "파일 구조" 절 각주 참조.
 
-> **경로 정정 2 (2026-09-29, 이슈 #34)**: 최초 초안은 `render.h/.cpp`와 `render_model.h`를 `firmware/src/terminal/`에 뒀다. 같은 이유(`src/`의 `.cpp`는 `pio test`에 링크되지 않고, `lib/`가 `src/`의 헤더를 참조하면 역방향 의존이 된다)로 `renderLayout`은 `firmware/lib/render/`, `render_model.h`는 `firmware/lib/render_model/`(헤더 전용)로 옮긴다. cw가 #34에서 승인했고, `render_model.h` 이동은 PR #66에서 따로 처리한다.
+> **경로 정정 2 (2026-09-29, 이슈 #34)**: 최초 초안은 `render.h/.cpp`와 `render_model.h`를 `firmware/src/terminal/`에 뒀다. 같은 이유(`src/`의 `.cpp`는 `pio test`에 링크되지 않고, `lib/`가 `src/`의 헤더를 참조하면 역방향 의존이 된다)로 `renderLayout`은 `firmware/lib/render/`, `render_model.h`는 `firmware/lib/render_model/`(헤더 전용)로 옮긴다. cw가 #34에서 승인했고, `render_model.h` 이동은 PR #66에서 따로 처리했다.
+
+> **추가 (2026-10-07, dh-04)**: 폰트·이미지 자산 계층(`lib/bitmap_font/`·`lib/bitmap_image/`, 생성물 `lib/font_data/`·`lib/image_data/`, 원본 `src/fonts/`, 생성기 `tools/gen_*`·`tools/embed_*`)을 구조도에 넣었다. 근거·결정은 `docs/plans/2026-09-20-dh-04-render-port.md` D1·D2·§3.6·§3.7.
 
 ### 4.2 `RenderModel` 전체 정의 (로드맵 §4.1 확정 + §2.1 변경분)
 
