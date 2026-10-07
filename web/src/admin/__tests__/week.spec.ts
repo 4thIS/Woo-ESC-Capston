@@ -60,6 +60,9 @@ const V = (o: Partial<ResvWithRoom>): ResvWithRoom => ({
   status: 'approved',
   requester: null,
   pushed_at: new Date(),
+  checked_in_at: null,
+  checked_out_at: null,
+  reject_reason: null,
   ...o,
 })
 

@@ -1,4 +1,5 @@
-import { onScopeDispose, ref } from 'vue'
+import { computed, onScopeDispose, ref } from 'vue'
+import { session } from '@/lib/session'
 
 /** 자동 새로고침 (student-room.md §상태) — 탭이 숨으면 usePolling 이 멈춘다 */
 export const POLL_MS = 60_000
@@ -16,12 +17,7 @@ export function useWide() {
   return wide
 }
 
-/** 화면 시계 — '지금' 행·체크인 창·지난 시작 시각. 네트워크 없이 흐른다 */
-export function useNow(ms = 15_000) {
-  const now = ref(new Date())
-  const timer = setInterval(() => {
-    now.value = new Date()
-  }, ms)
-  onScopeDispose(() => clearInterval(timer))
-  return now
-}
+export { useNow } from '@/lib/useNow'
+
+/** 로그인 뒤 헤더·사이드바의 이름 — 그 학생의 학교. 학교 이름을 모르는 옛 세션·로그인 전은 'ESC' */
+export const schoolTitle = computed(() => session.value?.school_name || 'ESC')

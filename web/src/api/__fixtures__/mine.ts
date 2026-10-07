@@ -17,6 +17,7 @@ export function mineResv(overrides: Partial<ResvMineOut> = {}): ResvMineOut {
     decided_at: new Date('2026-10-22T02:30:00Z'),
     reject_reason: null,
     checked_in_at: null,
+    checked_out_at: null,
     cancelled_at: null,
     room_id: 11,
     building: '공학관',

@@ -168,6 +168,7 @@ def _mine_out(s: Session, r: Reservation) -> dict:
         "decided_at": r.decided_at,
         "reject_reason": r.reject_reason,
         "checked_in_at": r.checked_in_at,
+        "checked_out_at": r.checked_out_at,
         "cancelled_at": r.cancelled_at,
         "room_id": room.id,
         "building": b.name,
@@ -195,6 +196,9 @@ def resv_with_room_rows(s: Session, q) -> list[dict]:
             "room_id": r.room_id,
             "requester": _requester(users.get(r.requested_by)),
             "pushed_at": r.pushed_at,
+            "checked_in_at": r.checked_in_at,
+            "checked_out_at": r.checked_out_at,
+            "reject_reason": r.reject_reason,
         }
         for r in rows
     ]

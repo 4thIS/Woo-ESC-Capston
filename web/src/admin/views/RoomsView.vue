@@ -19,6 +19,7 @@ import CsvImport from './rooms/CsvImport.vue'
 import ExamBlock from './rooms/ExamBlock.vue'
 import PendingBlock from './rooms/PendingBlock.vue'
 import ResvBlock from './rooms/ResvBlock.vue'
+import ResvLogBlock from './rooms/ResvLogBlock.vue'
 import SlotBlock from './rooms/SlotBlock.vue'
 
 const router = useRouter()
@@ -238,6 +239,8 @@ async function syncPicked() {
         @changed="reloadAll"
         @resync="resync"
       />
+      <!-- 끝난 예약·취소·거절·만료 — 읽기 전용, 최근 30일 -->
+      <ResvLogBlock v-if="!scopeFailed" :label="label" :resv="resv" :loading="scopeLoading" />
       <ExamBlock
         v-if="!scopeFailed"
         :rooms="pickedRooms"

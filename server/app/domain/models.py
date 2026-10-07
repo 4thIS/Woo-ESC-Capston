@@ -83,6 +83,7 @@ class Reservation(Base):
     decided_by: Mapped[str | None] = mapped_column(String)
     reject_reason: Mapped[str | None] = mapped_column(String)
     checked_in_at: Mapped[dt.datetime | None]
+    checked_out_at: Mapped[dt.datetime | None]  # 조기 퇴실 — 끝 시각(e_h·e_m)은 이 분으로 당겨진다
     cancelled_at: Mapped[dt.datetime | None]
     # 마지막으로 RESV_SET 을 enqueue 한 시각. NULL = 노드에 없다(안 보냈거나 RESV_DEL 로 지움).
     # 승격·RESV_DEL 판단을 outbox 이력 대신 이 칸으로 — id 재사용·놓친 날에 안전 (S10 §2.5, r3)
