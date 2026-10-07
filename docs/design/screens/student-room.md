@@ -1,6 +1,6 @@
 # 학생 웹 — 강의실 (S10)
 
-- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Student-Gate`(로그인 벽) · `Student-Entry` · `Student-Room` · `Student-Week` · `Student-Reserve` · `Student-My` · `Student-Wide`(1280 폭)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Student-Gate`(로그인 벽) · `Student-Entry` · `Student-Room` · `Student-Week` · `Student-Reserve` · `Student-My` · 넓은 폭(1280) — `Student-Wide`(강의실) · `Student-Wide-Empty`(건물만 고른 상태) · `Student-Wide-Reserve`(예약 신청) · `Student-Wide-My`(내 예약)
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`student` 치수 세트) · `components.md`
 - 대상: **모바일 우선.** `bp.mobile` → `bp.tablet` → `bp.desktop` 세 폭 모두에서 동작한다
@@ -339,7 +339,20 @@ POST /api/student/rooms/{id}/reservations
 
 ## 넓은 폭 — `bp.tablet` 이상
 
-**화면을 키우는 게 아니라 더 보여준다.** 라우트는 그대로 `/{bld}/{room}` 하나다.
+**화면을 키우는 게 아니라 더 보여준다.** 라우트는 폭에 따라 바뀌지 않는다.
+
+넓은 폭의 틀은 하나다 — **왼쪽 340px 에 강의실 목록이 늘 서 있고, 오른쪽 칸만 바뀐다.** 왼쪽은 화면 1(`/{bld}`)과 같은 내용이다(내 정보 줄 · 다음 예약 카드 · 개수와 건물 선택 · 즐겨찾기 줄 · 목록 · 갱신 줄과 로그아웃). 지금 보고 있는 강의실은 목록에서 `brand.tint` 바탕 + `brand` 호수로 세운다.
+
+| 주소 | 오른쪽 칸 | 시안 |
+|---|---|---|
+| `/{bld}` | 안내 한 줄 — `왼쪽 목록에서 강의실을 고르세요`(`text.3`, 칸 가운데) | `Student-Wide-Empty` |
+| `/{bld}/{room}` | 강의실 — 아래 표 | `Student-Wide` |
+| `/{bld}/{room}/reserve` | 예약 신청 폼 | `Student-Wide-Reserve` |
+| `/{bld}/me` | 내 예약 | `Student-Wide-My` |
+
+폰에서는 왼쪽(목록)과 오른쪽(강의실 · 예약 · 내 예약) 중 **하나만** 보이고 `‹` · 뒤로가기로 오간다.
+
+아래 표는 폭에 따라 달라지는 것이다.
 
 | | `bp.mobile` | `bp.tablet` 이상 |
 |---|---|---|
@@ -349,10 +362,13 @@ POST /api/student/rooms/{id}/reservations
 | `오늘` 목록 | 시각 + 과목 + 배지 | 시각 구간 + 과목 + 교수 + 배지 |
 | 예약 진입 | 하단 고정 48px `이 강의실 예약하기` | **헤더 오른쪽** 40px `이 강의실 예약하기`(`brand` 채움) |
 | 내 예약 | 별도 화면(`/{bld}/me`), `‹` 로 목록에 돌아감 | **목록 옆 오른쪽 칸**에 펼친다. 카드는 640px 을 넘기지 않고 가운데에 둔다 |
+| 예약 신청 | 별도 화면, 하단에 요약 + `예약하기` 고정 | **목록 옆 오른쪽 칸.** 폼과 하단 바 둘 다 **640px 을 넘기지 않고 가운데**에 둔다. 헤더의 `✕` 는 그 강의실(`/{bld}/{room}`)로 돌아간다 |
 
 `/week` 라우트는 넓은 폭에서 `/{bld}/{room}`으로 리다이렉트한다 — 이미 그 안에 있다.
 
 **예약 버튼은 헤더 오른쪽으로 올린다.** 모바일에서 하단에 고정한 이유는 엄지가 닿는 자리라서였는데, 넓은 폭에는 그 제약이 없고 하단 고정 바는 이번 주 격자의 아래를 가린다. 헤더 오른쪽은 처음 시안에서 `링크 복사`가 있던 자리다 — 데스크톱 브라우저도 주소창 복사가 한 번이라 중복이어서 빼고, 이 화면의 1차 동작을 그 자리에 둔다. 비로그인·`reservable = false` 규칙은 모바일과 같다(위 「예약 · 진입」).
+
+**오른쪽 칸의 내용은 640px 을 넘기지 않는다**(내 예약 · 예약 신청). 폼의 Select 나 버튼이 900px 넘게 늘어나면 읽고 누르기가 오히려 어렵다. 강의실 화면만 예외다 — 이번 주 격자는 넓을수록 좋다.
 
 **색 값은 폭에 따라 바뀌지 않는다.** 바뀌는 것은 `student` 치수 세트와 배치뿐이다.
 
