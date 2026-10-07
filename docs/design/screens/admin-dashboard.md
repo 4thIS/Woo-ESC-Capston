@@ -1,6 +1,6 @@
 # 관리자 — 전송 현황 (분석 대시보드)
 
-- 시안: https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi (`전송 현황` 아트보드)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Dashboard`
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`admin` 치수 세트 · **`chart.*`**) · `components.md`
 - 서버 계약: wj의 **S4b**(요약·노드·실패) · **S10 §2.6·§4.3**(분석 집계)
@@ -105,6 +105,6 @@ StatTile ×4, Histogram, Legend, Table(최근 전송), OutboxDot, Select(기간�
 
 1. ~~집계 API~~ — S10 §4.3 에서 확정
 2. **`전체 전송 내역` 화면** — 이 링크가 갈 곳이 아직 없다. `analytics/latency/samples` 로 대신할 수 있는지 확인
-3. **웨이크 수신률을 뺐다** — S10 분석에 그 지표가 없다. 로드맵 §7.1 기준이라 어디서 계산할지 확인 필요. 지금은 `90초 이내 비율`로 대체했다
+3. **웨이크 수신률을 뺐다** — S10 분석에 그 지표가 없다. 근거는 로드맵 §7(12주차 행)·v2 §10.2-2 다(§7.1 은 지연 기준). 어디서 계산할지 확인 필요. 지금은 `90초 이내 비율`로 대체했다
 4. **배정률·공강·예약 통계 화면** — API는 있는데 이 화면에 안 그렸다. 별도 화면이 필요한지, 이 화면에 탭으로 붙일지 (mh-08)
 5. **요약(`/summary`)을 어디에 두나** — 경고 9종 카운트가 화면 상단 배너인지, 별도 대시보드 홈인지. `pending_approval`·`pending_reservations` 는 다른 화면으로 보내는 성격이다
