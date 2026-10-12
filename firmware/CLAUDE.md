@@ -27,7 +27,7 @@ firmware/
 ## 계층 책임
 
 - `lib/lora_codec/`는 **순수 로직만** 담는다 — 라디오 드라이버·Serial·파일시스템을 import하지 않는다. 그래야 `native` env에서 테스트 벡터로 검증된다.
-- `src/terminal/`의 상태 판단(`determineLayout`)과 다음 변경 시각(`nextChangeAt`)도 하드웨어 의존 없이 순수 함수로 유지한다 — 경계값 테스트가 여기 걸린다.
+- 상태 판단(`determineLayout`)·다음 변경 시각(`nextChangeAt`)·저장 계층은 하드웨어 의존 없는 순수 로직으로 `lib/` 에 둔다(예: `lib/schedule/`·`lib/node_store/`, 이름은 dh-08 plan — #74). NVS·LittleFS·`RTC_DATA_ATTR` 어댑터만 `src/terminal/`. 경계값 테스트가 `lib/` 에 걸린다.
 - 렌더 계층(`render*`, `fonts/`)은 데이터를 해석하지 않는다. 무엇을 보여줄지는 상태 판단이 정하고, 렌더는 그대로 그리기만 한다.
 - 공통 인프라 계층은 도메인을 import하지 않는다(의존 방향 단방향 유지).
 
