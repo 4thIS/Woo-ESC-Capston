@@ -13,7 +13,10 @@
 - **무엇**: ESP노드 폰트가 그릴 수 있는 글자. KS X 1001 한글 2,350 + ASCII 인쇄 가능 95 + 추가 14(`Ⅰ`~`Ⅹ` `·` `–` `↑` `↓`).
 - **누가 읽나**: 폰트 생성 도구(firmware, dh)는 파일을 바로, 서버 입력 검증(server, wj)은 `from lora_proto.charset import CHARSET, unsupported`. 형식은 한 줄에 `16진코드 글자`, 코드포인트 순.
 - **목록 밖 글자**: 무선(UTF-8)으로는 가지만 노드가 못 그린다 → 서버가 CSV·폼 입력에서 막는다(계약 ⑤). 전각→반각 같은 정규화도 서버 몫.
-- **바꾸는 법**: `tools/gen_charset.py` 규칙 수정 → `uv run python -m tools.gen_charset` → 아래 lockstep 과 같이 **단독 PR** 로 먼저 머지 → 폰트 재생성(dh)·서버 반영(wj). 파일을 손으로 고치면 드리프트 테스트가 막는다.
+- **바꾸는 법 — lockstep 의 유일한 예외 (2026-10-07 팀장 결정, #73)**: `charset.txt` 가 바뀌면 펌웨어 폰트 드리프트 검사(#73 의 `firmware/tools/embed_fonts.py`, 빌드 직전 실행)가 **실패**한다(경고로 낮추지 않는다 — 폰트에 없는 글자가 노드로 가는 것을 막는 장치). 그래서 이것만은 계약 PR 을 단독으로 먼저 머지하지 않고, **한 PR 에 두 커밋**으로 같이 머지해 `main` 을 늘 녹색으로 둔다.
+  1. cw: `tools/gen_charset.py` 규칙 수정 → `uv run python -m tools.gen_charset` → 커밋 (`feat(proto):`). 파일을 손으로 고치면 드리프트 테스트가 막는다.
+  2. dh: 같은 브랜치에 폰트 재굽기 커밋(`firmware/src/fonts/` 의 `.bin`) — `pio test -e native` 녹색.
+  3. 머지 뒤 서버 반영(wj) — 서버는 `lora_proto.charset` 을 그대로 읽으므로 보통 코드 변경 없음.
 
 ## 상수·규격을 바꿀 때 (lockstep)
 1. `proto.h` / `radio_params.h` 수정 → `proto.py` 같은 값으로
