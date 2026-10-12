@@ -6,6 +6,7 @@
 | `lora_proto/proto.py` | Python 미러. `tools/check_mirror.py`가 원본과 diff (CI) |
 | `lora_proto/codec.py` | 프레임·페이로드 encode/decode, `build_file` |
 | `tools/gen_vectors.py` → `test_vectors.json` | Python 이 만든 27개 프레임. `firmware/test/test_codec`(Unity)이 바이트 단위로 재검증 |
+| `room_state_vectors.json` | 강의실 상태 판정 벡터(v2 §5.3·§5.4, #74) — 쉬는시간 틈 `LP_BREAK_GAP_MAX_MIN`. 서버 `room_state`·노드 `determineLayout`/`nextChangeAt` 이 같은 파일로 대조. 손으로 쓰고 `tests/test_room_state_vectors.py` 의 참조 구현이 규칙과 맞는지 본다 |
 | `tools/gen_charset.py` → `lora_proto/charset.txt` | ESP노드 폰트 글자 목록 2,459자 (아래 절). `lora_proto/charset.py` 가 읽는다 |
 
 ## 글자 목록 (`charset.txt`, 이슈 #34)
