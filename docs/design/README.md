@@ -12,6 +12,7 @@ docs/design/
 ├── components.md      ← 컴포넌트 카탈로그: variant·size·상태 (→ web/src/components/ ui/ · domain/ · chart/)
 ├── screens/
 │   ├── auth.md             ← 가입·로그인·재설정 (학생·관리자 공용 흐름)
+│   ├── admin-master.md     ← 건물·강의실 만들기 (reservable·units·modem_id). 이 목록이 다른 화면의 바닥이다
 │   ├── admin-rooms.md      ← 페이지1: 건물 전체 시간표·예약·시험기간 설정 (→ web/src/views/)
 │   ├── admin-schedule.md   ← 페이지2: 강의실 하나의 주간 시간표 + 셀 편집
 │   ├── admin-dashboard.md  ← 분석 대시보드 (차트 규칙은 tokens.md 의 chart.* 를 따른다)

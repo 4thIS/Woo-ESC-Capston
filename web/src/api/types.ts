@@ -18,6 +18,8 @@ export interface LoginOut {
   token: string
   role: Role
   school_id: number
+  /** 로그인 뒤 화면의 학교 이름. 이 필드 전에 저장된 세션에는 없다 */
+  school_name?: string
   name: string
 }
 
@@ -215,14 +217,20 @@ export interface ResvWithRoom extends ResvOut {
   room_id: number
   requester: RequesterOut | null
   pushed_at: Date | null
+  /** 관리자 예약 표의 상태 열 — 사용중·조기 퇴실 (early-checkout) */
+  checked_in_at: Date | null
+  checked_out_at: Date | null
+  /** 예약 로그의 '거절됨' 사유 */
+  reject_reason: string | null
 }
-export const RESV_DATES = ['pushed_at'] as const
+export const RESV_DATES = ['pushed_at', 'checked_in_at', 'checked_out_at'] as const
 /** 관리자 신청 목록·승인·거절·취소 응답 (S10 §4.2 + web A2) */
 export interface ResvAdminOut extends ResvOut {
   requested_at: Date | null
   decided_at: Date | null
   reject_reason: string | null
   checked_in_at: Date | null
+  checked_out_at: Date | null
   cancelled_at: Date | null
   room_id: number
   building: string
@@ -234,6 +242,7 @@ export const RESV_ADMIN_DATES = [
   'requested_at',
   'decided_at',
   'checked_in_at',
+  'checked_out_at',
   'cancelled_at',
   'pushed_at',
 ] as const
@@ -342,6 +351,7 @@ export interface ResvMineOut extends ResvOut {
   decided_at: Date | null
   reject_reason: string | null
   checked_in_at: Date | null
+  checked_out_at: Date | null
   cancelled_at: Date | null
   room_id: number
   building: string
@@ -351,5 +361,6 @@ export const RESV_MINE_DATES = [
   'requested_at',
   'decided_at',
   'checked_in_at',
+  'checked_out_at',
   'cancelled_at',
 ] as const

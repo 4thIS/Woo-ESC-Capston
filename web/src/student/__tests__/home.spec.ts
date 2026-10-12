@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
 import { studentApi } from '@/api/student'
+import { setSession } from '@/lib/session'
 import HomeView from '@/student/views/HomeView.vue'
 import { mountAt, roomState } from './support'
 
@@ -48,6 +49,13 @@ describe('HomeView — / 첫 진입 (student-room.md 미결 3)', () => {
 
   it('여럿이면 건물 목록 — 이름·강의실 수·빈 곳, 최근 건물이 사라졌어도 목록', async () => {
     localStorage.setItem('esc.lastBld', 'Z')
+    setSession({
+      token: 't',
+      role: 'student',
+      school_id: 1,
+      school_name: '명지전문대학',
+      name: '김민준',
+    })
     api.rooms.mockResolvedValue([...E, K])
     const { w, router } = await mountAt(HomeView, '/', '/')
     expect(router.currentRoute.value.path).toBe('/')
@@ -58,6 +66,7 @@ describe('HomeView — / 첫 진입 (student-room.md 미결 3)', () => {
       '운영관 1개 강의실 · 지금 0곳 비어 있어요',
     ])
     expect(w.get('a.sh__me').attributes('href')).toBe('/me')
+    expect(w.get('h1').text()).toBe('명지전문대학') // 로그인 뒤 헤더 = 그 학생의 학교 (student-room.md §내 정보 줄)
     // 건물을 고르기 전에도 나갈 길 — 사이드바가 없는 화면
     await w.get('.home__logout').trigger('click')
     await flushPromises()

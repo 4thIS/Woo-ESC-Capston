@@ -1,6 +1,6 @@
 # 관리자 — 주간 시간표 (페이지2)
 
-- 시안: https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi (`A · 조용한 업무 도구` 아트보드)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Page2-Week`
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`admin` 치수 세트) · `components.md` · [페이지1](admin-rooms.md)
 - 대상: **데스크톱 전용** (`bp.desktop` ≥ 1024px). 태블릿·모바일 레이아웃을 만들지 않는다 — `README.md` 규칙. 컨테이너 `min-width: 1024px` + 가로 스크롤, 좁은 폭 첫 진입 시 안내 배너 1회

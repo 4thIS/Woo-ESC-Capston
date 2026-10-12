@@ -9,6 +9,7 @@ import { clearSession } from '@/lib/session'
 import { useResource } from '@/lib/useResource'
 import StudentHeader from '../StudentHeader.vue'
 import { lastBld } from '../favorites'
+import { schoolTitle } from '../composables'
 import { buildingsOf } from '../roomView'
 
 const router = useRouter()
@@ -36,7 +37,7 @@ function logout() {
 
 <template>
   <div class="home">
-    <StudentHeader title="MJC ESC" show-me />
+    <StudentHeader :title="schoolTitle" show-me />
     <main class="home__body">
       <h2 class="home__h">건물을 고르세요</h2>
       <Skeleton v-if="!data && !error" :rows="5" />

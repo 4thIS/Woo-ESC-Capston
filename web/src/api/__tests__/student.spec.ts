@@ -97,10 +97,20 @@ describe('studentApi', () => {
     expect(out.requested_at).toBeInstanceOf(Date)
   })
 
-  it('cancel · checkin — 경로', async () => {
-    fetchMock.mockImplementation(async () => json(mine[0]))
+  it('cancel · checkin · checkout — 경로', async () => {
+    fetchMock.mockImplementation(async (url) =>
+      json(
+        String(url).endsWith('/checkout')
+          ? { ...mine[0], checked_out_at: '2026-10-23T01:23:00' }
+          : mine[0],
+      ),
+    )
     await studentApi.cancel(7)
     await studentApi.checkin(7)
+    const out = await studentApi.checkout(7)
+    expect(call(2).url).toBe('/api/student/me/reservations/7/checkout')
+    expect(call(2).init.method).toBe('POST')
+    expect(out.checked_out_at).toBeInstanceOf(Date) // 날짜 필드로 푼다
     expect(call(0).url).toBe('/api/student/me/reservations/7/cancel')
     expect(call(1).url).toBe('/api/student/me/reservations/7/checkin')
     expect(call(1).init.method).toBe('POST')
