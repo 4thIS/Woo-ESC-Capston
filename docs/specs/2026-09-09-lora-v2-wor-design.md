@@ -422,7 +422,7 @@ esp_deep_sleep_start()
 - 같은 호수 2유닛의 ACK 충돌은 백엔드가 유닛별로 따로 보내므로 발생하지 않는다. STATUS는 `hash(mac)` 랜덤 오프셋으로 분산.
 
 ### 6.9 렌더링
-v1 자산 그대로 이식: `renderLayout`, `StatusImages.h`(+대여중, 설정 대기), `LabelImages.h`, `TimeGlyphs.h`, `NanumGothic20.h`, `KoreanFont.h`, GxEPD2 `GxEPD2_750c_Z08`(UC8179). 데이터 구조만 JSON → §5.1 바이너리 레코드로 바뀌므로 슬롯 탐색 함수(`findCurSlot` 등)를 구조체 배열 기준으로 재작성한다. 플래시 여유 확보를 위해 파티션은 `min_spiffs` 대신 **LittleFS 512 KB + 앱 3 MB**(S3 8 MB 플래시 기준 `custom.csv`).
+v1 의 **화면 구성(`renderLayout`)은 이식하고, 폰트·이미지 자산은 새로 굽는다**(2026-10-07 개정, dh-04 — 근거 `docs/plans/2026-09-20-dh-04-render-port.md`). 폰트는 나눔고딕(400·700·800)을 `lora_proto/lora_proto/charset.txt`(2,459자)로 서브셋한 1비트 비트맵이고, 나눔고딕에 없는 `Ⅰ`~`Ⅹ` 는 Noto Sans KR 로 채운다(서체 혼용 승인, #73). 고정 문구·상태 아이콘은 1비트 이미지로 굽는다(대여중·설정 대기 포함). 둘 다 빌드 직전 C 배열로 임베드한다(`lib/bitmap_font/`·`lib/bitmap_image/`, S3 spec §4.1). v1 헤더(`StatusImages.h`·`LabelImages.h`·`TimeGlyphs.h`·`NanumGothic20.h`·`KoreanFont.h`)는 쓰지 않는다. 패널 드라이버는 GxEPD2 `GxEPD2_750c_Z08`(UC8179). 데이터 구조만 JSON → §5.1 바이너리 레코드로 바뀌므로 슬롯 탐색 함수(`findCurSlot` 등)를 구조체 배열 기준으로 재작성한다. 플래시 여유 확보를 위해 파티션은 `min_spiffs` 대신 **LittleFS 512 KB + 앱 3 MB**(S3 8 MB 플래시 기준 `custom.csv`).
 
 ---
 

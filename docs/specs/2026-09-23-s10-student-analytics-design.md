@@ -159,7 +159,7 @@ RESV_SET 이 enqueue 뒤 노드에서 실패해도 `pushed_at` 은 남는다 —
 | `GET /me/reservations` | `status?`(기본 `requested,approved`) | `ResvMineOut[]` = `ResvOut` + `status, requested_at, decided_at, reject_reason, checked_in_at, cancelled_at, room_id, building, room` |
 | `POST /rooms/{id}/reservations` | `{date, s_h, s_m, e_h, e_m, subject}` | 201 `ResvMineOut` (`requested`, 서버 채번 — S4b `_free_id`·`_ID_LOCK`). 하루 10회 초과 429 |
 | `POST /me/reservations/{id}/cancel` | — | `ResvMineOut`. `requested` → **철회(행 삭제, 응답 status `cancelled`)**; `approved` 는 시작 전만 → `cancelled` + (보낸 적 있으면) `RESV_DEL`. 시작 후 409 |
-| `POST /me/reservations/{id}/checkin` | — | `ResvMineOut`. `approved` · 시작−10분 ≤ 지금 ≤ 시작+15분 · 미체크인. 창 밖 409 |
+| `POST /me/reservations/{id}/checkin` | — | `ResvMineOut`. `approved` · 시작 ≤ 지금 ≤ 시작+15분 · 미체크인. 창 밖 409 (2026-09-29 개정 — 시작 10분 전 → 시작 시각부터, #67·`early-checkout-design.md`) |
 
 ### 4.2 관리자 `/api/admin/reservations/*`, `/api/admin/jobs/*`
 
