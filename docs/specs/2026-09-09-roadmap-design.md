@@ -92,7 +92,7 @@ Heltec V3에 올라가는 두 펌웨어는 각각 **모뎀 펌웨어**(모뎀Pi�
 | **⑥ 메인Pi ↔ 모뎀Pi 백홀 (WebSocket)** | 메인Pi WS 허브(wj) ↔ 모뎀Pi 링크(wj) | ○ §4.2 | S2·S5 |
 | **⑦ 모뎀Pi 내부 `JobStore`** | 링크(wj) ↔ LoRa 파이프라인(cw) | ○ §4.3 | S5·S6 |
 
-### 4.1 `RenderModel` (확정)
+### 4.1 `RenderModel` (동결 — cw-11, 2026-10-12, 이슈 #27)
 
 상태 판단(cw)이 채워서 렌더(dh)에 넘기는 유일한 데이터. 렌더는 이 구조체 밖의 것을 읽지 않는다.
 
@@ -100,18 +100,20 @@ Heltec V3에 올라가는 두 펌웨어는 각각 **모뎀 펌웨어**(모뎀Pi�
 typedef struct {
   uint8_t  layout;              // v2 §5.3 표의 1~8
   char     bld; uint16_t room; uint8_t unit;
-  char     nowStr[6];           // "HH:MM" — 렌더가 시계를 직접 읽지 않음
   char     dateStr[6];          // "MM.DD" (2026-09-16 추가, mh 화면 스펙 미결 1)
   uint8_t  weekday;             // 1=월..7=일
   struct { char subj[21]; char prof[13];
-           uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } prev, cur, next;
+           uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } cur, next;
+                                // type = lora_proto SlotType(1 수업·2 시험·3 휴강·4 빈강의실·5 특강·6 대여, 0 = 비어 있음)
                                 // flags bit0 = 존재함, bit1 = 변경 배지(휴강·보강·변경)
   uint8_t  nToday;
-  struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // 주간 18 + 야간 6 (S3 spec §2.1). 렌더는 표시 상한 N 개만 그린다
+  struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // 하루 최대 24 동결(S3 spec §2.1). 넘치면 시작 순 앞 24개만. 렌더는 표시 상한 N 개만 그린다
   char     newTag[9];           // "NEW-1A7F" — layout 8 전용, MAC 하위 2 B (2026-09-16 추가, mh 화면 스펙 미결 2)
   uint16_t battMv;              // battPct 는 제거 (2026-09-16 — 방전 곡선 없이 % 환산은 임의값)
-} RenderModel;                  // ≈ 565 B, 매 웨이크 재계산. prev 는 화면 스펙(mh #12)에서 미사용 — cw-11 에서 제거 여부 판단
+} RenderModel;                  // 728 B(호스트·ESP32-S3 동일, test_render_model 이 고정), 매 웨이크 재계산
 ```
+
+> **동결 (cw-11, 2026-10-12, #27)**: `nowStr`·`prev` 제거 — 화면이 현재 시각·이전 수업을 그리지 않는다(화면 스펙 #19, 쉬는시간 화면은 `next` 의 시작 시각만 — #74). `type` 값 도메인 명시, `today[24]` 동결(#74 블록 슬롯이어도 하루 최대 약 13개). 이후 필드를 바꾸려면 cw·dh 협의 후 이 절과 `firmware/lib/render_model/render_model.h` 를 한 PR 에서.
 
 - 문자열 길이는 v2 §5.1 저장 버퍼와 동일. `today[24]`는 명지전문대 교시표(09:00~22:55) 기준 — S3 spec §2.1.
 - **QR 코드는 쓰지 않는다** (2026-09-16 팀 결정). 학생 웹은 별도 도메인으로 직접 진입한다. 화면·RenderModel·`config` 어디에도 QR/URL 필드를 두지 않는다.

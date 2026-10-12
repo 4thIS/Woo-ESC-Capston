@@ -15,7 +15,6 @@ void test_fields_are_assignable() {
   m.bld = 'E';
   m.room = 301;
   m.unit = 1;
-  std::strcpy(m.nowStr, "09:30");
   std::strcpy(m.dateStr, "09.16");
   m.weekday = 3;
   std::strcpy(m.cur.subj, "자료구조");
@@ -45,10 +44,18 @@ void test_date_str_and_new_tag_capacity() {
   TEST_ASSERT_EQUAL(9, sizeof(m.newTag));
 }
 
+// cw-11(#27) 동결 — nowStr·prev 제거. 남은 필드만으로 크기가 정해진다(로드맵 §4.1 "728 B", 제거 전 774 B).
+void test_frozen_size() {
+  TEST_ASSERT_EQUAL(40, sizeof(RenderSlot));
+  TEST_ASSERT_EQUAL(26, sizeof(TodaySlot));
+  TEST_ASSERT_EQUAL(728, sizeof(RenderModel));  // char·uint8·uint16 뿐이라 호스트·ESP32-S3 같은 값
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_today_capacity_is_24);
   RUN_TEST(test_fields_are_assignable);
   RUN_TEST(test_date_str_and_new_tag_capacity);
+  RUN_TEST(test_frozen_size);
   return UNITY_END();
 }
