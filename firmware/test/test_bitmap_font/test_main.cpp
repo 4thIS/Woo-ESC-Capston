@@ -50,16 +50,16 @@ void test_embedded_arrays_equal_bin_files() {
 
 void test_zero_bytes_inside_real_glyph_survive() {
   // 20px '가'(U+AC00, 인덱스 109)의 첫 5바이트. 앞 4바이트가 0x00(셀 윗줄 여백)이고 5번째가
-  // 잉크다 — 0x00 이 잘리거나 문자열처럼 끊기면 이 위치가 밀려 0x02 가 나오지 않는다.
+  // 잉크다 — 0x00 이 잘리거나 문자열처럼 끊기면 이 위치가 밀려 0x01 이 나오지 않는다.
   // 기대값은 .bin 을 파이썬으로 직접 읽어 얻었다(생성 파이프라인과 독립).
   const uint8_t* g = bfGlyphBitmap(kNanum20Regular, 109);
-  const uint8_t expected[] = {0x00, 0x00, 0x00, 0x00, 0x02};
+  const uint8_t expected[] = {0x00, 0x00, 0x00, 0x00, 0x01};
   TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, g, sizeof expected);
-  // 20px 자산 전체에서 0x00 이 실데이터로 흔하다는 것 자체도 확인(154,917 B 중 77,232 B).
+  // 20px 자산 전체에서 0x00 이 실데이터로 흔하다는 것 자체도 확인(162,294 B 중 77,653 B).
   size_t zeros = 0;
   const size_t total = (size_t)kNanum20Regular.count * bfBytesPerGlyph(kNanum20Regular);
   for (size_t i = 0; i < total; i++) zeros += kNanum20Regular.bitmaps[i] == 0x00;
-  TEST_ASSERT_EQUAL_size_t(77232, zeros);
+  TEST_ASSERT_EQUAL_size_t(77653, zeros);
 }
 
 // ---------------------------------------------------------------------------
@@ -152,14 +152,19 @@ void test_roman_numerals_are_inked_fullwidth_fallback_glyphs() {
   TEST_ASSERT_EQUAL_UINT8(5, advanceOf(kNanum20Regular, 'I'));  // 주 폰트 'I' 와는 다른 글리프
 }
 
-void test_20px_bold_is_heavier_than_regular_same_cell() {
-  // 같은 20px·같은 셀(20x21)이지만 700 은 400 보다 획이 굵다: '가' 46 → 108, '캡' 97 → 154 픽셀.
-  TEST_ASSERT_EQUAL_UINT8(kNanum20Regular.cellW, kNanum20Bold.cellW);
-  TEST_ASSERT_EQUAL_UINT8(kNanum20Regular.cellH, kNanum20Bold.cellH);
-  TEST_ASSERT_EQUAL_UINT32(46, inkCount(kNanum20Regular, 0xAC00));
-  TEST_ASSERT_EQUAL_UINT32(108, inkCount(kNanum20Bold, 0xAC00));
-  TEST_ASSERT_EQUAL_UINT32(97, inkCount(kNanum20Regular, 0xCEA1));
-  TEST_ASSERT_EQUAL_UINT32(154, inkCount(kNanum20Bold, 0xCEA1));
+void test_20px_bold_is_heavier_than_regular() {
+  // 셀 크기와 무관하게 잉크 픽셀 수로 비교한다 — 700 은 400 보다 획이 굵다: '가' 47 → 87, '캡' 84 → 155 픽셀.
+  TEST_ASSERT_EQUAL_UINT32(47, inkCount(kNanum20Regular, 0xAC00));
+  TEST_ASSERT_EQUAL_UINT32(87, inkCount(kNanum20Bold, 0xAC00));
+  TEST_ASSERT_EQUAL_UINT32(84, inkCount(kNanum20Regular, 0xCEA1));
+  TEST_ASSERT_EQUAL_UINT32(155, inkCount(kNanum20Bold, 0xCEA1));
+}
+
+void test_16px_arrows_keep_their_shaft() {
+  // 흑백 힌트 렌더 이전(AA+임계값 128)에는 nanum16r 의 ↑·↓ 가 화살표 머리 끝 4픽셀만 남았다(몸통이 회색이라
+  // 탈락).
+  TEST_ASSERT_GREATER_OR_EQUAL_UINT32(12, inkCount(kNanum16Regular, 0x2191));
+  TEST_ASSERT_GREATER_OR_EQUAL_UINT32(12, inkCount(kNanum16Regular, 0x2193));
 }
 
 // ---------------------------------------------------------------------------
@@ -241,7 +246,8 @@ int main() {
   RUN_TEST(test_find_glyph_not_found);
   RUN_TEST(test_full_fonts_follow_charset_txt_exactly);
   RUN_TEST(test_roman_numerals_are_inked_fullwidth_fallback_glyphs);
-  RUN_TEST(test_20px_bold_is_heavier_than_regular_same_cell);
+  RUN_TEST(test_20px_bold_is_heavier_than_regular);
+  RUN_TEST(test_16px_arrows_keep_their_shaft);
   RUN_TEST(test_draw_glyph_matches_bitmap_at_baseline_origin);
   RUN_TEST(test_draw_hyphen_sits_above_baseline_right_of_pen);
   RUN_TEST(test_draw_passes_color_and_leaves_background);
