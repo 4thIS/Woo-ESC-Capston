@@ -115,7 +115,7 @@ wj가 `web/src/styles/`에서 쓰는 이름. 화면(`views/`)은 1층을 직접 
 | `danger` | `red.700` | 삭제 · 에러 · 실패 |
 | `focus` | `blue.600` | `outline: 2px solid; outline-offset: 2px` |
 
-**`brand`를 장식으로 쓰지 않는다.** 화면당 채워진 `brand` 버튼은 하나다. 적색을 `focus`에서 뺀 이유는 사용중 상태와 섞이기 때문이다.
+**`brand`를 장식으로 쓰지 않는다.** 화면당 채워진 `brand` 버튼은 하나다. **예외는 하나다** — 관리자 사이드 메뉴 `회원` 의 대기 건수 배지(`components.md` Badge). 액션도 활성 상태도 아니지만 `brand` 채움으로 둔다. 적색을 `focus`에서 뺀 이유는 사용중 상태와 섞이기 때문이다.
 
 ## 조합 규칙 (A)
 
