@@ -330,7 +330,8 @@ def test_hub_db_write_waiting_on_lock_does_not_freeze_the_loop(client, live, mod
     with client.websocket_connect("/ws/modem") as ws:
         _hello(ws, modem)
         ws.receive_json()  # config
-        holder = sqlite3.connect(app.state.engine.url.database, timeout=0)
+        # 허브는 보낸 뒤에 기록을 스레드에서 쓴다 — config 를 받은 순간 그 기록이 아직 진행 중일 수 있어 기다린다
+        holder = sqlite3.connect(app.state.engine.url.database, timeout=5)
         holder.execute("BEGIN IMMEDIATE")  # 쓰기 잠금을 쥔다 — 저장 요청이 커밋 전에 쥔 것과 같다
         holder.execute("UPDATE modems SET agent_ver = agent_ver")
         try:
