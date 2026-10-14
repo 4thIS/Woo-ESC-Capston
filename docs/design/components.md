@@ -64,7 +64,7 @@ v2에서 쓸 수 있는 수단은 다섯이고, 이 밖으로 나가지 않는�
 |---|---|---|---|
 | `primary` | `brand` 채움 + `gray.0` 글자 | 10% 어둡게 | 저장·추가 — **화면당 하나** |
 | `secondary` | `surface` + `line.3` 1px + `text.1` | 바탕 `sunken` | 취소·CSV·동기화 |
-| `danger` | `danger` 채움 + `gray.0` 글자 | 10% 어둡게 | 삭제 — **확인 모달 안에서만** |
+| `danger` | `danger` 채움 + `gray.0` 글자 | 10% 어둡게 | 삭제 — **확인 모달 안에서만** (예외 하나 — 아래) |
 | `ghost` | 바탕·테두리 없음, `text.1` | 바탕 `sunken` | 표 행의 인라인 동작 |
 
 - 높이 `control.height.sm` / `.md`. 패딩 `space.2` `space.4`. 라운드 `radius.md`. 굵기 `medium`.
@@ -72,6 +72,7 @@ v2에서 쓸 수 있는 수단은 다섯이고, 이 밖으로 나가지 않는�
 - `loading`: 라벨을 유지한 채 앞에 회전 마크를 붙이고 `disabled`처럼 잠근다. 라벨을 "저장 중…"으로 바꾸지 않는다 — 버튼 너비가 흔들린다. 다만 **진행도가 있으면** `loadingLabel`로 바꾼다("3/7 적용 중"). 이때 너비는 가장 긴 문자열 기준으로 미리 잡는다.
 - 포커스: `outline: 2px solid var(--focus); outline-offset: 2px`.
 - **`danger`를 목록이나 표에 바로 노출하지 않는다.** 표의 삭제는 `ghost`이고, 적색은 확인 모달에서만 나온다. 적색이 화면에 흔해지면 "사용중" 상태와 섞인다.
+  - **예외는 하나다** — 학생 웹 내 예약 카드의 `조기 퇴실`([student-room.md](screens/student-room.md) §조기 퇴실). 체크인한 카드의 유일한 동작이고 되돌릴 수 없어 카드 머리에 `danger` 로 둔다. 이것도 확인 모달을 거친다. 예외를 늘리려면 이 줄부터 고친다.
 
 ## Select
 
@@ -160,8 +161,11 @@ v2에서 쓸 수 있는 수단은 다섯이고, 이 밖으로 나가지 않는�
 | `neutral` + `outline` | 없음 | `line.3` | `text.2` |
 | `neutral` + `solid` | `sunken` | 없음 | `text.1` |
 | `danger` + `outline` | 없음 | `danger` | `danger` |
+| `brand` + `solid` | `brand` | 없음 | `gray.0` |
 
 `font.size.xs` + `bold`, 패딩 `2px space.2`, 라운드 `radius.sm`. 라벨 텍스트는 **반드시 있다** — 색칠된 점만으로 상태를 표현하는 배지를 만들지 않는다.
+
+- **`brand` + `solid` 는 한 곳에만 쓴다** — 관리자 사이드 메뉴 `회원` 옆 대기 건수([admin-users.md](screens/admin-users.md)). 숫자만 든 알약(`radius.full`)이고, **대기가 0이면 배지를 숨긴다.** `brand` 는 1차 액션·활성 상태 전용이라(`tokens.md`) 이것이 유일한 예외다 — 가입 승인이 밀리면 학생 웹 전체가 막히므로 눈에 띄어야 한다. 예외를 늘리려면 이 줄부터 고친다.
 
 ## Modal
 
