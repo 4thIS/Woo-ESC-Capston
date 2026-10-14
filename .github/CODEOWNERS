@@ -20,6 +20,8 @@
 /firmware/lib/adafruit_gfx_vendor/  @Hyeon02-kr
 /firmware/lib/render/               @Hyeon02-kr
 /firmware/lib/render_model/         @ssenu @Hyeon02-kr
+/firmware/lib/bitmap_font/          @Hyeon02-kr
+/firmware/lib/bitmap_image/         @Hyeon02-kr
 /firmware/tools/                    @Hyeon02-kr
 
 # ─── server: 웹 풀스택은 wj, LoRa 서비스 계층은 PM ────────

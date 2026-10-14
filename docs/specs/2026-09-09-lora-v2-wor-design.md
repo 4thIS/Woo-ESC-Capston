@@ -291,31 +291,45 @@ USB 시리얼(115200, JSON lines, UTF-8, `\n` 종단)로 호스트 명령을 받
 
 ```c
 typedef struct {
-  uint32_t magic;            // 0xEPA2xxxx
+  uint32_t magic;            // RTC_MAGIC_BASE | RTC_LAYOUT_VER — 구조가 바뀌면 LAYOUT_VER 를 올려 옛 캐시를 자동 무효화
   uint8_t  bld; uint16_t room; uint8_t unit; uint8_t provisioned;
   uint8_t  schedVer, resvVer, examVer, identVer, lastTxn;
   uint8_t  lastLayout; uint8_t lastDay; uint16_t lastSlotStartMin;   // 상태키
   uint32_t lastTimeSyncEpoch; uint32_t nextStatusEpoch;
-  uint8_t  nSlots; Slot slots[48];        // 48 × 36 B ≈ 1.7 KB (subj 20B, prof 12B 고정 버퍼)
-  uint8_t  nResv;  Resv  resv[24];        // 24 × 44 B ≈ 1.1 KB
-  uint8_t  nExam;  Exam  exams[8];
+  uint8_t  nSlots; lc::SlotRec slots[48];  // 48 × 40 B = 1,920 B (subj 20 B·prof 12 B + 널, lora_codec 구조체 재사용)
+  uint8_t  nResv;  lc::ResvRec resv[24];   // 24 × 44 B = 1,056 B
+  uint8_t  nExam;  lc::ExamRec exams[8];   //  8 ×  8 B =    64 B
   uint16_t crc;
-} rtc_state_t;                           // 합계 < 4 KB (RTC slow 8 KB 내)
+} rtc_state_t;                           // 합계 ≈ 3.1 KB (RTC slow 8 KB 내)
 ```
 - 문자열은 고정 버퍼(UTF-8, 과목 20 B, 교수 12 B)로 잘라 저장. 화면 표시 한계와 일치.
-- 용량 초과(슬롯 48개 초과 등) 시 `STORE_FAIL` ACK.
+- 용량 초과(슬롯 48개 초과 등) 시 `STORE_FAIL` ACK. **슬롯 상한 48 은 확인 중** — §5.3 개정으로 수업을 블록마다 슬롯으로 보내면 방당 주간 슬롯이 늘어난다(평일 09–21 이 꽉 차면 60). dh 실데이터의 방당 주간 블록 수 최대값을 보고 넘으면 상한을 올리고(LittleFS 는 여유, RTC 캐시는 오늘 슬롯만 등) 이 절과 서버 `NODE_SLOT_MAX` 를 같이 고친다(#74).
+
+**저장 계층 규칙 (2026-10-12 개정, 이슈 #74 결정 1·2·5)**
+- 코드 위치: 노트북에서 테스트하는 순수 로직은 `firmware/lib/`(저장 예: `lib/node_store/`), NVS·LittleFS·`RTC_DATA_ATTR` 어댑터는 `[env:terminal]` 이 생길 때 `src/terminal/`. `lib/` 에는 Arduino 헤더를 넣지 않는다. 모듈 이름은 dh-08 plan 에서 정한다.
+- 인터페이스: `KvStore`(NVS)·`FileStore`(LittleFS) + 메모리 fake. 상태 판단·수신(cw-14)은 저장 함수(`apply…`·`replaceKind`·버전·`lastTxn`·정체성·`factoryReset` → `OK | STORE_FAIL`)만 부르고, NVS 키·파일 형식·쓰기 정책은 저장 계층(dh-08) 안에 둔다.
+- `FileStore` 쓰기는 **원자 교체**(tmp → rename) — 실패하면 옛 내용 유지(fake 도 같게).
+- 파일이 손상되면 그 kind 를 비우고 버전 0 → 다음 STATUS 의 버전 비교로 서버가 FILE 재동기를 자동으로 건다.
+- **지난 날짜(date < 오늘) 예약 삭제**도 저장 계층 함수로, 예약 24개 용량 검사 **전에** 실행한다(서버 일일 작업이 이 전제로 계산).
+- GAP 판정(`(new − old) mod 256 ≠ 1`)은 프로토콜 쪽(cw-14). 저장 계층은 값만 보관한다.
+- RTC 캐시: `rtc_state_t` 정의·magic/CRC 검증·NVS/LittleFS 에서 재구축·seal 은 dh-08, `RTC_DATA_ATTR` 배치와 잠들기 직전 seal 호출은 cw. 저장 API 가 캐시도 같이 갱신한다(write-through).
 
 ### 5.2 시계
-- `settimeofday` + `TZ=KST-9`. 딥슬립 중에도 RTC 타이머가 계속 가므로 `time()`은 유지된다.
+- `settimeofday`(UTC epoch). 딥슬립 중에도 RTC 타이머가 계속 가므로 `time()`은 유지된다.
+- **지역 시각은 `TZ` 를 쓰지 않고 epoch + 9 h 고정 정수 계산**(2026-10-12 개정, #74 결정 4) — 한국은 서머타임이 없어 서버 `Asia/Seoul` 과 결과가 같고, 호스트 테스트가 TZ 설정에 묶이지 않는다. 요일·날짜·분 변환은 `lib/schedule/`(이름은 dh-08 plan) 한 곳에 둔다.
 - `clockValid = (time() > 1_700_000_000)`. 유효하지 않으면 렌더 보류(e-Paper는 마지막 화면 유지).
 - TIME 수신 시 `lastTimeSyncEpoch` 갱신. 25 h 초과 시 STATUS에 `CLOCK_STALE`. 렌더는 계속한다.
 - 드리프트: 딥슬립 RC 클럭 기준 시간당 수 초 가능 → 매시 TIME으로 흡수. DS3231 도입은 실측 후 결정(비범위).
 
-### 5.3 상태 판단 (`determineLayout`, v1 로직 유지)
+### 5.3 상태 판단 (`determineLayout`) — 2026-10-12 개정 (#74, #14 닫음)
+구현은 dh-08(`lib/schedule/`, `nextChangeAt` 과 공용 헬퍼를 같이 둔다), **판정 규칙과 테스트 벡터는 cw** 가 정하고 리뷰한다. 벡터는 서버 `room_state` 와 같은 파일을 쓴다(`lora_proto` 로 이동 예정).
+
 우선순위 **예약 > 시험기간 > 기본 시간표**.
 1. 예약: 오늘 날짜·현재 시각이 [start,end) 안이면 `typeToLayout(type)`.
 2. 시험기간: 오늘이 기간 내이고 현재 시각이 어떤 슬롯 안이면 시험중(5).
-3. 기본: 슬롯 안 & 분<50 → 수업중(1) / 슬롯 안 & 분≥50 → 쉬는시간(2) / 슬롯 밖 → 빈강의실(4).
+3. 기본: 슬롯 안 → 그 슬롯의 `typeToLayout(type)`(수업이면 수업중 1) / **수업 슬롯 끝 ~ 같은 날 다음 수업 슬롯 시작의 틈이 0 < 틈 ≤ 15분이면 그 틈 동안 쉬는시간(2)** / 그 밖 → 빈강의실(4).
+   - `:50` 규칙(분 ≥ 50 → 쉬는시간)은 **폐기**한다. 학교 시간표가 블록(12:00–12:50, 13:00–13:50)으로 나뉘어 그대로 슬롯이 되고, 야간(45분 + 5분)도 같은 로직으로 맞는다. 연강으로 한 덩어리인 과목은 슬롯 하나 그대로(중간 쉬는시간 없음).
+   - 쉬는시간 화면은 `next` 의 시작 시각("HH:MM 수업 재개")만 쓴다(RenderModel 동결, #27).
 
 | layout | 상태 | 색 | 비고 |
 |---|---|---|---|
@@ -332,7 +346,7 @@ typedef struct {
 
 ### 5.4 다음 변경 시각 (`nextChangeAt(now)`) — 신규
 후보 중 최소값. 없으면 `now + 24 h`.
-- 오늘·이후 7일 내 모든 슬롯의 start, end, 그리고 슬롯 안에 있을 때 다음 `:50:00`
+- 오늘·이후 7일 내 모든 슬롯의 start, end (쉬는시간 틈의 경계는 슬롯 end·start 와 같아 따로 후보가 없다. `:50:00` 후보는 폐기 — §5.3)
 - 모든 예약의 start, end (오늘 이후)
 - 시험기간 시작일 00:00, 종료일 다음날 00:00
 - 다음 자정(요일 전환)
@@ -384,7 +398,9 @@ loop (세션 창 sessionWindowMs, 기본 10 s, 프레임 수신 시마다 연장
     FILE_END   → crc16 검증 → kind 전체 교체 → LittleFS 기록 → 버전 갱신 → ACK(OK)
     CMD        → 실행 → ACK
     SET_ROOM   → MAC 일치 & 미설정 → 정체성 저장(NVS) → provisioned=true → ACK(OK) → 렌더 플래그
-  ACK는 **렌더 전에** 송신 (렌더 7~20 s 동안 서버가 기다리지 않게)
+  ACK는 **저장이 끝나면 렌더 전에** 송신 (렌더 7~20 s 동안 서버가 기다리지 않게)
+  — 렌더 뒤에 ACK 하면 모뎀의 ACK 대기(3 s) 안에 오지 않아 no_ack 재시도가 되고, 그동안 다른 노드 전송도 막힌다.
+    그래서 ACK = 전달 확정(저장 완료)이고, 화면 반영은 그 뒤 렌더 꼬리만큼 늦다(로드맵 §7.1, #74 결정 6).
   dirty 플래그 set
 세션 창 종료 후: dirty면 handleTimer()의 3~4 수행(렌더는 최대 1회)
 ```
@@ -422,7 +438,7 @@ esp_deep_sleep_start()
 - 같은 호수 2유닛의 ACK 충돌은 백엔드가 유닛별로 따로 보내므로 발생하지 않는다. STATUS는 `hash(mac)` 랜덤 오프셋으로 분산.
 
 ### 6.9 렌더링
-v1 자산 그대로 이식: `renderLayout`, `StatusImages.h`(+대여중, 설정 대기), `LabelImages.h`, `TimeGlyphs.h`, `NanumGothic20.h`, `KoreanFont.h`, GxEPD2 `GxEPD2_750c_Z08`(UC8179). 데이터 구조만 JSON → §5.1 바이너리 레코드로 바뀌므로 슬롯 탐색 함수(`findCurSlot` 등)를 구조체 배열 기준으로 재작성한다. 플래시 여유 확보를 위해 파티션은 `min_spiffs` 대신 **LittleFS 512 KB + 앱 3 MB**(S3 8 MB 플래시 기준 `custom.csv`).
+v1 의 **화면 구성(`renderLayout`)은 이식하고, 폰트·이미지 자산은 새로 굽는다**(2026-10-07 개정, dh-04 — 근거 `docs/plans/2026-09-20-dh-04-render-port.md`). 폰트는 나눔고딕(400·700·800)을 `lora_proto/lora_proto/charset.txt`(2,459자)로 서브셋한 1비트 비트맵이고, 나눔고딕에 없는 `Ⅰ`~`Ⅹ` 는 Noto Sans KR 로 채운다(서체 혼용 승인, #73). 고정 문구·상태 아이콘은 1비트 이미지로 굽는다(대여중·설정 대기 포함). 둘 다 빌드 직전 C 배열로 임베드한다(`lib/bitmap_font/`·`lib/bitmap_image/`, S3 spec §4.1). v1 헤더(`StatusImages.h`·`LabelImages.h`·`TimeGlyphs.h`·`NanumGothic20.h`·`KoreanFont.h`)는 쓰지 않는다. 패널 드라이버는 GxEPD2 `GxEPD2_750c_Z08`(UC8179). 데이터 구조만 JSON → §5.1 바이너리 레코드로 바뀌므로 슬롯 탐색 함수(`findCurSlot` 등)를 구조체 배열 기준으로 재작성한다. 플래시 여유 확보를 위해 파티션은 `min_spiffs` 대신 **LittleFS 512 KB + 앱 3 MB**(S3 8 MB 플래시 기준 `custom.csv`).
 
 ---
 
@@ -583,9 +599,12 @@ epaper-v2/
 ├─ firmware/                   # PlatformIO, 두 env
 │   ├─ platformio.ini          # [env:terminal] [env:modem] 공통 lib_deps: RadioLib, GxEPD2, ArduinoJson(모뎀만)
 │   ├─ lib/lora_codec/         # 프레임 인코딩/디코딩 (양쪽 공용)
-│   ├─ src/terminal/           # §5~7
+│   ├─ lib/schedule/           # §5.2~5.4 시각 변환·determineLayout·nextChangeAt (순수 로직, dh-08 — 이름은 plan 에서 확정)
+│   ├─ lib/node_store/         # §5.1 저장 계층 KvStore·FileStore + fake (순수 로직, dh-08 — 이름은 plan 에서 확정)
+│   ├─ lib/render_model/ · lib/render/ · lib/bitmap_font/ · lib/bitmap_image/   # §6.9 렌더 (dh, render_model 은 cw 공동)
+│   ├─ src/terminal/           # §6~7 상태머신·라디오, NVS·LittleFS·RTC 어댑터
 │   ├─ src/modem/              # §4
-│   ├─ src/fonts/              # v1에서 복사 + 대여중/설정대기 이미지 재생성
+│   ├─ src/fonts/              # 서브셋 폰트·이미지 .bin (새로 굽는다 — §6.9)
 │   └─ test/                   # unity: codec, determineLayout, nextChangeAt
 ├─ server/
 │   ├─ lora_service/           # §8
@@ -602,7 +621,7 @@ epaper-v2/
 
 ### 10.1 단위
 - `codec` 라운드트립: Python으로 각 TYPE 프레임을 만들고 `test_vectors.json`에 기록 → C++ unity가 파싱해 필드·CRC8 일치 확인, 역방향(C++ 빌드 → Python 파싱)도 동일.
-- `determineLayout`·`nextChangeAt`: 경계값(정각, :50, 자정, 요일 전환, 예약과 시험기간 겹침, 대여 종료 직후).
+- `determineLayout`·`nextChangeAt`: 경계값(정각, 쉬는시간 틈 15/16분, 자정, 요일 전환, 예약과 시험기간 겹침, 대여 종료 직후).
 - 워커: fake 모뎀으로 acked/no_ack/GAP/BUSY/FILE_MISSING 시나리오, 재시도 타이밍, 유닛 분해, 버전 조정.
 
 ### 10.2 벤치 (책상 위, 모뎀 + 단말 1대)
