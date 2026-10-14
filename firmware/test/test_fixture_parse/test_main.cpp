@@ -14,8 +14,7 @@ static void writeFixture(const char* path, const char* json) {
 const char* SAMPLE = R"({
   "name": "layout1_class_basic",
   "layout": 1, "bld": "E", "room": 301, "unit": 1,
-  "now_str": "09:30", "date_str": "09.16", "weekday": 3,
-  "prev": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "date_str": "09.16", "weekday": 3,
   "cur":  {"subj": "자료구조", "prof": "김교수", "s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "type": 1, "flags": 1},
   "next": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
   "n_today": 1,
@@ -33,7 +32,8 @@ void test_parses_all_top_level_fields() {
   TEST_ASSERT_EQUAL(1, m.layout);
   TEST_ASSERT_EQUAL('E', m.bld);
   TEST_ASSERT_EQUAL(301, m.room);
-  TEST_ASSERT_EQUAL_STRING("09:30", m.nowStr);
+  TEST_ASSERT_EQUAL(3, m.weekday);
+  TEST_ASSERT_EQUAL(3900, m.battMv);
   remove("t1.json");
 }
 
@@ -108,6 +108,24 @@ void test_non_object_json_returns_false() {
   remove("t6.json");
 }
 
+// cw-11(#27) 에서 now_str·prev 를 계약에서 뺐다. 옛 픽스처에 키가 남아 있어도 무시하고 나머지는 그대로
+// 읽는다.
+void test_legacy_now_str_and_prev_keys_are_ignored() {
+  writeFixture("t9.json", R"({
+    "name": "legacy", "layout": 1, "bld": "E", "room": 301, "unit": 1,
+    "now_str": "09:30", "date_str": "09.16", "weekday": 3,
+    "prev": {"subj": "이전", "prof": "", "s_h": 8, "s_m": 0, "e_h": 8, "e_m": 50, "type": 1, "flags": 1},
+    "cur":  {"subj": "자료구조", "prof": "김교수", "s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "type": 1, "flags": 1},
+    "n_today": 0, "today": []
+  })");
+  RenderModel m{};
+  char name[64];
+  TEST_ASSERT_TRUE(parseFixtureFile("t9.json", m, name, sizeof(name)));
+  TEST_ASSERT_EQUAL_STRING("자료구조", m.cur.subj);
+  TEST_ASSERT_EQUAL_STRING("09.16", m.dateStr);
+  remove("t9.json");
+}
+
 void test_missing_file_returns_false() {
   RenderModel m{};
   char name[64];
@@ -122,6 +140,7 @@ int main() {
   RUN_TEST(test_n_today_clamped_to_actual_array_length);
   RUN_TEST(test_parses_date_str_and_new_tag);
   RUN_TEST(test_non_object_json_returns_false);
+  RUN_TEST(test_legacy_now_str_and_prev_keys_are_ignored);
   RUN_TEST(test_missing_file_returns_false);
   return UNITY_END();
 }
