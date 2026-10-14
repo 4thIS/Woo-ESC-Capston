@@ -13,16 +13,36 @@ _DUMMY = None  # lifespan 의 warm() 이 미리 만든다 — 재시작 뒤 첫 
 # 동시 scrypt 2개 — 요청당 16 MB 라 스레드풀(40) 전부가 돌면 Pi 가 스왑·OOM. 초과 요청은 줄 서서 기다린다
 # ponytail: 고정 2, 코어 수가 늘면 올린다
 _SEM = threading.BoundedSemaphore(2)
+WAITERS_MAX = 4  # 줄 상한 — 슬롯 2 + 대기 4 = 스레드 최대 6개만 scrypt 로 묶인다(스레드풀 40)
 SCRYPT_WAIT_S = 2.0  # 줄이 이보다 길면 Busy → 503. 무기한 대기는 스레드풀을 다 잡아 서버 전체가 멈춘다 (PR #42 🔴2)
+_waiting = 0
+_waiting_lock = threading.Lock()
 
 
 class Busy(Exception):
     """scrypt 슬롯을 SCRYPT_WAIT_S 안에 못 얻었다 — main 의 핸들러가 503 으로 바꾼다."""
 
 
+def _acquire() -> None:
+    """슬롯이 비면 바로, 차면 WAITERS_MAX 명까지만 줄을 선다. 그 이상은 기다리지 않고 Busy —
+    줄 선 요청마다 스레드풀 스레드를 쥐어, 여러 IP 폭주에 health 까지 수 초 밀렸다(#51, 실측 10.7 s)."""
+    global _waiting
+    if _SEM.acquire(blocking=False):
+        return
+    with _waiting_lock:
+        if _waiting >= WAITERS_MAX:
+            raise Busy
+        _waiting += 1
+    try:
+        if not _SEM.acquire(timeout=SCRYPT_WAIT_S):
+            raise Busy
+    finally:
+        with _waiting_lock:
+            _waiting -= 1
+
+
 def _derive(pw: str, salt: bytes, n: int, r: int, p: int) -> bytes:
-    if not _SEM.acquire(timeout=SCRYPT_WAIT_S):
-        raise Busy
+    _acquire()
     try:
         return hashlib.scrypt(
             pw.encode("utf-8"), salt=salt, n=n, r=r, p=p, dklen=32, maxmem=256 * 1024 * 1024
