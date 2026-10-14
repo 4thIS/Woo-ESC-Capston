@@ -1,6 +1,6 @@
 # 메인 페이지 — `/` (로그인 전)
 
-- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Landing`(390) · `Wide-Landing`(1280) — **아직 없다**(미결 1)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Landing`(390) · `Wide-Landing`(1280)
 - 소비자: wj → `web/src/student/views/`
 - 전제: `tokens.md` v2 (`student` 치수 세트) · `components.md`
 - 관련: [auth.md](auth.md)(로그인 탭) · [student-room.md](student-room.md)(`/` 건물 선택 · 로그인 벽)
@@ -29,7 +29,7 @@
 │ 강의실 시간표와 예약을            │
 │ 문 앞 전자종이와 웹에서 한 번에.   │  ← 소개 한 문장  font.size.lg 400 text.2
 │                                 │
-│ ─────────────────────────────── │  ← line.1
+│ ─────────────────────────────── │  ← 위아래 line.2, 행 사이 line.1
 │ 지금 빈 강의실                   │  ← 할 수 있는 일 셋, 각 행 48px
 │ 이번 주 시간표                   │     font.size.md 500 text.1
 │ 예약 신청·승인                   │
@@ -99,6 +99,6 @@
 
 ## 미결
 
-1. **시안** — `Landing` · `Wide-Landing` 보드를 캔버스에 그린다. 그 전까지 이 문서의 와이어가 기준이다
+1. ~~시안~~ — 그렸다(`Landing` · `Wide-Landing`)
 2. **학교가 여럿일 때** — `GET /api/public/school` 이 어느 학교를 줄지(설정값 `SCHOOL_ID` 등). wj 와 협의, 서버 결정
 3. **소개 문장** — `강의실 시간표와 예약을 문 앞 전자종이와 웹에서 한 번에.` 는 초안이다. 팀 리뷰에서 확정

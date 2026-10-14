@@ -1,6 +1,6 @@
 # 인증 — 가입 · 로그인 · 재설정
 
-- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Student-Auth` (학생·관리자 공용, 1260 폭에 4단계를 나란히) · `Student-Forgot` (`/forgot` 보낸 뒤 · `/reset` 성공) · `Student-Wide-Auth` (학생 `/login` 넓은 폭 1280) · `Auth-Tabs` (로그인 `학생 | 관리자` 탭 — 아직 없다, 미결 5)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Student-Auth` (학생·관리자 공용, 1260 폭에 4단계를 나란히) · `Student-Forgot` (`/forgot` 보낸 뒤 · `/reset` 성공) · `Student-Wide-Auth` (학생 `/login` 넓은 폭 1280) · `Auth-Tabs` · `Auth-Tabs-Admin` (로그인 `학생 | 관리자` 탭 390, 관리자 탭은 역할 불일치 상태) · `Wide-Auth-Tabs` (1280, 탭을 눌러 전환)
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 · `components.md`
 - 서버 계약: wj의 **S4a**(`docs/specs/2026-09-23-s4a-auth-design.md`)
@@ -263,4 +263,4 @@ Input(email · password · text), Button(`primary` 제출), Banner(`neutral` 승
 2. **JWT 저장 위치** — 메모리로 잡았다. 새로고침마다 로그인이 번거로우면 `sessionStorage` 까지 열지 wj와 협의
 3. **로그아웃** — S4a 에 엔드포인트가 없다(토큰 폐기는 `token_version` 뿐). 화면에서 토큰을 버리는 것으로 족한지 확인
 4. **학생 웹 첫 진입과의 관계** — 조회도 로그인이 필요하면 `/{bld}` 가 사실상 로그인 뒤 화면이 된다. [student-room.md](student-room.md) 미결 5와 같은 항목
-5. **탭 시안** — `Auth-Tabs`(390 · 1280, 학생·관리자 탭 각각) 보드를 캔버스에 그린다. 그 전까지 「`학생 | 관리자` 탭」의 와이어가 기준이다
+5. ~~탭 시안~~ — 그렸다(`Auth-Tabs` · `Auth-Tabs-Admin` · `Wide-Auth-Tabs`)
