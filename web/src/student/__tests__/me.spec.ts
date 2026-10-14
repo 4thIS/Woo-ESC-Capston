@@ -153,6 +153,14 @@ describe('MyView — /me', () => {
     const { w } = await mountAt(MyView, '/E/me', '/:bld([A-Z])/me')
     expect(w.get('a.sh__back').attributes('href')).toBe('/E')
     expect(w.get('header').classes()).toContain('sh--nobackwide')
+    // 넓은 폭 오른쪽 칸은 칸 전체 폭 — 640px 가운데 묶음은 건물 밖 /me 에만(student-room.md 「넓은 폭」)
+    expect(w.get('.me__body').classes()).not.toContain('me__body--narrow')
+  })
+
+  it('건물 밖(/me)이면 목록 칸이 없어 640px 가운데 — 건물 선택 화면과 같다', async () => {
+    api.mine.mockResolvedValue([])
+    const { w } = await mountAt(MyView, '/me', '/me')
+    expect(w.get('.me__body').classes()).toContain('me__body--narrow')
   })
 
   it('건물 안이면 레이아웃의 내 예약을 같이 쓴다 — 두 번 부르지 않고, 열 때 한 번 새로 부른다', async () => {
