@@ -161,8 +161,11 @@ v2에서 쓸 수 있는 수단은 다섯이고, 이 밖으로 나가지 않는�
 | `neutral` + `outline` | 없음 | `line.3` | `text.2` |
 | `neutral` + `solid` | `sunken` | 없음 | `text.1` |
 | `danger` + `outline` | 없음 | `danger` | `danger` |
+| `brand` + `solid` | `brand` | 없음 | `gray.0` |
 
 `font.size.xs` + `bold`, 패딩 `2px space.2`, 라운드 `radius.sm`. 라벨 텍스트는 **반드시 있다** — 색칠된 점만으로 상태를 표현하는 배지를 만들지 않는다.
+
+- **`brand` + `solid` 는 한 곳에만 쓴다** — 관리자 사이드 메뉴 `회원` 옆 대기 건수([admin-users.md](screens/admin-users.md)). 숫자만 든 알약(`radius.full`)이고, **대기가 0이면 배지를 숨긴다.** `brand` 는 1차 액션·활성 상태 전용이라(`tokens.md`) 이것이 유일한 예외다 — 가입 승인이 밀리면 학생 웹 전체가 막히므로 눈에 띄어야 한다. 예외를 늘리려면 이 줄부터 고친다.
 
 ## Modal
 
