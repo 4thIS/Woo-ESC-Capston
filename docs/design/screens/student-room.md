@@ -1,6 +1,6 @@
 # 학생 웹 — 강의실 (S10)
 
-- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Student-Gate`(로그인 벽) · `Student-Entry` · `Student-Room` · `Student-Week` · `Student-Reserve` · `Student-My` · 넓은 폭(1280) — `Student-Wide`(강의실) · `Student-Wide-Empty`(건물만 고른 상태) · `Student-Wide-Reserve`(예약 신청) · `Student-Wide-My`(내 예약)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Student-Gate`(로그인 벽) · `Student-Home`(건물 선택) · `Student-Entry` · `Student-Room` · `Student-Week` · `Student-Reserve` · `Student-My` · 넓은 폭(1280) — `Student-Wide`(강의실) · `Student-Wide-Empty`(건물만 고른 상태) · `Student-Wide-Reserve`(예약 신청) · `Student-Wide-My`(내 예약) · `Student-Wide-Home`(건물 선택)
 - 소비자: wj → `web/src/views/`
 - 전제: `tokens.md` v2 (`student` 치수 세트) · `components.md`
 - 대상: **모바일 우선.** `bp.mobile` → `bp.tablet` → `bp.desktop` 세 폭 모두에서 동작한다
@@ -56,6 +56,8 @@ JWT 가 24시간이라 하루 한 번이지만, **"복도에서 폰으로 빨리
 - 목록 아래에 `로그아웃`(`ghost`, `sm`)을 둔다. 건물을 고르기 전에도 나갈 길이 있어야 한다.
 - 바로 보낼 때는 주소를 **바꿔치기**한다(`replace`). 뒤로가기를 눌렀을 때 `/` 로 돌아가 다시 튕기지 않게.
 - 건물 안에서는 **첫 화면의 건물 선택 Select**(개수 옆, 아래 「건물 선택 · 하단」)로 바꾼다. 이 화면으로 돌아오지 않아도 된다.
+- **넓은 폭에서도 왼쪽 목록 칸이 없다** — 아직 건물 밖이라 세워 둘 목록이 없다. 제목 · 목록 · `로그아웃` 을 **640px 을 넘기지 않게 가운데**에 둔다(구현 그대로). 건물 이름 한 줄이 1280px 로 늘어나면 `›` 가 이름에서 너무 멀어진다. 「넓은 폭」의 오른쪽 칸(예약 신청 · 내 예약)과는 다른 얘기다 — 그쪽은 칸 전체 폭이다.
+- 시안: `Student-Home`(390) · `Student-Wide-Home`(1280).
 
 ## 화면 1 — `/{bld}` 강의실 목록
 
