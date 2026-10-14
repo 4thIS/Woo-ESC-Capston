@@ -43,6 +43,7 @@ _SCALARS = {
     "LP_UNIT_ALL": "UNIT_ALL",
     "LP_SUBJ_MAX": "SUBJ_MAX",
     "LP_PROF_MAX": "PROF_MAX",
+    "LP_BREAK_GAP_MAX_MIN": "BREAK_GAP_MAX_MIN",
 }
 
 

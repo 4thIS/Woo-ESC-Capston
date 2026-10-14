@@ -27,7 +27,7 @@ firmware/
 ## 계층 책임
 
 - `lib/lora_codec/`는 **순수 로직만** 담는다 — 라디오 드라이버·Serial·파일시스템을 import하지 않는다. 그래야 `native` env에서 테스트 벡터로 검증된다.
-- `src/terminal/`의 상태 판단(`determineLayout`)과 다음 변경 시각(`nextChangeAt`)도 하드웨어 의존 없이 순수 함수로 유지한다 — 경계값 테스트가 여기 걸린다.
+- 상태 판단(`determineLayout`)·다음 변경 시각(`nextChangeAt`)·저장 계층은 하드웨어 의존 없는 순수 로직으로 `lib/` 에 둔다(예: `lib/schedule/`·`lib/node_store/`, 이름은 dh-08 plan — #74). NVS·LittleFS·`RTC_DATA_ATTR` 어댑터만 `src/terminal/`. 경계값 테스트가 `lib/` 에 걸린다.
 - 렌더 계층(`render*`, `fonts/`)은 데이터를 해석하지 않는다. 무엇을 보여줄지는 상태 판단이 정하고, 렌더는 그대로 그리기만 한다.
 - 공통 인프라 계층은 도메인을 import하지 않는다(의존 방향 단방향 유지).
 
@@ -36,7 +36,8 @@ firmware/
 | 경로 | 담당 |
 |------|------|
 | `lib/lora_codec/`, `src/modem/`, `src/terminal/` (무선·절전·스케줄링·저장) | cw @ssenu (모뎀 펌웨어는 dh가 지원) |
-| `src/terminal/render*`, `src/terminal/display*`, `src/fonts/`, `lib/host_gfx/`, `lib/fixture_parse/`, `lib/adafruit_gfx_vendor/`(벤더, 무수정), `tools/`(렌더 프리뷰) | dh @Hyeon02-kr |
+| `src/terminal/render*`, `src/terminal/display*`, `src/fonts/`, `lib/render/`(`renderLayout`), `lib/bitmap_font/`·`lib/bitmap_image/`(자산 조회·그리기), `lib/host_gfx/`, `lib/fixture_parse/`, `lib/adafruit_gfx_vendor/`(벤더, 무수정), `tools/`(렌더 프리뷰·폰트/이미지 생성·임베드) | dh @Hyeon02-kr |
+| `lib/render_model/`(RenderModel — 계약 ④, 상태 판단 ↔ 렌더) | cw @ssenu + dh @Hyeon02-kr 공동 |
 
 두 담당이 같은 영역을 쓰므로, **상태 판단 ↔ 렌더 사이의 인터페이스**(레이아웃 구조체·그리기 함수 시그니처)가 이 영역의 내부 계약이다. 바꾸려면 상대와 사전 협의한다.
 

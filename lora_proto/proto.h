@@ -17,6 +17,8 @@
 #define LP_UNIT_ALL       0
 #define LP_SUBJ_MAX       20
 #define LP_PROF_MAX       12
+// v2 §5.3 쉬는시간: 같은 날 수업 슬롯 사이 틈이 0 < 틈 <= 이 값(분)이면 쉬는시간 (#74). 판정 벡터는 room_state_vectors.json
+#define LP_BREAK_GAP_MAX_MIN 15
 
 enum {
   LP_TYPE_TIME = 0x01, LP_TYPE_SLOT_SET = 0x02, LP_TYPE_SLOT_DEL = 0x03, LP_TYPE_DAY_CLEAR = 0x04,
