@@ -512,3 +512,74 @@ def test_notify_runs_after_commit(client, app, monkeypatch):
     monkeypatch.setattr(api, "notify", spy)
     assert client.put(f"/api/rooms/{r['id']}/slots", json=SLOT).status_code == 200
     assert seen == [("m1", 2)]  # 올바른 모뎀, 유닛 2 행이 커밋된 뒤 알림
+
+
+# ---- #50 — 방·건물을 지우면 아직 안 나간 작업도 지운다 ----
+SLOT_BODY = {
+    "day": 1,
+    "s_h": 9,
+    "s_m": 0,
+    "e_h": 10,
+    "e_m": 50,
+    "type": 1,
+    "subject": "자료구조",
+    "professor": "김",
+}
+
+
+def _rows(app, bld="E", room=301):
+    with app.state.Session() as s:
+        return [
+            (o.state, o.modem_id)
+            for o in s.scalars(select(Outbox).where(Outbox.bld == bld, Outbox.room == room))
+        ]
+
+
+def test_delete_room_drops_unsent_jobs_and_recreated_room_starts_clean(client, app):
+    _sch, b, r = _setup(client)  # 모뎀 없는 건물 — 작업은 modem_id NULL 로 쌓인다
+    assert client.put(f"/api/rooms/{r['id']}/slots", json=SLOT_BODY).status_code == 200
+    assert _rows(app) == [("queued", None), ("queued", None)]
+    assert client.delete(f"/api/rooms/{r['id']}").status_code == 200
+    assert _rows(app) == []  # 지운 방의 안 나간 작업은 남지 않는다
+    # 같은 (bld, room) 을 다시 만들고 모뎀을 붙여도 옛 작업이 새 모뎀으로 가지 않는다
+    with app.state.Session() as s, s.begin():
+        s.add(Modem(modem_id="m-new", token_hash="x", school_id=1))
+    client.post("/api/rooms", json={"building_id": b["id"], "room": 301, "units": 1})
+    assert client.patch(f"/api/buildings/{b['id']}", json={"modem_id": "m-new"}).status_code == 200
+    assert _rows(app) == []
+    assert client.get(f"/api/buildings/{b['id']}/outbox").json() == []
+
+
+def test_delete_keeps_other_modems_jobs_and_sent_history(client, app):
+    with app.state.Session() as s, s.begin():
+        s.add_all(
+            [
+                Modem(modem_id="m-a", token_hash="x", school_id=1),
+                Modem(modem_id="m-b", token_hash="x"),
+            ]
+        )
+    b = client.post(
+        "/api/buildings", json={"school_id": 1, "name": "공학관", "bld": "E", "modem_id": "m-a"}
+    ).json()
+    r = client.post("/api/rooms", json={"building_id": b["id"], "room": 301, "units": 1}).json()
+    client.put(f"/api/rooms/{r['id']}/slots", json=SLOT_BODY)  # m-a queued 1
+    with app.state.Session() as s, s.begin():
+        sent = s.scalar(select(Outbox).where(Outbox.modem_id == "m-a"))
+        sent.state = "acked"  # 이미 나간 기록은 남는다
+        s.add(
+            Outbox(
+                modem_id="m-b",
+                bld="E",
+                room=301,
+                unit=1,
+                type="SLOT_SET",
+                payload="{}",
+                created_at=dt.datetime(2026, 9, 23),  # noqa: DTZ001
+            )
+        )
+    client.put(f"/api/rooms/{r['id']}/slots", json={**SLOT_BODY, "day": 2})  # m-a queued 1 더
+    # 건물은 강의실이 남아 있으면 지울 수 없다(FK 409) — 남은 작업은 언제나 방 삭제에서 정리된다
+    assert client.delete(f"/api/buildings/{b['id']}").status_code == 409
+    assert client.delete(f"/api/rooms/{r['id']}").status_code == 200
+    # 같은 글자·호수라도 다른 모뎀(다른 학교)의 작업은 건드리지 않는다
+    assert sorted(_rows(app)) == [("acked", "m-a"), ("queued", "m-b")]

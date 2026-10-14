@@ -22,7 +22,7 @@ from typing import Protocol
 from lora_proto import codec as C
 from lora_proto import jsonio
 from lora_proto import proto as P
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import utcnow
@@ -491,6 +491,24 @@ def reassign_queued(bld: str, rooms: list[int], modem_id: str | None) -> int:
     if modem_id is not None:
         _hub.notify(modem_id)
     return n
+
+
+def drop_unsent(bld: str, rooms: list[int], modem_id: str | None, *, session: Session) -> int:
+    """지운 방(들)의 아직 안 나간 작업을 지운다 (#50) — 호출자 세션에서, 도메인 삭제와 같은 트랜잭션.
+    queued·cancelled 만: 노드로 간 적 없어 기록 가치가 없고, 남기면 같은 (bld, room) 을 다시 만들 때
+    reassign_queued 가 옛 작업을 새 모뎀으로 보내고 건물 outbox 조회에 남의 payload 가 보인다.
+    outbox 는 학교를 모른다 — 같은 글자·호수를 쓰는 다른 학교 행을 건드리지 않게 그 방의 모뎀으로 좁힌다
+    (모뎀 없는 건물이면 modem_id NULL 행). dispatched·acked·failed 는 모뎀이 붙어 있어 남긴다.
+    ponytail: 모뎀 없는 두 학교가 같은 글자·호수를 쓰면 NULL 행이 섞인다 — outbox 에 학교 칸이 생기면 그걸로"""
+    scope = Outbox.modem_id.is_(None) if modem_id is None else Outbox.modem_id == modem_id
+    return session.execute(
+        delete(Outbox).where(
+            Outbox.bld == bld,
+            Outbox.room.in_(rooms),
+            Outbox.state.in_(("queued", "cancelled")),
+            scope,
+        )
+    ).rowcount
 
 
 def cancel(outbox_id: int) -> bool:

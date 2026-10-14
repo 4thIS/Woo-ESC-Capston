@@ -237,6 +237,9 @@ def update_room(
 def delete_room(id: int, bg: BackgroundTasks, user: User = AdminUser, s: Session = _DB):
     obj = scope.get_scoped(s, Room, id, user.school_id)
     mid = _modem_of(s, obj.building_id)
+    bld = s.get(Building, obj.building_id).bld
+    # 아직 안 나간 작업도 같은 트랜잭션에서 — 남으면 같은 (bld, room) 재생성 때 새 모뎀으로 간다 (#50)
+    api.drop_unsent(bld, [obj.room], mid, session=s)
     s.delete(obj)
     s.commit()
     if mid:
