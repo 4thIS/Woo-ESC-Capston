@@ -94,17 +94,16 @@ firmware/
 
 > **추가 (2026-10-07, dh-04)**: 폰트·이미지 자산 계층(`lib/bitmap_font/`·`lib/bitmap_image/`, 생성물 `lib/font_data/`·`lib/image_data/`, 원본 `src/fonts/`, 생성기 `tools/gen_*`·`tools/embed_*`)을 구조도에 넣었다. 근거·결정은 `docs/plans/2026-09-20-dh-04-render-port.md` D1·D2·§3.6·§3.7.
 
-### 4.2 `RenderModel` 전체 정의 (로드맵 §4.1 확정 + §2.1 변경분)
+### 4.2 `RenderModel` 전체 정의 (로드맵 §4.1 — cw-11 동결 2026-10-12: `nowStr`·`prev` 제거, #27)
 
 ```c
 typedef struct {
   uint8_t  layout;              // v2 §5.3 표의 1~8
   char     bld; uint16_t room; uint8_t unit;
-  char     nowStr[6];           // "HH:MM"
   char     dateStr[6];          // "MM.DD" (2026-09-16 추가, mh 화면 스펙 미결 1)
   uint8_t  weekday;             // 1=월..7=일
   struct { char subj[21]; char prof[13];
-           uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } prev, cur, next;
+           uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } cur, next;  // type = lora_proto SlotType
   uint8_t  nToday;
   struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // §2.1
   char     newTag[9];           // "NEW-1A7F" — layout 8 전용, MAC 하위 2 B (2026-09-16 추가, mh 화면 스펙 미결 2)
