@@ -55,7 +55,7 @@ class Hub:
                 await ws.close()
             except (RuntimeError, WebSocketDisconnect):
                 pass
-            api.touch_modem(mid, connected=False)
+            await asyncio.to_thread(api.touch_modem, mid, connected=False)
         self.connected.clear()
 
     # ---- HubPort (api 가 부른다. 웹 스레드 또는 루프 스레드 어디서든) ----
@@ -135,11 +135,11 @@ class Hub:
             await ws.send_json(msg)
         except (WebSocketDisconnect, RuntimeError):
             return False
-        self._log(modem_id, "tx", msg)
+        await asyncio.to_thread(self._log, modem_id, "tx", msg)
         return True
 
     async def send_config(self, modem_id: str) -> None:
-        await self._send(modem_id, self.config_msg(modem_id))
+        await self._send(modem_id, await asyncio.to_thread(self.config_msg, modem_id))
 
     async def flush(self, modem_id: str) -> None:
         """그 모뎀의 queued 전부를 job 으로. 송신은 상태를 바꾸지 않는다 — job_accepted 가 바꾼다.
@@ -148,27 +148,35 @@ class Hub:
         우선순위는 모뎀Pi 가 노드끼리 고를 때만 쓴다."""
         if modem_id not in self.connected:
             return
-        with self._Session() as s:
-            rows = s.scalars(
-                select(Outbox)
-                .where(Outbox.modem_id == modem_id, Outbox.state == "queued")
-                .order_by(Outbox.id)
-            ).all()
+        rows = await asyncio.to_thread(self._queued, modem_id)
         sent = self._sent.setdefault(modem_id, set())
         for row in rows:
             if row.id in sent:
                 continue
-            if not await self._send(modem_id, self.job_msg(row)):
-                return
+            # 보내기 전에 표시 — _send 안의 await(기록) 사이에 끼어든 다른 flush 가 같은 job 을 또 보내지 않게
             sent.add(row.id)
+            if not await self._send(modem_id, self.job_msg(row)):
+                sent.discard(row.id)
+                return
+
+    def _queued(self, modem_id: str) -> list[Outbox]:
+        with self._Session() as s:
+            return list(
+                s.scalars(
+                    select(Outbox)
+                    .where(Outbox.modem_id == modem_id, Outbox.state == "queued")
+                    .order_by(Outbox.id)
+                ).all()
+            )
 
     # ---- 수신 ----
     def _on_message(self, modem_id: str, msg: dict) -> dict | None:
-        """수신 1건 처리. 답장할 게 있으면 dict. 참고: 동기 DB 호출을 루프에서 직접 — SQLite ms 단위."""
+        """수신 1건 처리. 답장할 게 있으면 dict. 동기 DB 호출이라 루프 밖(asyncio.to_thread)에서 부른다 —
+        다른 트랜잭션이 쓰기 잠금을 쥔 동안 루프 위에서 기다리면 루프 전체가 멈춘다(#43).
+        루프 쪽 상태(_sent)는 여기서 만지지 않는다 — handle 이 루프에서 처리한다."""
         t = msg.get("t")
         if t == "job_accepted":
             job_id = int(msg["job_id"])  # 계약 ⑦: TEXT 로 echo 될 수 있음
-            self._sent.get(modem_id, set()).discard(job_id)
             with self._Session() as s, s.begin():
                 row = s.get(Outbox, job_id)
                 if row is None:
@@ -217,7 +225,7 @@ class Hub:
         if not isinstance(modem_id, str) or not isinstance(token, str):
             await ws.close(code=4001)
             return
-        if not api.verify_token(modem_id, token):
+        if not await asyncio.to_thread(api.verify_token, modem_id, token):
             await ws.close(code=4001)
             return
         log.info(
@@ -237,13 +245,14 @@ class Hub:
         self._sent[modem_id] = set()
         pinger = asyncio.ensure_future(self._pinger(modem_id, ws))
         try:
-            api.touch_modem(
+            await asyncio.to_thread(
+                api.touch_modem,
                 modem_id,
                 connected=True,
                 agent_ver=hello.get("agent_ver"),
                 modem_fw=hello.get("modem_fw"),
             )
-            self._log(modem_id, "rx", {**hello, "token": "***"})
+            await asyncio.to_thread(self._log, modem_id, "rx", {**hello, "token": "***"})
             await self.send_config(modem_id)
             await self.flush(modem_id)
             while True:
@@ -252,14 +261,21 @@ class Hub:
                 except ValueError:
                     log.warning("modem %s: JSON 아님, 무시", modem_id)
                     continue
+                except RuntimeError:
+                    # 같은 모뎀의 새 연결이 이 소켓을 닫았다(교체) — 기록을 기다리던 사이에 닫히면 수신이
+                    # WebSocketDisconnect 가 아니라 '연결 안 됨'으로 끝난다. 조용히 끝낸다
+                    break
                 if not isinstance(msg, dict):
                     log.warning("modem %s: dict 아님, 무시: %r", modem_id, msg)
                     continue
-                self._log(modem_id, "rx", msg)
+                # 연결별 수신 루프가 한 건씩 await 하므로 메시지 처리 순서는 그대로다
+                await asyncio.to_thread(self._log, modem_id, "rx", msg)
                 if msg.get("t") == "pong":
                     self._missed[modem_id] = 0
                 try:
-                    reply = self._on_message(modem_id, msg)
+                    if msg.get("t") == "job_accepted":  # 루프 쪽 상태는 루프에서
+                        self._sent.get(modem_id, set()).discard(int(msg["job_id"]))
+                    reply = await asyncio.to_thread(self._on_message, modem_id, msg)
                     if reply:
                         await self._send(modem_id, reply)
                 except Exception:
@@ -271,7 +287,8 @@ class Hub:
             if self.connected.get(modem_id) is ws:
                 del self.connected[modem_id]
                 self._sent.pop(modem_id, None)
-                api.touch_modem(modem_id, connected=False)
+                # 연결 처리 작업이 취소돼도(종료·끊김) 끊김 기록은 끝까지 — shield 없이 await 하면 시작도 못 한다
+                await asyncio.shield(asyncio.to_thread(api.touch_modem, modem_id, connected=False))
 
     # ---- 안전망 ----
     async def sweep_loop(self, interval_s: float) -> None:
@@ -280,6 +297,6 @@ class Hub:
             try:
                 for mid in list(self.connected):
                     await self.flush(mid)
-                api.sweep_offline()
+                await asyncio.to_thread(api.sweep_offline)
             except Exception:
                 log.exception("sweep 실패")
