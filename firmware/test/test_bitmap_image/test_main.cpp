@@ -39,17 +39,17 @@ static const ImageCase kCases[] = {
     {&kImgChipByeongyeong, "src/fonts/images/chip_byeongyeong.bin", 27, 16, 4, 14},
     {&kImgChipDaeyeo, "src/fonts/images/chip_daeyeo.bin", 28, 16, 4, 14},
     {&kImgChipHyugang, "src/fonts/images/chip_hyugang.bin", 31, 15, 4, 14},
-    {&kImgChipOneul, "src/fonts/images/chip_oneul.bin", 31, 14, 4, 13},
+    {&kImgChipOneul, "src/fonts/images/chip_oneul.bin", 32, 14, 4, 14},
     {&kImgChipSiheom, "src/fonts/images/chip_siheom.bin", 28, 16, 4, 14},
     {&kImgChipTeukgang, "src/fonts/images/chip_teukgang.bin", 31, 17, 4, 14},
-    {&kImgStatusBinganguisil, "src/fonts/images/status_binganguisil.bin", 270, 75, 34, 66},
+    {&kImgStatusBinganguisil, "src/fonts/images/status_binganguisil.bin", 270, 75, 34, 67},
     {&kImgStatusDaeyeojung, "src/fonts/images/status_daeyeojung.bin", 209, 76, 27, 67},
-    {&kImgStatusHyugang, "src/fonts/images/status_hyugang.bin", 142, 76, 18, 67},
+    {&kImgStatusHyugang, "src/fonts/images/status_hyugang.bin", 141, 76, 18, 67},
     {&kImgStatusSiheomjung, "src/fonts/images/status_siheomjung.bin", 210, 76, 27, 67},
     {&kImgStatusSueopjung, "src/fonts/images/status_sueopjung.bin", 212, 76, 27, 67},
     {&kImgStatusSwineunsigan, "src/fonts/images/status_swineunsigan.bin", 282, 75, 36, 67},
-    {&kImgStatusTeukgang, "src/fonts/images/status_teukgang.bin", 142, 75, 18, 66},
-    {&kImgTitleSeoljeongdaegi, "src/fonts/images/title_seoljeongdaegi.bin", 230, 60, 29, 53},
+    {&kImgStatusTeukgang, "src/fonts/images/status_teukgang.bin", 142, 76, 18, 67},
+    {&kImgTitleSeoljeongdaegi, "src/fonts/images/title_seoljeongdaegi.bin", 231, 61, 29, 54},
 };
 static const size_t kNumCases = sizeof(kCases) / sizeof(kCases[0]);
 
@@ -126,14 +126,14 @@ void test_draw_bitmap_transparent_outside_canvas_untouched() {
 // ---------------------------------------------------------------------------
 
 void test_extrabold_status_heavier_than_regular_reference() {
-  // 참고값(400/78px "휴강" 잉크 2,624px)은 gen_images.py 의 render_phrase 를 NanumGothic-400.ttf 로
+  // 참고값(400/78px "휴강" 잉크 2,642px)은 gen_images.py 의 render_phrase 를 NanumGothic-400.ttf 로
   // 독립적으로 돌려 얻었다(파이프라인과 무관한 별도 확인, dh-04 Task 3A 46→108 검증과 같은 방식).
   const BitmapImage& img = kImgStatusHyugang;
   uint32_t ink = 0;
   for (uint16_t cy = 0; cy < img.h; cy++)
     for (uint16_t cx = 0; cx < img.w; cx++) ink += bitAt(img, cx, cy);
-  TEST_ASSERT_EQUAL_UINT32(4600, ink);         // 800 굵기 실측(embed 파이프라인 결과)
-  TEST_ASSERT_GREATER_THAN_UINT32(2624, ink);  // 400 굵기 참고값보다 무겁다
+  TEST_ASSERT_EQUAL_UINT32(4633, ink);         // 800 굵기 실측(embed 파이프라인 결과)
+  TEST_ASSERT_GREATER_THAN_UINT32(2642, ink);  // 400 굵기 참고값보다 무겁다
 }
 
 void setUp() {}

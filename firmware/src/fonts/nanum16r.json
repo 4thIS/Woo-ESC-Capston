@@ -6,6 +6,7 @@
   "charset": "subset",
   "ttf_url": "https://fonts.gstatic.com/s/nanumgothic/v26/PN_3Rfi-oW3hYwmKDpxS7F_z_g.ttf",
   "ttf_sha256": "370dbd31aa8abd8f8c057f7d41a71d38f2e71f070fa50a8cc20fecef88a9baab",
+  "raster": "pillow-mono-hinted",
   "ink_threshold": 128,
   "cell_w": 16,
   "cell_h": 17,
