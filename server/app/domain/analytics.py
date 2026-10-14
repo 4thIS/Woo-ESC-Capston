@@ -96,11 +96,8 @@ def _segments(
 ) -> list[tuple[int, int, int]]:
     """운영 시간 안의 배정 구간 (s, e, layout). room_state 를 변화점마다 호출해 이어 붙인다.
     배정 = layout ∈ {1,2,3,5,6,7} — 즉 FREE(4) 가 아닌 전부."""
+    # 상태는 구간 경계에서만 바뀐다 — 쉬는시간도 수업 슬롯 사이 틈이라 경계 안에 있다(#74, :50 폐기)
     points = {OPEN_MIN, CLOSE_MIN, *(p for x in slots + resvs for p in (x.s, x.e))}
-    for x in slots:
-        if x.type == 1:  # 수업은 매시 50분·정각에 1↔2
-            points.update(range(x.s - x.s % 60 + 50, x.e, 60))
-            points.update(range(x.s - x.s % 60 + 60, x.e, 60))
     pts = sorted(p for p in points if OPEN_MIN <= p <= CLOSE_MIN)
     out: list[tuple[int, int, int]] = []
     for a, b in pairwise(pts):
