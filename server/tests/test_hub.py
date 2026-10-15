@@ -320,3 +320,27 @@ def test_flush_sends_in_outbox_id_order_not_priority(client, live, modem):
         jobs = [ws.receive_json(), ws.receive_json()]
         assert [(j["job_id"], j["priority"]) for j in jobs] == [(file_id, 5), (slot_id, 3)]
         _barrier(ws)
+
+
+def test_hub_db_write_waiting_on_lock_does_not_freeze_the_loop(client, live, modem, app):
+    """#43 — 다른 연결이 쓰기 잠금을 쥔 동안 허브가 수신 기록(lora_log)을 써야 하면, 그 대기는 스레드에서.
+    루프 위에서 기다리면 루프 전체가 busy_timeout(5 s)만큼 멈춰 다른 요청도 같이 멈춘다(실측 16~20 s 저장)."""
+    import sqlite3
+
+    with client.websocket_connect("/ws/modem") as ws:
+        _hello(ws, modem)
+        ws.receive_json()  # config
+        # 허브는 보낸 뒤에 기록을 스레드에서 쓴다 — config 를 받은 순간 그 기록이 아직 진행 중일 수 있어 기다린다
+        holder = sqlite3.connect(app.state.engine.url.database, timeout=5)
+        holder.execute("BEGIN IMMEDIATE")  # 쓰기 잠금을 쥔다 — 저장 요청이 커밋 전에 쥔 것과 같다
+        holder.execute("UPDATE modems SET agent_ver = agent_ver")
+        try:
+            ws.send_json({"t": "ping"})  # 허브는 rx 기록을 쓰려다 잠금에 막힌다
+            time.sleep(0.2)
+            t0 = time.monotonic()
+            assert client.get("/api/health").status_code == 200
+            assert time.monotonic() - t0 < 1.0  # 루프가 멈추지 않았다
+        finally:
+            holder.rollback()  # 잠금을 풀면 허브의 기록이 이어서 들어간다
+            holder.close()
+        assert ws.receive_json()["t"] == "pong"  # 메시지는 유실되지 않고 순서대로 처리된다
