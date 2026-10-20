@@ -1,8 +1,7 @@
 {
   "name": "layout8_setup",
   "layout": 8, "bld": " ", "room": 0, "unit": 0,
-  "now_str": "", "date_str": "", "weekday": 0,
-  "prev": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "date_str": "", "weekday": 0,
   "cur":  {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
   "next": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
   "n_today": 0,

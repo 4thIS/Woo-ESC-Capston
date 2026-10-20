@@ -2,9 +2,9 @@
 
 #include <cstdio>
 
+#include "epd_colors.h"
 #include "font_data.h"
 #include "image_data.h"
-#include "render_colors.h"
 #include "render_logic.h"
 #include "text.h"
 

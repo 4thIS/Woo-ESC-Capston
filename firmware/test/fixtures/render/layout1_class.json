@@ -1,8 +1,7 @@
 {
   "name": "layout1_class",
   "layout": 1, "bld": "E", "room": 301, "unit": 1,
-  "now_str": "13:20", "date_str": "09.30", "weekday": 3,
-  "prev": {"subj": "자료구조", "prof": "이교수", "s_h": 9, "s_m": 0, "e_h": 10, "e_m": 50, "type": 1, "flags": 1},
+  "date_str": "09.30", "weekday": 3,
   "cur":  {"subj": "캡스톤디자인", "prof": "김교수", "s_h": 13, "s_m": 0, "e_h": 14, "e_m": 50, "type": 1, "flags": 1},
   "next": {"subj": "웹프로그래밍", "prof": "박교수", "s_h": 15, "s_m": 0, "e_h": 16, "e_m": 50, "type": 1, "flags": 1},
   "n_today": 4,

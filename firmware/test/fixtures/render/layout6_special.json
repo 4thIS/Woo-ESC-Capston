@@ -1,8 +1,7 @@
 {
   "name": "layout6_special",
   "layout": 6, "bld": "E", "room": 301, "unit": 1,
-  "now_str": "14:10", "date_str": "09.30", "weekday": 3,
-  "prev": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "date_str": "09.30", "weekday": 3,
   "cur":  {"subj": "AI 특강", "prof": "외부강사", "s_h": 14, "s_m": 0, "e_h": 14, "e_m": 50, "type": 5, "flags": 1},
   "next": {"subj": "알고리즘", "prof": "한교수", "s_h": 15, "s_m": 0, "e_h": 15, "e_m": 50, "type": 1, "flags": 1},
   "n_today": 12,
