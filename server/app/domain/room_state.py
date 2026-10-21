@@ -6,7 +6,9 @@ from __future__ import annotations
 import datetime as dt
 from collections import defaultdict
 from dataclasses import dataclass, replace
+from itertools import pairwise
 
+from lora_proto import proto as P
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,6 +16,7 @@ from app.domain.models import ExamPeriod, Reservation, Slot
 
 TYPE_TO_LAYOUT = {1: 1, 2: 5, 3: 3, 4: 4, 5: 6, 6: 7}
 FREE = 4
+CLASS, BREAK, EXAM = 1, 2, 5  # 슬롯 type 수업 · layout 쉬는시간·시험
 DAY_MIN = 24 * 60
 
 
@@ -28,45 +31,40 @@ class Span:
     status: str | None = None  # 내 예약만 'requested'|'approved' (web A3 busy)
 
 
-def _inside(spans: list[Span], at: int) -> Span | None:
-    return next((x for x in spans if x.s <= at < x.e), None)
-
-
-def _next_start(spans: list[Span], at: int) -> int | None:
-    starts = [x.s for x in spans if x.s > at]
-    return min(starts) if starts else None
+def _state(slots: list[Span], resvs: list[Span], in_exam: bool, t: int) -> tuple[int, tuple]:
+    """(layout, 결정한 것) — 결정한 것이 바뀌면 화면(과목 등)이 바뀐다. 우선순위 예약 > 시험기간 > 기본.
+    쉬는시간은 시각 규칙(:50)이 아니라 같은 날 **수업 슬롯 사이 틈**(0 < 틈 ≤ BREAK_GAP_MAX_MIN)이다
+    (v2 §5.3, #74 — 연강은 틈 0, 야간 교시 5분 틈도 맞는다)."""
+    for i, r in enumerate(resvs):
+        if r.s <= t < r.e:
+            return TYPE_TO_LAYOUT.get(r.type, FREE), ("resv", i)
+    for i, x in enumerate(slots):
+        if x.s <= t < x.e:
+            if in_exam:
+                return EXAM, ("exam", i)
+            return TYPE_TO_LAYOUT.get(x.type, FREE), ("slot", i)
+    ordered = sorted(slots, key=lambda x: x.s)
+    for a, b in pairwise(ordered):
+        gap = b.s - a.e
+        both_class = a.type == b.type == CLASS
+        if both_class and 0 < gap <= P.BREAK_GAP_MAX_MIN and a.e <= t < b.s:
+            return BREAK, ("break", a.e)
+    return FREE, ("free", None)
 
 
 def room_state(
     slots: list[Span], resvs: list[Span], in_exam: bool, at_min: int
 ) -> tuple[int, int | None]:
-    """(layout, until_min). until 은 다음 상태 변화 분; 자정 이후로 넘어가면 None."""
-    nxt = min(
-        (x for x in (_next_start(slots, at_min), _next_start(resvs, at_min)) if x is not None),
-        default=None,
-    )
-    r = _inside(resvs, at_min)  # 예약(approved) > 시험기간 > 기본 (global.md 우선순위)
-    if r is not None:
-        layout, until = TYPE_TO_LAYOUT.get(r.type, FREE), r.e
-    else:
-        sl = _inside(slots, at_min)
-        if sl is None:
-            layout, until = FREE, nxt
-        else:
-            end = sl.e if nxt is None else min(sl.e, nxt)  # 슬롯 도중 예약이 시작될 수 있다
-            if in_exam:
-                layout, until = 5, end
-            elif sl.type == 1:
-                minute = at_min % 60
-                if minute < 50:
-                    layout, until = 1, min(end, at_min - minute + 50)
-                else:
-                    layout, until = 2, min(end, at_min - minute + 60)
-            else:
-                layout, until = TYPE_TO_LAYOUT.get(sl.type, FREE), end
-    if until is not None and until >= DAY_MIN:  # "24:00" 은 없다 — 자정 이후는 다음 날 판정
-        until = None
-    return layout, until
+    """(layout, until_min). until = 상태(layout·결정한 것)가 처음 바뀌는 분 — 구간 경계마다 다시 판정한다
+    (v2 §5.4 nextChangeAt 과 같은 정의, lora_proto/room_state_vectors.json 으로 대조). 자정 이후면 None."""
+    now = _state(slots, resvs, in_exam, at_min)
+    bounds = sorted({p for x in slots + resvs for p in (x.s, x.e) if p > at_min})
+    for p in bounds:
+        if p >= DAY_MIN:  # "24:00" 은 없다 — 자정 이후는 다음 날 판정
+            break
+        if _state(slots, resvs, in_exam, p) != now:
+            return now[0], p
+    return now[0], None
 
 
 def public_label(r, viewer_email: str | None) -> tuple[bool, str]:

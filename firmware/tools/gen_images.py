@@ -75,6 +75,8 @@ def render_phrase(
     canvas_h = px * 4
     img = Image.new("L", (canvas_w, canvas_h), 0)
     draw = ImageDraw.Draw(img)
+    # 흑백 힌트(FT_LOAD_TARGET_MONO) 렌더 — 이유: 세로 획 굵기 섞임, 16px 화살표 몸통 소실(gen_fonts.py 와 동일)
+    draw.fontmode = "1"
     origin_x = origin_y = float(px * 2)
     pen_x = origin_x
     for ch in text:
@@ -161,6 +163,7 @@ def main() -> int:
             "px": px,
             "tracking_em": TRACKING_EM[px],
             "ttf_sha256": hashlib.sha256(ttf.read_bytes()).hexdigest(),
+            "raster": "pillow-mono-hinted",
             "ink_threshold": INK_THRESHOLD,
             "w": r["w"],
             "h": r["h"],

@@ -56,10 +56,10 @@ describe('SidebarNav', () => {
     expect(w.findAll('.nav__group h2').map((g) => g.text())).toEqual(['사람', '모니터링'])
     expect(w.findAll('a svg.nav__icon')).toHaveLength(2)
     expect(w.find('.h').exists()).toBe(true)
-    // 대기 개수는 스펙의 neutral solid Badge — danger 는 삭제·에러·실패 전용
+    // 대기 개수는 brand 채움 알약 — 승인이 밀리면 학생이 막혀 눈에 띄어야 한다(components.md, #75). danger 는 삭제·에러·실패 전용
     const count = w.get('.nav__count')
     expect(count.text()).toBe('2')
-    expect(count.classes()).toEqual(expect.arrayContaining(['badge--solid', 'badge--neutral']))
+    expect(count.classes()).toEqual(expect.arrayContaining(['badge--solid', 'badge--brand']))
     // 숫자만 읽히지 않게 링크 이름에 '대기 N건'
     expect(w.findAll('a')[0].attributes('aria-label')).toBe('회원, 대기 2건')
     expect(w.findAll('a')[1].attributes('aria-label')).toBeUndefined()
