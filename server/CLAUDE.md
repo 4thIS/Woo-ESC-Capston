@@ -28,6 +28,17 @@ server/
 - 모든 상태 변경은 **멱등**이고 **버전이 붙는다**. 유실은 재전송이 아니라 재동기로 흡수한다(스펙 §8.3).
 - 공통 인프라 계층은 도메인을 import하지 않는다(의존 방향 단방향 유지).
 
+## 배포 (Docker — 2026-09-23 팀 결정)
+
+- 메인Pi 는 **루트 `compose.yaml` + `server/Dockerfile`** 로만 배포한다. 수동 `uvicorn` 실행·systemd 유닛은 개발용이다.
+- **워커는 1 개**. `Dockerfile` 의 `CMD` 는 `--workers 1 --no-server-header` 로 고정 — WS 연결·outbox 디스패치 상태가 프로세스 메모리에 있다. 앞에 HTTPS 프록시를 두게 되면(S11) `--forwarded-allow-ips=<프록시 IP>` 를 더한다(안 그러면 S4a 의 IP 단위 로그인 상한이 전역 상한이 된다).
+- 빌드 컨텍스트는 리포 루트이고 `.dockerignore` 는 **허용 목록**(`server/`·`lora_proto/` 만)이다. 런타임에 새 디렉터리가 필요하면 `.dockerignore` 를 함께 고친다.
+- 의존성을 추가하면(`uv add`) `docker compose build` 로 이미지가 빌드되는지 확인한다 — CI `docker` job 이 amd64 기동 스모크 + arm64(Pi) 빌드를 본다.
+- 설정·비밀값은 **`server/.env`**(커밋 금지, `server/.env.example` 에서 복사)로만 — `compose.yaml` 의 `env_file` 이 컨테이너에 넣는다. **이미지에 굽지 않는다**: `.dockerignore` 가 `**/.env` 를 뺀다(CI `docker` job 이 이미지 안에 `.env` 가 없는지 확인). 필수 키(`JWT_SECRET`·`STUDENT_WEB_URL`·메일)가 없으면 서버가 기동하지 않는다 — `server/README.md` env 표. `SERVER_DB` 는 compose 가 `/data/main.db` 로 고정한다.
+- 초기 설정 CLI 는 컨테이너 안에서: `docker compose exec server python -m app.cli create-school …` / `create-admin …`.
+- `/docs`·`/static` 은 `DEBUG=1` 일 때만 열린다 — 운영 메인Pi 는 `DEBUG=0`.
+- DB 는 볼륨 `/data`. **`docker compose down -v` 는 운영 DB 를 지운다** — 쓰지 않는다.
+
 ## 커밋 scope
 
 - `feat(server):`, `fix(server):`

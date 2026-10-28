@@ -165,3 +165,48 @@ def test_get_outbox_and_cancel(db, hub):
 def test_request_time_broadcast_calls_hub(db, hub):
     api.request_time_broadcast()
     assert hub.time_calls == 1
+
+
+def test_enqueue_with_session_is_atomic_and_silent(db, hub):
+    """session 모드: 호출자 트랜잭션 안에서 버전·outbox 를 쓰고 커밋·notify 는 하지 않는다."""
+    with db() as s, s.begin():
+        ids = api.enqueue_slot_set("E", 301, 1, (9, 0), (10, 0), 1, "a", "b", session=s)
+        assert len(ids) == 2 and hub.notified == []  # flush 로 id 는 있고, notify 는 없음
+        assert s.get(RoomVersion, ("E", 301, "schedule")).ver == 1
+    assert [r.id for r in _rows(db)] == ids and hub.notified == []
+    api.notify("m1")
+    assert hub.notified == ["m1"]
+    api.notify(None)
+    assert hub.notified == ["m1"]
+
+
+def test_enqueue_with_session_rolls_back_with_caller(db, hub):
+    with pytest.raises(RuntimeError), db() as s, s.begin():
+        api.enqueue_slot_set("E", 301, 1, (9, 0), (10, 0), 1, "a", "b", session=s)
+        raise RuntimeError("domain write failed")
+    assert _rows(db) == []
+    with db() as s:
+        assert s.get(RoomVersion, ("E", 301, "schedule")) is None  # 버전도 롤백
+
+
+def test_enqueue_without_session_unchanged(db, hub):
+    ids = api.enqueue_resv_del("E", 302, 7)
+    assert len(ids) == 1 and hub.notified == ["m1"]
+
+
+@pytest.mark.parametrize(
+    "fn,args",
+    [
+        (api.enqueue_slot_del, ("E", 301, 1, (9, 0))),
+        (api.enqueue_day_clear, ("E", 301, 1)),
+        (api.enqueue_resv_set, ("E", 301, 7, dt.date(2026, 9, 24), (9, 0), (10, 0), 6, "r", "")),
+        (api.enqueue_resv_del, ("E", 301, 7)),
+        (api.enqueue_exam_set, ("E", 301, 3, dt.date(2026, 10, 19), dt.date(2026, 10, 23))),
+        (api.enqueue_exam_del, ("E", 301, 3)),
+        (api.enqueue_cmd, ("E", 301, 4, b"")),
+    ],
+)
+def test_all_enqueue_accept_session(db, hub, fn, args):
+    with db() as s, s.begin():
+        assert len(fn(*args, session=s)) == 2
+    assert hub.notified == []

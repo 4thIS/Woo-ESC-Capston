@@ -256,7 +256,7 @@
 <tr><td class="num">3</td><td>모뎀Pi 링크</td><td><code>job</code>을 검증 없이 <code>JobStore.put_job()</code> → <code>received</code></td><td>로드맵 §4.3</td></tr>
 <tr><td class="num">4</td><td>모뎀Pi 파이프라인</td><td><code>pick_next()</code>: priority(TIME 0 · RESV 1 · SLOT/EXAM/CMD 3 · FILE 5), 같은 노드에 <code>sending</code> 있으면 건너뜀. codec으로 프레임 조립, TXN 배정(노드별 1~255 롤링), <code>modem.py</code>로 <code>{"op":"tx","frame":…,"wake":true,"ack_ms":3000}</code></td><td>v2 §8.4 (모뎀Pi로 이관)</td></tr>
 <tr><td class="num">5</td><td>모뎀 펌웨어</td><td>CRC8 검증 → CAD(채널 비었나) → wake 프리앰블 3 s + 프레임 송신 → 3 s ACK 대기 → <code>tx_done acked|no_ack|cad_busy|error</code></td><td>v2 §4.4</td></tr>
-<tr><td class="num">6</td><td>ESP노드</td><td>딥슬립 중 DIO1 웨이크 → 헤더 NET_ID·BLD·ROOM·UNIT 필터 → 같은 TXN이면 <code>DUP</code> ACK → 적용 후 자기 버전을 NEW_VER로. <code>(new − old) mod 256 ≠ 1</code>이면 적용은 하되 <code>GAP</code> ACK → <strong>렌더 완료 후 ACK</strong> → 다음 변경 시각까지 재슬립</td><td>v2 §3.4·§3.5·§6</td></tr>
+<tr><td class="num">6</td><td>ESP노드</td><td>딥슬립 중 DIO1 웨이크 → 헤더 NET_ID·BLD·ROOM·UNIT 필터 → 같은 TXN이면 <code>DUP</code> ACK → 적용 후 자기 버전을 NEW_VER로. <code>(new − old) mod 256 ≠ 1</code>이면 적용은 하되 <code>GAP</code> ACK → <strong>저장 후 ACK, 그 뒤 렌더</strong>(v2 §6.4) → 다음 변경 시각까지 재슬립</td><td>v2 §3.4·§3.5·§6</td></tr>
 <tr><td class="num">7</td><td>모뎀Pi 파이프라인</td><td>ACK 매칭(NET_ID·TYPE=ACK·BLD/ROOM/UNIT/TXN) → <code>acked</code>. <code>no_ack</code>면 5 → 20 → 60 s 후 재시도, 3회 실패 → <code>failed</code>. <code>BUSY</code>면 5 s 후(시도 횟수 증가 없음)</td><td>v2 §8.4</td></tr>
 <tr><td class="num">8</td><td>모뎀Pi 링크 → 메인Pi</td><td><code>job_result</code> 업로드 → <code>outbox.acked</code>, <code>terminal_status</code> 갱신. <code>GAP</code>이면 메인이 <code>RecordProvider</code>로 레코드를 읽어 FILE 작업 생성(전체 재동기)</td><td>로드맵 §4.2</td></tr>
 </table></div>
@@ -415,7 +415,7 @@ S3 렌더 ───┼──▶ S8 노드(awake) ◀── S7 모뎀펌웨어 �
 <li><input type="checkbox" id="onb5"><label for="onb5">웹(web): Node 20 + <code>corepack enable</code> → <code>pnpm install</code></label></li>
 <li><input type="checkbox" id="onb6"><label for="onb6">펌웨어(firmware): VS Code + PlatformIO 확장, 호스트 C++ 툴체인(Windows는 MSYS2 또는 VS Build Tools), <code>clang-format</code><small><code>pio test -e native</code>가 뜨는지 확인. 하드웨어 없이도 codec·렌더 테스트가 돈다.</small></label></li>
 <li><input type="checkbox" id="onb7"><label for="onb7">GitHub 알림 설정: 자기가 CODEOWNER인 경로의 PR 리뷰 요청을 받도록</label></li>
-<li><input type="checkbox" id="onb8"><label for="onb8">팀장(cw)만: <code>main</code> 브랜치 보호 — PR 필수 · Code Owners 승인 필수 · status check <code>firmware/server/modempi/web</code> · <strong>Restrict who can push → ssenu</strong></label></li>
+<li><input type="checkbox" id="onb8"><label for="onb8"><s>팀장(cw)만: <code>main</code> 브랜치 보호</s> — <strong>하지 않음</strong>(2026-09-26 팀장 결정). <code>main</code> 직접 push 금지·팀장만 머지는 합의로 지킨다</label></li>
 </ul>
 
 <h3 id="s8b">8-B. PR 하나를 낼 때마다</h3>
@@ -473,7 +473,7 @@ S3 렌더 ───┼──▶ S8 노드(awake) ◀── S7 모뎀펌웨어 �
 <li><input type="checkbox" id="mid1"><label for="mid1">P0: 게이트웨이 후보 위치에서 SF7/9/10 각 20패킷 RSSI·SNR·PER 측정 → <code>RP_SF</code> 확정, <code>config.radio</code>에 반영 <span class="pill cw">cw</span></label></li>
 <li><input type="checkbox" id="mid2"><label for="mid2">모뎀 펌웨어: <code>ping/tx/rx</code> 루프백, fake 모뎀 대신 실물로 S6 파이프라인 통과 <span class="pill cw">cw</span> <span class="pill dh">dh</span></label></li>
 <li><input type="checkbox" id="mid3"><label for="mid3">노드 awake 모드: 전 TYPE 수신·저장·ACK, 벤치 §10.2-1(전 TYPE 왕복)·§10.2-3(타겟 격리·DUP·GAP→FILE 재동기·재부팅 영속성) <span class="pill cw">cw</span></label></li>
-<li><input type="checkbox" id="mid4"><label for="mid4">실제 패널에 8개 레이아웃 렌더, 렌더 완료 후 ACK 순서 고정 <span class="pill dh">dh</span></label></li>
+<li><input type="checkbox" id="mid4"><label for="mid4">실제 패널에 8개 레이아웃 렌더, ACK 뒤 렌더 꼬리 실측 <span class="pill dh">dh</span></label></li>
 <li><input type="checkbox" id="mid5"><label for="mid5">갱신 지연 50회 측정 → 48회 이상 30 s. 표를 중간보고서에</label></li>
 <li><input type="checkbox" id="mid6"><label for="mid6">관리자 웹: 시간표 CSV 업로드, 휴강·예약·시험기간 등록, 노드 상태 모니터 <span class="pill wj">wj</span> <span class="pill mh">mh</span></label></li>
 <li><input type="checkbox" id="mid7"><label for="mid7">중간보고서: 계획서 대비 진도, 사용 도구·부품, 측정표. 발표회 서식(서식 6)·사진·영수증</label></li>
@@ -489,7 +489,7 @@ S3 렌더 ───┼──▶ S8 노드(awake) ◀── S7 모뎀펌웨어 �
 <li><input type="checkbox" id="fin4"><label for="fin4">노드 2대가 서로 다른 강의실로 동시에 독립 갱신 (타겟 필터 실증)</label></li>
 <li><input type="checkbox" id="fin5"><label for="fin5">배터리 구동 4시간 무교체 리허설 (전날)</label></li>
 <li><input type="checkbox" id="fin6"><label for="fin6">모뎀Pi 인터넷 30분 차단 → 재접속 → 결과 보고 정상 (§4.4)</label></li>
-<li><input type="checkbox" id="fin7"><label for="fin7">Pi 2대 <code>systemd</code> 서비스로 자동 기동, 전원만 꽂으면 뜬다. 두 Pi 연결은 핫스팟 또는 직결 이더넷 — 전시장 Wi-Fi에 의존하지 않는다</label></li>
+<li><input type="checkbox" id="fin7"><label for="fin7">메인Pi는 Docker Compose(<code>restart: unless-stopped</code>), 모뎀Pi는 <code>systemd</code> 서비스로 자동 기동, 전원만 꽂으면 뜬다. 두 Pi 연결은 핫스팟 또는 직결 이더넷 — 전시장 Wi-Fi에 의존하지 않는다</label></li>
 <li><input type="checkbox" id="fin8"><label for="fin8">학생 웹: 별도 도메인으로 진입 → 주간 시간표·빈 강의실 조회. 대시보드: 배정률·공강 차트 <span class="pill wj">wj</span> <span class="pill mh">mh</span></label></li>
 <li><input type="checkbox" id="fin9"><label for="fin9">참가신청서 · 작품보고서 · 판넬 제출 (학과 예선 → 본선)</label></li>
 <li><input type="checkbox" id="fin10"><label for="fin10">시연 스크립트 작성: "웹에서 휴강 등록 → 30초 안에 문 앞 화면 전환"을 심사위원 앞에서 재현. 실패 시 대체 경로(다른 노드, 재시도 설명)</label></li>

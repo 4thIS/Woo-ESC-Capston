@@ -4,6 +4,11 @@
 <h1>메인Pi 통신 확인</h1>
 <p><a href="/docs">Swagger /docs</a></p>
 
+<form id="login">
+  email <input name="email" value="admin@mju.ac.kr"> password <input name="password" type="password">
+  <button>POST /api/auth/login</button> <span id="login_out"></span>
+</form>
+
 <h2>모뎀Pi</h2>
 <table id="modems" border="1"><tr><th>modem_id</th><th>connected</th><th>last_seen_at</th><th>agent</th></tr></table>
 
@@ -31,21 +36,38 @@
 <h2>outbox (2 s 갱신)</h2>
 <table id="outbox" border="1"><tr><th>id</th><th>modem</th><th>addr</th><th>type</th><th>ver</th><th>state</th><th>attempts</th><th>ack</th><th>created</th><th>finished</th></tr></table>
 
+<h2>관리자 요약</h2>
+<pre id="summary"></pre>
+
 <script>
 const num = v => Number(v);
+let TOKEN = null;
+const auth = () => TOKEN ? {'authorization': `Bearer ${TOKEN}`} : {};
+document.querySelector('#login').onsubmit = async e => {
+  e.preventDefault();
+  const f = Object.fromEntries(new FormData(e.target));
+  const r = await fetch('/api/auth/login', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(f)});
+  const j = await r.json();
+  TOKEN = r.ok ? j.token : null;
+  document.querySelector('#login_out').textContent = r.status + ' ' + (r.ok ? j.role : j.detail);
+  refresh();
+};
 async function refresh() {
-  const modems = await (await fetch('/api/lora/modems')).json();
+  if (!TOKEN) return;
+  const modems = await (await fetch('/api/lora/modems', {headers: auth()})).json();
   document.querySelector('#modems').innerHTML = '<tr><th>modem_id</th><th>connected</th><th>last_seen_at</th><th>agent</th></tr>' +
     modems.map(m => `<tr><td>${m.modem_id}</td><td>${m.connected}</td><td>${m.last_seen_at ?? ''}</td><td>${m.agent_ver ?? ''}</td></tr>`).join('');
-  const rows = await (await fetch('/api/lora/outbox?limit=50')).json();
+  const rows = await (await fetch('/api/lora/outbox?limit=50', {headers: auth()})).json();
   document.querySelector('#outbox').innerHTML = '<tr><th>id</th><th>modem</th><th>addr</th><th>type</th><th>ver</th><th>state</th><th>attempts</th><th>ack</th><th>created</th><th>finished</th></tr>' +
     rows.reverse().map(r => `<tr><td>${r.id}</td><td>${r.modem_id ?? ''}</td><td>${r.bld}${r.room}-${r.unit}</td><td>${r.type}</td><td>${r.new_ver ?? ''}</td><td>${r.state}</td><td>${r.attempts}</td><td>${r.ack_status ?? ''}${r.last_error ? ' ' + r.last_error : ''}</td><td>${r.created_at}</td><td>${r.finished_at ?? ''}</td></tr>`).join('');
+  const summary = await (await fetch('/api/admin/summary?preview=3', {headers: auth()})).json();
+  document.querySelector('#summary').textContent = JSON.stringify(summary, null, 1);
 }
 document.querySelector('#slot').onsubmit = async e => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
   const body = {day: num(f.day), s_h: num(f.s_h), s_m: num(f.s_m), e_h: num(f.e_h), e_m: num(f.e_m), type: num(f.type), subject: f.subject, professor: f.professor};
-  const r = await fetch(`/api/rooms/${f.room_id}/slots`, {method: 'PUT', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
+  const r = await fetch(`/api/rooms/${f.room_id}/slots`, {method: 'PUT', headers: {...auth(), 'content-type': 'application/json'}, body: JSON.stringify(body)});
   document.querySelector('#slot_out').textContent = r.status + ' ' + await r.text();
   refresh();
 };
@@ -54,7 +76,7 @@ document.querySelector('#csv').onsubmit = async e => {
   const file = e.target.file.files[0];
   if (!file) return;
   const dry = e.submitter.value === 'dry';
-  const r = await fetch(`/api/import/slots?dry_run=${dry}`, {method: 'POST', headers: {'content-type': 'text/csv'}, body: file});
+  const r = await fetch(`/api/import/slots?dry_run=${dry}`, {method: 'POST', headers: {...auth(), 'content-type': 'text/csv'}, body: file});
   document.querySelector('#csv_out').textContent = r.status + ' ' + JSON.stringify(await r.json(), null, 1);
   refresh();
 };

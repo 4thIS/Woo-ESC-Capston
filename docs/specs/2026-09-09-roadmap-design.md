@@ -1,7 +1,7 @@
 # 진행 로드맵 · 3계층 토폴로지 · 서브프로젝트 분해 · 영역 간 계약 — 설계 (spec)
 
 - 생성일시: 2026-09-09
-- 수정일시: 2026-09-16 (r5 — 계약 ⑦ 확정; RenderModel `dateStr`·`newTag` 추가: `JobStore` Protocol 채택·동기 store·`next_txn`·`set_meta`·`split`. r4 — QR 제거·`battPct` 제거·`today[24]`(S3 spec). r3 — 웹 역할 재정의: mh = 시안·디자인 스펙(`docs/design/`), wj = `web/` 코드 전체. r2 2026-09-09 — 3계층 토폴로지 반영, 모뎀Pi 내부를 링크/파이프라인으로 분할)
+- 수정일시: 2026-09-17 (r6 — 계약 ⑦ 구현 반영: 모뎀Pi 유닛 분해·`split`·`add_subjobs` 삭제, 노드 안 엄격 FIFO(메인 `job_id` 순), `recover()`, 재송은 같은 TXN, `expect_state`·`prune`. r5 2026-09-16 — 계약 ⑦ 확정; RenderModel `dateStr`·`newTag` 추가: `JobStore` Protocol 채택·동기 store·`next_txn`·`set_meta`·`split`. r4 — QR 제거·`battPct` 제거·`today[24]`(S3 spec). r3 — 웹 역할 재정의: mh = 시안·디자인 스펙(`docs/design/`), wj = `web/` 코드 전체. r2 2026-09-09 — 3계층 토폴로지 반영, 모뎀Pi 내부를 링크/파이프라인으로 분할)
 - 상위 문서: `docs/specs/2026-09-09-lora-v2-wor-design.md` (v2 시스템 설계). 공중 프로토콜(§2·§3)·모뎀 펌웨어(§4)·ESP노드 펌웨어(§5~7)는 그 문서가 원본이다. **v2 §8(백엔드 LoRa 서비스)은 이 문서 §4로 대체한다** — 워커·modem.py·codec이 모뎀Pi로 이동했다.
 - 근거 문서: 과제추진계획서(Woo팀), 2026-2 캡스톤디자인 운영계획
 
@@ -73,7 +73,7 @@ Heltec V3에 올라가는 두 펌웨어는 각각 **모뎀 펌웨어**(모뎀Pi�
 | 장비 | 책임 | 갖는 것 | 갖지 않는 것 |
 |---|---|---|---|
 | **메인Pi** | 관리자·학생 웹, 회원, 시간표·예약·시험기간 CRUD, CSV 임포트, **버전 부여(NEW_VER)**, 작업 생성(outbox), 모뎀Pi 등록·인증·노드 배정, 노드 상태 집계, 대시보드 | DB 원본, `room_versions`, `outbox`, `terminal_status`, `pending_devices`, 모뎀Pi 레지스트리 | 무선 파라미터 실행, TXN, 재시도, 프레임 바이트 |
-| **모뎀Pi** | 메인Pi에 WS 접속(인증·재접속), 받은 작업 로컬 보관, **전처리**(유닛 분해·FILE 청킹·우선순위), **LoRa 워커**(TXN·재시도·FIFO·단일 인플라이트·CAD), 모뎀 펌웨어 제어, **매시 TIME(자기 NTP 시계)**, 업링크 전달 | 로컬 `jobs` 큐(SQLite), 노드 목록(메인이 내려줌), codec | 시간표 원본, 버전 부여, 사용자 |
+| **모뎀Pi** | 메인Pi에 WS 접속(인증·재접속), 받은 작업 로컬 보관, **전처리**(FILE 청킹·우선순위 — 유닛 분해는 메인Pi `api._insert`), **LoRa 워커**(TXN·재시도·FIFO·단일 인플라이트·CAD), 모뎀 펌웨어 제어, **매시 TIME(자기 NTP 시계)**, 업링크 전달 | 로컬 `jobs` 큐(SQLite), 노드 목록(메인이 내려줌), codec | 시간표 원본, 버전 부여, 사용자 |
 | **ESP노드** | v2 §5~7 그대로 | — | — |
 
 **버전은 메인Pi, TXN은 모뎀Pi.** NEW_VER는 "무엇이 최신인가"라 원본 옆에 있어야 하고, TXN은 "이 프레임을 재수신했는가"라 실제 송신·재시도가 일어나는 곳에 있어야 한다.
@@ -92,7 +92,7 @@ Heltec V3에 올라가는 두 펌웨어는 각각 **모뎀 펌웨어**(모뎀Pi�
 | **⑥ 메인Pi ↔ 모뎀Pi 백홀 (WebSocket)** | 메인Pi WS 허브(wj) ↔ 모뎀Pi 링크(wj) | ○ §4.2 | S2·S5 |
 | **⑦ 모뎀Pi 내부 `JobStore`** | 링크(wj) ↔ LoRa 파이프라인(cw) | ○ §4.3 | S5·S6 |
 
-### 4.1 `RenderModel` (확정)
+### 4.1 `RenderModel` (동결 — cw-11, 2026-10-12, 이슈 #27)
 
 상태 판단(cw)이 채워서 렌더(dh)에 넘기는 유일한 데이터. 렌더는 이 구조체 밖의 것을 읽지 않는다.
 
@@ -100,18 +100,20 @@ Heltec V3에 올라가는 두 펌웨어는 각각 **모뎀 펌웨어**(모뎀Pi�
 typedef struct {
   uint8_t  layout;              // v2 §5.3 표의 1~8
   char     bld; uint16_t room; uint8_t unit;
-  char     nowStr[6];           // "HH:MM" — 렌더가 시계를 직접 읽지 않음
   char     dateStr[6];          // "MM.DD" (2026-09-16 추가, mh 화면 스펙 미결 1)
   uint8_t  weekday;             // 1=월..7=일
   struct { char subj[21]; char prof[13];
-           uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } prev, cur, next;
+           uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } cur, next;
+                                // type = lora_proto SlotType(1 수업·2 시험·3 휴강·4 빈강의실·5 특강·6 대여, 0 = 비어 있음)
                                 // flags bit0 = 존재함, bit1 = 변경 배지(휴강·보강·변경)
   uint8_t  nToday;
-  struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // 주간 18 + 야간 6 (S3 spec §2.1). 렌더는 표시 상한 N 개만 그린다
+  struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // 하루 최대 24 동결(S3 spec §2.1). 넘치면 시작 순 앞 24개만. 렌더는 표시 상한 N 개만 그린다
   char     newTag[9];           // "NEW-1A7F" — layout 8 전용, MAC 하위 2 B (2026-09-16 추가, mh 화면 스펙 미결 2)
   uint16_t battMv;              // battPct 는 제거 (2026-09-16 — 방전 곡선 없이 % 환산은 임의값)
-} RenderModel;                  // ≈ 565 B, 매 웨이크 재계산. prev 는 화면 스펙(mh #12)에서 미사용 — cw-11 에서 제거 여부 판단
+} RenderModel;                  // 728 B(호스트·ESP32-S3 동일, test_render_model 이 고정), 매 웨이크 재계산
 ```
+
+> **동결 (cw-11, 2026-10-12, #27)**: `nowStr`·`prev` 제거 — 화면이 현재 시각·이전 수업을 그리지 않는다(화면 스펙 #19, 쉬는시간 화면은 `next` 의 시작 시각만 — #74). `type` 값 도메인 명시, `today[24]` 동결(#74 블록 슬롯이어도 하루 최대 약 13개). 이후 필드를 바꾸려면 cw·dh 협의 후 이 절과 `firmware/lib/render_model/render_model.h` 를 한 PR 에서.
 
 - 문자열 길이는 v2 §5.1 저장 버퍼와 동일. `today[24]`는 명지전문대 교시표(09:00~22:55) 기준 — S3 spec §2.1.
 - **QR 코드는 쓰지 않는다** (2026-09-16 팀 결정). 학생 웹은 별도 도메인으로 직접 진입한다. 화면·RenderModel·`config` 어디에도 QR/URL 필드를 두지 않는다.
@@ -129,7 +131,7 @@ typedef struct {
 | 모뎀Pi → 메인 | `job_accepted` | `job_id` | 로컬 큐에 기록 완료. 메인은 이때 `dispatched` |
 | 메인 → 모뎀Pi | `cancel` | `job_id` | 아직 `received` 상태면 취소 |
 | 메인 → 모뎀Pi | `time_now` | `request_status: bool` | TIME 즉시 송출 |
-| 모뎀Pi → 메인 | `job_result` | `job_id`, `state`(`acked`\|`failed`), `ack_status`, `ack_detail`, `attempts`, `txn`, `rssi`, `snr`, `sched_ver`, `resv_ver`, `exam_ver`, `ident_ver`, `batt_mv`, `layout`, `fw`, `last_error`, `finished_at` | 유닛 분해 시 유닛마다 1건 |
+| 모뎀Pi → 메인 | `job_result` | `job_id`, `state`(`acked`\|`failed`), `ack_status`, `ack_detail`, `attempts`, `txn`, `rssi`, `snr`, `sched_ver`, `resv_ver`, `exam_ver`, `ident_ver`, `batt_mv`, `layout`, `fw`, `last_error`, `finished_at` | 메인 outbox 행(유닛별)마다 1건 |
 | 모뎀Pi → 메인 | `uplink` | `kind`(`STATUS`\|`HELLO`), `bld`, `room`, `unit`, `mac`, 나머지 v2 §3.3 STATUS/HELLO 필드, `rssi`, `snr` | HELLO는 `bld=0, room=0` |
 | 양방향 | `ping` / `pong` | — | 30 s. 2회 무응답이면 끊고 재접속 |
 
@@ -163,8 +165,8 @@ typedef struct {
 ```sql
 CREATE TABLE jobs (
   job_id      TEXT PRIMARY KEY,          -- 메인Pi가 준 id
-  bld TEXT NOT NULL, room INTEGER NOT NULL, unit INTEGER NOT NULL,   -- unit 0 = 호수 전체 (파이프라인이 유닛별로 분해해 sub-row 생성)
-  parent_id   TEXT,                      -- 유닛 분해된 행이면 원본 job_id
+  bld TEXT NOT NULL, room INTEGER NOT NULL, unit INTEGER NOT NULL,   -- unit ≥ 1 (unit 0 = 호수 전체는 메인Pi api._insert 가 유닛별로 분해해 보낸다, r6)
+  parent_id   TEXT,                      -- r6 미사용(항상 NULL). 유닛 분해는 메인Pi 에서만
   type        TEXT NOT NULL,             -- 'SLOT_SET' … 'FILE' 'CMD' 'SET_ROOM' 'TIME'
   payload     TEXT NOT NULL,             -- JSON (codec 입력)
   priority    INTEGER NOT NULL DEFAULT 5,
@@ -185,7 +187,7 @@ CREATE INDEX ix_jobs_upload ON jobs(uploaded, finished_at);
 | 누가 | 하는 일 | 인터페이스 (`modempi/store.py`, 공용) |
 |---|---|---|
 | 링크(wj) | `job` 수신 → `received` 행 삽입(같은 `job_id`면 무시) 후 `job_accepted` 송신. `cancel` → `received`면 `cancelled`. 주기적으로 `finished_at IS NOT NULL AND uploaded=0` 행을 `job_result`로 올리고 `uploaded=1`. `config` 수신 → `config` 테이블 갱신 + 파이프라인에 이벤트 | `put_job(...)`, `cancel_job(id)`, `pending_results()`, `mark_uploaded(ids)`, `set_config(dict)` |
-| 파이프라인(cw) | `received`를 v2 §8.4 순서(priority, received_at, 같은 노드에 `sending` 있으면 건너뜀)로 집어 `sending` → 전처리·송신·재시도 → `acked`/`failed` + 결과 필드 + `finished_at`. 유닛 분해는 sub-row 삽입(`parent_id`). TIME은 파이프라인이 스스로 `TIME` 행을 만든다(매시 `:00:05`, `config.status_hour_utc`에 REQUEST_STATUS) | `pick_next()`, `update(id, **fields)`, `add_subjobs(parent, [...])`, `get_config()`, `on_config_changed(cb)` |
+| 파이프라인(cw) | 기동 시 `recover()`. `received`를 순서(노드 안은 메인 `job_id` 순 FIFO, 노드끼리는 priority·received_at — 아래 "계약 ⑦ 구현")로 집어 `sending` → 전처리·송신·재시도 → `acked`/`failed` + 결과 필드 + `finished_at`. TIME은 파이프라인이 스스로 `TIME` 행을 만든다(매시 `:00:05`, `config.status_hour_utc`에 REQUEST_STATUS) | `recover()`, `pick_next()`, `update(id, **fields)`, `next_txn(...)`, `get_config()`, `on_config_changed(cb)`, `prune(...)` |
 | 링크(wj) | `uplink`: 파이프라인이 `uplinks` 테이블에 넣은 STATUS/HELLO 행을 올리고 `uploaded=1` | `put_uplink(dict)` / `pending_uplinks()` / `mark_uplinks_uploaded(ids)` |
 
 **계약 ⑦ 확정 사항 (2026-09-16, S5 PR #17 · S6 spec 반영)**
@@ -194,9 +196,26 @@ CREATE INDEX ix_jobs_upload ON jobs(uploaded, finished_at);
 - **store는 동기(`sqlite3`)** — 이벤트 루프에서 직접 호출. 연결 1개 공유, ms 단위. `aiosqlite` 안 쓴다.
 - `put_job(..., uploaded=0)` — TIME 행(`time_now`, 매시 스케줄)은 `uploaded=1`로 넣어 메인에 보고하지 않는다.
 - `cancel_job`은 `state='cancelled'` + `finished_at`을 세운다 → 링크가 `job_result(state="failed", last_error="cancelled")`로 보고.
-- 유닛 분해: 파이프라인이 `unit=0` 행을 `state='split', uploaded=1`로 닫고 유닛별 sub-row(`parent_id`)를 만든다. `pending_results`는 `split` 행을 돌려주지 않는다(`uploaded=1`이므로 자연히 제외).
+- ~~유닛 분해: 파이프라인이 `unit=0` 행을 `split`으로 닫고 sub-row를 만든다~~ → **r6(2026-09-17)에서 삭제**. 아래 "계약 ⑦ 구현" 참고.
 - 파이프라인 측 추가: `next_txn(bld, room, unit) -> int` (테이블 `node_txn`, 1..255 롤링·0 건너뜀·즉시 커밋), `set_meta(key, value)` / `get_meta(key) -> str | None` (테이블 `meta`; 파이프라인이 모뎀 `ready.fw`를 `meta["modem_fw"]`에 쓰고 링크가 hello에서 읽는다).
-- `state` 값: `received | sending | acked | failed | cancelled | split`. 컬럼·테이블 추가는 additive만, `SCHEMA_VERSION` +1.
+- `state` 값: `received | sending | acked | failed | cancelled` (`split`은 r6 삭제). 컬럼·테이블 추가는 additive만, `SCHEMA_VERSION` +1.
+
+**계약 ⑦ 구현 (2026-09-17, cw-08 — `modempi/modempi/store.py` `SqliteStore`, `SCHEMA_VERSION = 1`)**
+
+위 확정 사항을 구현하면서 드러난 규칙을 못 박는다. 링크 측 Protocol(`store_port.py`)은 바뀌지 않는다.
+
+- 테이블: `jobs`(위 DDL) + `uplinks(id AUTOINCREMENT, body JSON, created_at, uploaded)` + `config(id=1, body JSON, updated_at)` + `node_txn` + `meta`. 인덱스 `ix_jobs_node(bld, room, unit, state)` 추가(CSV 임포트 뒤 1500행 큐에서 `pick_next` 76 ms → 2 ms 수준). 파일 DB는 WAL + `synchronous=FULL`, `busy_timeout` 1 s(외부 쓰기 잠금에 이벤트 루프가 5 s 멈추지 않게). 더 새 스키마면 열기 거부, 옛 스키마면 `_MIGRATIONS` 단계별 한 트랜잭션.
+- **유닛 분해 삭제**: 메인Pi `api._insert`가 이미 `unit=0`을 유닛별 outbox로 분해하므로 모뎀Pi에 `unit=0` 노드 작업은 오지 않는다. 모뎀Pi에서 분해하면 자식 id(`"9.1"`)가 링크 업로더의 `int(job_id)`를 못 넘어 결과가 버려지고, 메인의 `cancel(9)`도 자식에 닿지 않는다. → `split` 상태·`add_subjobs` 삭제. `parent_id` 컬럼은 DDL 호환 때문에 남기되 쓰지 않는다. 파이프라인은 TIME이 아닌데 `unit=0`인 작업을 `failed(last_error="unit0")`로 닫는다.
+- **노드 안 엄격 FIFO** (v2 §3.5 "프레임 순서는 워커가 노드별 FIFO로 보장"): `pick_next`는 노드마다 머리 행만 본다. 순번은 **메인 `job_id`(outbox id = 생성 순 = 버전 순)**, 숫자가 아닌 id(`time-…`)는 0으로 보고 도착 순. 머리가 `sending`이거나 재시도 대기(`next_try_at` > now)면 그 노드 전체가 기다린다. **priority는 노드끼리 머리를 고를 때만** 쓴다 — 같은 노드에서 priority로 추월하면(FILE v5 priority 5보다 SLOT_SET v6 priority 3이 먼저) 노드 GAP + 뒤이어 온 옛 FILE이 최신 편집을 덮는다. 메인 허브도 같은 노드 안에서는 id 순으로 보내야 한다(#28).
+- **재송은 같은 TXN**: 노드가 이미 적용했지만 ACK가 사라진 프레임을 새 TXN으로 다시 보내면 노드는 (v−v) mod 255 = 0 → GAP으로 답하고 메인이 FILE 재동기를 건다. 그래서 워커는 비-FILE 프레임의 첫 송신에서만 `next_txn()`을 받아 `sending`과 함께 `jobs.txn`에 기록하고, no_ack·BUSY·cad_busy·재기동 뒤 재송은 `jobs.txn`을 다시 쓴다(노드 FIFO 덕분에 그 사이 그 노드의 TXN은 안 움직인다). FILE 세션은 전체 교체라 v2 §3.5대로 프레임마다 새 TXN.
+- **`recover()`** — 파이프라인이 기동 시 1회: `sending` → `received`(`attempts`·`txn` 유지), `received`의 `next_try_at` 비움(RTC 없는 Pi가 과거 시각으로 깨면 대기가 늘어난다). 여는 것만으로는 하지 않는다 — 디버그 스크립트가 같은 파일을 열어도 워커의 `sending` 행을 건드리지 않게.
+- **`pick_next()`는 상태를 바꾸지 않는다.** 파이프라인이 `update(id, expect_state="received", state="sending")`으로 집고, 최종 결과도 `expect_state="sending"`으로 쓴다 — 그 사이 링크의 `cancel`과 경합해도 덮어쓰지 않는다.
+- `update(job_id, /, *, expect_state=None, **fields)`: 결과·재시도 컬럼만 허용(주소·type·payload·new_ver·received_at 불변), `state` 검증, `acked`/`failed`/`cancelled`인데 `finished_at`이 없거나 None이면 지금 시각으로 채움(안 채우면 결과가 영영 안 올라간다), `node_vers`는 dict도 받음. 메인은 결과 필드를 그대로 복사하므로 재시도 끝의 `failed`는 앞 시도의 `ack_status` 등을 None으로 함께 넘긴다.
+- `put_job`: 같은 `job_id`만 무시(False). NOT NULL 등 다른 위반은 `IntegrityError` — 삼키면 링크가 중복으로 알고 `job_accepted`를 보내 작업이 사라진다.
+- `put_uplink(body)`: JSON으로 저장 — bytes 불가, MAC은 소문자 hex 문자열(§4.2 인코딩 규칙).
+- `get_job(id)`, `prune(older_than=초)`(보고까지 끝난 행·업링크 정리 — 모뎀Pi는 원본을 갖지 않는다, §1), `close()` 추가.
+- **TIME은 `txn=0`** (2026-09-23, cw-09 구현 중 확정): 브로드캐스트든 타겟이든 TIME은 TXN을 소비하지 않고 노드도 DUP 판정을 하지 않는다. 타겟 TIME이 노드 TXN을 먹으면 위 "재송은 같은 TXN" 규칙이 깨져 재송이 GAP을 부른다.
+- **S6(cw-09)로 넘기는 것**: 쌓인 TIME 행(모뎀 분리·파이프라인 중단 시 매시 1개씩)은 가장 새 것 하나만 보내고 나머지는 `acked(last_error="superseded")`로 닫는다. epoch는 송신 직전에 찍는다. CLOCK_STALE 타겟 TIME이 노드 TXN을 소비하면 위 "같은 TXN 재송" 가정이 깨지므로 타겟 TIME은 `txn=0`으로 보낼지 S6 plan에서 확정한다.
 
 이 분할의 효과: **wj는 fake 허브(pytest 안의 WS 서버)로, cw는 fake 모뎀 + `put_job()`으로** 각자 하드웨어·상대방 없이 테스트한다. 4주차 통합은 Pi 2대에 실제로 올려 `job → 로컬 큐 → fake 모뎀 → job_result`가 도는지 확인한다.
 
@@ -213,7 +232,7 @@ CREATE INDEX ix_jobs_upload ON jobs(uploaded, finished_at);
 | `codec.py`, `modem.py`, `worker.py`(§8.4 알고리즘), TIME 스케줄러, 업링크 1차 처리 | **모뎀Pi `modempi/lora/`** (cw) |
 | `outbox`, `room_versions`, `terminal_status`, `pending_devices`, `lora_log`, `api.py`, `RecordProvider` | 메인Pi `server/lora_service/` (wj 구현, cw 리뷰). `outbox.state`에 `dispatched` 추가, `modem_id` 컬럼 추가 |
 | 신규 | 메인Pi WS 허브 `server/lora_service/hub.py`(wj), 모뎀Pi 레지스트리 `modems` 테이블(`modem_id, school, building, token_hash, net_id, last_seen_at`) |
-| §8.8 운영 | 메인Pi: FastAPI 프로세스 안에 허브. 모뎀Pi: `systemd` 서비스 1개(`modempi` 프로세스 안에 링크·파이프라인 asyncio 태스크) |
+| §8.8 운영 | 메인Pi: FastAPI 프로세스 안에 허브, **Docker Compose 로 배포**(루트 `compose.yaml`, 2026-09-23). 모뎀Pi: `systemd` 서비스 1개(`modempi` 프로세스 안에 링크·파이프라인 asyncio 태스크) |
 | `lora_log` | 프레임 로그가 아니라 **메인Pi↔모뎀Pi WS 메시지 로그**(`at, modem_id, dir, t, body`)로 재정의. 프레임 hex 로그는 모뎀Pi 쪽(S6)에 있다 (2026-09-14, S2) |
 
 ## 5. 서브프로젝트 분해
@@ -227,7 +246,7 @@ CREATE INDEX ix_jobs_upload ON jobs(uploaded, finished_at);
 | S3 | 렌더 계층 이식 + 호스트 PNG 프리뷰 | dh | ✗ | ○ | — |
 | S4 | 관리자 웹: 시간표·휴강·예약·시험기간 CRUD, CSV 업로드, **모뎀Pi 등록·노드 배정**, 노드 상태 모니터 | wj (mh: 디자인 스펙 선행) | ✗ | ○ | S2 |
 | **S5** | **모뎀Pi 링크**: WS 클라이언트·인증·재접속·`JobStore` 삽입·결과/업링크 업로드·`config` 수신 | wj | Pi | ○ §4.2·4.3 | S2 허브 |
-| **S6** | **모뎀Pi LoRa 파이프라인**: `JobStore` 소비 → 전처리(유닛 분해·FILE 청킹) → 워커(TXN·재시도·FIFO) → `modem.py` → TIME 스케줄러 → 업링크 파싱 | cw | Pi (+fake 모뎀) | ◎ §8.4 이관 / ○ §4.3 | S1 |
+| **S6** | **모뎀Pi LoRa 파이프라인**: `JobStore` 소비 → 전처리(FILE 청킹) → 워커(TXN·재시도·노드 FIFO) → `modem.py` → TIME 스케줄러 → 업링크 파싱 | cw | Pi (+fake 모뎀) | ◎ §8.4 이관 / ○ §4.3 | S1 |
 | S7 | 모뎀 펌웨어 + P0 SF 실측 | cw (dh 지원) | ✓ | ◎ §4·§10.3 | S1, HW |
 | S8 | 노드 펌웨어 깨어있는 모드 + S3 결합 | cw + dh | ✓ | ◎ §5·§6 | S1, S3, S7 |
 | S9 | 노드 절전(WOR)·프로비저닝·STATUS | cw | ✓ | ◎ §6.7·§7 | S8 |
@@ -287,7 +306,10 @@ GxEPD2와 같은 `drawPixel/print` 인터페이스의 호스트용 프레임버�
 
 지연 = 메인 저장→허브 송신(≤ 0.1 s) + 인터넷(≤ 1 s) + 모뎀Pi 큐 픽업(≤ 0.5 s) + 전송·프리앰블(awake 0.3 s, WOR 1~3 s) + **e-Paper 리프레시(15~20 s, §10)** ≈ 20~25 s. 정상 경로는 30 s 안. v2 §8.4 재시도(5·20·60 s) 한 번이면 넘으므로 상한 90 s를 둔다. 95 %는 §10.2-2 수신률 기준과 같은 숫자.
 
-측정: 시작 = 관리자 웹 저장 응답(`outbox.created_at`), 끝 = **e-Paper 리프레시 완료 후 ACK**(S8에서 렌더→ACK 순서 고정) → `finished_at − created_at`. SLOT_SET·RESV_SET 각 50회, 노드 2대 교대, 같은 방·다른 층 절반씩. 히스토그램을 S10 대시보드에 노출.
+측정 (2026-10-12 개정, #74 결정 6 — 노드는 **저장 후 ACK, 그 뒤 렌더**(v2 §6.4)):
+- **전달 지연** = `finished_at − created_at`(시작 = 관리자 웹 저장 응답 `outbox.created_at`, 끝 = 노드 ACK). 자동 측정되고 S10 대시보드 히스토그램이 이것이다.
+- **화면 반영 지연** = 전달 지연 + **렌더 꼬리**(ACK 뒤 e-Paper 리프레시 완료까지). 렌더 꼬리는 dh-06/dh-09 벤치에서 실측한 값을 더한다. 위 30 s / 90 s 기준은 화면 반영 지연에 적용한다.
+- SLOT_SET·RESV_SET 각 50회, 노드 2대 교대, 같은 방·다른 층 절반씩.
 
 계획서 5.2-1)·6.1 문구는 "30초 이내(정상 수신 시)"로 보정.
 
@@ -310,7 +332,7 @@ GxEPD2와 같은 `drawPixel/print` 인터페이스의 호스트용 프레임버�
 | `lora_proto` | Python 벡터 ↔ C++ 파싱 바이트 일치, 역방향 | pytest + Unity(native) |
 | firmware | `determineLayout`·`nextChangeAt` 경계값, 렌더 픽스처 PNG 스냅샷 | Unity(native) |
 | server | 허브: fake 링크로 `hello/config/job/job_accepted/job_result` 왕복, `dispatched` 규칙, 24 h 오프라인 실패 처리. 도메인: CSV 정합성, `api.py` 트랜잭션 원자성, 버전 롤오버 | pytest |
-| modempi | 링크: fake 허브 왕복·재접속·미보고 결과 몰아 보내기. 파이프라인: fake 모뎀 6종 시나리오, 유닛 분해, FILE 청킹·FILE_MISSING 재송, TIME 스케줄, TXN 롤링 | pytest |
+| modempi | 링크: fake 허브 왕복·재접속·미보고 결과 몰아 보내기. 파이프라인: fake 모뎀 6종 시나리오, ACK 유실 재송 = DUP, FILE 청킹·FILE_MISSING 재송, TIME 스케줄, TXN 롤링 | pytest |
 | web | `src/api/` 픽스처, 컴포넌트 | Vitest |
 | 통합(CI 밖) | Pi↔Pi(4주차), 실기 벤치(§10.2)·전력(§10.4)·소크(§10.5) | — |
 

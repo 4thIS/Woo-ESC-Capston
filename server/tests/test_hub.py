@@ -299,3 +299,24 @@ def test_replacement_survives_stale_old_socket(client, live, modem):
         _hello(c, modem)
         assert c.receive_json()["t"] == "config"
         _barrier(c)
+
+
+def test_flush_sends_in_outbox_id_order_not_priority(client, live, modem):
+    """#28: 노드 FIFO(계약 ⑦ r6). id 가 작으면 priority 숫자가 커도(FILE=5) 먼저 나간다 —
+    SLOT_SET v6 이 FILE v5 를 추월하면 노드가 GAP 을 내고 옛 FILE 이 최신 편집을 덮는다."""
+    from lora_proto import codec as C
+
+    api.set_record_provider(
+        lambda bld, room, kind: (
+            [C.SlotSet(0, 1, 9, 0, 10, 0, 1, "a", "b")] if kind == "schedule" else []
+        )
+    )
+    file_id = api.enqueue_file_replace("E", 302, "schedule")[0]  # priority 5
+    slot_id = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")[0]  # priority 3
+    assert file_id < slot_id
+    with client.websocket_connect("/ws/modem") as ws:
+        _hello(ws, modem)
+        ws.receive_json()  # config
+        jobs = [ws.receive_json(), ws.receive_json()]
+        assert [(j["job_id"], j["priority"]) for j in jobs] == [(file_id, 5), (slot_id, 3)]
+        _barrier(ws)

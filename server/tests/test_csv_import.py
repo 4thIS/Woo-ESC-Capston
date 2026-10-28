@@ -4,21 +4,19 @@ import pytest
 from sqlalchemy import select
 
 from app.domain import csv_import as CI
-from app.domain.models import Building, Room, School, Slot
+from app.domain.models import Building, Room, Slot
 from app.lora_service.models import Modem, Outbox, RoomVersion
 
 HEADER = "school,building,room,day,start,end,type,subject,professor\n"
 
 
 @pytest.fixture
-def seeded(app):
+def seeded(app, school):
     """명지 E동 301(units=2)·302(units=1). 301 에 수동 슬롯 월 09:00, 긴급 슬롯 화 09:00."""
     with app.state.Session() as s, s.begin():
         s.add(Modem(modem_id="mjc-eng", token_hash="x"))
-        sch = School(name="명지", net_id=0x4B)
-        s.add(sch)
-        s.flush()
-        b = Building(school_id=sch.id, name="공학관", bld="E", modem_id="mjc-eng")
+        s.flush()  # buildings.modem_id FK — 부모 먼저
+        b = Building(school_id=school, name="공학관", bld="E", modem_id="mjc-eng")
         s.add(b)
         s.flush()
         r1 = Room(building_id=b.id, room=301, units=2)

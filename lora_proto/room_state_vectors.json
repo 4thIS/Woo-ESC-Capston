@@ -1,0 +1,309 @@
+{
+  "note": "v2 §5.3·§5.4 판정 벡터 (#74). 분 = 자정부터의 분(KST = epoch + 9 h). 우선순위 예약 > 시험기간(슬롯 안) > 기본. 기본: 슬롯 안은 typeToLayout(type), 같은 날 수업 슬롯 사이 틈 0 < 틈 <= BREAK_GAP_MAX_MIN(15) 이면 쉬는시간(2), 그 밖은 빈강의실(4). :50 규칙 폐기. until = 상태(layout 과 그 상태를 정한 예약·슬롯·틈)가 처음 바뀌는 경계(슬롯·예약의 시작·끝), 없으면 null(자정까지). slots 는 그 요일 정규 슬롯, resvs 는 그 날 승인 예약, in_exam 은 그 날이 시험기간인지. 서버 room_state(wj)·노드 determineLayout/nextChangeAt(dh-08)이 같은 파일로 대조한다. 손으로 고치고 tests/test_room_state_vectors.py 가 규칙과 맞는지 본다.",
+  "slots": [
+    {
+      "s": 540,
+      "e": 590,
+      "type": 1,
+      "label": "1블록 09:00-09:50"
+    },
+    {
+      "s": 600,
+      "e": 650,
+      "type": 1,
+      "label": "2블록 10:00-10:50"
+    },
+    {
+      "s": 660,
+      "e": 720,
+      "type": 3,
+      "label": "휴강 11:00-12:00"
+    },
+    {
+      "s": 780,
+      "e": 840,
+      "type": 5,
+      "label": "특강 13:00-14:00"
+    },
+    {
+      "s": 900,
+      "e": 960,
+      "type": 6,
+      "label": "대여 15:00-16:00"
+    },
+    {
+      "s": 960,
+      "e": 1020,
+      "type": 2,
+      "label": "시험 16:00-17:00"
+    },
+    {
+      "s": 1080,
+      "e": 1125,
+      "type": 1,
+      "label": "야간1 18:00-18:45"
+    },
+    {
+      "s": 1130,
+      "e": 1175,
+      "type": 1,
+      "label": "야간2 18:50-19:35"
+    },
+    {
+      "s": 1190,
+      "e": 1235,
+      "type": 1,
+      "label": "야간3 19:50-20:35 (틈 15)"
+    },
+    {
+      "s": 1251,
+      "e": 1290,
+      "type": 1,
+      "label": "야간4 20:51-21:30 (틈 16)"
+    },
+    {
+      "s": 1300,
+      "e": 1330,
+      "type": 1,
+      "label": "연강A 21:40-22:10"
+    },
+    {
+      "s": 1330,
+      "e": 1360,
+      "type": 1,
+      "label": "연강B 22:10-22:40 (틈 0)"
+    }
+  ],
+  "vectors": [
+    {
+      "name": "class-in-slot",
+      "resvs": [],
+      "in_exam": false,
+      "at": 570,
+      "layout": 1,
+      "until": 590
+    },
+    {
+      "name": "class-minute-ge-50-still-class (:50 규칙 폐기)",
+      "resvs": [],
+      "in_exam": false,
+      "at": 1132,
+      "layout": 1,
+      "until": 1175
+    },
+    {
+      "name": "break-between-blocks",
+      "resvs": [],
+      "in_exam": false,
+      "at": 590,
+      "layout": 2,
+      "until": 600
+    },
+    {
+      "name": "break-last-minute",
+      "resvs": [],
+      "in_exam": false,
+      "at": 599,
+      "layout": 2,
+      "until": 600
+    },
+    {
+      "name": "slot-start-after-break",
+      "resvs": [],
+      "in_exam": false,
+      "at": 600,
+      "layout": 1,
+      "until": 650
+    },
+    {
+      "name": "gap-before-cancelled-is-free (다음이 수업 아님)",
+      "resvs": [],
+      "in_exam": false,
+      "at": 655,
+      "layout": 4,
+      "until": 660
+    },
+    {
+      "name": "cancelled-slot",
+      "resvs": [],
+      "in_exam": false,
+      "at": 690,
+      "layout": 3,
+      "until": 720
+    },
+    {
+      "name": "outside-slot-next-start",
+      "resvs": [],
+      "in_exam": false,
+      "at": 750,
+      "layout": 4,
+      "until": 780
+    },
+    {
+      "name": "special-slot",
+      "resvs": [],
+      "in_exam": false,
+      "at": 810,
+      "layout": 6,
+      "until": 840
+    },
+    {
+      "name": "rental-slot-then-exam-type-slot",
+      "resvs": [],
+      "in_exam": false,
+      "at": 930,
+      "layout": 7,
+      "until": 960
+    },
+    {
+      "name": "exam-type-slot",
+      "resvs": [],
+      "in_exam": false,
+      "at": 990,
+      "layout": 5,
+      "until": 1020
+    },
+    {
+      "name": "night-break-5min",
+      "resvs": [],
+      "in_exam": false,
+      "at": 1125,
+      "layout": 2,
+      "until": 1130
+    },
+    {
+      "name": "break-gap-15-is-break",
+      "resvs": [],
+      "in_exam": false,
+      "at": 1175,
+      "layout": 2,
+      "until": 1190
+    },
+    {
+      "name": "gap-16-is-free",
+      "resvs": [],
+      "in_exam": false,
+      "at": 1235,
+      "layout": 4,
+      "until": 1251
+    },
+    {
+      "name": "back-to-back-class-same-layout-new-slot",
+      "resvs": [],
+      "in_exam": false,
+      "at": 1310,
+      "layout": 1,
+      "until": 1330
+    },
+    {
+      "name": "back-to-back-class-second",
+      "resvs": [],
+      "in_exam": false,
+      "at": 1330,
+      "layout": 1,
+      "until": 1360
+    },
+    {
+      "name": "free-until-midnight",
+      "resvs": [],
+      "in_exam": false,
+      "at": 1400,
+      "layout": 4,
+      "until": null
+    },
+    {
+      "name": "free-before-first-slot",
+      "resvs": [],
+      "in_exam": false,
+      "at": 480,
+      "layout": 4,
+      "until": 540
+    },
+    {
+      "name": "resv-beats-slot",
+      "resvs": [
+        {
+          "s": 540,
+          "e": 600,
+          "type": 6
+        }
+      ],
+      "in_exam": false,
+      "at": 570,
+      "layout": 7,
+      "until": 600
+    },
+    {
+      "name": "resv-beats-exam-in-slot",
+      "resvs": [
+        {
+          "s": 540,
+          "e": 600,
+          "type": 6
+        }
+      ],
+      "in_exam": true,
+      "at": 570,
+      "layout": 7,
+      "until": 600
+    },
+    {
+      "name": "resv-in-break-gap",
+      "resvs": [
+        {
+          "s": 590,
+          "e": 600,
+          "type": 6
+        }
+      ],
+      "in_exam": false,
+      "at": 595,
+      "layout": 7,
+      "until": 600
+    },
+    {
+      "name": "resv-in-free-time",
+      "resvs": [
+        {
+          "s": 740,
+          "e": 770,
+          "type": 6
+        }
+      ],
+      "in_exam": false,
+      "at": 750,
+      "layout": 7,
+      "until": 770
+    },
+    {
+      "name": "exam-period-in-slot",
+      "resvs": [],
+      "in_exam": true,
+      "at": 570,
+      "layout": 5,
+      "until": 590
+    },
+    {
+      "name": "exam-period-break-stays-break",
+      "resvs": [],
+      "in_exam": true,
+      "at": 595,
+      "layout": 2,
+      "until": 600
+    },
+    {
+      "name": "exam-slot-clipped-by-future-resv",
+      "resvs": [
+        {
+          "s": 610,
+          "e": 640,
+          "type": 6
+        }
+      ],
+      "in_exam": true,
+      "at": 605,
+      "layout": 5,
+      "until": 610
+    }
+  ]
+}

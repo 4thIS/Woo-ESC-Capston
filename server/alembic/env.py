@@ -4,6 +4,7 @@ import os
 
 from sqlalchemy import engine_from_config, pool
 
+import app.auth.models
 import app.domain.models
 import app.lora_service.models  # noqa: F401
 from alembic import context

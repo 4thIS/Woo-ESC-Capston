@@ -2,7 +2,7 @@ from app.lora_service import api
 
 
 def _room(client):
-    sch = client.post("/api/schools", json={"name": "명지", "net_id": 75}).json()
+    sch = {"id": 1}  # 학교는 conftest school 픽스처가 만든다
     b = client.post(
         "/api/buildings",
         json={"school_id": sch["id"], "name": "공학관", "bld": "E", "modem_id": "m1"},

@@ -1,12 +1,15 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-surface="student">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LoRa RoomSign</title>
+    <!-- /verify·/reset 의 #token 이 Referer 로 새지 않게 (auth.md) -->
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" href="data:," />
+    <title>강의실 게시</title>
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/student/main.ts"></script>
   </body>
 </html>

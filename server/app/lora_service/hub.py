@@ -142,14 +142,17 @@ class Hub:
         await self._send(modem_id, self.config_msg(modem_id))
 
     async def flush(self, modem_id: str) -> None:
-        """그 모뎀의 queued 전부를 job 으로. 송신은 상태를 바꾸지 않는다 — job_accepted 가 바꾼다."""
+        """그 모뎀의 queued 전부를 job 으로. 송신은 상태를 바꾸지 않는다 — job_accepted 가 바꾼다.
+        순서는 outbox id(생성 순 = 같은 kind 안에서 버전 순) — priority 로 정렬하면 SLOT_SET(3) 이
+        먼저 만든 FILE(5) 을 추월해 노드가 GAP 을 내고 옛 FILE 이 최신 편집을 덮는다(#28, 계약 ⑦ r6).
+        우선순위는 모뎀Pi 가 노드끼리 고를 때만 쓴다."""
         if modem_id not in self.connected:
             return
         with self._Session() as s:
             rows = s.scalars(
                 select(Outbox)
                 .where(Outbox.modem_id == modem_id, Outbox.state == "queued")
-                .order_by(Outbox.priority, Outbox.id)
+                .order_by(Outbox.id)
             ).all()
         sent = self._sent.setdefault(modem_id, set())
         for row in rows:

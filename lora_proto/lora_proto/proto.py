@@ -22,6 +22,9 @@ UNIT_ALL = 0
 SUBJ_MAX = 20
 PROF_MAX = 12
 
+# --- 상태 판단 (§5.3) — 같은 날 수업 슬롯 사이 틈 0 < 틈 <= 15분 이면 쉬는시간 (#74) ---
+BREAK_GAP_MAX_MIN = 15
+
 
 class Type(IntEnum):
     TIME = 0x01
