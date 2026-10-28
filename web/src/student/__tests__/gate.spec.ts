@@ -11,6 +11,7 @@ async function mountApp(path: string) {
     history: createMemoryHistory(),
     routes: [
       { path: '/', component: Page, meta: { gate: true } },
+      { path: '/me', component: Page, meta: { gate: true } },
       { path: '/:bld([A-Z])', component: Page, meta: { gate: true } },
       { path: '/open', component: Page },
       { path: '/login', component: { render: () => h('p', '로그인 폼') } },
@@ -41,10 +42,19 @@ describe('로그인 벽 (student-room.md §로그인 벽)', () => {
     expect(w.get('a.cta').text()).toBe('로그인')
   })
 
-  it('건물 글자가 없는 주소는 학교 문장', async () => {
-    const { w } = await mountApp('/')
+  it('건물 글자가 없는 딥링크(/me)는 학교 문장', async () => {
+    const { w } = await mountApp('/me')
     expect(w.get('h1').text()).toBe('학교의 빈 강의실을 확인하고 예약을 신청할 수 있어요.')
-    expect(w.get('a.cta').attributes('href')).toBe('/login?next=/')
+    expect(w.get('a.cta').attributes('href')).toBe('/login?next=/me')
+  })
+
+  it('/ 에는 벽 대신 메인 페이지 — 로그인하면 원래 화면(건물 선택) (landing.md, #87)', async () => {
+    const { w } = await mountApp('/')
+    expect(w.get('h1').text()).toBe('빈 강의실, 폰으로 바로 확인하세요.')
+    expect(w.find('aside.auth__intro').exists()).toBe(false)
+    expect(w.text()).not.toContain('강의실 화면')
+    setSession({ token: 't', role: 'student', school_id: 1, name: '김민준' })
+    expect((await mountApp('/')).w.text()).toContain('강의실 화면')
   })
 
   it('세션이 있으면 화면 그대로, gate 가 아닌 화면은 벽 없이', async () => {

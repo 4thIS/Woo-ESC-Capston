@@ -1,18 +1,25 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 
-defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
+// home — 로그인 화면만: 폼 위 이름이 `‹ ESC`, ‹ 는 메인 페이지 / 로 (auth.md 「탭」)
+defineProps<{ title: string; surface: 'student' | 'admin'; back?: string; home?: boolean }>()
 </script>
 
 <template>
-  <!-- 로그인 전에는 사이드바를 그리지 않는다 — 빈 바탕에 폼 하나 (auth.md) -->
-  <div class="auth" :class="`auth--${surface}`">
+  <!-- 로그인 전에는 사이드바를 그리지 않는다 (auth.md). data-surface — 관리자 앱에서 열린 관리자 로그인도
+       학생 로그인과 탭으로 오가는 한 화면이라 student 치수 (#87 「관리자 로그인」) -->
+  <div
+    class="auth"
+    :class="`auth--${surface}`"
+    :data-surface="surface === 'student' ? 'student' : undefined"
+  >
     <slot name="banner" />
     <div class="auth__body">
       <!-- 학생 PC(≥640) 는 좌우 분할 — 왼쪽 소개, 오른쪽 폼. 폰에서는 숨긴다 -->
       <aside v-if="surface === 'student'" class="auth__intro">
         <!-- 로그인 전에는 학교를 모른다(웹메일 도메인으로 정해진다) — 학교 이름 없이 서비스 이름만 -->
-        <p class="auth__intro-brand">ESC</p>
+        <!-- 메인 페이지 / 로 — 관리자 앱에서도 페이지를 새로 연다(라우터 이동 아님) -->
+        <p class="auth__intro-brand"><a href="/">ESC</a></p>
         <p class="auth__intro-lead">학교의 빈 강의실을 확인하고 예약하세요.</p>
         <ul class="auth__intro-list">
           <li>지금 빈 강의실</li>
@@ -22,7 +29,10 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
       </aside>
       <div class="auth__pane">
         <main class="auth__card">
-          <p class="auth__brand">ESC</p>
+          <p class="auth__brand">
+            <a v-if="home" href="/" class="auth__home" aria-label="메인 페이지">‹</a>ESC
+          </p>
+          <slot name="tabs" />
           <h1 class="auth__title">
             <RouterLink v-if="back" :to="back" class="auth__back" aria-label="뒤로">‹</RouterLink
             >{{ title }}
@@ -40,6 +50,8 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
 .auth {
   display: flow-root;
   min-height: 100vh;
+  /* html 의 글자 크기는 그 앱의 치수로 이미 계산돼 상속된다 — 관리자 앱에서도 student 값으로 다시 잡는다 */
+  font-size: var(--font-size-md);
 }
 .auth__card {
   display: flex;
@@ -91,6 +103,13 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-bold);
 }
+.auth__intro-brand a {
+  color: inherit;
+  text-decoration: none;
+}
+.auth__intro-brand a:hover {
+  text-decoration: underline;
+}
 .auth__intro-lead {
   margin: 0;
   max-width: 20em;
@@ -110,6 +129,8 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
   margin-top: 15vh;
 }
 .auth__brand {
+  display: flex;
+  align-items: center;
   margin: 0;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-bold);
@@ -123,6 +144,17 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-bold);
   line-height: var(--leading-tight);
+}
+/* ‹ — 터치 타깃 48px, 글자는 이름 줄과 같은 선 (.auth__back 과 같은 몫) */
+.auth__home {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--control-height-md);
+  min-height: var(--control-height-md);
+  margin: calc(-1 * var(--space-3)) 0 calc(-1 * var(--space-3)) calc(-1 * var(--space-3));
+  font-size: var(--font-size-xl);
+  color: var(--text-1);
+  text-decoration: none;
 }
 .auth__back {
   display: inline-grid;

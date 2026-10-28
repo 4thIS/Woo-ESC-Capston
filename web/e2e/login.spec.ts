@@ -10,8 +10,8 @@ import {
 } from './helpers'
 
 // e2e 는 node 타입(tsconfig.node.json) — page.evaluate 콜백은 브라우저에서 도는데 DOM lib 이 없다
-declare const document: { documentElement: { scrollHeight: number } }
-declare const window: { innerHeight: number }
+declare const document: { documentElement: { scrollHeight: number; scrollWidth: number } }
+declare const window: { innerHeight: number; innerWidth: number }
 
 // 카드의 윗여백이 바탕(.auth, min-height 100vh) 밖으로 새면 폼 하나짜리 화면이 스크롤된다.
 // 창 크기를 바꾼 직후 한 프레임은 이전 높이가 남는다 — 제자리를 잡을 때까지 다시 잰다
@@ -52,14 +52,45 @@ test('역할이 다른 앱에 로그인하면 토큰을 버리고 안내한다',
   const s = await createStudent(request, { approve: true })
   await page.goto('/admin/login')
   await fillLogin(page, s.email)
-  await expect(
-    page.getByText('관리자 계정이 아닙니다. 학생은 학생 웹에서 로그인하세요.'),
-  ).toBeVisible()
+  // 문구가 바로 위의 탭을 가리킨다 (auth.md 「역할 확인」)
+  await expect(page.getByText("학생 계정입니다. 위의 '학생'을 골라 로그인하세요.")).toBeVisible()
   await expect(page).toHaveURL(/\/admin\/login/)
 
   await page.goto('/login')
   await fillLogin(page, nextAdmin())
-  await expect(page.getByText('관리자 계정입니다. 관리자 웹에서 로그인하세요.')).toBeVisible()
+  await expect(
+    page.getByText("관리자 계정입니다. 위의 '관리자'를 골라 로그인하세요."),
+  ).toBeVisible()
+})
+
+test('학생|관리자 탭 — 두 앱을 오가도 탭·폼이 1px 도 움직이지 않고, 폰에서도 관리자 로그인이 가로로 넘치지 않는다', async ({
+  page,
+}) => {
+  const place = () =>
+    Promise.all(
+      [page.getByRole('navigation', { name: '로그인 역할' }), page.locator('form')].map((l) =>
+        l.boundingBox(),
+      ),
+    )
+  for (const size of [SIZES.student, { width: 1280, height: 800 }]) {
+    await page.setViewportSize(size)
+    await page.goto('/login')
+    const tabs = page.getByRole('navigation', { name: '로그인 역할' })
+    await expect(tabs.getByRole('link', { name: '학생' })).toHaveAttribute('aria-current', 'page')
+    const before = await place()
+    // 관리자 탭은 라우터 이동이 아니라 관리자 앱을 새로 연다 — 토큰이 그 앱 메모리에 남아야 한다
+    await tabs.getByRole('link', { name: '관리자' }).click()
+    await expect(page).toHaveURL(/\/admin\/login$/)
+    await expect(tabs.getByRole('link', { name: '관리자' })).toHaveAttribute('aria-current', 'page')
+    expect(await place()).toEqual(before)
+    await expect(page.getByRole('link', { name: '가입 신청' })).toHaveCount(0)
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true)
+    await shot(page, `admin-login-tab-${size.width}`)
+    // ‹ 는 관리자 앱에서도 메인 페이지 /
+    await expect(page.getByRole('link', { name: '메인 페이지' })).toHaveAttribute('href', '/')
+  }
 })
 
 test('429 뒤 10초 잠금이 풀린다 (Review Focus 5)', async ({ page }) => {

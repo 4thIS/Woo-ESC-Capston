@@ -5,6 +5,7 @@ import AuthShell from './AuthShell.vue'
 import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
+import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import { authApi } from '@/api/auth'
 import { ApiError } from '@/api/client'
 import { authNotice, setSession } from '@/lib/session'
@@ -25,11 +26,17 @@ const notice = ref(authNotice.value) // 401·403 으로 쫓겨 온 이유 — �
 authNotice.value = null
 const { active: locked, start: lock } = useCooldown()
 
-// 비밀번호가 맞았을 때만 보이는 문구라 계정 존재를 새지 않는다 (auth.md 「역할 확인」)
+// 비밀번호가 맞았을 때만 보이는 문구라 계정 존재를 새지 않는다. 고칠 곳(탭)이 바로 위라 탭을 가리킨다 (auth.md 「역할 확인」)
 const ROLE_MISMATCH = {
-  admin: '관리자 계정이 아닙니다. 학생은 학생 웹에서 로그인하세요.',
-  student: '관리자 계정입니다. 관리자 웹에서 로그인하세요.',
+  admin: "학생 계정입니다. 위의 '학생'을 골라 로그인하세요.",
+  student: "관리자 계정입니다. 위의 '관리자'를 골라 로그인하세요.",
 } as const
+// 탭은 두 앱을 오가는 진짜 링크 — 토큰은 로그인한 앱의 메모리에 남아야 해서 탭 상태를 들지 않는다.
+// 입력값·?next= 는 옮기지 않는다 (auth.md 「탭」)
+const TABS = [
+  { value: 'student', label: '학생', href: '/login' },
+  { value: 'admin', label: '관리자', href: '/admin/login' },
+]
 
 async function submit() {
   if (submitting.value || locked.value) return
@@ -62,7 +69,11 @@ async function submit() {
 </script>
 
 <template>
-  <AuthShell :title="app === 'admin' ? '관리자 로그인' : '로그인'" :surface="app">
+  <!-- 관리자 로그인도 같은 틀·같은 제목·student 치수 — 탭만 바뀐 한 화면처럼 (auth.md 「관리자 로그인」) -->
+  <AuthShell title="로그인" surface="student" home>
+    <template #tabs>
+      <SegmentedControl :items="TABS" :value="app" label="로그인 역할" />
+    </template>
     <template #banner>
       <Banner v-if="notice === 'expired'" message="다시 로그인해 주세요." :dismissible="false" />
       <Banner

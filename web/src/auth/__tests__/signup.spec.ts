@@ -195,7 +195,8 @@ describe('ResetView', () => {
     await flushPromises()
     expect(api.reset).toHaveBeenCalledWith('r1', 'newpassword1')
     expect(w.text()).toContain('다른 기기에서 로그인해 있던 곳은 모두 로그아웃됩니다')
-    expect(w.text()).toContain('관리자 계정이면 관리자 웹 주소에서 로그인하세요.')
+    // 로그인 화면에 학생|관리자 탭이 생겨 관리자 주소를 따로 알리지 않는다 (auth.md 「/reset」, #87)
+    expect(w.text()).toContain("관리자 계정이면 로그인 화면에서 '관리자'를 고르세요.")
   })
 
   it('400 → 비밀번호를 잊었어요로 되돌린다', async () => {

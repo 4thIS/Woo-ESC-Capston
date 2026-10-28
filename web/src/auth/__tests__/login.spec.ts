@@ -94,14 +94,15 @@ describe('LoginView', () => {
     await submit(w)
     expect(session.value).toBeNull()
     expect(router.currentRoute.value.path).toBe('/login')
-    expect(w.text()).toContain('관리자 계정이 아닙니다. 학생은 학생 웹에서 로그인하세요.')
+    // 문구가 바로 위의 탭을 가리킨다 (auth.md 「역할 확인」, #87)
+    expect(w.text()).toContain("학생 계정입니다. 위의 '학생'을 골라 로그인하세요.")
   })
 
   it('학생 앱에 관리자 계정', async () => {
     login.mockResolvedValue(out('admin'))
     const { w } = await mountLogin('student')
     await submit(w)
-    expect(w.text()).toContain('관리자 계정입니다. 관리자 웹에서 로그인하세요.')
+    expect(w.text()).toContain("관리자 계정입니다. 위의 '관리자'를 골라 로그인하세요.")
   })
 
   it('401 → 어느 쪽이 틀렸는지 말하지 않는다', async () => {
@@ -166,4 +167,33 @@ describe('LoginView', () => {
     expect(w.text()).not.toContain('가입 신청')
     expect(w.get('a[href="/forgot"]').text()).toBe('비밀번호를 잊었어요')
   })
+
+  it.each([
+    ['student', '학생'],
+    ['admin', '관리자'],
+  ] as const)(
+    '%s 앱 — 학생|관리자 탭은 두 앱을 오가는 진짜 링크, 그 앱 탭이 선택',
+    async (app, on) => {
+      const { w } = await mountLogin(app, '/login?next=/users')
+      const tabs = w.get('nav[aria-label="로그인 역할"]').findAll('a')
+      // ?next= 는 옮기지 않는다 — 다른 앱에서는 뜻이 없다 (auth.md 「탭」)
+      expect(tabs.map((a) => [a.text(), a.attributes('href')])).toEqual([
+        ['학생', '/login'],
+        ['관리자', '/admin/login'],
+      ])
+      expect(w.get('a[aria-current="page"]').text()).toBe(on)
+    },
+  )
+
+  it.each(['student', 'admin'] as const)(
+    '%s 앱 — 같은 틀·같은 제목이라 탭만 바뀐 것처럼 (관리자도 student 치수 · 좌우 분할)',
+    async (app) => {
+      const { w } = await mountLogin(app)
+      expect(w.get('h1').text()).toBe('로그인')
+      expect(w.get('.auth').attributes('data-surface')).toBe('student')
+      expect(w.find('aside.auth__intro').exists()).toBe(true)
+      // ‹ 는 메인 페이지 / 로 가는 진짜 링크 — 관리자 앱에서도 / (auth.md 「탭」)
+      expect(w.get('a.auth__home').attributes('href')).toBe('/')
+    },
+  )
 })
