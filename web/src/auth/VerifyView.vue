@@ -92,7 +92,17 @@ async function submit() {
 </script>
 
 <template>
-  <AuthShell :title="state === 'done' ? '가입 신청 완료' : '가입 완료'" surface="student">
+  <!-- 링크 오류는 제목도 오류를 말한다 — '가입 완료' 아래 '링크가 만료…' 는 서로 어긋난다 -->
+  <AuthShell
+    :title="
+      state === 'done'
+        ? '가입 신청 완료'
+        : state === 'invalid'
+          ? '링크를 열 수 없어요'
+          : '가입 완료'
+    "
+    surface="student"
+  >
     <template #banner>
       <Banner
         v-if="error && state === 'opening'"

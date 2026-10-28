@@ -39,6 +39,16 @@ export function restoreSession(app: Role): void {
   }
 }
 
+/** 로그인 화면의 다른 탭으로 로그인했다 — 그 역할 앱의 칸에 넣는다. 두 앱이 같은 주소(origin)라 그 앱이
+ * 열릴 때 restoreSession 으로 읽는다. ponytail: 저장소가 막힌 창이면 넘어간 앱에서 다시 로그인해야 한다 */
+export function handOffSession(s: LoginOut): void {
+  try {
+    sessionStorage.setItem(`esc.session.${s.role}`, JSON.stringify(s))
+  } catch {
+    // 위 restoreSession 과 같다
+  }
+}
+
 export function setSession(s: LoginOut): void {
   current.value = s
   authNotice.value = null

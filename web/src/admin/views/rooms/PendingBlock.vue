@@ -139,7 +139,7 @@ async function submitReject() {
       @close="rejecting = null"
     >
       <p class="blk__modal-text">
-        {{ rejecting?.requester?.name }} 의 {{ rejecting?.building }} {{ rejecting?.room }}호
+        {{ rejecting?.requester?.name }}의 {{ rejecting?.building }} {{ rejecting?.room }}호
         {{ rejecting?.date }} 신청을 거절합니다. 사유는 학생에게 그대로 보입니다.
       </p>
       <Textarea

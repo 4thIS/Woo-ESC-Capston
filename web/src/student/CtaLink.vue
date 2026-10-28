@@ -1,12 +1,22 @@
 <script setup lang="ts">
 import { RouterLink, type RouteLocationRaw } from 'vue-router'
 
-// 화면의 1차 동작 — brand 채움 링크 (이동이라 button 이 아니라 a). 모바일 48px, 넓은 폭 헤더 40px
-withDefaults(defineProps<{ to: RouteLocationRaw; compact?: boolean }>(), { compact: false })
+// 이동이라 button 이 아니라 a — 모양은 Button 의 variant 와 같다(primary = 화면의 1차 동작 brand 채움).
+// 모바일 48px, 넓은 폭 헤더 40px
+withDefaults(
+  defineProps<{
+    to: RouteLocationRaw
+    compact?: boolean
+    variant?: 'primary' | 'secondary' | 'ghost'
+  }>(),
+  { compact: false, variant: 'primary' },
+)
 </script>
 
 <template>
-  <RouterLink :to="to" class="cta" :class="{ 'cta--compact': compact }"><slot /></RouterLink>
+  <RouterLink :to="to" class="cta" :class="[`cta--${variant}`, { 'cta--compact': compact }]"
+    ><slot
+  /></RouterLink>
 </template>
 
 <style scoped>
@@ -16,9 +26,8 @@ withDefaults(defineProps<{ to: RouteLocationRaw; compact?: boolean }>(), { compa
   justify-content: center;
   min-height: var(--control-height-md);
   padding: 0 var(--space-4);
+  border: var(--border-thin) solid transparent;
   border-radius: var(--radius-md);
-  background: var(--brand);
-  color: var(--on-brand);
   font-weight: var(--font-weight-bold);
   text-decoration: none;
   white-space: nowrap;
@@ -26,8 +35,25 @@ withDefaults(defineProps<{ to: RouteLocationRaw; compact?: boolean }>(), { compa
 .cta--compact {
   min-height: 40px;
 }
-.cta:hover {
+.cta--primary {
+  background: var(--brand);
+  color: var(--on-brand);
+}
+.cta--primary:hover {
   filter: brightness(0.9);
+}
+.cta--secondary {
+  border-color: var(--line-3);
+  background: var(--surface);
+  color: var(--text-1);
+}
+.cta--ghost {
+  background: transparent;
+  color: var(--text-1);
+}
+.cta--secondary:hover,
+.cta--ghost:hover {
+  background: var(--sunken);
 }
 .cta {
   transition:

@@ -169,6 +169,7 @@ describe('신청 대기', () => {
     })
     await btn(w.find('tbody'), '거절').trigger('click')
     const d = dialog('예약 신청 거절')!
+    expect(d.text()).toContain('김민준의 ') // '김민준 의' 가 아니라 붙여 쓴다
     expect((btn(d, '거절').element as HTMLButtonElement).disabled).toBe(true)
     await d.get('textarea').setValue('시험 기간입니다')
     // teleport 스텁이 다시 그리면 앞서 잡은 요소는 떨어져 나간다 — 다시 찾는다

@@ -64,8 +64,8 @@ async function submit() {
       <p><strong>비밀번호를 바꿨어요</strong></p>
       <p class="auth-form__note">다른 기기에서 로그인해 있던 곳은 모두 로그아웃됩니다.</p>
       <RouterLink to="/login">로그인하러 가기</RouterLink>
-      <!-- 관리자 웹 주소를 링크로 걸지 않는다 — 학생 웹이 관리자 주소를 실을 이유가 없다 (auth.md) -->
-      <p class="auth-form__note">관리자 계정이면 관리자 웹 주소에서 로그인하세요.</p>
+      <!-- 로그인 화면의 학생|관리자 탭을 가리킨다 — 관리자 주소를 따로 알리지 않는다 (auth.md 「/reset」) -->
+      <p class="auth-form__note">관리자 계정이면 로그인 화면에서 '관리자'를 고르세요.</p>
     </template>
   </AuthShell>
 </template>
