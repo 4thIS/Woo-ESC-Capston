@@ -42,6 +42,9 @@ class Hub:
         self._settings = settings
         self._loop: asyncio.AbstractEventLoop | None = None
         self.connected: dict[str, WebSocket] = {}
+        # config 를 보낸 연결 — hello 뒤 첫 메시지는 config 여야 한다(모뎀Pi client.py). 등록~config 사이의
+        # DB 대기 동안 job·cancel·time_now 가 먼저 나가지 않게 config 아닌 송신은 여기 있는 연결로만 (#84)
+        self._ready: dict[str, WebSocket] = {}
         self._missed: dict[str, int] = {}
         self._sent: dict[str, set[int]] = {}
 
@@ -57,6 +60,7 @@ class Hub:
                 pass
             await asyncio.to_thread(api.touch_modem, mid, connected=False)
         self.connected.clear()
+        self._ready.clear()
 
     # ---- HubPort (api 가 부른다. 웹 스레드 또는 루프 스레드 어디서든) ----
     def _spawn(self, coro) -> None:
@@ -131,6 +135,11 @@ class Hub:
         ws = self.connected.get(modem_id)
         if ws is None:
             return False
+        if msg.get("t") != "config" and self._ready.get(modem_id) is not ws:
+            return False  # ponytail: 그 사이 cancel·time_now 는 버린다 — 재접속 순간과 겹칠 때뿐, 결과는 job_result 로
+        return await self._send_ws(modem_id, ws, msg)
+
+    async def _send_ws(self, modem_id: str, ws: WebSocket, msg: dict) -> bool:
         try:
             await ws.send_json(msg)
         except (WebSocketDisconnect, RuntimeError):
@@ -146,16 +155,20 @@ class Hub:
         순서는 outbox id(생성 순 = 같은 kind 안에서 버전 순) — priority 로 정렬하면 SLOT_SET(3) 이
         먼저 만든 FILE(5) 을 추월해 노드가 GAP 을 내고 옛 FILE 이 최신 편집을 덮는다(#28, 계약 ⑦ r6).
         우선순위는 모뎀Pi 가 노드끼리 고를 때만 쓴다."""
-        if modem_id not in self.connected:
+        # 시작한 연결·sent 에 묶는다 — 조회(await) 사이에 재접속하면 새 연결(아직 config 전일 수 있다)로 보내지
+        # 않고 멈춘다. 새 연결은 자기 flush 가 보낸다 (#84)
+        ws, sent = self._ready.get(modem_id), self._sent.get(modem_id)
+        if ws is None or sent is None:
             return
         rows = await asyncio.to_thread(self._queued, modem_id)
-        sent = self._sent.setdefault(modem_id, set())
         for row in rows:
+            if self._ready.get(modem_id) is not ws:
+                return
             if row.id in sent:
                 continue
             # 보내기 전에 표시 — _send 안의 await(기록) 사이에 끼어든 다른 flush 가 같은 job 을 또 보내지 않게
             sent.add(row.id)
-            if not await self._send(modem_id, self.job_msg(row)):
+            if not await self._send_ws(modem_id, ws, self.job_msg(row)):
                 sent.discard(row.id)
                 return
 
@@ -241,9 +254,12 @@ class Hub:
                 await old.close(code=1000)
             except (RuntimeError, WebSocketDisconnect):
                 pass
-        self.connected[modem_id] = ws
+        self._ready.pop(modem_id, None)
+        self.connected[modem_id] = (
+            ws  # config_changed 는 이때부터 이 연결로 — 나머지는 config 뒤(_ready)
+        )
         self._sent[modem_id] = set()
-        pinger = asyncio.ensure_future(self._pinger(modem_id, ws))
+        pinger: asyncio.Future | None = None
         try:
             await asyncio.to_thread(
                 api.touch_modem,
@@ -253,7 +269,12 @@ class Hub:
                 modem_fw=hello.get("modem_fw"),
             )
             await asyncio.to_thread(self._log, modem_id, "rx", {**hello, "token": "***"})
-            await self.send_config(modem_id)
+            # 이 연결로 직접 — 그새 같은 모뎀의 새 연결이 들어왔으면 그 연결이 자기 config 를 보낸다
+            cfg = await asyncio.to_thread(self.config_msg, modem_id)
+            if self.connected.get(modem_id) is not ws or not await self._send_ws(modem_id, ws, cfg):
+                return
+            self._ready[modem_id] = ws
+            pinger = asyncio.ensure_future(self._pinger(modem_id, ws))
             await self.flush(modem_id)
             while True:
                 try:
@@ -283,7 +304,10 @@ class Hub:
         except WebSocketDisconnect:
             pass
         finally:
-            pinger.cancel()
+            if pinger is not None:
+                pinger.cancel()
+            if self._ready.get(modem_id) is ws:
+                del self._ready[modem_id]
             if self.connected.get(modem_id) is ws:
                 del self.connected[modem_id]
                 self._sent.pop(modem_id, None)
