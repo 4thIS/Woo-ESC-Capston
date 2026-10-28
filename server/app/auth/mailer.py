@@ -1,9 +1,17 @@
-"""Gmail SMTP(stdlib) + 템플릿 3개 (S4a §6). 호출은 BackgroundTasks 에서 — 실패는 로그만."""
+"""메일 발송 — Gmail SMTP 또는 HTTP 발송 API(stdlib) + 템플릿 3개 (S4a §6). 호출은 BackgroundTasks 에서 — 실패는 로그만.
+
+`MAIL_BACKEND=http`: `MAIL_API_URL` 에 `{"to","subject","text"}` JSON 을 POST 한다(`Authorization: Bearer
+MAIL_API_KEY`, 요청마다 새 `Idempotency-Key`). 재시도는 하지 않는다 — 실패하면 사용자가 다시 요청한다.
+"""
 
 from __future__ import annotations
 
+import json
 import logging
 import smtplib
+import urllib.error
+import urllib.request
+import uuid
 from email.message import EmailMessage
 
 from app.auth import ratelimit
@@ -29,6 +37,9 @@ def send(settings: Settings, to: str, subject: str, body: str, kind: str) -> Non
     if settings.mail_backend == "console":
         print(f"[mail] to={to} subject={subject}\n{body}")
         return
+    if settings.mail_backend == "http":
+        _send_http(settings, to, subject, body)
+        return
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = settings.mail_from, to, subject
     msg.set_content(body)
@@ -40,6 +51,27 @@ def send(settings: Settings, to: str, subject: str, body: str, kind: str) -> Non
         log.exception(
             "메일 발송 실패 to=%s subject=%s", to, subject
         )  # 토큰은 body 에만 — 로그에 안 남김
+
+
+def _send_http(settings: Settings, to: str, subject: str, body: str) -> None:
+    req = urllib.request.Request(
+        settings.mail_api_url,
+        data=json.dumps({"to": to, "subject": subject, "text": body}).encode(),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {settings.mail_api_key}",
+            "Content-Type": "application/json",
+            "Idempotency-Key": uuid.uuid4().hex,
+            # 기본 "Python-urllib/x" 는 Cloudflare 가 봇으로 막는다(403, error code 1010 — 2026-10-28 실측)
+            "User-Agent": "woo-esc-server/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            r.read()
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        # 토큰은 body 에, API 키는 헤더에만 — 둘 다 로그에 남기지 않는다
+        log.error("메일 발송 실패 to=%s subject=%s (%s)", to, subject, type(e).__name__)
 
 
 def verify_mail(settings: Settings, token: str) -> tuple[str, str]:

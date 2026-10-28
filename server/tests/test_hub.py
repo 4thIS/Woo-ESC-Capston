@@ -320,3 +320,87 @@ def test_flush_sends_in_outbox_id_order_not_priority(client, live, modem):
         jobs = [ws.receive_json(), ws.receive_json()]
         assert [(j["job_id"], j["priority"]) for j in jobs] == [(file_id, 5), (slot_id, 3)]
         _barrier(ws)
+
+
+def test_hub_db_write_waiting_on_lock_does_not_freeze_the_loop(client, live, modem, app):
+    """#43 — 다른 연결이 쓰기 잠금을 쥔 동안 허브가 수신 기록(lora_log)을 써야 하면, 그 대기는 스레드에서.
+    루프 위에서 기다리면 루프 전체가 busy_timeout(5 s)만큼 멈춰 다른 요청도 같이 멈춘다(실측 16~20 s 저장)."""
+    import sqlite3
+
+    with client.websocket_connect("/ws/modem") as ws:
+        _hello(ws, modem)
+        ws.receive_json()  # config
+        # 허브는 보낸 뒤에 기록을 스레드에서 쓴다 — config 를 받은 순간 그 기록이 아직 진행 중일 수 있어 기다린다
+        holder = sqlite3.connect(app.state.engine.url.database, timeout=5)
+        holder.execute("BEGIN IMMEDIATE")  # 쓰기 잠금을 쥔다 — 저장 요청이 커밋 전에 쥔 것과 같다
+        holder.execute("UPDATE modems SET agent_ver = agent_ver")
+        try:
+            ws.send_json({"t": "ping"})  # 허브는 rx 기록을 쓰려다 잠금에 막힌다
+            time.sleep(0.2)
+            t0 = time.monotonic()
+            assert client.get("/api/health").status_code == 200
+            # 루프가 멈추면 busy_timeout(5 s)만큼 걸린다 — 병렬 실행 부하에서도 흔들리지 않게 여유를 둔다(#84 리뷰)
+            assert time.monotonic() - t0 < 2.5
+        finally:
+            holder.rollback()  # 잠금을 풀면 허브의 기록이 이어서 들어간다
+            holder.close()
+        assert ws.receive_json()["t"] == "pong"  # 메시지는 유실되지 않고 순서대로 처리된다
+
+
+def _hold(monkeypatch, obj, name, when=lambda *a, **k: True):
+    """obj.name 을 붙잡는다 — 조건이 맞는 첫 호출이 들어오면 entered, release 될 때까지 기다린 뒤 원래대로.
+    허브의 DB 작업(스레드)이 잠금을 기다리는 동안을 흉내낸다"""
+    import threading
+
+    entered, release = threading.Event(), threading.Event()
+    real = getattr(obj, name)
+    armed = [True]
+
+    def held(*a, **k):
+        if armed[0] and when(*a, **k):
+            armed[0] = False
+            entered.set()
+            assert release.wait(5)
+        return real(*a, **k)
+
+    monkeypatch.setattr(obj, name, held)
+    return entered, release
+
+
+def test_job_waits_for_config_while_hello_handling_is_blocked(client, live, modem, monkeypatch):
+    """#84 리뷰 🔴 — 연결을 등록한 뒤 config 를 보내기 전까지 DB 대기(touch_modem 등)가 있다. 그 사이 notify 가
+    job 을 먼저 보내면 모뎀Pi 는 'config 대신 job' 으로 세션을 끊는다(client.py:135). 첫 메시지는 config"""
+    ids = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")
+    entered, release = _hold(monkeypatch, api, "touch_modem", lambda *a, **k: k.get("connected"))
+    with client.websocket_connect("/ws/modem") as ws:
+        _hello(ws, modem)
+        assert entered.wait(5)  # 허브가 config 전 DB 대기에 걸렸다
+        api._hub.notify("m1")  # 저장 요청이 그 사이 알린다
+        time.sleep(0.2)
+        release.set()
+        assert ws.receive_json()["t"] == "config"
+        assert ws.receive_json()["job_id"] == ids[0]
+        _barrier(ws)  # job 은 한 번만
+
+
+def test_old_flush_does_not_send_on_replacing_connection(client, live, modem, monkeypatch):
+    """#84 리뷰 — flush 가 await(조회) 뒤에 연결·sent 를 다시 잡으면, 재접속한 새 연결로 config 보다 먼저 job 을
+    보낼 수 있었다. flush 는 시작한 연결에 묶인다"""
+    ids = api.enqueue_slot_set("E", 302, 1, (9, 0), (10, 0), 1, "a", "b")
+    with client.websocket_connect("/ws/modem") as a:
+        _hello(a, modem)
+        assert a.receive_json()["t"] == "config"
+        assert a.receive_json()["job_id"] == ids[0]
+        q_in, q_go = _hold(monkeypatch, api._hub, "_queued")
+        api._hub.notify("m1")  # a 의 flush — 조회에서 멈춘다
+        assert q_in.wait(5)
+        t_in, t_go = _hold(monkeypatch, api, "touch_modem", lambda *a, **k: k.get("connected"))
+        with client.websocket_connect("/ws/modem") as b:
+            _hello(b, modem, pending=1)
+            assert t_in.wait(5)  # b 는 config 전 DB 대기
+            q_go.set()  # 옛 flush 가 풀린다 — b 로 보내면 안 된다
+            time.sleep(0.2)
+            t_go.set()
+            assert b.receive_json()["t"] == "config"
+            assert b.receive_json()["job_id"] == ids[0]  # b 자신의 flush 가 한 번
+            _barrier(b)
