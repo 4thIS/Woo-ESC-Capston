@@ -51,6 +51,16 @@ describe('AuthShell — 학생 PC 는 좌우 분할(소개 패널 + 폼)', () =>
     expect(mountShell('student').find('a.auth__home').exists()).toBe(false)
   })
 
+  it('titleHidden 이면 h1 은 남기고 화면에서만 숨긴다 — 다른 화면은 그대로 보인다', () => {
+    const hidden = mount(AuthShell, {
+      props: { title: '로그인', surface: 'student', titleHidden: true },
+      global: { plugins: [router] },
+    })
+    expect(hidden.get('h1').text()).toBe('로그인')
+    expect(hidden.get('h1').classes()).toContain('auth__title--sr')
+    expect(mountShell('student').get('h1').classes()).not.toContain('auth__title--sr')
+  })
+
   it('tabs 슬롯은 제목 위 — 탭 줄 다음에 h1', () => {
     const w = mount(AuthShell, {
       props: { title: '로그인', surface: 'student' },

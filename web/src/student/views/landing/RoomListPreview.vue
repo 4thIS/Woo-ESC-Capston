@@ -67,7 +67,7 @@ const ROWS = [
 }
 .lr__star {
   font-size: var(--font-size-lg);
-  color: var(--text-3);
+  color: var(--text-disabled); /* ★ brand / ☆ text.disabled (student-room.md 즐겨찾기) */
 }
 .lr__star--on {
   color: var(--brand);

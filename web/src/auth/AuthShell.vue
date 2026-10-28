@@ -2,7 +2,14 @@
 import { RouterLink } from 'vue-router'
 
 // home — 로그인 화면만: 폼 위 이름이 `‹ ESC`, ‹ 는 메인 페이지 / 로 (auth.md 「탭」)
-defineProps<{ title: string; surface: 'student' | 'admin'; back?: string; home?: boolean }>()
+// titleHidden — 로그인 화면만: 탭·제출 버튼이 이미 '로그인'이라 제목은 스크린리더용으로만 (auth.md, #95)
+defineProps<{
+  title: string
+  surface: 'student' | 'admin'
+  back?: string
+  home?: boolean
+  titleHidden?: boolean
+}>()
 </script>
 
 <template>
@@ -33,7 +40,7 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string; home?:
             <a v-if="home" href="/" class="auth__home" aria-label="메인 페이지">‹</a>ESC
           </p>
           <slot name="tabs" />
-          <h1 class="auth__title">
+          <h1 class="auth__title" :class="{ 'auth__title--sr': titleHidden }">
             <RouterLink v-if="back" :to="back" class="auth__back" aria-label="뒤로">‹</RouterLink
             >{{ title }}
           </h1>
@@ -155,6 +162,18 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string; home?:
   font-size: var(--font-size-xl);
   color: var(--text-1);
   text-decoration: none;
+}
+/* 시각적으로만 숨김 — 읽기 순서·제목 이동은 그대로 */
+.auth__title--sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 .auth__back {
   display: inline-grid;

@@ -52,6 +52,11 @@ describe('메인 페이지 (landing.md)', () => {
       '문 앞 화면 예시',
     ])
     for (const p of previews) expect(p.findAll('a, button')).toHaveLength(0)
+    // 문 앞 화면은 시각 대신 요일 — 박힌 시각은 멈춰 틀린 정보가 된다 (terminal-epaper.md 「헤더」)
+    const ep = previews.find((p) => p.attributes('aria-label') === '문 앞 화면 예시')!
+    const head = ep.get('.ep__head').text()
+    expect(head).toContain('목요일')
+    expect(head).not.toMatch(/\d{1,2}:\d{2}/)
     // 히어로 4행(★ 하나, 사용중 둘 — 수업중·시험중), 카드 1은 같은 것의 3행
     const [hero, card] = previews
     expect(hero.findAll('.lr')).toHaveLength(4)

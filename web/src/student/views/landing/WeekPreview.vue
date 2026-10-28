@@ -61,7 +61,7 @@ const BLOCKS = [
   border-color: var(--brand);
 }
 .wp__label {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   white-space: nowrap;
 }

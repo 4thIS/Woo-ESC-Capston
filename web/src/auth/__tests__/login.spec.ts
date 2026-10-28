@@ -216,7 +216,9 @@ describe('LoginView', () => {
     '%s 앱 — 같은 틀·같은 제목이라 탭만 바뀐 것처럼 (관리자도 student 치수 · 좌우 분할)',
     async (app) => {
       const { w } = await mountLogin(app)
+      // 제목은 스크린리더용으로만 — 탭·제출 버튼이 이미 '로그인'이라 화면에는 그리지 않는다 (auth.md, #95)
       expect(w.get('h1').text()).toBe('로그인')
+      expect(w.get('h1').classes()).toContain('auth__title--sr')
       expect(w.get('.auth').attributes('data-surface')).toBe('student')
       expect(w.find('aside.auth__intro').exists()).toBe(true)
       // ‹ 는 메인 페이지 / 로 가는 진짜 링크 — 관리자 앱에서도 / (auth.md 「탭」)

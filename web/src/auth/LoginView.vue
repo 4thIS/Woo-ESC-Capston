@@ -82,7 +82,7 @@ async function submit() {
 
 <template>
   <!-- 관리자 로그인도 같은 틀·같은 제목·student 치수 — 탭만 바뀐 한 화면처럼 (auth.md 「관리자 로그인」) -->
-  <AuthShell title="로그인" surface="student" home>
+  <AuthShell title="로그인" surface="student" home title-hidden>
     <template #tabs>
       <SegmentedControl :items="TABS" :value="role" label="로그인 역할" @update:value="pickRole" />
     </template>

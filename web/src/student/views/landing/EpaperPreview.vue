@@ -1,10 +1,11 @@
 <script setup lang="ts">
-// 문 앞 전자종이 축소판 — 흰 바탕 · 검정 글자 · 적색 사용중 띠 하나 (terminal-epaper.md 의 3색 그대로)
+// 문 앞 전자종이 축소판 — 흰 바탕 · 검정 글자 · 적색 사용중 띠 하나 (terminal-epaper.md 의 3색 그대로).
+// 헤더는 시각이 아니라 요일 — 화면에 박힌 시각은 몇 시간씩 멈춰 틀린 정보가 된다 (terminal-epaper.md 「헤더」)
 </script>
 
 <template>
   <div class="ep" role="img" aria-label="문 앞 화면 예시">
-    <p class="ep__head"><b>공학관 401호</b><span class="num">10:42</span></p>
+    <p class="ep__head"><b>공학관 401호</b><span>목요일</span></p>
     <p class="ep__band">사용중</p>
     <p class="ep__now">자료구조 · 김교수</p>
     <p class="ep__time num">09:00 – 10:50</p>
