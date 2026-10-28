@@ -244,7 +244,7 @@ v2에서 쓸 수 있는 수단은 다섯이고, 이 밖으로 나가지 않는�
 | `value` | 선택된 `value` | — |
 | `label` | string — 묶음 이름(스크린리더용) | — |
 
-- **`href` 가 있으면 링크 줄이다.** `<nav aria-label="{label}">` 안의 `<a>` 로 그리고 선택된 칸에 `aria-current="page"` 를 단다. 누르면 그 주소로 간다 — 상태를 바꾸지 않는다(로그인 탭은 두 앱을 오가므로 페이지를 새로 연다). `href` 가 없으면 `role="radiogroup"` 의 라디오 줄이고 `update:value` 를 낸다.
+- **`href` 가 있으면 링크 줄이다.** `<nav aria-label="{label}">` 안의 `<a>` 로 그리고 선택된 칸에 `aria-current="page"` 를 단다. 누르면 그 주소로 간다 — 상태를 바꾸지 않는다. `href` 가 없으면 `role="radiogroup"` 의 라디오 줄이고 `update:value` 를 낸다. 로그인 탭은 라디오 줄이다(같은 화면에서 바뀐다, PR #94).
 - 바깥 틀: `sunken` 바탕 + `line.2` 1px, `radius.md`, 안쪽 여백 `space.1`. 칸은 같은 폭으로 나눈다.
 - 칸 높이 `control.height.md` − 8px(바깥 여백 몫. 바깥 높이가 `control.height.md`). 라운드 `radius.sm`.
 
