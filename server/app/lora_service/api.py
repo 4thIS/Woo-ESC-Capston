@@ -494,21 +494,27 @@ def reassign_queued(bld: str, rooms: list[int], modem_id: str | None) -> int:
 
 
 def drop_unsent(bld: str, rooms: list[int], modem_id: str | None, *, session: Session) -> int:
-    """지운 방(들)의 아직 안 나간 작업을 지운다 (#50) — 호출자 세션에서, 도메인 삭제와 같은 트랜잭션.
-    queued·cancelled 만: 노드로 간 적 없어 기록 가치가 없고, 남기면 같은 (bld, room) 을 다시 만들 때
-    reassign_queued 가 옛 작업을 새 모뎀으로 보내고 건물 outbox 조회에 남의 payload 가 보인다.
-    outbox 는 학교를 모른다 — 같은 글자·호수를 쓰는 다른 학교 행을 건드리지 않게 그 방의 모뎀으로 좁힌다
-    (모뎀 없는 건물이면 modem_id NULL 행). dispatched·acked·failed 는 모뎀이 붙어 있어 남긴다.
-    ponytail: 모뎀 없는 두 학교가 같은 글자·호수를 쓰면 NULL 행이 섞인다 — outbox 에 학교 칸이 생기면 그걸로"""
-    scope = Outbox.modem_id.is_(None) if modem_id is None else Outbox.modem_id == modem_id
-    return session.execute(
+    """지운 방(들)의 아직 안 나간 작업을 정리한다 (#50) — 호출자 세션에서, 도메인 삭제와 같은 트랜잭션.
+    남기면 같은 (bld, room) 을 다시 만들 때 reassign_queued 가 옛 작업을 새 모뎀으로 보내고 건물 outbox 조회에
+    남의 payload 가 보인다. dispatched·acked·failed 는 모뎀이 붙어 있어 남긴다(job_result 로 끝난다).
+    - modem NULL 행(queued·cancelled)은 지운다 — 모뎀Pi 로 간 적이 없다. 두 학교가 같은 bld 를 동시에 쓰지
+      못하므로(_check_building 409) NULL 행은 언제나 이 건물 것이다(#82 리뷰 1).
+    - 그 방 모뎀의 queued 는 지우지 않고 cancelled 로 닫는다 — Outbox.id 에 AUTOINCREMENT 가 없어 지우면
+      새 작업이 같은 id 를 받고, 이미 보낸 행이면 늦은 job_result 가 새 행을 acked 로 바꾼다(#82 리뷰 2).
+      이미 모뎀Pi 로 나간 것이면 job_accepted 에 hub 가 cancel 로 답한다(M1). 다른 모뎀(다른 학교)은 그대로"""
+    where = (Outbox.bld == bld, Outbox.room.in_(rooms))
+    n = session.execute(
         delete(Outbox).where(
-            Outbox.bld == bld,
-            Outbox.room.in_(rooms),
-            Outbox.state.in_(("queued", "cancelled")),
-            scope,
+            *where, Outbox.modem_id.is_(None), Outbox.state.in_(("queued", "cancelled"))
         )
     ).rowcount
+    if modem_id is not None:
+        n += session.execute(
+            update(Outbox)
+            .where(*where, Outbox.modem_id == modem_id, Outbox.state == "queued")
+            .values(state="cancelled", finished_at=utcnow())
+        ).rowcount
+    return n
 
 
 def cancel(outbox_id: int) -> bool:
