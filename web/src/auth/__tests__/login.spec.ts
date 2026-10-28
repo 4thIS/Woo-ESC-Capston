@@ -162,10 +162,11 @@ describe('LoginView', () => {
     await flushPromises()
   })
 
-  it('관리자 앱에는 가입 링크가 없고 재설정은 학생 앱 /forgot 으로', async () => {
+  it('관리자 앱에는 하단 링크가 없다 — 가입은 CLI 뿐, 비밀번호 찾기도 두지 않는다(2026-10-28 결정)', async () => {
     const { w } = await mountLogin('admin')
     expect(w.text()).not.toContain('가입 신청')
-    expect(w.get('a[href="/forgot"]').text()).toBe('비밀번호를 잊었어요')
+    expect(w.text()).not.toContain('비밀번호를 잊었어요')
+    expect(w.find('.auth__footer').exists()).toBe(false)
   })
 
   it.each([

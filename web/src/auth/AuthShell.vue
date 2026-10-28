@@ -168,6 +168,8 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string; home?:
 .auth__footer {
   display: flex;
   flex-wrap: wrap;
+  /* 링크는 터치 타깃 48px 안에서 세로 가운데 — 가운뎃점도 같은 선에 (안 하면 48px 칸 맨 위에 붙는다) */
+  align-items: center;
   gap: var(--space-2);
   justify-content: center;
   font-size: var(--font-size-sm);

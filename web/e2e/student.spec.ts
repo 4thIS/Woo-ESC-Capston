@@ -90,6 +90,10 @@ test('메인 페이지 — 로그인 전 / 는 벽 대신 소개, 세 폭 모두
     ).toBe(true)
     await shot(page, `student-landing-${size.width}`)
   }
+  // 넓은 화면 — 헤더 양끝이 본문(최대 1120px 가운데) 양끝에 맞는다
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const left = async (sel: string) => (await page.locator(sel).boundingBox())!.x
+  expect(await left('.lh__brand')).toBe(await left('.hero__eyebrow'))
   await page.setViewportSize(SIZES.student)
   const hero = page.locator('.hero')
   await expect(hero.getByRole('link', { name: '로그인' })).toHaveAttribute('href', '/login')
@@ -225,6 +229,15 @@ test('넓은 폭 — /week 는 강의실로, 목록 340px 상주, 격자는 같�
   await expect(page.getByRole('heading', { name: '다음 비는 시간' })).toBeVisible()
   await expect(page.getByRole('listitem', { name: /캡스톤디자인 외 1건/ })).toBeVisible()
   await shot(page, 'student-wide-1280')
+  // 태블릿(768) — 오른쪽 칸이 좁아도 월~금이 숨은 가로 스크롤 뒤로 가지 않는다
+  await page.setViewportSize({ width: 768, height: 1024 })
+  const grid = page.locator('.wg').first()
+  await expect(grid).toBeVisible()
+  expect(
+    await grid.evaluate(
+      (e: { scrollWidth: number; clientWidth: number }) => e.scrollWidth <= e.clientWidth,
+    ),
+  ).toBe(true)
   await page.setViewportSize(SIZES.student)
   await expect(list).toBeHidden()
 })

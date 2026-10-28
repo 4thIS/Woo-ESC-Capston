@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import StudentApp from '@/student/StudentApp.vue'
-import { clearSession, setSession } from '@/lib/session'
+import { authNotice, clearSession, setSession } from '@/lib/session'
 
 const Page = { render: () => h('p', '강의실 화면') }
 async function mountApp(path: string) {
@@ -40,6 +40,14 @@ describe('로그인 벽 (student-room.md §로그인 벽)', () => {
     expect(w.find('aside.auth__intro').exists()).toBe(true)
     expect(w.findAll('h1')).toHaveLength(1)
     expect(w.get('a.cta').text()).toBe('로그인')
+  })
+
+  it('저장된 세션이 만료돼 버려졌으면 벽 위에 "다시 로그인해 주세요." (student-room.md §로그인 벽)', async () => {
+    authNotice.value = 'expired'
+    const { w } = await mountApp('/E')
+    expect(w.get('[role="status"], .banner').text()).toContain('다시 로그인해 주세요.')
+    authNotice.value = null
+    expect((await mountApp('/E')).w.text()).not.toContain('다시 로그인해 주세요.')
   })
 
   it('건물 글자가 없는 딥링크(/me)는 학교 문장', async () => {

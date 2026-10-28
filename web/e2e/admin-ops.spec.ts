@@ -149,10 +149,10 @@ test('강의실 — 한 곳 추가(유닛 2), 학생 예약은 누르는 즉시 
   await shot(page, 'admin-master-room-1440')
 })
 
-test('삭제 — 강의실이 있으면 건물 삭제 잠김(툴팁), 강의실 삭제는 딸린 개수를 적는다', async () => {
+test('삭제 — 강의실이 있으면 건물 삭제 잠김(이유는 옆에 글로), 강의실 삭제는 딸린 개수를 적는다', async () => {
   const b = buildingRow('마스터관2')
   await expect(b.getByRole('button', { name: '삭제' })).toBeDisabled()
-  await expect(b.locator('[title="강의실을 먼저 지우세요 (1곳)"]')).toHaveCount(1)
+  await expect(b.getByText('강의실을 먼저 지우세요 (1곳)')).toBeVisible()
   const panel = roomPanel()
   await panel
     .getByRole('row')

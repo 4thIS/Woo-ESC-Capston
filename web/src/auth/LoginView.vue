@@ -113,14 +113,11 @@ async function submit() {
       <p v-if="error" class="auth-form__error" role="alert">{{ error }}</p>
       <Button type="submit" :loading="submitting" :disabled="locked">로그인</Button>
     </form>
-    <template #footer>
-      <template v-if="app === 'student'">
-        <RouterLink to="/signup">가입 신청</RouterLink>
-        <span aria-hidden="true">·</span>
-        <RouterLink to="/forgot">비밀번호를 잊었어요</RouterLink>
-      </template>
-      <!-- 관리자 재설정도 학생 앱 /forgot·/reset (#46 auth.md). ponytail: 같은 오리진 전제 — 배포에서 도메인을 나누면(#44 뒤) STUDENT_WEB_URL 로 -->
-      <a v-else href="/forgot">비밀번호를 잊었어요</a>
+    <!-- 관리자 탭은 하단 링크가 없다 — 가입은 CLI 뿐이고 비밀번호 찾기도 두지 않는다(2026-10-28 wj 결정, auth.md 갱신 요청) -->
+    <template v-if="app === 'student'" #footer>
+      <RouterLink to="/signup">가입 신청</RouterLink>
+      <span aria-hidden="true">·</span>
+      <RouterLink to="/forgot">비밀번호를 잊었어요</RouterLink>
     </template>
   </AuthShell>
 </template>

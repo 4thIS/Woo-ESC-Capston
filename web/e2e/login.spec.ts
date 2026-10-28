@@ -42,6 +42,15 @@ test('학생 로그인 화면 390', async ({ page }) => {
     const link = await page.getByRole('link', { name }).boundingBox()
     expect(link!.height, name).toBeGreaterThanOrEqual(48)
   }
+  // 두 링크 사이 가운뎃점은 링크 글자와 같은 선 — 48px 칸 맨 위에 뜨지 않는다
+  const mid = async (l: ReturnType<typeof page.locator>) => {
+    const b = (await l.boundingBox())!
+    return b.y + b.height / 2
+  }
+  const footer = page.locator('.auth__footer')
+  expect(
+    Math.abs((await mid(footer.locator('span'))) - (await mid(footer.locator('a').first()))),
+  ).toBeLessThan(2)
   await shot(page, 'student-login-390')
   // 넓은 화면(≥640)에서는 카드에 윗여백 — 그래도 스크롤이 생기지 않는다
   await page.setViewportSize({ width: 1280, height: 800 })
@@ -84,6 +93,7 @@ test('학생|관리자 탭 — 두 앱을 오가도 탭·폼이 1px 도 움직�
     await expect(tabs.getByRole('link', { name: '관리자' })).toHaveAttribute('aria-current', 'page')
     expect(await place()).toEqual(before)
     await expect(page.getByRole('link', { name: '가입 신청' })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '비밀번호를 잊었어요' })).toHaveCount(0)
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true)

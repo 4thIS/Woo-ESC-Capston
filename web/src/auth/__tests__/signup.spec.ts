@@ -101,6 +101,8 @@ describe('VerifyView', () => {
     const { w } = await mountView(VerifyView)
     expect(api.verifyOpen).not.toHaveBeenCalled()
     expect(w.text()).toContain('링크가 만료되었거나 잘못되었습니다')
+    // '가입 완료' 제목 아래 '링크가 만료…' 는 서로 어긋난다 — 오류 상태는 제목도 오류를 말한다
+    expect(w.get('h1').text()).toBe('링크를 열 수 없어요')
   })
 
   it('열자마자 verify/open, 이메일은 읽기 전용으로', async () => {

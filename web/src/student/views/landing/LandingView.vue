@@ -38,11 +38,14 @@ const STEPS = [
 <template>
   <div class="landing">
     <header class="lh">
-      <span class="lh__brand">ESC</span>
-      <nav class="lh__nav" aria-label="계정">
-        <CtaLink to="/signup" variant="ghost" compact class="lh__signup">가입 신청</CtaLink>
-        <CtaLink to="/login" variant="secondary" compact>로그인</CtaLink>
-      </nav>
+      <!-- 본문과 같은 틀(.wrap) — 넓은 화면에서 헤더 양끝이 본문 1120px 양끝에 맞는다 -->
+      <div class="wrap lh__in">
+        <span class="lh__brand">ESC</span>
+        <nav class="lh__nav" aria-label="계정">
+          <CtaLink to="/signup" variant="ghost" compact class="lh__signup">가입 신청</CtaLink>
+          <CtaLink to="/login" variant="secondary" compact>로그인</CtaLink>
+        </nav>
+      </div>
     </header>
 
     <main>
@@ -130,13 +133,15 @@ const STEPS = [
   position: sticky;
   top: 0;
   z-index: 1;
+  height: 58px;
+  border-bottom: var(--border-thin) solid var(--line-2);
+  background: var(--surface);
+}
+.lh__in {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 58px;
-  padding: 0 var(--space-4);
-  border-bottom: var(--border-thin) solid var(--line-2);
-  background: var(--surface);
+  height: 100%;
 }
 .lh__brand {
   font-size: var(--font-size-lg);
@@ -317,9 +322,6 @@ const STEPS = [
 }
 
 @media (min-width: 640px) {
-  .lh {
-    padding: 0 40px;
-  }
   .lh__signup {
     display: flex;
   }
@@ -363,9 +365,6 @@ const STEPS = [
 }
 
 @media (min-width: 1024px) {
-  .lh {
-    padding: 0 80px;
-  }
   .wrap {
     max-width: calc(1120px + 160px);
     margin: 0 auto;

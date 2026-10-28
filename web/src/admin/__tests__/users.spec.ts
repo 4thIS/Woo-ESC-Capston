@@ -113,6 +113,7 @@ describe('UsersView', () => {
     await buttonByText(w, '거절').trigger('click')
     // teleport 스텁은 갱신마다 슬롯을 다시 그린다 — dialog 를 매번 다시 찾는다 (실제 Teleport 는 유지)
     const dialog = () => w.get('[role="dialog"]')
+    expect(dialog().text()).toContain('(s@mjc.ac.kr)의 신청을') // '…) 의' 띄어쓰기 없이
     const submit = () =>
       dialog()
         .findAll('button')

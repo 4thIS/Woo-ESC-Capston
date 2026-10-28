@@ -253,19 +253,18 @@ async function remove() {
       <template #cell-actions="{ row }">
         <div class="panel__actions">
           <Button variant="ghost" size="sm" @click="openForm(asB(row))">수정</Button>
-          <!-- 비활성 버튼은 마우스 이벤트가 없어 툴팁을 감싼 칸에 단다 -->
-          <span
-            :title="asB(row).rooms ? `강의실을 먼저 지우세요 (${asB(row).rooms}곳)` : undefined"
+          <Button
+            variant="ghost"
+            size="sm"
+            :disabled="asB(row).rooms > 0"
+            @click="removing = asB(row)"
+            >삭제</Button
           >
-            <Button
-              variant="ghost"
-              size="sm"
-              :disabled="asB(row).rooms > 0"
-              @click="removing = asB(row)"
-              >삭제</Button
-            >
-          </span>
         </div>
+        <!-- 잠근 이유는 옆에 글로 — 툴팁은 마우스로만 보이고 잠긴 버튼은 포커스도 안 간다 (admin-master.md 「건물 삭제」) -->
+        <small v-if="asB(row).rooms" class="panel__why"
+          >강의실을 먼저 지우세요 ({{ asB(row).rooms }}곳)</small
+        >
       </template>
     </Table>
 
@@ -374,6 +373,12 @@ async function remove() {
 .panel__actions {
   display: flex;
   gap: var(--space-1);
+}
+.panel__why {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--text-3);
+  text-wrap: balance; /* 좁은 칸(92px)에서 '(4곳)' 만 홀로 넘어가지 않게 두 줄을 고르게 */
 }
 /* 선택된 건물 행 — brand.tint(Table) + 왼쪽 3px brand 막대 (admin-master.md) */
 .panel :deep(.tbl__row--selected td:first-child) {
