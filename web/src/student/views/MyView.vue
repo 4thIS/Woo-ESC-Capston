@@ -113,7 +113,7 @@ const goBack = () => void router.push(back)
     <Banner v-if="error && data" tone="danger" :message="error.message" :dismissible="false">
       <Button variant="secondary" @click="retry">다시 시도</Button>
     </Banner>
-    <main class="me__body">
+    <main class="me__body" :class="{ 'me__body--narrow': !inBld }">
       <Skeleton v-if="!data && !error" :rows="4" />
       <EmptyState
         v-else-if="!data"
@@ -175,9 +175,12 @@ const goBack = () => void router.push(back)
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  padding: var(--space-4);
+}
+/* 건물 밖 /me 는 목록 칸이 없어 건물 선택 화면처럼 640px 가운데. 건물 안은 넓은 폭 오른쪽 칸 전체(student-room.md) */
+.me__body--narrow {
   max-width: 640px;
   margin: 0 auto;
-  padding: var(--space-4);
 }
 .me__list {
   display: flex;

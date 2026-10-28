@@ -67,7 +67,10 @@ struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // 09:0
 firmware/
 ├── lib/
 │   ├── render/                      # renderLayout() 등 — Adafruit_GFX& 인자 (실기·호스트 공용, dh-04)
-│   │   └── render.h / render.cpp
+│   │   ├── render.h / render.cpp
+│   │   ├── render_logic.h / .cpp    # 픽셀을 찍지 않는 판단(상태 띠 색·보조 문구·오늘 목록 창 등)
+│   │   └── text.h / .cpp            # UTF-8 한 줄 그리기·폭
+│   ├── epd_colors/                  # GxEPD_WHITE·BLACK·RED 정의(헤더 전용) — render·host_gfx 공용 (dh-04)
 │   ├── render_model/                # RenderModel 구조체 (cw·dh 공용 내부 계약, 헤더 전용)
 │   │   └── render_model.h
 │   ├── host_gfx/                    # Adafruit_GFX 파생, drawPixel()만 구현하는 800×480×3색 프레임버퍼
@@ -93,6 +96,8 @@ firmware/
 > **경로 정정 2 (2026-09-29, 이슈 #34)**: 최초 초안은 `render.h/.cpp`와 `render_model.h`를 `firmware/src/terminal/`에 뒀다. 같은 이유(`src/`의 `.cpp`는 `pio test`에 링크되지 않고, `lib/`가 `src/`의 헤더를 참조하면 역방향 의존이 된다)로 `renderLayout`은 `firmware/lib/render/`, `render_model.h`는 `firmware/lib/render_model/`(헤더 전용)로 옮긴다. cw가 #34에서 승인했고, `render_model.h` 이동은 PR #66에서 따로 처리했다.
 
 > **추가 (2026-10-07, dh-04)**: 폰트·이미지 자산 계층(`lib/bitmap_font/`·`lib/bitmap_image/`, 생성물 `lib/font_data/`·`lib/image_data/`, 원본 `src/fonts/`, 생성기 `tools/gen_*`·`tools/embed_*`)을 구조도에 넣었다. 근거·결정은 `docs/plans/2026-09-20-dh-04-render-port.md` D1·D2·§3.6·§3.7.
+
+> **추가 (2026-10-16, dh-04 렌더 PR)**: `lib/render/` 의 `render_logic`·`text` 와, 색 상수 헤더 `lib/epd_colors/` 를 넣었다. 색 상수는 렌더(실기·호스트 공용)와 호스트 프레임버퍼가 같은 정의를 써야 하는데, 어느 한쪽에 두면 다른 쪽이 그 계층을 import 하게 되어(`firmware/CLAUDE.md` 계층 책임 — 의존 방향 단방향) 중립 헤더로 분리했다.
 
 ### 4.2 `RenderModel` 전체 정의 (로드맵 §4.1 — cw-11 동결 2026-10-12: `nowStr`·`prev` 제거, #27)
 

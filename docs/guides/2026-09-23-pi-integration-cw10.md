@@ -93,7 +93,7 @@ git pull
 cp server/.env.example server/.env
 nano server/.env
 #   JWT_SECRET=<아래 명령 출력 — 32자 이상>     python3 -c "import secrets;print(secrets.token_urlsafe(48))"
-#   STUDENT_WEB_URL=http://ESC-main.local:5173   (학생 웹 주소 — 아직 없으니 이 값으로 둔다)
+#   STUDENT_WEB_URL=http://ESC-main.local        (학생 웹 주소 — 웹 컨테이너 :80. 바깥에서 Tailscale 로 쓰면 그 주소)
 #   MAIL_BACKEND=console                         (통합 단계는 메일을 로그로 — SMTP 불필요)
 #   DEBUG=1                                      (통신 확인 페이지·/docs 를 연다. 운영(S11)에서는 0)
 chmod 600 server/.env
@@ -244,7 +244,7 @@ sudo chmod 600 /etc/modempi.env
 ```ini
 [Unit]
 Description=Woo-ESC 모뎀Pi (링크 + LoRa 파이프라인)
-After=network-online.target time-sync.target
+After=network-online.target time-sync.target tailscaled.service
 Wants=network-online.target
 
 [Service]
@@ -266,12 +266,13 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now modempi        # 모뎀Pi
 journalctl -u modempi -f                   # 로그 보기 (Ctrl+C 로 빠져나옴)
 ```
-두 Pi 를 `sudo reboot` 하고, 1~2분 뒤 메인Pi 에서 `docker compose ps` 가 healthy, 모뎀Pi 에서 `systemctl status modempi` 가 active 인지 본 다음 §6 을 다시 해서 `acked` 가 나오면 끝.
+두 Pi 를 `sudo reboot` 하고(모뎀Pi 가 먼저 뜨면 첫 접속은 시간 초과로 실패한다 — 정상, 몇 초 뒤 재시도로 `hello`), 1~2분 뒤 메인Pi 에서 `docker compose ps` 가 healthy, 모뎀Pi 에서 `systemctl status modempi` 가 active 인지 본 다음 §6 을 다시 해서 `acked` 가 나오면 끝.
 
 ---
 
 ## 9. 기록 · PR
 
+- **결과 (2026-10-14): `docs/records/2026-10-14-cw10-pi-integration.md`** — 전 단계 통과.
 - 캡처: §6·§7 의 outbox JSON, 두 Pi 로그(메인Pi `docker compose logs --since 10m server`, 모뎀Pi `journalctl -u modempi --since "10 min ago"`), 통신 확인 페이지 스크린샷
 - 진행표 `docs/progress.html` 의 cw-10·wj-08 체크 + PR 번호
 - PR 본문에 위 캡처 첨부 (cw-10 DoD "결과를 PR에 첨부")
@@ -292,6 +293,8 @@ journalctl -u modempi -f                   # 로그 보기 (Ctrl+C 로 빠져나
 | `uv sync`·`docker compose up --build` 가 오래 걸림 | Pi 의 첫 빌드는 수 분 걸릴 수 있다. 정상. 두 번째부터는 캐시로 빠르다 |
 | API 가 `401` | 로그인 토큰이 없거나 24 시간이 지났다 — §4-2 로그인부터 다시(`A=…` 도 다시) |
 | `/static`·`/docs` 가 `404` | `server/.env` 의 `DEBUG=1` 확인 후 `docker compose up -d` |
+| Windows PowerShell 에서 `ssh -t admin@… ~/data/x.sh` 가 `C:Users…: No such file` | PowerShell 이 `~` 를 노트북 홈으로 먼저 바꾼다 — `"/home/admin/data/x.sh"` 처럼 따옴표 안 절대 경로로 |
+| 모뎀Pi 가 `hello` 직후 죽고 다시 켜도 죽는다(`int() argument … NoneType`) | 건물을 이 모뎀에 배정하기 전이라 config 의 `net_id` 가 `null` — §4-2 건물 등록(모뎀 지정) 뒤 `~/data/jobs.db` 를 치우고 다시(버그, 결과 기록 §3-3) |
 | `docker: permission denied` | `usermod -aG docker admin` 뒤 SSH 를 다시 접속했는지 |
 | `port is already allocated` (8000) | 예전 `uv run uvicorn` 이 아직 돌고 있다 — 그 터미널에서 `Ctrl+C` |
 | outbox 가 `dispatched` 에서 멈춤 | 버그 #43 — §6 의 우회(모뎀Pi 끄고 저장 → 켜기) |

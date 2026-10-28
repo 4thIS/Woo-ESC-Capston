@@ -71,9 +71,14 @@ onScopeDispose(() => window.removeEventListener('resize', place))
             </svg>
             <span class="nav__label">{{ i.label }}</span>
             <Transition name="nav-pop">
-              <Badge v-if="i.badge" :key="i.badge" variant="solid" class="nav__count num">{{
-                i.badge
-              }}</Badge>
+              <Badge
+                v-if="i.badge"
+                :key="i.badge"
+                variant="solid"
+                tone="brand"
+                class="nav__count num"
+                >{{ i.badge }}</Badge
+              >
             </Transition>
           </RouterLink>
         </li>
@@ -107,6 +112,10 @@ onScopeDispose(() => window.removeEventListener('resize', place))
   margin: 0;
   padding: 0;
   list-style: none;
+}
+/* 대기 개수 — brand 채움 알약(components.md). brand+solid 는 여기와 학생 '지금' 배지뿐 */
+.nav__count {
+  border-radius: var(--radius-full);
 }
 .nav__group {
   margin: var(--space-3) var(--space-3) var(--space-1);

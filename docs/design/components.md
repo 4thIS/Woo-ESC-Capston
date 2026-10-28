@@ -234,6 +234,30 @@ v2에서 쓸 수 있는 수단은 다섯이고, 이 밖으로 나가지 않는�
 
 **v1에서 금지했던 것을 되살렸다** — 회색이 생겨서 성립한다. 다만 로딩이 1초 미만으로 예상되는 자리에는 쓰지 않는다(깜빡임이 더 거슬린다).
 
+## SegmentedControl
+
+두세 개 중 하나를 고르는 붙은 버튼 줄. 지금 쓰는 곳은 로그인 화면의 `학생 | 관리자` 탭 하나다([auth.md](screens/auth.md) 「`학생 | 관리자` 탭」).
+
+| prop | 값 | 기본 |
+|---|---|---|
+| `items` | `{ value, label, href? }[]` — 2~3개 | — |
+| `value` | 선택된 `value` | — |
+| `label` | string — 묶음 이름(스크린리더용) | — |
+
+- **`href` 가 있으면 링크 줄이다.** `<nav aria-label="{label}">` 안의 `<a>` 로 그리고 선택된 칸에 `aria-current="page"` 를 단다. 누르면 그 주소로 간다 — 상태를 바꾸지 않는다(로그인 탭은 두 앱을 오가므로 페이지를 새로 연다). `href` 가 없으면 `role="radiogroup"` 의 라디오 줄이고 `update:value` 를 낸다.
+- 바깥 틀: `sunken` 바탕 + `line.2` 1px, `radius.md`, 안쪽 여백 `space.1`. 칸은 같은 폭으로 나눈다.
+- 칸 높이 `control.height.md` − 8px(바깥 여백 몫. 바깥 높이가 `control.height.md`). 라운드 `radius.sm`.
+
+| 칸 | 바탕 | 글자 | 테두리 |
+|---|---|---|---|
+| 선택됨 | `surface` | `text.1` · `bold` | `line.2` 1px |
+| 선택 안 됨 | 없음(`sunken` 이 비침) | `text.2` · `medium` | 없음 |
+| 선택 안 됨 · hover | 없음 | `text.1` | 없음 |
+
+- **`brand` 를 쓰지 않는다.** 선택은 1차 액션이 아니다 — 같은 화면의 제출 버튼이 그 화면의 `brand` 채움 하나다. 선택됨은 면(`surface` vs `sunken`)과 굵기로 만든다(「위계를 만드는 수단」).
+- 포커스: Button 과 같다(`focus` 2px outline, offset 2px).
+- 칸 사이에 세로선을 긋지 않는다. 선택된 칸의 흰 면이 경계다.
+
 ## SidebarNav
 
 | prop | 값 | 기본 |
