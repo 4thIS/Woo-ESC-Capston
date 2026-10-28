@@ -6,7 +6,7 @@ import LandingView from '@/student/views/landing/LandingView.vue'
 async function mountLanding() {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: ['/', '/login', '/signup'].map((path) => ({ path, component: {} })),
+    routes: ['/', '/login', '/signup', '/policies/:doc'].map((path) => ({ path, component: {} })),
   })
   await router.push('/')
   await router.isReady()
@@ -76,9 +76,18 @@ describe('메인 페이지 (landing.md)', () => {
     expect(w.get('.steps__cta').attributes('href')).toBe('/signup')
   })
 
+  it('바닥글에 이용약관 · 개인정보 처리방침 — 언제든 열 수 있게', async () => {
+    const w = await mountLanding()
+    const links = w.get('footer').findAll('a')
+    expect(links.map((a) => [a.text(), a.attributes('href')]).slice(0, 2)).toEqual([
+      ['이용약관', '/policies/terms'],
+      ['개인정보 처리방침', '/policies/privacy'],
+    ])
+  })
+
   it('관리자 로그인은 바닥글 링크 하나 — 관리자 앱이라 페이지를 새로 연다(<a href>)', async () => {
     const w = await mountLanding()
-    const a = w.get('footer a')
+    const a = w.get('footer a.foot__admin')
     expect(a.text()).toBe('관리자 로그인')
     expect(a.attributes('href')).toBe('/admin/login')
   })
