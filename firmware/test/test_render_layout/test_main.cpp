@@ -1,0 +1,247 @@
+// dh-04 Task 4.3 — 화면 픽셀 테스트. 좌표 근거: terminal-epaper.md "골격"·"영역별 규격".
+#include <unity.h>
+
+#include <cstring>
+#include <initializer_list>
+
+#include "font_data.h"
+#include "host_gfx.h"
+#include "render.h"
+#include "text.h"
+
+static int16_t textWidthForTest(const char* s) {
+  return textWidth(kNanum28Bold, s, -1);
+}
+
+static int countColor(const HostGfx& g, int x0, int y0, int x1, int y1, HColor c) {
+  int n = 0;
+  for (int y = y0; y < y1; y++)
+    for (int x = x0; x < x1; x++)
+      if (g.pixelAt((int16_t)x, (int16_t)y) == c) n++;
+  return n;
+}
+
+static void setSlot(TodaySlot& t, uint8_t sH, uint8_t eH, const char* subj, uint8_t type) {
+  t.sH = sH;
+  t.sM = 0;
+  t.eH = eH;
+  t.eM = 50;
+  strcpy(t.subj, subj);
+  t.type = type;
+}
+
+// layout 1 기본 모델: 오늘 3개, 현재 = 1번(13:00 캡스톤디자인), 2번은 시험.
+static RenderModel layout1Model() {
+  RenderModel m{};
+  m.layout = 1;
+  m.bld = 'E';
+  m.room = 301;
+  m.unit = 1;
+  m.weekday = 2;
+  strcpy(m.cur.subj, "캡스톤디자인");
+  strcpy(m.cur.prof, "김교수");
+  m.cur.sH = 13;
+  m.cur.eH = 14;
+  m.cur.eM = 50;
+  m.cur.type = 1;
+  m.cur.flags = 1;
+  m.nToday = 3;
+  setSlot(m.today[0], 9, 10, "자료구조", 1);
+  setSlot(m.today[1], 13, 14, "캡스톤디자인", 1);
+  setSlot(m.today[2], 15, 16, "웹프로그래밍", 2);
+  return m;
+}
+
+void test_skeleton_lines_and_footer() {
+  HostGfx g;
+  renderLayout(g, layout1Model());
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(400, 50));  // 헤더 하단선 y 50–51
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(400, 51));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(498, 300));  // 좌우 분할 x 498–499
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(499, 300));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(790, 470));                              // 푸터 흑 바탕
+  TEST_ASSERT_GREATER_THAN_INT(30, countColor(g, 24, 445, 200, 478, HColor::WHITE));  // 푸터 흰 글자
+}
+
+void test_header_room_and_weekday() {
+  HostGfx g;
+  renderLayout(g, layout1Model());
+  TEST_ASSERT_GREATER_THAN_INT(50, countColor(g, 24, 5, 120, 48, HColor::BLACK));   // "301 호"
+  TEST_ASSERT_GREATER_THAN_INT(20, countColor(g, 690, 5, 777, 48, HColor::BLACK));  // "화요일"
+}
+
+void test_red_band_with_white_text() {
+  HostGfx g;
+  renderLayout(g, layout1Model());
+  TEST_ASSERT_EQUAL(HColor::RED, g.pixelAt(10, 60));
+  TEST_ASSERT_EQUAL(HColor::RED, g.pixelAt(490, 210));
+  TEST_ASSERT_GREATER_THAN_INT(500, countColor(g, 0, 52, 498, 216, HColor::WHITE));  // 상태명 + 보조 문구
+  TEST_ASSERT_EQUAL_INT(0, countColor(g, 0, 52, 498, 216, HColor::BLACK));  // RED 띠에는 흑 글자·하단선 없음
+}
+
+void test_black_band_has_bottom_line() {
+  RenderModel m = layout1Model();
+  m.layout = 2;  // 쉬는시간 — BLACK
+  m.next.sH = 14;
+  m.next.flags = 1;
+  HostGfx g;
+  renderLayout(g, m);
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(10, 60));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(10, 214));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(10, 215));
+  TEST_ASSERT_EQUAL_INT(0, countColor(g, 0, 0, 800, 480, HColor::RED));
+}
+
+void test_info_form_a_dividers_and_values() {
+  HostGfx g;
+  renderLayout(g, layout1Model());
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(300, 291));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(300, 365));
+  TEST_ASSERT_GREATER_THAN_INT(40, countColor(g, 24, 240, 128, 290, HColor::BLACK));   // 라벨 "과목명"
+  TEST_ASSERT_GREATER_THAN_INT(80, countColor(g, 146, 235, 480, 290, HColor::BLACK));  // 값 "캡스톤디자인"
+}
+
+void test_today_current_row_inverted() {
+  HostGfx g;
+  renderLayout(g, layout1Model());
+  // 목록 행: y 100 + 36·r. 1행(13:00)이 현재 행.
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(795, 137));
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(795, 101));
+  TEST_ASSERT_GREATER_THAN_INT(30, countColor(g, 518, 136, 780, 172, HColor::WHITE));  // 반전 행 흰 글자
+}
+
+void test_today_type_chip_right_aligned() {
+  HostGfx g;
+  renderLayout(g, layout1Model());
+  // 2행(15:00, 시험) 오른쪽 끝(x 782 이전)에 칩 글자.
+  TEST_ASSERT_GREATER_THAN_INT(10, countColor(g, 740, 172, 782, 208, HColor::BLACK));
+}
+
+void test_today_empty_message() {
+  RenderModel m = layout1Model();
+  m.nToday = 0;
+  HostGfx g;
+  renderLayout(g, m);
+  TEST_ASSERT_GREATER_THAN_INT(30, countColor(g, 518, 100, 760, 136, HColor::BLACK));  // "오늘 일정 없음"
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(795, 137));                               // 반전 행 없음
+}
+
+void test_today_overflow_shows_more_rows() {
+  RenderModel m = layout1Model();
+  m.nToday = 12;
+  for (uint8_t i = 0; i < 12; i++) setSlot(m.today[i], (uint8_t)(8 + i), (uint8_t)(8 + i), "자료구조", 1);
+  m.cur.sH = 14;  // today[6] = 14:00
+  m.cur.eH = 14;
+  HostGfx g;
+  renderLayout(g, m);
+  // start = clamp(6-1, 0, 3) = 3 → 0행 "↑ 4개 더", 현재 항목 6 은 3행(y 208).
+  TEST_ASSERT_GREATER_THAN_INT(10, countColor(g, 518, 100, 640, 136, HColor::BLACK));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(795, 209));
+}
+
+static RenderModel layout4Model() {
+  RenderModel m = layout1Model();
+  m.layout = 4;  // 빈강의실 — 형태 B
+  m.cur = RenderSlot{};
+  strcpy(m.next.subj, "캡스톤디자인");
+  m.next.sH = 13;
+  m.next.flags = 1;
+  return m;
+}
+
+void test_form_b_has_no_dividers_and_big_time() {
+  HostGfx g;
+  renderLayout(g, layout4Model());
+  TEST_ASSERT_LESS_THAN_INT(
+      498, countColor(g, 0, 291, 498, 292, HColor::BLACK));  // 형태 B 는 행 구분선이 없다(⚠️ 열린 질문 3)
+  TEST_ASSERT_LESS_THAN_INT(498, countColor(g, 0, 365, 498, 366, HColor::BLACK));
+  TEST_ASSERT_GREATER_THAN_INT(300, countColor(g, 24, 310, 200, 372, HColor::BLACK));  // "13:00" 62/800
+}
+
+void test_form_b_without_next_says_no_schedule() {
+  RenderModel m = layout4Model();
+  m.next.flags = 0;
+  HostGfx g;
+  renderLayout(g, m);
+  TEST_ASSERT_LESS_THAN_INT(498,
+                            countColor(g, 0, 291, 498, 292, HColor::BLACK));  // 형태 A 로 그려지지 않았다
+  TEST_ASSERT_GREATER_THAN_INT(80,
+                               countColor(g, 24, 310, 400, 345, HColor::BLACK));  // "오늘 일정 없음" 28/700
+}
+
+void test_change_chip_after_subject() {
+  RenderModel m = layout1Model();
+  m.cur.flags = 0x03;  // 존재 + 변경 배지
+  HostGfx g;
+  renderLayout(g, m);
+  const int16_t x = (int16_t)(146 + textWidthForTest(m.cur.subj) + 10);
+  TEST_ASSERT_EQUAL(HColor::BLACK,
+                    g.pixelAt((int16_t)(x + 1), (int16_t)(263 - 18 + 1)));  // 칩 흑 바탕 모서리
+}
+
+void test_out_of_range_layout_is_blank() {
+  RenderModel m = layout1Model();
+  for (uint8_t layout : {0, 9, 255}) {
+    m.layout = layout;
+    HostGfx g;
+    renderLayout(g, m);
+    TEST_ASSERT_EQUAL_INT(800 * 480, countColor(g, 0, 0, 800, 480, HColor::WHITE));
+  }
+}
+
+static RenderModel layout8Model() {
+  RenderModel m{};
+  m.layout = 8;
+  strcpy(m.newTag, "NEW-1A7F");
+  return m;
+}
+
+void test_layout8_has_no_split_list_footer() {
+  HostGfx g;
+  renderLayout(g, layout8Model());
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(400, 50));   // 헤더 하단선은 있다
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(498, 100));  // 좌우 분할 없음
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(790, 470));  // 푸터 없음
+  TEST_ASSERT_EQUAL_INT(0, countColor(g, 0, 0, 800, 480, HColor::RED));
+  TEST_ASSERT_GREATER_THAN_INT(30, countColor(g, 24, 5, 200, 48, HColor::BLACK));  // "미설정 단말"
+}
+
+void test_layout8_title_and_new_tag_chip() {
+  HostGfx g;
+  renderLayout(g, layout8Model());
+  TEST_ASSERT_GREATER_THAN_INT(1000, countColor(g, 48, 150, 300, 240, HColor::BLACK));  // "설정 대기" 62/800
+  TEST_ASSERT_GREATER_THAN_INT(3000, countColor(g, 48, 260, 400, 380, HColor::BLACK));  // NEW 칩 흑 바탕
+  TEST_ASSERT_GREATER_THAN_INT(500, countColor(g, 48, 260, 400, 380, HColor::WHITE));   // 칩 안 흰 글자
+}
+
+void test_layout8_empty_tag_omits_chip() {
+  RenderModel m = layout8Model();
+  m.newTag[0] = '\0';
+  HostGfx g;
+  renderLayout(g, m);
+  // 태그가 없으면 제목·부제 두 덩어리만 세로 중앙(y 221~310)에 온다.
+  TEST_ASSERT_GREATER_THAN_INT(1000, countColor(g, 48, 200, 300, 290, HColor::BLACK));  // 제목은 그린다
+  TEST_ASSERT_EQUAL_INT(0,
+                        countColor(g, 48, 320, 800, 480, HColor::BLACK));  // 칩·안내 2줄 없음(⚠️ 열린 질문 7)
+}
+
+int main() {
+  UNITY_BEGIN();
+  RUN_TEST(test_skeleton_lines_and_footer);
+  RUN_TEST(test_header_room_and_weekday);
+  RUN_TEST(test_red_band_with_white_text);
+  RUN_TEST(test_black_band_has_bottom_line);
+  RUN_TEST(test_info_form_a_dividers_and_values);
+  RUN_TEST(test_today_current_row_inverted);
+  RUN_TEST(test_today_type_chip_right_aligned);
+  RUN_TEST(test_today_empty_message);
+  RUN_TEST(test_today_overflow_shows_more_rows);
+  RUN_TEST(test_form_b_has_no_dividers_and_big_time);
+  RUN_TEST(test_form_b_without_next_says_no_schedule);
+  RUN_TEST(test_change_chip_after_subject);
+  RUN_TEST(test_layout8_has_no_split_list_footer);
+  RUN_TEST(test_layout8_title_and_new_tag_chip);
+  RUN_TEST(test_layout8_empty_tag_omits_chip);
+  RUN_TEST(test_out_of_range_layout_is_blank);
+  return UNITY_END();
+}

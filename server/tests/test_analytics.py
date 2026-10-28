@@ -101,20 +101,17 @@ def test_day_segments_and_allocation(app, school, monkeypatch):
     _fix_clock(monkeypatch)
     bid, ids = _building(app, 1, "E", rooms=((101, 1), (102, 1)))
     rid = ids[101]
-    _slot(app, rid, 3, 9, 0, 10, 50)  # 수 110 분 수업(1·2)
+    _slot(app, rid, 3, 9, 0, 10, 50)  # 수 110 분 수업 — 한 슬롯 안은 계속 수업(:50 폐기, #74)
     _slot(app, rid, 3, 11, 0, 12, 0, type_=3)  # 휴강 60 분 → unused
     _resv(app, rid, dt.date(2026, 9, 23), 13, 0, 14, 0, id_=1)  # 60 분 대여
     _slot(app, rid, 3, 20, 0, 22, 0)  # 운영 시간 밖 21~22 는 잘림 → 60 분
     with app.state.Session() as s:
         segs = A.day_segments(s, rid, dt.date(2026, 9, 23))
         assert segs == [
-            (540, 590, 1),
-            (590, 600, 2),
-            (600, 650, 1),
-            (660, 720, 3),
+            (540, 650, 1),
+            (660, 720, 3),  # 10:50–11:00 틈은 휴강 앞이라 쉬는시간이 아니다(수업 슬롯 사이만)
             (780, 840, 7),
-            (1200, 1250, 1),
-            (1250, 1260, 2),
+            (1200, 1260, 1),
         ]
         rows = A.allocation(s, 1, dt.date(2026, 9, 23), dt.date(2026, 9, 23), None, "room")
         r101 = next(r for r in rows if r["key"] == rid)

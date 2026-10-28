@@ -148,9 +148,15 @@ def check_versions() -> None:
 
 
 def render_ink(font: ImageFont.FreeTypeFont, ch: str, px: int) -> Image.Image:
-    """펜 원점 (2px, 2px) 에 베이스라인을 두고 그린 뒤 임계값을 적용한 1비트 이미지."""
+    """펜 원점 (2px, 2px) 에 베이스라인을 두고 그린 뒤 임계값을 적용한 1비트 이미지.
+
+    흑백 힌트(FT_LOAD_TARGET_MONO) 렌더 — 이유: 안티에일리어싱+임계값에서는 가로 힌트가 없어
+    세로 획 굵기가 섞이고, 16px 화살표(↑↓)는 가는 몸통이 회색이라 소실된다.
+    """
     img = Image.new("L", (px * 5, px * 4), 0)
-    ImageDraw.Draw(img).text((px * 2, px * 2), ch, font=font, fill=255, anchor="ls")
+    draw = ImageDraw.Draw(img)
+    draw.fontmode = "1"
+    draw.text((px * 2, px * 2), ch, font=font, fill=255, anchor="ls")
     return img.point(lambda v: 255 if v >= INK_THRESHOLD else 0)
 
 
@@ -284,6 +290,7 @@ def main() -> int:
                 "fallback_codepoints": r["fallback_codepoints"],
             }
         meta |= {
+            "raster": "pillow-mono-hinted",
             "ink_threshold": INK_THRESHOLD,
             "cell_w": r["cell_w"],
             "cell_h": r["cell_h"],

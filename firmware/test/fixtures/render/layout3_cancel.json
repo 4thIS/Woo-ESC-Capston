@@ -1,0 +1,13 @@
+{
+  "name": "layout3_cancel",
+  "layout": 3, "bld": "E", "room": 301, "unit": 1,
+  "date_str": "09.30", "weekday": 3,
+  "cur":  {"subj": "데이터베이스", "prof": "최교수", "s_h": 10, "s_m": 0, "e_h": 11, "e_m": 50, "type": 3, "flags": 1},
+  "next": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "n_today": 1,
+  "today": [
+    {"s_h": 10, "s_m": 0, "e_h": 11, "e_m": 50, "subj": "데이터베이스", "type": 3}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}

@@ -2,6 +2,7 @@ import datetime as dt
 import json
 import pathlib
 
+import lora_proto
 import pytest
 
 from app.domain import room_state as RS
@@ -18,8 +19,10 @@ SLOTS = [
 ]
 
 
+# 판정 벡터는 lora_proto 가 원본 — 서버 room_state 와 노드 determineLayout·nextChangeAt 이 같은 파일로 대조한다
+# (v2 §5.3·§5.4, #74). 서버는 소비자라 여기서 고치지 않는다
 VECTORS = json.loads(
-    (pathlib.Path(__file__).parent / "fixtures" / "room_state_vectors.json").read_text(
+    (pathlib.Path(lora_proto.__file__).resolve().parents[1] / "room_state_vectors.json").read_text(
         encoding="utf-8"
     )
 )
@@ -119,10 +122,11 @@ def test_room_state_exam_only_during_slots_and_resv_beats_exam():
     assert RS.room_state(SLOTS, [], True, M(12, 30)) == (4, M(13))  # 시험기간이라도 슬롯 밖은 빈
     assert RS.room_state(SLOTS, [Span(M(12), M(13), 6, "r")], True, M(12, 30)) == (7, M(13))
     assert RS.room_state([], [], False, M(10)) == (4, None)
+    # 한 슬롯 안은 계속 수업 — ':50 → 쉬는시간' 은 폐기(#74). 끝(10:50)에 예약이 이어진다
     assert RS.room_state(SLOTS, [Span(M(10, 50), M(11, 30), 6, "r")], False, M(9, 55)) == (
-        2,
-        M(10),
-    )  # 쉬는시간 → 정각 수업
+        1,
+        M(10, 50),
+    )
 
 
 def test_midnight_never_returned_as_until():
