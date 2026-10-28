@@ -67,7 +67,25 @@ describe('readFragmentToken', () => {
   })
 })
 
+/** 가입 화면의 약관 안내 — 버튼 아래 한 줄, 두 문서는 새 탭(입력값·메일 링크 토큰이 남게) */
+function expectConsent(w: ReturnType<typeof mount>, lead: string) {
+  const c = w.get('.consent')
+  expect(c.text()).toBe(`${lead} 이용약관과 개인정보 처리방침에 동의하는 것으로 봅니다.`)
+  expect(
+    c.findAll('a').map((a) => [a.text(), a.attributes('href'), a.attributes('target')]),
+  ).toEqual([
+    ['이용약관', '/policies/terms', '_blank'],
+    ['개인정보 처리방침', '/policies/privacy', '_blank'],
+  ])
+  for (const a of c.findAll('a')) expect(a.attributes('rel')).toContain('noopener')
+}
+
 describe('SignupView', () => {
+  it('인증 메일 받기 아래에 약관 안내 — "계속하면" (아직 계정이 생기기 전)', async () => {
+    const { w } = await mountView(SignupView)
+    expectConsent(w, '계속하면')
+  })
+
   it('400 → 입력 칸 에러, 단계 안내는 그대로', async () => {
     api.signup.mockRejectedValue(err(400))
     const { w } = await mountView(SignupView)
@@ -112,6 +130,8 @@ describe('VerifyView', () => {
     expect(api.verifyOpen).toHaveBeenCalledWith('tok1')
     expect(w.text()).toContain('s1@mjc.ac.kr')
     expect(w.findAll('input')).toHaveLength(3) // 이름·학번·비밀번호 — 이메일은 입력이 아니다
+    // 계정이 생기는 곳 — 가입 신청 버튼 아래 동의 안내 (약관 제4조)
+    expectConsent(w, '가입 신청을 누르면')
   })
 
   it('409 → 학번 칸만 에러, 나머지 입력은 유지', async () => {
