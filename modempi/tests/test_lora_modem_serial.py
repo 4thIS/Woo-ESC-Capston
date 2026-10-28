@@ -161,3 +161,30 @@ async def test_close_before_read_ends_read_with_connection_error(port):
     await t.close()
     with pytest.raises(ConnectionError):
         await asyncio.wait_for(t.read_line(), 0.5)
+
+
+class _FakeSerial:
+    """pyserial Serial 의 dtr/rts 속성만 흉내 — 설정 순서를 기록한다."""
+
+    def __init__(self):
+        self.log = []
+
+    def __setattr__(self, k, v):
+        if k in ("dtr", "rts"):
+            self.log.append((k, v))
+        object.__setattr__(self, k, v)
+
+
+def test_reset_pulse_reboots_board_so_it_sends_ready_again():
+    """Heltec V3(CP2102 자동 리셋 회로): 포트를 열기만 하면 보드가 다시 켜지지 않아 `ready` 가 안 온다
+    (2026-10-28 실기 — 서비스 재시작 뒤 60 s 대기). 열 때 EN 을 한 번 눌러 주면 부팅하며 `ready` 를 보낸다."""
+    from modempi.lora.modem import reset_pulse
+
+    ser, waits = _FakeSerial(), []
+    reset_pulse(ser, sleep=waits.append)
+    assert ser.log == [
+        ("dtr", False),
+        ("rts", True),
+        ("rts", False),
+    ]  # IO0 은 HIGH 그대로(부트로더 진입 X)
+    assert waits and waits[0] >= 0.05
