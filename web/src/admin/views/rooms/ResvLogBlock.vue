@@ -118,8 +118,11 @@ const asV = (row: Record<string, unknown>) => row as unknown as ResvWithRoom
 }
 .blk__result {
   /* 거절 사유는 200자까지 — 한 줄로 자르고 전체는 title (admin-rooms.md) */
+  /* 칸 폭(열 정의 180px)을 문장이 늘리지 않게 — 폭 0 이면 표 너비 계산에서 빠지고 그려질 때 칸을 채운다.
+     max-width: 100% 는 자동 너비 표에서 칸을 묶지 못해 문장 길이(≈490px)만큼 칸이 늘어 날짜·사용 목적을 눌렀다 */
   display: block;
-  max-width: 100%;
+  width: 0;
+  min-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

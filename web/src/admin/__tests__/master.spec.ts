@@ -194,11 +194,12 @@ describe('건물 패널', () => {
     expect(rooms.patchBuilding).toHaveBeenCalledWith(1, { name: '공학1관' })
   })
 
-  it('삭제 — 강의실이 있으면 잠기고 이유는 툴팁, 없으면 확인 뒤 지운다', async () => {
+  it('삭제 — 강의실이 있으면 잠기고 이유를 옆에 적는다(admin-master.md), 없으면 확인 뒤 지운다', async () => {
     await mountView()
     const locked = btn(row('공학관'), '삭제')
     expect((locked.element as HTMLButtonElement).disabled).toBe(true)
-    expect(locked.element.parentElement!.getAttribute('title')).toBe('강의실을 먼저 지우세요 (2곳)')
+    expect(row('공학관').get('.panel__why').text()).toBe('강의실을 먼저 지우세요 (2곳)')
+    expect(row('사회관').find('.panel__why').exists()).toBe(false)
     await btn(row('사회관'), '삭제').trigger('click')
     const c = dialog('건물 삭제')!
     expect(c.text()).toContain('사회관(S) 건물을 지웁니다.')

@@ -229,7 +229,7 @@ const asUser = (row: Record<string, unknown>) => row as unknown as UserOut
       @close="rejecting = null"
     >
       <p class="users__modal-text">
-        {{ rejecting?.name }} ({{ rejecting?.email }}) 의 신청을 거절합니다. 사유는 학생에게 메일로
+        {{ rejecting?.name }} ({{ rejecting?.email }})의 신청을 거절합니다. 사유는 학생에게 메일로
         그대로 갑니다.
       </p>
       <Textarea

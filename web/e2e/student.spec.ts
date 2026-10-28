@@ -23,6 +23,8 @@ import cfg from './env.json' with { type: 'json' }
 
 // e2e 는 node 타입 — page.evaluate 콜백은 브라우저에서 돈다
 declare const localStorage: { getItem(k: string): string | null }
+declare const document: { documentElement: { scrollWidth: number } }
+declare const window: { innerWidth: number }
 
 // 한 파일 = 한 컨텍스트 · 학생 UI 로그인 한 번 — 서버의 IP 당 분당 로그인 30회 상한 (F1 plan Task 13 메모).
 // 로그인 뒤 이동은 링크 클릭으로 (page.goto 는 새로고침 — 화면 상태를 새로 시작한다)
@@ -76,8 +78,36 @@ test.afterAll(async () => {
   await ctx.close()
 })
 
+test('메인 페이지 — 로그인 전 / 는 벽 대신 소개, 세 폭 모두 가로로 넘치지 않는다 (landing.md)', async () => {
+  for (const size of [SIZES.student, { width: 768, height: 1024 }, { width: 1280, height: 900 }]) {
+    await page.setViewportSize(size)
+    await page.goto('/')
+    await expect(
+      page.getByRole('heading', { level: 1, name: /빈 강의실,\s*폰으로 바로 확인하세요\./ }),
+    ).toBeVisible()
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true)
+    await shot(page, `student-landing-${size.width}`)
+  }
+  // 넓은 화면 — 헤더 양끝이 본문(최대 1120px 가운데) 양끝에 맞는다
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const left = async (sel: string) => (await page.locator(sel).boundingBox())!.x
+  expect(await left('.lh__brand')).toBe(await left('.hero__eyebrow'))
+  await page.setViewportSize(SIZES.student)
+  const hero = page.locator('.hero')
+  await expect(hero.getByRole('link', { name: '로그인' })).toHaveAttribute('href', '/login')
+  await expect(hero.getByRole('link', { name: '가입 신청' })).toHaveAttribute('href', '/signup')
+  await expect(page.getByRole('link', { name: '관리자 로그인' })).toHaveAttribute(
+    'href',
+    '/admin/login',
+  )
+  await hero.getByRole('link', { name: '로그인' }).click()
+  await expect(page).toHaveURL(/\/login$/)
+})
+
 test('로그인 벽 — 빈 폼 대신 무엇을 볼 수 있는지, 로그인은 돌아올 주소를 안다', async () => {
-  await page.goto('/')
+  await page.goto('/me')
   await expect(
     page.getByRole('heading', {
       level: 1,
@@ -85,7 +115,7 @@ test('로그인 벽 — 빈 폼 대신 무엇을 볼 수 있는지, 로그인은
     }),
   ).toBeVisible()
   const login = page.getByRole('link', { name: '로그인' })
-  await expect(login).toHaveAttribute('href', '/login?next=/')
+  await expect(login).toHaveAttribute('href', '/login?next=/me')
   expect((await login.boundingBox())!.height).toBeGreaterThanOrEqual(48)
   await expect(page.getByRole('link', { name: '가입 신청' })).toHaveAttribute('href', '/signup')
   await shot(page, 'student-gate-390')
@@ -199,6 +229,15 @@ test('넓은 폭 — /week 는 강의실로, 목록 340px 상주, 격자는 같�
   await expect(page.getByRole('heading', { name: '다음 비는 시간' })).toBeVisible()
   await expect(page.getByRole('listitem', { name: /캡스톤디자인 외 1건/ })).toBeVisible()
   await shot(page, 'student-wide-1280')
+  // 태블릿(768) — 오른쪽 칸이 좁아도 월~금이 숨은 가로 스크롤 뒤로 가지 않는다
+  await page.setViewportSize({ width: 768, height: 1024 })
+  const grid = page.locator('.wg').first()
+  await expect(grid).toBeVisible()
+  expect(
+    await grid.evaluate(
+      (e: { scrollWidth: number; clientWidth: number }) => e.scrollWidth <= e.clientWidth,
+    ),
+  ).toBe(true)
   await page.setViewportSize(SIZES.student)
   await expect(list).toBeHidden()
 })

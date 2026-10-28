@@ -1,18 +1,32 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 
-defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
+// home — 로그인 화면만: 폼 위 이름이 `‹ ESC`, ‹ 는 메인 페이지 / 로 (auth.md 「탭」)
+// titleHidden — 로그인 화면만: 탭·제출 버튼이 이미 '로그인'이라 제목은 스크린리더용으로만 (auth.md, #95)
+defineProps<{
+  title: string
+  surface: 'student' | 'admin'
+  back?: string
+  home?: boolean
+  titleHidden?: boolean
+}>()
 </script>
 
 <template>
-  <!-- 로그인 전에는 사이드바를 그리지 않는다 — 빈 바탕에 폼 하나 (auth.md) -->
-  <div class="auth" :class="`auth--${surface}`">
+  <!-- 로그인 전에는 사이드바를 그리지 않는다 (auth.md). data-surface — 관리자 앱에서 열린 관리자 로그인도
+       학생 로그인과 탭으로 오가는 한 화면이라 student 치수 (#87 「관리자 로그인」) -->
+  <div
+    class="auth"
+    :class="`auth--${surface}`"
+    :data-surface="surface === 'student' ? 'student' : undefined"
+  >
     <slot name="banner" />
     <div class="auth__body">
       <!-- 학생 PC(≥640) 는 좌우 분할 — 왼쪽 소개, 오른쪽 폼. 폰에서는 숨긴다 -->
       <aside v-if="surface === 'student'" class="auth__intro">
         <!-- 로그인 전에는 학교를 모른다(웹메일 도메인으로 정해진다) — 학교 이름 없이 서비스 이름만 -->
-        <p class="auth__intro-brand">ESC</p>
+        <!-- 메인 페이지 / 로 — 관리자 앱에서도 페이지를 새로 연다(라우터 이동 아님) -->
+        <p class="auth__intro-brand"><a href="/">ESC</a></p>
         <p class="auth__intro-lead">학교의 빈 강의실을 확인하고 예약하세요.</p>
         <ul class="auth__intro-list">
           <li>지금 빈 강의실</li>
@@ -22,8 +36,11 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
       </aside>
       <div class="auth__pane">
         <main class="auth__card">
-          <p class="auth__brand">ESC</p>
-          <h1 class="auth__title">
+          <p class="auth__brand">
+            <a v-if="home" href="/" class="auth__home" aria-label="메인 페이지">‹</a>ESC
+          </p>
+          <slot name="tabs" />
+          <h1 class="auth__title" :class="{ 'auth__title--sr': titleHidden }">
             <RouterLink v-if="back" :to="back" class="auth__back" aria-label="뒤로">‹</RouterLink
             >{{ title }}
           </h1>
@@ -40,6 +57,8 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
 .auth {
   display: flow-root;
   min-height: 100vh;
+  /* html 의 글자 크기는 그 앱의 치수로 이미 계산돼 상속된다 — 관리자 앱에서도 student 값으로 다시 잡는다 */
+  font-size: var(--font-size-md);
 }
 .auth__card {
   display: flex;
@@ -91,6 +110,13 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-bold);
 }
+.auth__intro-brand a {
+  color: inherit;
+  text-decoration: none;
+}
+.auth__intro-brand a:hover {
+  text-decoration: underline;
+}
 .auth__intro-lead {
   margin: 0;
   max-width: 20em;
@@ -110,6 +136,8 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
   margin-top: 15vh;
 }
 .auth__brand {
+  display: flex;
+  align-items: center;
   margin: 0;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-bold);
@@ -124,6 +152,29 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
   font-weight: var(--font-weight-bold);
   line-height: var(--leading-tight);
 }
+/* ‹ — 터치 타깃 48px, 글자는 이름 줄과 같은 선 (.auth__back 과 같은 몫) */
+.auth__home {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--control-height-md);
+  min-height: var(--control-height-md);
+  margin: calc(-1 * var(--space-3)) 0 calc(-1 * var(--space-3)) calc(-1 * var(--space-3));
+  font-size: var(--font-size-xl);
+  color: var(--text-1);
+  text-decoration: none;
+}
+/* 시각적으로만 숨김 — 읽기 순서·제목 이동은 그대로 */
+.auth__title--sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 .auth__back {
   display: inline-grid;
   place-items: center;
@@ -136,6 +187,10 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string }>()
 .auth__footer {
   display: flex;
   flex-wrap: wrap;
+  /* 링크는 터치 타깃 48px 안에서 세로 가운데 — 가운뎃점도 같은 선에 (안 하면 48px 칸 맨 위에 붙는다) */
+  align-items: center;
+  /* 비어도 자리는 그대로(로그인 관리자 탭) — 탭을 바꿀 때 세로 가운데 놓인 폼이 움직이지 않게 */
+  min-height: var(--control-height-md);
   gap: var(--space-2);
   justify-content: center;
   font-size: var(--font-size-sm);

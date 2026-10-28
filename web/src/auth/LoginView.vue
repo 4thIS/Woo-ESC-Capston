@@ -5,9 +5,11 @@ import AuthShell from './AuthShell.vue'
 import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
+import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import { authApi } from '@/api/auth'
 import { ApiError } from '@/api/client'
-import { authNotice, setSession } from '@/lib/session'
+import type { Role } from '@/api/types'
+import { authNotice, handOffSession, setSession } from '@/lib/session'
 import { useCooldown } from '@/lib/useCooldown'
 import { safeNext } from './next'
 
@@ -25,11 +27,22 @@ const notice = ref(authNotice.value) // 401·403 으로 쫓겨 온 이유 — �
 authNotice.value = null
 const { active: locked, start: lock } = useCooldown()
 
-// 비밀번호가 맞았을 때만 보이는 문구라 계정 존재를 새지 않는다 (auth.md 「역할 확인」)
+// 비밀번호가 맞았을 때만 보이는 문구라 계정 존재를 새지 않는다. 고칠 곳(탭)이 바로 위라 탭을 가리킨다 (auth.md 「역할 확인」)
 const ROLE_MISMATCH = {
-  admin: '관리자 계정이 아닙니다. 학생은 학생 웹에서 로그인하세요.',
-  student: '관리자 계정입니다. 관리자 웹에서 로그인하세요.',
+  admin: "학생 계정입니다. 위의 '학생'을 골라 로그인하세요.",
+  student: "관리자 계정입니다. 위의 '관리자'를 골라 로그인하세요.",
 } as const
+// 학생|관리자 탭은 같은 화면에서 바뀐다 — 누를 때마다 주소·페이지를 바꾸지 않는다(2026-10-28 wj 결정, auth.md 갱신 요청).
+// 처음엔 이 앱의 역할. 다른 역할로 로그인하면 그 앱의 세션 칸에 넣고 그 앱으로 넘어간다
+const TABS = [
+  { value: 'student', label: '학생' },
+  { value: 'admin', label: '관리자' },
+]
+const role = ref<Role>(props.app)
+function pickRole(r: string) {
+  role.value = r as Role
+  error.value = '' // 앞 탭의 '…계정입니다' 가 남으면 고른 탭과 어긋난다
+}
 
 async function submit() {
   if (submitting.value || locked.value) return
@@ -40,8 +53,14 @@ async function submit() {
   submitting.value = true
   try {
     const out = await authApi.login(email.value.trim(), password.value)
+    if (out.role !== role.value) {
+      error.value = ROLE_MISMATCH[role.value] // 토큰은 저장하지 않고 버린다
+      return
+    }
     if (out.role !== props.app) {
-      error.value = ROLE_MISMATCH[props.app] // 토큰은 저장하지 않고 버린다
+      // 다른 앱(같은 주소의 /admin 또는 /)이 할 일 — ?next= 는 이 앱 주소라 옮기지 않는다
+      handOffSession(out)
+      window.location.assign(out.role === 'admin' ? '/admin/' : '/')
       return
     }
     setSession(out)
@@ -62,7 +81,11 @@ async function submit() {
 </script>
 
 <template>
-  <AuthShell :title="app === 'admin' ? '관리자 로그인' : '로그인'" :surface="app">
+  <!-- 관리자 로그인도 같은 틀·같은 제목·student 치수 — 탭만 바뀐 한 화면처럼 (auth.md 「관리자 로그인」) -->
+  <AuthShell title="로그인" surface="student" home title-hidden>
+    <template #tabs>
+      <SegmentedControl :items="TABS" :value="role" label="로그인 역할" @update:value="pickRole" />
+    </template>
     <template #banner>
       <Banner v-if="notice === 'expired'" message="다시 로그인해 주세요." :dismissible="false" />
       <Banner
@@ -86,7 +109,7 @@ async function submit() {
     <form class="auth-form" novalidate @submit.prevent="submit">
       <Input
         v-model="email"
-        :label="app === 'admin' ? '이메일' : '학교 웹메일'"
+        :label="role === 'admin' ? '이메일' : '학교 웹메일'"
         type="email"
         autocomplete="username"
         :error="emailError"
@@ -102,14 +125,17 @@ async function submit() {
       <p v-if="error" class="auth-form__error" role="alert">{{ error }}</p>
       <Button type="submit" :loading="submitting" :disabled="locked">로그인</Button>
     </form>
+    <!-- 관리자 탭은 하단 링크가 없다 — 가입은 CLI 뿐이고 비밀번호 찾기도 두지 않는다(2026-10-28 wj 결정, auth.md 갱신 요청).
+         줄 자체는 남긴다(빈 48px) — 넓은 폭은 폼을 세로 가운데에 둬서 줄이 사라지면 탭을 바꿀 때 폼이 움직인다.
+         관리자 앱에는 /signup·/forgot 이 없어 학생 앱 주소로 페이지를 연다 -->
     <template #footer>
-      <template v-if="app === 'student'">
-        <RouterLink to="/signup">가입 신청</RouterLink>
+      <template v-if="role === 'student'">
+        <a v-if="app === 'admin'" href="/signup">가입 신청</a>
+        <RouterLink v-else to="/signup">가입 신청</RouterLink>
         <span aria-hidden="true">·</span>
-        <RouterLink to="/forgot">비밀번호를 잊었어요</RouterLink>
+        <a v-if="app === 'admin'" href="/forgot">비밀번호를 잊었어요</a>
+        <RouterLink v-else to="/forgot">비밀번호를 잊었어요</RouterLink>
       </template>
-      <!-- 관리자 재설정도 학생 앱 /forgot·/reset (#46 auth.md). ponytail: 같은 오리진 전제 — 배포에서 도메인을 나누면(#44 뒤) STUDENT_WEB_URL 로 -->
-      <a v-else href="/forgot">비밀번호를 잊었어요</a>
     </template>
   </AuthShell>
 </template>

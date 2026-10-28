@@ -10,8 +10,8 @@ import {
 } from './helpers'
 
 // e2e 는 node 타입(tsconfig.node.json) — page.evaluate 콜백은 브라우저에서 도는데 DOM lib 이 없다
-declare const document: { documentElement: { scrollHeight: number } }
-declare const window: { innerHeight: number }
+declare const document: { documentElement: { scrollHeight: number; scrollWidth: number } }
+declare const window: { innerHeight: number; innerWidth: number }
 
 // 카드의 윗여백이 바탕(.auth, min-height 100vh) 밖으로 새면 폼 하나짜리 화면이 스크롤된다.
 // 창 크기를 바꾼 직후 한 프레임은 이전 높이가 남는다 — 제자리를 잡을 때까지 다시 잰다
@@ -42,6 +42,15 @@ test('학생 로그인 화면 390', async ({ page }) => {
     const link = await page.getByRole('link', { name }).boundingBox()
     expect(link!.height, name).toBeGreaterThanOrEqual(48)
   }
+  // 두 링크 사이 가운뎃점은 링크 글자와 같은 선 — 48px 칸 맨 위에 뜨지 않는다
+  const mid = async (l: ReturnType<typeof page.locator>) => {
+    const b = (await l.boundingBox())!
+    return b.y + b.height / 2
+  }
+  const footer = page.locator('.auth__footer')
+  expect(
+    Math.abs((await mid(footer.locator('span'))) - (await mid(footer.locator('a').first()))),
+  ).toBeLessThan(2)
   await shot(page, 'student-login-390')
   // 넓은 화면(≥640)에서는 카드에 윗여백 — 그래도 스크롤이 생기지 않는다
   await page.setViewportSize({ width: 1280, height: 800 })
@@ -52,14 +61,52 @@ test('역할이 다른 앱에 로그인하면 토큰을 버리고 안내한다',
   const s = await createStudent(request, { approve: true })
   await page.goto('/admin/login')
   await fillLogin(page, s.email)
-  await expect(
-    page.getByText('관리자 계정이 아닙니다. 학생은 학생 웹에서 로그인하세요.'),
-  ).toBeVisible()
+  // 문구가 바로 위의 탭을 가리킨다 (auth.md 「역할 확인」)
+  await expect(page.getByText("학생 계정입니다. 위의 '학생'을 골라 로그인하세요.")).toBeVisible()
   await expect(page).toHaveURL(/\/admin\/login/)
 
   await page.goto('/login')
   await fillLogin(page, nextAdmin())
-  await expect(page.getByText('관리자 계정입니다. 관리자 웹에서 로그인하세요.')).toBeVisible()
+  await expect(
+    page.getByText("관리자 계정입니다. 위의 '관리자'를 골라 로그인하세요."),
+  ).toBeVisible()
+})
+
+test('학생|관리자 탭 — 같은 화면에서 바뀌고(주소 그대로) 탭·폼이 1px 도 움직이지 않는다, 관리자 탭으로 로그인하면 관리자 화면', async ({
+  page,
+}) => {
+  const tabs = page.getByRole('radiogroup', { name: '로그인 역할' })
+  const place = () => Promise.all([tabs, page.locator('form')].map((l) => l.boundingBox()))
+  for (const size of [SIZES.student, { width: 1280, height: 800 }]) {
+    await page.setViewportSize(size)
+    await page.goto('/login')
+    await expect(tabs.getByRole('radio', { name: '학생' })).toBeChecked()
+    // 화면 전환(확대) 움직임이 끝난 뒤에 잰다
+    await expect.poll(async () => (await tabs.boundingBox())!.height).toBe(48)
+    const before = await place()
+    await tabs.getByRole('radio', { name: '관리자' }).check()
+    await expect(page).toHaveURL(/\/login$/) // 새 주소·새 페이지로 가지 않는다
+    await expect(page.getByLabel(/^이메일/)).toBeVisible()
+    expect(await place()).toEqual(before) // 하단 줄이 비어도 자리는 남아 폼이 움직이지 않는다
+    await expect(page.getByRole('link', { name: '가입 신청' })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '비밀번호를 잊었어요' })).toHaveCount(0)
+    await shot(page, `login-admin-tab-${size.width}`)
+    const home = size.width < 640 ? '메인 페이지' : 'ESC'
+    await expect(page.getByRole('link', { name: home })).toHaveAttribute('href', '/')
+  }
+  // 관리자 앱의 로그인(폰)도 가로로 넘치지 않는다
+  await page.setViewportSize(SIZES.student)
+  await page.goto('/admin/login')
+  await expect(tabs.getByRole('radio', { name: '관리자' })).toBeChecked()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  // 학생 앱에서 관리자 탭으로 로그인하면 관리자 앱으로 넘어가 그대로 로그인돼 있다
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/login')
+  await tabs.getByRole('radio', { name: '관리자' }).check()
+  await fillLogin(page, nextAdmin())
+  await expect(page).toHaveURL(/\/admin\/dashboard$/)
 })
 
 test('429 뒤 10초 잠금이 풀린다 (Review Focus 5)', async ({ page }) => {

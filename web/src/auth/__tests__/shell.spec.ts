@@ -35,7 +35,43 @@ describe('AuthShell — 학생 PC 는 좌우 분할(소개 패널 + 폼)', () =>
     expect(w.text()).not.toContain('MJC')
   })
 
-  it('관리자 로그인은 지금처럼 카드 하나 — 소개 패널 없음', () => {
-    expect(mountShell('admin').find('aside.auth__intro').exists()).toBe(false)
+  it('넓은 폭 왼쪽의 ESC 는 메인 페이지 / 로 가는 링크 — 관리자 앱에서도 페이지를 새로 연다 (auth.md, #87)', () => {
+    const a = mountShell('student').get('.auth__intro-brand a')
+    expect(a.attributes('href')).toBe('/')
+    expect(a.text()).toBe('ESC')
+  })
+
+  it('home 이면 폼 위 이름이 ‹ ESC — ‹ 는 / 로. 아니면 ‹ 없이 ESC (로그인 화면만)', () => {
+    const home = mount(AuthShell, {
+      props: { title: '로그인', surface: 'student', home: true },
+      global: { plugins: [router] },
+    })
+    expect(home.get('a.auth__home').attributes('href')).toBe('/')
+    expect(home.get('.auth__brand').text()).toContain('ESC')
+    expect(mountShell('student').find('a.auth__home').exists()).toBe(false)
+  })
+
+  it('titleHidden 이면 h1 은 남기고 화면에서만 숨긴다 — 다른 화면은 그대로 보인다', () => {
+    const hidden = mount(AuthShell, {
+      props: { title: '로그인', surface: 'student', titleHidden: true },
+      global: { plugins: [router] },
+    })
+    expect(hidden.get('h1').text()).toBe('로그인')
+    expect(hidden.get('h1').classes()).toContain('auth__title--sr')
+    expect(mountShell('student').get('h1').classes()).not.toContain('auth__title--sr')
+  })
+
+  it('tabs 슬롯은 제목 위 — 탭 줄 다음에 h1', () => {
+    const w = mount(AuthShell, {
+      props: { title: '로그인', surface: 'student' },
+      slots: { tabs: '<nav class="t"></nav>' },
+      global: { plugins: [router] },
+    })
+    const html = w.get('.auth__card').html()
+    expect(html.indexOf('class="t"')).toBeLessThan(html.indexOf('<h1'))
+  })
+
+  it('학생 치수(data-surface) — 관리자 앱(admin 치수)에서 열려도 같은 크기', () => {
+    expect(mountShell('student').get('.auth').attributes('data-surface')).toBe('student')
   })
 })
