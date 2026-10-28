@@ -34,7 +34,7 @@ async function mountLogin(app: 'admin' | 'student', path = '/login') {
   return { w, router }
 }
 async function submit(w: ReturnType<typeof mount>, email = 'a@mjc.ac.kr', pw = 'password1') {
-  const [e, p] = w.findAll('input')
+  const [e, p] = w.findAll('form input') // 탭(라디오)이 아니라 폼의 입력칸
   await e.setValue(email)
   await p.setValue(pw)
   await w.get('form').trigger('submit')
@@ -152,7 +152,7 @@ describe('LoginView', () => {
     let finish!: (v: ReturnType<typeof out>) => void
     login.mockReturnValue(new Promise((r) => (finish = r)))
     const { w } = await mountLogin('student')
-    const [e, p] = w.findAll('input')
+    const [e, p] = w.findAll('form input') // 탭(라디오)이 아니라 폼의 입력칸
     await e.setValue('a@mjc.ac.kr')
     await p.setValue('password1')
     await w.get('form').trigger('submit')
@@ -162,29 +162,55 @@ describe('LoginView', () => {
     await flushPromises()
   })
 
-  it('관리자 앱에는 하단 링크가 없다 — 가입은 CLI 뿐, 비밀번호 찾기도 두지 않는다(2026-10-28 결정)', async () => {
+  it('관리자 탭에는 하단 링크가 없다 — 가입은 CLI 뿐, 비밀번호 찾기도 두지 않는다(2026-10-28 결정). 자리는 남긴다', async () => {
     const { w } = await mountLogin('admin')
     expect(w.text()).not.toContain('가입 신청')
     expect(w.text()).not.toContain('비밀번호를 잊었어요')
-    expect(w.find('.auth__footer').exists()).toBe(false)
+    // 넓은 폭은 폼을 세로 가운데에 둔다 — 하단 줄이 없어지면 탭을 바꿀 때 폼이 위아래로 움직인다
+    expect(w.find('.auth__footer').exists()).toBe(true)
   })
 
   it.each([
     ['student', '학생'],
     ['admin', '관리자'],
   ] as const)(
-    '%s 앱 — 학생|관리자 탭은 두 앱을 오가는 진짜 링크, 그 앱 탭이 선택',
+    '%s 앱 — 학생|관리자 탭은 같은 화면에서 바뀐다(주소 그대로), 그 앱 탭이 먼저 선택',
     async (app, on) => {
-      const { w } = await mountLogin(app, '/login?next=/users')
-      const tabs = w.get('nav[aria-label="로그인 역할"]').findAll('a')
-      // ?next= 는 옮기지 않는다 — 다른 앱에서는 뜻이 없다 (auth.md 「탭」)
-      expect(tabs.map((a) => [a.text(), a.attributes('href')])).toEqual([
-        ['학생', '/login'],
-        ['관리자', '/admin/login'],
-      ])
-      expect(w.get('a[aria-current="page"]').text()).toBe(on)
+      const { w, router } = await mountLogin(app, '/login?next=/users')
+      const group = w.get('[role="radiogroup"][aria-label="로그인 역할"]')
+      const checked = () =>
+        group.findAll('input').map((r) => (r.element as HTMLInputElement).checked)
+      expect(group.find('label.seg__item--on').text()).toBe(on)
+      const other = app === 'student' ? 1 : 0
+      await group.findAll('input')[other].setValue(true)
+      expect(checked()).toEqual(app === 'student' ? [false, true] : [true, false])
+      expect(router.currentRoute.value.fullPath).toBe('/login?next=/users') // 새 주소로 가지 않는다
+      // 탭에 따라 입력 이름과 하단 링크가 바뀐다
+      const adminTab = app === 'student'
+      expect(w.get('form label').text()).toContain(adminTab ? '이메일' : '학교 웹메일')
+      expect(w.text().includes('가입 신청')).toBe(!adminTab)
     },
   )
+
+  it('학생 앱에서 관리자 탭으로 로그인 — 관리자 앱 세션 칸에 넘기고 이 앱 세션은 만들지 않는다', async () => {
+    login.mockResolvedValue(out('admin'))
+    const { w } = await mountLogin('student')
+    await w.findAll('[role="radiogroup"] input')[1].setValue(true)
+    await submit(w)
+    expect(session.value).toBeNull()
+    expect(JSON.parse(sessionStorage.getItem('esc.session.admin')!).role).toBe('admin')
+    sessionStorage.removeItem('esc.session.admin')
+  })
+
+  it('관리자 탭인데 학생 계정 — 탭을 가리키는 문구, 어디에도 세션을 남기지 않는다', async () => {
+    login.mockResolvedValue(out('student'))
+    const { w } = await mountLogin('student')
+    await w.findAll('[role="radiogroup"] input')[1].setValue(true)
+    await submit(w)
+    expect(w.text()).toContain("학생 계정입니다. 위의 '학생'을 골라 로그인하세요.")
+    expect(session.value).toBeNull()
+    expect(sessionStorage.getItem('esc.session.admin')).toBeNull()
+  })
 
   it.each(['student', 'admin'] as const)(
     '%s 앱 — 같은 틀·같은 제목이라 탭만 바뀐 것처럼 (관리자도 student 치수 · 좌우 분할)',

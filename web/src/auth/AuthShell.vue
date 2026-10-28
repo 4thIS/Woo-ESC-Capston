@@ -170,6 +170,8 @@ defineProps<{ title: string; surface: 'student' | 'admin'; back?: string; home?:
   flex-wrap: wrap;
   /* 링크는 터치 타깃 48px 안에서 세로 가운데 — 가운뎃점도 같은 선에 (안 하면 48px 칸 맨 위에 붙는다) */
   align-items: center;
+  /* 비어도 자리는 그대로(로그인 관리자 탭) — 탭을 바꿀 때 세로 가운데 놓인 폼이 움직이지 않게 */
+  min-height: var(--control-height-md);
   gap: var(--space-2);
   justify-content: center;
   font-size: var(--font-size-sm);

@@ -72,36 +72,41 @@ test('역할이 다른 앱에 로그인하면 토큰을 버리고 안내한다',
   ).toBeVisible()
 })
 
-test('학생|관리자 탭 — 두 앱을 오가도 탭·폼이 1px 도 움직이지 않고, 폰에서도 관리자 로그인이 가로로 넘치지 않는다', async ({
+test('학생|관리자 탭 — 같은 화면에서 바뀌고(주소 그대로) 탭·폼이 1px 도 움직이지 않는다, 관리자 탭으로 로그인하면 관리자 화면', async ({
   page,
 }) => {
-  const place = () =>
-    Promise.all(
-      [page.getByRole('navigation', { name: '로그인 역할' }), page.locator('form')].map((l) =>
-        l.boundingBox(),
-      ),
-    )
+  const tabs = page.getByRole('radiogroup', { name: '로그인 역할' })
+  const place = () => Promise.all([tabs, page.locator('form')].map((l) => l.boundingBox()))
   for (const size of [SIZES.student, { width: 1280, height: 800 }]) {
     await page.setViewportSize(size)
     await page.goto('/login')
-    const tabs = page.getByRole('navigation', { name: '로그인 역할' })
-    await expect(tabs.getByRole('link', { name: '학생' })).toHaveAttribute('aria-current', 'page')
+    await expect(tabs.getByRole('radio', { name: '학생' })).toBeChecked()
+    // 화면 전환(확대) 움직임이 끝난 뒤에 잰다
+    await expect.poll(async () => (await tabs.boundingBox())!.height).toBe(48)
     const before = await place()
-    // 관리자 탭은 라우터 이동이 아니라 관리자 앱을 새로 연다 — 토큰이 그 앱 메모리에 남아야 한다
-    await tabs.getByRole('link', { name: '관리자' }).click()
-    await expect(page).toHaveURL(/\/admin\/login$/)
-    await expect(tabs.getByRole('link', { name: '관리자' })).toHaveAttribute('aria-current', 'page')
-    expect(await place()).toEqual(before)
+    await tabs.getByRole('radio', { name: '관리자' }).check()
+    await expect(page).toHaveURL(/\/login$/) // 새 주소·새 페이지로 가지 않는다
+    await expect(page.getByLabel(/^이메일/)).toBeVisible()
+    expect(await place()).toEqual(before) // 하단 줄이 비어도 자리는 남아 폼이 움직이지 않는다
     await expect(page.getByRole('link', { name: '가입 신청' })).toHaveCount(0)
     await expect(page.getByRole('link', { name: '비밀번호를 잊었어요' })).toHaveCount(0)
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-    ).toBe(true)
-    await shot(page, `admin-login-tab-${size.width}`)
-    // 메인 페이지 / 로 — 폰은 폼 위 ‹, 넓은 폭은 왼쪽 ESC (그때 ‹ ESC 는 숨는다). 관리자 앱에서도 /
+    await shot(page, `login-admin-tab-${size.width}`)
     const home = size.width < 640 ? '메인 페이지' : 'ESC'
     await expect(page.getByRole('link', { name: home })).toHaveAttribute('href', '/')
   }
+  // 관리자 앱의 로그인(폰)도 가로로 넘치지 않는다
+  await page.setViewportSize(SIZES.student)
+  await page.goto('/admin/login')
+  await expect(tabs.getByRole('radio', { name: '관리자' })).toBeChecked()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  // 학생 앱에서 관리자 탭으로 로그인하면 관리자 앱으로 넘어가 그대로 로그인돼 있다
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/login')
+  await tabs.getByRole('radio', { name: '관리자' }).check()
+  await fillLogin(page, nextAdmin())
+  await expect(page).toHaveURL(/\/admin\/dashboard$/)
 })
 
 test('429 뒤 10초 잠금이 풀린다 (Review Focus 5)', async ({ page }) => {
