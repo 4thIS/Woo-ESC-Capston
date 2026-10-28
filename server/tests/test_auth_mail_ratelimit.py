@@ -126,3 +126,65 @@ def test_console_backend_requires_debug(monkeypatch):
     monkeypatch.setenv("DEBUG", "0")
     with pytest.raises(RuntimeError, match="DEBUG=1"):
         Settings()
+
+
+def _http_env(monkeypatch):
+    monkeypatch.setenv("MAIL_BACKEND", "http")
+    monkeypatch.setenv("MAIL_API_URL", "https://send.example.test/v1/send")
+    monkeypatch.setenv("MAIL_API_KEY", "sk_test_key")
+
+
+def test_http_backend_requires_url_and_key(monkeypatch):
+    import pytest
+
+    monkeypatch.setenv("MAIL_BACKEND", "http")
+    with pytest.raises(RuntimeError, match="MAIL_API_URL"):
+        Settings()
+
+
+def test_http_backend_posts_json_with_bearer_and_idempotency_key(monkeypatch):
+    import json
+
+    _http_env(monkeypatch)
+    sent = []
+
+    class Resp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b"{}"
+
+    def fake_urlopen(req, timeout):
+        sent.append((req, timeout))
+        return Resp()
+
+    monkeypatch.setattr(mailer.urllib.request, "urlopen", fake_urlopen)
+    mailer.send(Settings(), "a@x.test", "제목", "본문 링크", "verify")
+    ((req, timeout),) = sent
+    assert req.full_url == "https://send.example.test/v1/send" and req.get_method() == "POST"
+    assert req.get_header("Authorization") == "Bearer sk_test_key"
+    assert req.get_header("Content-type") == "application/json"
+    assert req.get_header("Idempotency-key")  # 비어 있지 않은 키
+    assert "urllib" not in req.get_header("User-agent")  # Cloudflare 1010 차단 회피
+    assert json.loads(req.data) == {"to": "a@x.test", "subject": "제목", "text": "본문 링크"}
+    assert timeout <= 15
+
+
+def test_http_backend_failure_is_logged_not_raised(monkeypatch, caplog):
+    import urllib.error
+
+    _http_env(monkeypatch)
+
+    def boom(req, timeout):
+        raise urllib.error.URLError("down")
+
+    monkeypatch.setattr(mailer.urllib.request, "urlopen", boom)
+    mailer.send(Settings(), "a@x.test", "제목", "비밀 토큰", "verify")
+    assert "메일 발송 실패" in caplog.text and "비밀 토큰" not in caplog.text
+    assert "sk_test_key" not in caplog.text
