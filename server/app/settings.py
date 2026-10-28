@@ -30,6 +30,8 @@ class Settings:
     mail_backend: str = field(default_factory=lambda: os.environ.get("MAIL_BACKEND", "smtp"))
     smtp_user: str = field(default_factory=lambda: os.environ.get("SMTP_USER", ""))
     smtp_password: str = field(default_factory=lambda: os.environ.get("SMTP_PASSWORD", ""))
+    mail_api_url: str = field(default_factory=lambda: os.environ.get("MAIL_API_URL", ""))
+    mail_api_key: str = field(default_factory=lambda: os.environ.get("MAIL_API_KEY", ""))
     mail_from: str = field(
         default_factory=lambda: os.environ.get("MAIL_FROM") or os.environ.get("SMTP_USER", "")
     )
@@ -43,7 +45,9 @@ class Settings:
             )
         if self.mail_backend == "smtp" and not (self.smtp_user and self.smtp_password):
             raise RuntimeError("MAIL_BACKEND=smtp 이면 SMTP_USER·SMTP_PASSWORD 가 필요하다")
-        if self.mail_backend not in ("smtp", "console"):
-            raise RuntimeError("MAIL_BACKEND 는 smtp | console")
+        if self.mail_backend == "http" and not (self.mail_api_url and self.mail_api_key):
+            raise RuntimeError("MAIL_BACKEND=http 이면 MAIL_API_URL·MAIL_API_KEY 가 필요하다")
+        if self.mail_backend not in ("smtp", "http", "console"):
+            raise RuntimeError("MAIL_BACKEND 는 smtp | http | console")
         if self.mail_backend == "console" and not self.debug:  # 토큰이 journald 에 남는다
             raise RuntimeError("MAIL_BACKEND=console 은 DEBUG=1 에서만")

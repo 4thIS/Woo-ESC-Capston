@@ -60,9 +60,11 @@
 | `JWT_SECRET` | (필수) | HS256 서명 키, 32자 이상 아니면 기동 실패 |
 | `JWT_TTL_H` | `24` | 발급 토큰 유효시간(시간) |
 | `STUDENT_WEB_URL` | (필수) | 학생 웹 오리진 — 가입/재설정 메일 링크에 사용 |
-| `MAIL_BACKEND` | `smtp` | `smtp`(Gmail SMTP_SSL) 또는 `console`(개발용, 콘솔 출력 — 토큰이 로그에 남으므로 `DEBUG=1` 일 때만 허용, 아니면 기동 실패) |
+| `MAIL_BACKEND` | `smtp` | `smtp`(Gmail SMTP_SSL), `http`(발송 API — `MAIL_API_URL`·`MAIL_API_KEY`) 또는 `console`(개발용, 콘솔 출력 — 토큰이 로그에 남으므로 `DEBUG=1` 일 때만 허용, 아니면 기동 실패) |
 | `SMTP_USER` | (빈 값) | `MAIL_BACKEND=smtp`면 필수 — Gmail 주소 |
 | `SMTP_PASSWORD` | (빈 값) | `MAIL_BACKEND=smtp`면 필수 — Gmail **앱 비밀번호** |
 | `MAIL_FROM` | `SMTP_USER` | 발신자 표시 주소 |
+| `MAIL_API_URL` | (빈 값) | `MAIL_BACKEND=http`면 필수 — `{"to","subject","text"}` JSON 을 POST 할 주소(예 `https://send.ssenu.cloud/v1/send`) |
+| `MAIL_API_KEY` | (빈 값) | `MAIL_BACKEND=http`면 필수 — `Authorization: Bearer` 키. 요청마다 새 `Idempotency-Key` 를 붙인다 |
 | `DEBUG` | `0` | `1`이면 `/docs`·`/redoc`·`/openapi.json`·`/static` 마운트 |
 | `CORS_ORIGINS` | (빈 값) | 콤마 구분 허용 오리진. 빈 값 = 전부 차단 |
