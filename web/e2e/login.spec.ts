@@ -88,8 +88,9 @@ test('학생|관리자 탭 — 두 앱을 오가도 탭·폼이 1px 도 움직�
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true)
     await shot(page, `admin-login-tab-${size.width}`)
-    // ‹ 는 관리자 앱에서도 메인 페이지 /
-    await expect(page.getByRole('link', { name: '메인 페이지' })).toHaveAttribute('href', '/')
+    // 메인 페이지 / 로 — 폰은 폼 위 ‹, 넓은 폭은 왼쪽 ESC (그때 ‹ ESC 는 숨는다). 관리자 앱에서도 /
+    const home = size.width < 640 ? '메인 페이지' : 'ESC'
+    await expect(page.getByRole('link', { name: home })).toHaveAttribute('href', '/')
   }
 })
 
