@@ -11,10 +11,10 @@
 // dh-04 가 v1 렌더 코드를 **무수정으로** 이식해 GxEPD2 상수를 렌더 함수에 그대로 넘겨도
 // `HostGfx::drawPixel` 이 같은 색으로 해석한다. (출처: cw 의 PR #23 승인 코멘트)
 //
-// 호스트 빌드에는 GxEPD2 라이브러리가 없어 이 세 매크로를 정의한 곳이 없었다.
-// v1 의 `ngDrawChar`/`ngPrintLine`/`ngPrint` 는 `uint16_t color = GxEPD_BLACK` 를 기본 인자로
-// 쓰므로 이름 자체가 필요하다 → 여기서 매크로로 정의하고, `HColor` 는 그 매크로를 그대로 쓴다.
-// 값이 한 곳에만 존재하므로 매크로와 enum 이 어긋나는 상태를 만들 수 없다.
+// 호스트 빌드에는 GxEPD2 라이브러리가 없어 이 세 매크로를 정의한 곳이 없다. 렌더 코드
+// (lib/render)가 GxEPD2 상수를 그대로 쓰므로 이름 자체가 필요하다 → 렌더와 같은 정의
+// (lib/epd_colors/epd_colors.h)를 include 하고, `HColor` 는 그 매크로를 그대로 쓴다.
+// 값이 한 곳에만 존재하므로 매크로와 enum, 렌더와 호스트가 어긋나는 상태를 만들 수 없다.
 // (실기 빌드는 이 헤더를 쓰지 않고 GxEPD2 의 정의를 쓴다.)
 //
 // 이전에는 0/1/2 였고, 그 경우 `GxEPD_BLACK`(=0x0000)이 `HColor::WHITE`(=0)로 들어와
@@ -22,9 +22,7 @@
 // 사고가 가능했다. 값 자체가 맞는지는 test_host_gfx 의
 // `test_hcolor_values_match_gxepd2_constants` 가 숫자를 못 박아 지킨다.
 // 세 값 밖의 색을 넘기면 drawPixel 이 assert 로 시끄럽게 실패한다(조용한 오염 방지).
-#define GxEPD_WHITE 0xFFFF
-#define GxEPD_BLACK 0x0000
-#define GxEPD_RED 0xF800
+#include "epd_colors.h"
 
 enum class HColor : uint16_t { WHITE = GxEPD_WHITE, BLACK = GxEPD_BLACK, RED = GxEPD_RED };
 

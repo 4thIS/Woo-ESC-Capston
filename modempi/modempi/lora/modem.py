@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 
 log = logging.getLogger("lora.serial")
@@ -22,10 +23,26 @@ MAX_LINE = 1024  # v2 §4.5 — 종단(\r\n) 제외 본문 길이
 Streams = tuple[asyncio.StreamReader, asyncio.StreamWriter]
 
 
+def reset_pulse(ser, *, sleep: Callable[[float], object] = time.sleep) -> None:
+    """모뎀 보드를 한 번 리셋해 부팅 때의 `ready` 를 다시 받게 한다 (v2 §4.3, S6 미결 "재연결 뒤 ready").
+
+    Heltec V3 의 CP2102 자동 리셋 회로는 RTS 로 EN, DTR 로 IO0 을 당긴다. 포트를 열기만 해서는 보드가
+    다시 켜지지 않아, 서비스가 재시작되면 `ready` 를 영영 못 받았다(2026-10-28 실기). DTR 은 내려 둔 채(IO0
+    HIGH — 부트로더로 들어가지 않는다) RTS 만 잠깐 올렸다 내린다. 리셋 뒤의 ROM 부트 로그는 JSON 이 아니라
+    ModemClient 가 버린다.
+    """
+    ser.dtr = False
+    ser.rts = True
+    sleep(0.1)
+    ser.rts = False
+
+
 async def _open_serial(port: str, baud: int) -> Streams:
     import serial_asyncio  # 실기에서만 필요 — 테스트·윈도우 개발은 open_fn 을 주입한다
 
-    return await serial_asyncio.open_serial_connection(url=port, baudrate=baud)
+    r, w = await serial_asyncio.open_serial_connection(url=port, baudrate=baud)
+    reset_pulse(w.transport.serial)
+    return r, w
 
 
 class SerialTransport:

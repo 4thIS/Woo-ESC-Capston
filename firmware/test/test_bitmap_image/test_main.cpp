@@ -127,7 +127,8 @@ void test_draw_bitmap_transparent_outside_canvas_untouched() {
 
 void test_extrabold_status_heavier_than_regular_reference() {
   // 참고값(400/78px "휴강" 잉크 2,642px)은 gen_images.py 의 render_phrase 를 NanumGothic-400.ttf 로
-  // 독립적으로 돌려 얻었다(파이프라인과 무관한 별도 확인, dh-04 Task 3A 46→108 검증과 같은 방식).
+  // 독립적으로 돌려 얻었다(파이프라인과 무관한 별도 확인 — test_bitmap_font 의 400/700 잉크 비교와 같은
+  // 방식).
   const BitmapImage& img = kImgStatusHyugang;
   uint32_t ink = 0;
   for (uint16_t cy = 0; cy < img.h; cy++)

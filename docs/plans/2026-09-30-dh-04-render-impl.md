@@ -1,6 +1,6 @@
 # dh-04 Task 4~6 — `renderLayout` 구현 계획 (요약본)
 
-- 생성일시: 2026-09-30, 최종 갱신: 2026-09-30(구현 완료 후 요약본으로 정리)
+- 생성일시: 2026-09-30, 최종 갱신: 2026-10-16(렌더 PR — #74·#77 반영, 색 상수 헤더 분리, 심 정리)
 - 상위 plan: `docs/plans/2026-09-20-dh-04-render-port.md` — 결정 D1~D7, Task 0~3·H. 이 문서는 그 §6 Task 4~6의 구성과 구현 중 결정을 담는다.
 - 상태: **구현 완료.** 코드와 테스트는 렌더 PR에 있다. Step 단위 코드는 실행 중에만 쓰고 이 문서에는 남기지 않는다(코드가 원본).
 - 표기: `[확인]` 직접 실행·열람 / `[추정]` 확인 안 함 / ⚠️ 작성자가 고른 값 — 검토 대상.
@@ -36,7 +36,7 @@
 |---|---|
 | `firmware/lib/render/text.h/.cpp` | UTF-8 → 코드포인트, 문자열 폭, 한 줄 그리기 |
 | `firmware/lib/render/render_logic.h/.cpp` | 순수 판단 함수 |
-| `firmware/lib/render/render_colors.h` | GxEPD2 색 상수(`#ifndef` 가드) — 실기는 GxEPD2, 호스트는 `host_gfx.h`가 같은 이름·값을 정의 |
+| `firmware/lib/epd_colors/epd_colors.h` | GxEPD2 색 상수(`#ifndef` 가드, 헤더 전용) — `lib/render`·`lib/host_gfx` 공용. 실기는 GxEPD2 도 같은 이름·값을 정의 |
 | `firmware/lib/render/render.h/.cpp` | `renderLayout()` |
 | `firmware/test/test_render_text/`, `test_render_logic/`, `test_render_layout/` | 단위·픽셀 테스트 |
 | `firmware/tools/render_preview.cpp`, `test/test_render_preview/` | `smokeRender` → `renderLayout` 교체 |
@@ -82,7 +82,7 @@
 2. Task H를 Task 5.1 앞에 끼움 — `renderLayout`이 폰트 셀·베이스라인을 쓰므로 자산을 먼저 확정. 틀리면 순서만 바뀜.
 3. 20px Regular·Bold 셀이 같다는 테스트 단언 삭제 — 옛 자산의 우연한 사실이었다. 렌더는 폰트별 베이스라인으로 정렬한다.
 4. 형태 B의 "구분선 없음" 검사를 점 하나에서 행 전체로 — 자산 재생성 후 과목 글자가 검사 점을 덮었다. 의도는 같다.
-5. layout 2 픽스처의 `next`(재개 시각)가 `today[]`에 없음을 그대로 둠 — v2 §5.3 쉬는시간 정의(슬롯 안 & 분≥50)와 맞다. 화면 스펙 문장과의 어긋남은 cw 질문(상위 plan §7-4).
+5. layout 2 픽스처 — #74 쉬는시간 틈 규칙에 맞춰 렌더 PR 에서 바꿨다: 블록 슬롯(13:00–13:50, 14:00–14:50) 사이 틈, `cur` = 방금 끝난 블록, `next` = 다음 블록(`today[]` 안). 쉬는시간 동안 `cur` 에 무엇을 싣는지는 cw 확인 대상. 처음 결정(옛 `:50` 규칙): `next`(재개 시각)가 `today[]`에 없음을 그대로 둠 — v2 §5.3 쉬는시간 정의(슬롯 안 & 분≥50)와 맞다. 화면 스펙 문장과의 어긋남은 cw 질문(상위 plan §7-4).
 6. 구현자가 `'\0'`을 실제 NUL 바이트로 쓴 두 곳을 이스케이프로 고침 — 동작은 같았지만 git이 파일을 바이너리로 취급.
 
 ## 열린 질문 (⚠️ 검토 대상)
@@ -94,7 +94,7 @@
 5. `layout`이 1~8 밖이면 흰 화면.
 6. 스펙에 없는 초기값: 세로 위치(헤더 베이스라인 37, 정보 행 263/338/413, 목록 행 +25, 푸터 466), 칩 좌우 여백 6·글자 베이스라인 17, 변경 칩 간격 10·들어올림 18, layout 8 안내 2줄 간격 8. PNG 검토로 정한다.
 7. layout 8에서 `newTag`가 비면 칩과 안내 2줄을 생략한다.
-8. 색 상수가 두 곳(`host_gfx.h`, `render_colors.h`)에 있다 — `lib/render`가 호스트 전용 헤더를 include할 수 없어서다. `host_gfx.h` 쪽은 가드가 없어 한 글자라도 다르면 재정의 경고가 난다 → **렌더 PR에서 공용 헤더 하나로 합친다**(#71 cw 리뷰).
+8. ~~색 상수가 두 곳~~ — 해소: 렌더 PR 에서 중립 헤더 `lib/epd_colors/epd_colors.h` 한 곳으로 합쳤다(호스트 인프라가 렌더 계층을 import 하지 않게). 당시: 색 상수가 두 곳(`host_gfx.h`, `render_colors.h`)에 있다 — `lib/render`가 호스트 전용 헤더를 include할 수 없어서다. `host_gfx.h` 쪽은 가드가 없어 한 글자라도 다르면 재정의 경고가 난다 → **렌더 PR에서 공용 헤더 하나로 합친다**(#71 cw 리뷰).
 
 ## 알려진 문제 (렌더 PR 최종 리뷰)
 
