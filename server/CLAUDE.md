@@ -31,6 +31,7 @@ server/
 ## 배포 (Docker — 2026-09-23 팀 결정)
 
 - 메인Pi 는 **루트 `compose.yaml` + `server/Dockerfile`** 로만 배포한다. 수동 `uvicorn` 실행·systemd 유닛은 개발용이다.
+- **`main` 머지 = 운영 반영.** 메인Pi 의 자동 배포(`deploy/autodeploy/`)가 2분 안에 받아 다시 빌드한다. 새 필수 env 를 더하는 PR 은 머지 **전에** 메인Pi `server/.env` 를 먼저 채운다(안 그러면 배포가 실패해 직전 버전으로 되돌려진다).
 - **워커는 1 개**. `Dockerfile` 의 `CMD` 는 `--workers 1 --no-server-header` 로 고정 — WS 연결·outbox 디스패치 상태가 프로세스 메모리에 있다. 앞에 HTTPS 프록시를 두게 되면(S11) `--forwarded-allow-ips=<프록시 IP>` 를 더한다(안 그러면 S4a 의 IP 단위 로그인 상한이 전역 상한이 된다).
 - 빌드 컨텍스트는 리포 루트이고 `.dockerignore` 는 **허용 목록**(`server/`·`lora_proto/` 만)이다. 런타임에 새 디렉터리가 필요하면 `.dockerignore` 를 함께 고친다.
 - 의존성을 추가하면(`uv add`) `docker compose build` 로 이미지가 빌드되는지 확인한다 — CI `docker` job 이 amd64 기동 스모크 + arm64(Pi) 빌드를 본다.
