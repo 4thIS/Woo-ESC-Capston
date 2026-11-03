@@ -296,22 +296,24 @@ typedef struct {
   uint8_t  schedVer, resvVer, examVer, identVer, lastTxn;
   uint8_t  lastLayout; uint8_t lastDay; uint16_t lastSlotStartMin;   // 상태키
   uint32_t lastTimeSyncEpoch; uint32_t nextStatusEpoch;
-  uint8_t  nSlots; lc::SlotRec slots[48];  // 48 × 40 B = 1,920 B (subj 20 B·prof 12 B + 널, lora_codec 구조체 재사용)
+  uint8_t  nSlots; lc::SlotRec slots[LP_SLOT_DAY_MAX];  // 오늘 슬롯만 24 × 40 B = 960 B (subj 20 B·prof 12 B + 널, lora_codec 구조체 재사용). 주간 96 은 LittleFS
   uint8_t  nResv;  lc::ResvRec resv[24];   // 24 × 44 B = 1,056 B
   uint8_t  nExam;  lc::ExamRec exams[8];   //  8 ×  8 B =    64 B
   uint16_t crc;
-} rtc_state_t;                           // 합계 ≈ 3.1 KB (RTC slow 8 KB 내)
+} rtc_state_t;                           // 합계 ≈ 2.1 KB (RTC slow 8 KB 내)
 ```
 - 문자열은 고정 버퍼(UTF-8, 과목 20 B, 교수 12 B)로 잘라 저장. 화면 표시 한계와 일치.
-- 용량 초과(슬롯 48개 초과 등) 시 `STORE_FAIL` ACK. **슬롯 상한 48 은 확인 중** — §5.3 개정으로 수업을 블록마다 슬롯으로 보내면 방당 주간 슬롯이 늘어난다(평일 09–21 이 꽉 차면 60). dh 실데이터의 방당 주간 블록 수 최대값을 보고 넘으면 상한을 올리고(LittleFS 는 여유, RTC 캐시는 오늘 슬롯만 등) 이 절과 서버 `NODE_SLOT_MAX` 를 같이 고친다(#74).
+- 용량 초과 시 `STORE_FAIL` ACK. **상한(2026-10-14 결정, #74)**: 방당 주간 정규 슬롯 `LP_SLOT_WEEK_MAX` = 96(LittleFS `/schedule.bin`), 하루 `LP_SLOT_DAY_MAX` = 24, 예약 24, 시험 8. 수업을 블록마다 슬롯으로 보내 평일 하루 최대 15 × 5 = 75 에 여유를 둔 값이다. RTC 캐시에는 **오늘 슬롯만**(RenderModel `today[24]` 와 같은 수) 두고, 날짜가 바뀌면 LittleFS 에서 그날 슬롯을 다시 채운다. 서버 CSV 검사(`csv_import`)도 같은 상수로 막는다.
 
 **저장 계층 규칙 (2026-10-12 개정, 이슈 #74 결정 1·2·5)**
 - 코드 위치: 노트북에서 테스트하는 순수 로직은 `firmware/lib/`(저장 예: `lib/node_store/`), NVS·LittleFS·`RTC_DATA_ATTR` 어댑터는 `[env:terminal]` 이 생길 때 `src/terminal/`. `lib/` 에는 Arduino 헤더를 넣지 않는다. 모듈 이름은 dh-08 plan 에서 정한다.
-- 인터페이스: `KvStore`(NVS)·`FileStore`(LittleFS) + 메모리 fake. 상태 판단·수신(cw-14)은 저장 함수(`apply…`·`replaceKind`·버전·`lastTxn`·정체성·`factoryReset` → `OK | STORE_FAIL`)만 부르고, NVS 키·파일 형식·쓰기 정책은 저장 계층(dh-08) 안에 둔다.
+- 인터페이스: `KvStore`(NVS)·`FileStore`(LittleFS) + 메모리 fake. 상태 판단·수신(cw-14)은 저장 함수(`apply…`·`replaceKind`·버전·`lastTxn`·정체성·`factoryReset` → `OK | STORE_FAIL | BAD_PAYLOAD | UNSUPPORTED`)만 부르고, NVS 키·파일 형식·쓰기 정책은 저장 계층(dh-08) 안에 둔다.
 - `FileStore` 쓰기는 **원자 교체**(tmp → rename) — 실패하면 옛 내용 유지(fake 도 같게).
 - 파일이 손상되면 그 kind 를 비우고 버전 0 → 다음 STATUS 의 버전 비교로 서버가 FILE 재동기를 자동으로 건다.
-- **지난 날짜(date < 오늘) 예약 삭제**도 저장 계층 함수로, 예약 24개 용량 검사 **전에** 실행한다(서버 일일 작업이 이 전제로 계산).
-- GAP 판정(`(new − old) mod 256 ≠ 1`)은 프로토콜 쪽(cw-14). 저장 계층은 값만 보관한다.
+- 저장 결과는 같은 이름의 ACK 코드로 그대로 보낸다(#74 11). `BAD_PAYLOAD` — CRC 를 통과한 본문이 레코드로 풀리지 않음(보내는 쪽 문제라 같은 TXN 재송으로 안 고쳐진다), `UNSUPPORTED` — 모르는 `SET_PARAM` `paramId`. 용량 초과는 `STORE_FAIL`.
+- **지난 날짜(date < 오늘) 예약 삭제**도 저장 계층 함수로, 예약 24개 용량 검사 **전에** 실행한다(서버 일일 작업이 이 전제로 계산). 시계가 무효(`clockValid` 거짓)이면 **건너뛴다** — 1970년 날짜로 오늘을 만들면 모든 예약이 지난 예약이 된다. 유효 여부는 날짜 값으로 표시하지 않고 따로 넘긴다(예 `purgePast(today, clockValid)`, #74 9). 수신 저장은 시계와 무관하게 그대로 한다.
+- GAP 판정(`(new − old) mod 255 ≠ 1`, §12 — 버전은 1~255 롤링)은 프로토콜 쪽(cw-14). 저장 계층은 값만 보관한다. (2026-11-03 정정: 전에 `mod 256` 으로 잘못 적었다, #74 12)
+- `lastTxn` 은 저장 결과가 `OK` 일 때만 기록한다(cw-14, #74 10). `STORE_FAIL` 등에서 남기면 워커의 같은 TXN 재송이 `DUP` → acked 가 되어 실패한 변경이 성공으로 남는다.
 - RTC 캐시: `rtc_state_t` 정의·magic/CRC 검증·NVS/LittleFS 에서 재구축·seal 은 dh-08, `RTC_DATA_ATTR` 배치와 잠들기 직전 seal 호출은 cw. 저장 API 가 캐시도 같이 갱신한다(write-through).
 
 ### 5.2 시계
@@ -322,14 +324,16 @@ typedef struct {
 - 드리프트: 딥슬립 RC 클럭 기준 시간당 수 초 가능 → 매시 TIME으로 흡수. DS3231 도입은 실측 후 결정(비범위).
 
 ### 5.3 상태 판단 (`determineLayout`) — 2026-10-12 개정 (#74, #14 닫음)
-구현은 dh-08(`lib/schedule/`, `nextChangeAt` 과 공용 헬퍼를 같이 둔다), **판정 규칙과 테스트 벡터는 cw** 가 정하고 리뷰한다. 벡터는 서버 `room_state` 와 같은 파일을 쓴다(`lora_proto` 로 이동 예정).
+구현은 dh-08(`lib/schedule/`, `nextChangeAt` 과 공용 헬퍼를 같이 둔다), **판정 규칙과 테스트 벡터는 cw** 가 정하고 리뷰한다. 벡터는 서버 `room_state` 와 같은 파일 `lora_proto/room_state_vectors.json` 을 쓴다.
+
+시그니처(#74 7): `LayoutDecision determineLayout(const ScheduleView& v, uint32_t nowEpoch)` — 시간표 데이터를 인자로 받는 순수 함수. `LayoutDecision` 은 layout 과 그 상태를 정한 항목(예약·슬롯·틈)을 담아, RenderModel `cur`·`next` 를 채울 때도 쓴다.
 
 우선순위 **예약 > 시험기간 > 기본 시간표**.
 1. 예약: 오늘 날짜·현재 시각이 [start,end) 안이면 `typeToLayout(type)`.
 2. 시험기간: 오늘이 기간 내이고 현재 시각이 어떤 슬롯 안이면 시험중(5).
 3. 기본: 슬롯 안 → 그 슬롯의 `typeToLayout(type)`(수업이면 수업중 1) / **수업 슬롯 끝 ~ 같은 날 다음 수업 슬롯 시작의 틈이 0 < 틈 ≤ 15분이면 그 틈 동안 쉬는시간(2)** / 그 밖 → 빈강의실(4).
    - `:50` 규칙(분 ≥ 50 → 쉬는시간)은 **폐기**한다. 학교 시간표가 블록(12:00–12:50, 13:00–13:50)으로 나뉘어 그대로 슬롯이 되고, 야간(45분 + 5분)도 같은 로직으로 맞는다. 연강으로 한 덩어리인 과목은 슬롯 하나 그대로(중간 쉬는시간 없음).
-   - 쉬는시간 화면은 `next` 의 시작 시각("HH:MM 수업 재개")만 쓴다(RenderModel 동결, #27).
+   - 쉬는시간 화면은 `next` 의 시작 시각("HH:MM 수업 재개")을 쓴다(RenderModel 동결, #27). 쉬는시간에는 `cur` 에도 곧 시작할 다음 슬롯을 싣는다 — `cur` = `next`(2026-10-28 결정, #89). 정보 영역과 오늘 목록 반전이 띠 문구와 같은 수업을 가리킨다.
 
 | layout | 상태 | 색 | 비고 |
 |---|---|---|---|
@@ -344,13 +348,12 @@ typedef struct {
 
 `typeToLayout`: 수업1→1, 시험2→5, 휴강3→3, 빈강의실4→4, 특강5→6, 대여6→7.
 
-### 5.4 다음 변경 시각 (`nextChangeAt(now)`) — 신규
-후보 중 최소값. 없으면 `now + 24 h`.
-- 오늘·이후 7일 내 모든 슬롯의 start, end (쉬는시간 틈의 경계는 슬롯 end·start 와 같아 따로 후보가 없다. `:50:00` 후보는 폐기 — §5.3)
-- 모든 예약의 start, end (오늘 이후)
-- 시험기간 시작일 00:00, 종료일 다음날 00:00
-- 다음 자정(요일 전환)
-- `nextStatusEpoch`
+### 5.4 다음 변경 시각 (`nextChangeAt`) — 2026-11-03 개정 (#74 8)
+`uint32_t nextChangeAt(const ScheduleView& v, uint32_t nowEpoch, uint32_t nextStatusEpoch)`. 아래 중 최소값. 없으면 `now + 24 h`.
+- **상태가 처음 바뀌는 경계** — layout 과 그 상태를 정한 항목(예약·슬롯·틈)이 바뀌는 첫 시각. 판정 벡터의 `until` 과 같은 정의다(서버 `room_state` 도 같다, #81). 화면이 그대로인 시각은 경계가 아니다 — 예: 예약 09:00–10:00 이 슬롯 09:00–09:50 을 덮으면 09:50 이 아니라 10:00(벡터 `resv-beats-slot`). 쉬는시간 틈의 경계는 슬롯 end·start 와 같다. `:50:00` 후보는 폐기(§5.3)
+- 하루 단위 후보: 다음 자정(요일 전환), 시험기간 시작일 00:00·종료일 다음날 00:00, `nextStatusEpoch`
+
+(개정 전: 오늘~7일 모든 슬롯·예약의 start·end 중 최소 — 화면이 같은 경계에서도 깨어 웨이크만 늘었다.)
 결과에 **+2 s 마진**을 더해 경계 직후에 깨도록 한다(드리프트로 경계 직전에 깨는 것 방지). 깨어난 뒤 상태키가 같으면 렌더 없이 재계산·재슬립.
 
 ---
@@ -389,10 +392,10 @@ startReceive()                       // 프리앰블이 아직 공중에 있으�
 loop (세션 창 sessionWindowMs, 기본 10 s, 프레임 수신 시마다 연장):
   frame = readData() if RX_DONE
   검증: NET_ID, CRC8, 대상(§6.6) — 불일치면 무시
-  TXN == lastTxn → ACK(DUP) 후 continue
+  TXN == lastTxn → ACK(DUP) 후 continue   // lastTxn 은 결과가 OK 인 프레임만 기록한다(§5.1, #74 10)
   dispatch(TYPE):
     TIME       → setClock, lastTimeSyncEpoch, flags.REQUEST_STATUS면 랜덤 지연 STATUS 예약
-    SLOT_*/RESV_*/EXAM_* → apply(멱등) → 버전 검사(GAP?) → LittleFS 기록 → ACK(OK|GAP)
+    SLOT_*/RESV_*/EXAM_* → apply(멱등) → 버전 검사(GAP?) → LittleFS 기록 → ACK(저장 결과 OK|GAP|STORE_FAIL|BAD_PAYLOAD|UNSUPPORTED)
     FILE_BEGIN → 수신 버퍼 준비(kind,totalLen,nChunks) → ACK(OK)
     FILE_DATA  → seq 위치에 복사, 비트맵 갱신 → ACK(OK / FILE_MISSING)
     FILE_END   → crc16 검증 → kind 전체 교체 → LittleFS 기록 → 버전 갱신 → ACK(OK)
@@ -668,7 +671,7 @@ epaper-v2/
 | 같은 호수 2유닛 | 백엔드가 유닛별 행으로 분해, 각자 TXN·ACK |
 | 시계 미동기 콜드 부팅 | 렌더 보류, 10 min마다 타이머 웨이크로 재확인, 다음 정각 TIME으로 복구. STATUS에 CLOCK_STALE |
 | 버전 롤오버(255→1) | 버전은 1~255 롤링(0=미정)이므로 단말은 `(new - old) mod 255 == 1`로 연속 판정 (mod 256이면 255→1이 GAP로 오판됨. 2026-09-10 정정) |
-| 슬롯 48개/예약 24개 초과 | STORE_FAIL ACK → 백엔드 failed + 대시보드 경고. 예약은 서버가 **오늘~7일 이내만** 전송해 개수 억제 |
+| 슬롯(주 96·하루 24)/예약 24개 초과 | STORE_FAIL ACK → 백엔드 failed + 대시보드 경고. 예약은 서버가 **오늘~7일 이내만** 전송해 개수 억제 |
 | 모뎀 USB 끊김 | outbox 적체, 재연결 후 순차 처리. TIME은 다음 정각에 |
 | 다른 LoRa 실험 간섭 | NET_ID·동기워드로 필터, CAD 백오프 |
 | 배터리 < 3.5 V | STATUS LOW_BATT → 대시보드. < 3.3 V면 렌더 중단하고 STATUS만(화면은 마지막 상태 유지) |
