@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import AuthShell from './AuthShell.vue'
+import PolicyConsent from './PolicyConsent.vue'
 import StepList from './StepList.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -59,6 +60,8 @@ async function send() {
         <p v-if="error" class="auth-form__error" role="alert">{{ error }}</p>
         <Button type="submit" :loading="submitting" :disabled="locked">인증 메일 받기</Button>
         <p class="auth-form__note">링크는 5분 안에 열어주세요</p>
+        <!-- 아직 계정이 생기기 전 — '계속하면' -->
+        <PolicyConsent lead="계속하면" />
       </form>
     </template>
     <template v-else>

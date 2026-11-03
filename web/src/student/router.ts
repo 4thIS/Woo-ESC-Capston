@@ -6,6 +6,7 @@ import {
   type RouterHistory,
 } from 'vue-router'
 import { installAuth } from '@/auth/guard'
+import { POLICIES } from './policies'
 
 /** '/e/401' → '/E/401' — 폰에서 소문자로 치는 일이 흔하다 */
 export function upperBld(to: RouteLocationNormalized): string | true {
@@ -23,6 +24,13 @@ export const routes: RouteRecordRaw[] = [
   { path: '/verify', component: () => import('@/auth/VerifyView.vue') },
   { path: '/forgot', component: () => import('@/auth/ForgotView.vue') },
   { path: '/reset', component: () => import('@/auth/ResetView.vue') },
+  // 약관 — 가입 전에 읽으므로 로그인 없이(gate 없음). 없는 문서는 이용약관으로
+  { path: '/policies', redirect: '/policies/terms' },
+  {
+    path: '/policies/:doc',
+    component: () => import('./views/PolicyView.vue'),
+    beforeEnter: (to) => POLICIES.some((p) => p.id === to.params.doc) || '/policies/terms',
+  },
   { path: '/me', component: () => import('./views/MyView.vue'), meta: { gate: true } },
   // 건물 글자는 대문자 한 글자 — sensitive 로 소문자는 여기서 받지 않고 404 라우트가 대문자로 보낸다
   {

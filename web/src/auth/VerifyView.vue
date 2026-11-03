@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import AuthShell from './AuthShell.vue'
+import PolicyConsent from './PolicyConsent.vue'
 import StepList from './StepList.vue'
 import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
@@ -146,6 +147,8 @@ async function submit() {
         />
         <p v-if="error" class="auth-form__error" role="alert">{{ error }}</p>
         <Button type="submit" :loading="submitting" :disabled="locked">가입 신청</Button>
+        <!-- 계정이 생기는 곳 — 실제 동의 시점(이용약관 제4조) -->
+        <PolicyConsent lead="가입 신청을 누르면" />
       </form>
     </template>
 

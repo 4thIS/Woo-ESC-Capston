@@ -6,7 +6,7 @@ import LandingView from '@/student/views/landing/LandingView.vue'
 async function mountLanding() {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: ['/', '/login', '/signup'].map((path) => ({ path, component: {} })),
+    routes: ['/', '/login', '/signup', '/policies/:doc'].map((path) => ({ path, component: {} })),
   })
   await router.push('/')
   await router.isReady()
@@ -23,6 +23,14 @@ describe('메인 페이지 (landing.md)', () => {
     expect(hero.get('a.cta--primary').attributes('href')).toBe('/login')
     expect(hero.get('a.cta--secondary').attributes('href')).toBe('/signup')
     expect(w.findAll('a.cta--primary')).toHaveLength(1)
+  })
+
+  it('시간표 미리보기 블록 라벨은 두 글자 — 넓은 화면 요일 칸에서 잘리지 않게 (#101)', async () => {
+    const w = await mountLanding()
+    const labels = w.findAll('.wp__label').map((l) => l.text())
+    expect(labels).toContain('예약')
+    expect(labels.every((l) => l.length === 2)).toBe(true)
+    expect(w.get('.wp__block--mine').text()).toBe('예약')
   })
 
   it('학교 이름을 쓰지 않는다 — 서버를 부르지 않는 서비스 소개', async () => {
@@ -76,9 +84,18 @@ describe('메인 페이지 (landing.md)', () => {
     expect(w.get('.steps__cta').attributes('href')).toBe('/signup')
   })
 
+  it('바닥글에 이용약관 · 개인정보 처리방침 — 언제든 열 수 있게', async () => {
+    const w = await mountLanding()
+    const links = w.get('footer').findAll('a')
+    expect(links.map((a) => [a.text(), a.attributes('href')]).slice(0, 2)).toEqual([
+      ['이용약관', '/policies/terms'],
+      ['개인정보 처리방침', '/policies/privacy'],
+    ])
+  })
+
   it('관리자 로그인은 바닥글 링크 하나 — 관리자 앱이라 페이지를 새로 연다(<a href>)', async () => {
     const w = await mountLanding()
-    const a = w.get('footer a')
+    const a = w.get('footer a.foot__admin')
     expect(a.text()).toBe('관리자 로그인')
     expect(a.attributes('href')).toBe('/admin/login')
   })

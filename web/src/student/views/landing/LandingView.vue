@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RouterLink } from 'vue-router'
 import CtaLink from '../../CtaLink.vue'
 import EpaperPreview from './EpaperPreview.vue'
 import ResvPreview from './ResvPreview.vue'
@@ -116,8 +117,15 @@ const STEPS = [
     <footer class="band band--surface band--line">
       <div class="wrap foot">
         <p class="foot__text">ESC — 전자종이 · LoRa 강의실 시간표 게시 시스템</p>
-        <!-- 관리자 앱이라 라우터 이동이 아니라 페이지를 새로 연다 -->
-        <a href="/admin/login" class="foot__admin">관리자 로그인</a>
+        <nav class="foot__links" aria-label="약관 · 관리자">
+          <RouterLink to="/policies/terms" class="foot__link">이용약관</RouterLink>
+          <!-- 개인정보 처리방침은 눈에 띄게(굵게) — 웹사이트 관례 -->
+          <RouterLink to="/policies/privacy" class="foot__link foot__link--strong"
+            >개인정보 처리방침</RouterLink
+          >
+          <!-- 관리자 앱이라 라우터 이동이 아니라 페이지를 새로 연다 -->
+          <a href="/admin/login" class="foot__link foot__admin">관리자 로그인</a>
+        </nav>
       </div>
     </footer>
   </div>
@@ -313,12 +321,21 @@ const STEPS = [
   font-size: var(--font-size-xs);
   color: var(--text-3);
 }
-.foot__admin {
+.foot__links {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-4);
+}
+.foot__link {
   display: inline-flex;
   align-items: center;
   min-height: 48px;
   font-size: var(--font-size-sm);
   color: var(--text-2);
+}
+.foot__link--strong {
+  color: var(--text-1);
+  font-weight: var(--font-weight-bold);
 }
 
 @media (min-width: 640px) {

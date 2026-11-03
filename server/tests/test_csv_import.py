@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from lora_proto import proto as P
 from sqlalchemy import select
 
 from app.domain import csv_import as CI
@@ -134,22 +135,37 @@ def test_parse_duplicate_key_in_file(app, seeded):
 
 
 def test_parse_node_slot_cap_counts_surviving_higher_source(app, seeded):
-    # 301 에 source≥2 슬롯 2개(월 09:00, 화 09:00). 포털 47행(월 09:00 겹침 1 포함) →
-    # 겹치는 1행은 skip 이라 46 + 2 = 48 → OK. 48행이면 47 + 2 = 49 → 오류.
+    # 301 에 source≥2 슬롯 2개(월 09:00, 화 09:00). 포털 95행(월 09:00 겹침 1 포함) →
+    # 겹치는 1행은 skip 이라 94 + 2 = 96 → OK. 96행이면 95 + 2 = 97 → 주 상한 오류.
+    # 하루 20개씩(10:00~19:30, 30분 간격) 채워 하루 상한(24)은 넘지 않는다
     def lines(n):
         out = ["명지,E,301,월,09:00,10:00,1,a,"]  # 겹침
-        h = 10
-        d = 1
+        i = 0
         while len(out) < n:
-            out.append(f"명지,E,301,{d},{h:02d}:00,{h:02d}:30,1,a,")
-            h += 1
-            if h == 23:
-                h, d = 10, d + 1
+            d, k = 1 + i // 20, i % 20
+            h, m = 10 + k // 2, 30 * (k % 2)
+            out.append(f"명지,E,301,{d},{h:02d}:{m:02d},{h:02d}:{m + 20:02d},1,a,")
+            i += 1
         return "".join(x + "\n" for x in out)
 
-    assert _parse(app, HEADER + lines(47))[1] == []
-    _rows, errors = _parse(app, HEADER + lines(48))
-    assert errors == [CI.RowError(0, "301: 슬롯 49 개 > 48 (노드 상한)")]
+    assert P.SLOT_WEEK_MAX == 96
+    assert _parse(app, HEADER + lines(95))[1] == []
+    _rows, errors = _parse(app, HEADER + lines(96))
+    assert errors == [CI.RowError(0, "301: 슬롯 97 개 > 96 (노드 상한)")]
+
+
+def test_parse_node_slot_day_cap(app, seeded):
+    # 화요일: source≥2 슬롯 1개(화 09:00) + 포털 23행 = 24 → OK. 포털 24행 = 25 → 하루 상한 오류
+    def lines(n):
+        return "".join(
+            f"명지,E,301,화,{10 + k // 2:02d}:{30 * (k % 2):02d},{10 + k // 2:02d}:{30 * (k % 2) + 20:02d},1,a,\n"
+            for k in range(n)
+        )
+
+    assert P.SLOT_DAY_MAX == 24
+    assert _parse(app, HEADER + lines(23))[1] == []
+    _rows, errors = _parse(app, HEADER + lines(24))
+    assert errors == [CI.RowError(0, "301 화: 슬롯 25 개 > 24 (노드 하루 상한)")]
 
 
 def _slots(app, rid):

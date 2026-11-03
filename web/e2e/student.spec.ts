@@ -106,6 +106,29 @@ test('메인 페이지 — 로그인 전 / 는 벽 대신 소개, 세 폭 모두
   await expect(page).toHaveURL(/\/login$/)
 })
 
+test('약관 — 로그인 없이 열리고 목차로 조항에 간다, 넓은 폭은 왼쪽에 문서·목차', async () => {
+  await page.setViewportSize(SIZES.student)
+  await page.goto('/')
+  await page.getByRole('link', { name: '개인정보 처리방침' }).click()
+  await expect(page).toHaveURL(/\/policies\/privacy$/)
+  await expect(page.getByRole('heading', { level: 2, name: '개인정보 처리방침' })).toBeVisible()
+  await page.locator('.pol__tocbox summary').click()
+  await page.locator('.pol__tocbox').getByRole('link', { name: '6. 처리 위탁' }).click()
+  await expect(page).toHaveURL(/#p6$/)
+  await expect(page.getByRole('heading', { level: 3, name: '6. 처리 위탁' })).toBeInViewport()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await shot(page, 'student-policies-390')
+  await page.setViewportSize({ width: 1280, height: 800 })
+  const side = page.locator('.pol__side')
+  await side.getByRole('link', { name: '이용약관' }).click()
+  await expect(page).toHaveURL(/\/policies\/terms$/)
+  await expect(side.getByRole('link', { name: '제6조 (예약)' })).toBeVisible()
+  await shot(page, 'student-policies-1280')
+  await page.setViewportSize(SIZES.student)
+})
+
 test('로그인 벽 — 빈 폼 대신 무엇을 볼 수 있는지, 로그인은 돌아올 주소를 안다', async () => {
   await page.goto('/me')
   await expect(

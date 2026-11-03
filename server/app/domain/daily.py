@@ -11,7 +11,7 @@ import threading
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.auth.models import EmailToken
+from app.auth.models import EmailToken, User
 from app.domain import clock, reserve
 from app.domain.models import JobRun, Reservation
 from app.domain.router import _ID_LOCK
@@ -22,7 +22,7 @@ from app.lora_service.models import Outbox
 
 log = logging.getLogger(__name__)
 KEEP_DAYS = 90
-DECIDED_KEEP_DAYS = 7  # 거절·만료 신청은 1주 뒤 지운다 — u16 id 를 오래 잡지 않게
+DECIDED_KEEP_DAYS = 7  # 거절·만료 예약 신청, 거절된 가입 신청은 1주 뒤 지운다 — u16 id 를 오래 잡지 않게, 처리방침 3절
 TOKEN_KEEP_DAYS = 7
 RESYNC_WINDOW_H = 24
 FILE_KINDS = {1: "schedule", 2: "resv", 3: "exam"}  # FILE payload.kind → room_versions.kind
@@ -148,11 +148,16 @@ def _prune(s: Session, now_utc: dt.datetime, now_local: dt.datetime) -> dict:
     )
     job_cut = now_utc - dt.timedelta(days=KEEP_DAYS)
     token_cut = now_utc - dt.timedelta(days=TOKEN_KEEP_DAYS)
+    # 거절 시각은 approved_at 에 남는다(auth.router.reject). 대기 중인 신청은 관리자가 볼 때까지 둔다
+    signup_cut = now_utc - dt.timedelta(days=DECIDED_KEEP_DAYS)
     return {
         "reservations": s.execute(delete(Reservation).where(old | decided)).rowcount,
         "job_runs": s.execute(delete(JobRun).where(JobRun.ran_at < job_cut)).rowcount,
         "email_tokens": s.execute(
             delete(EmailToken).where(EmailToken.expires_at < token_cut)
+        ).rowcount,
+        "rejected_signups": s.execute(
+            delete(User).where(User.status == "rejected", User.approved_at < signup_cut)
         ).rowcount,
     }
 
