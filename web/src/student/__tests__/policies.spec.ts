@@ -25,6 +25,29 @@ describe('약관 데이터 — 문서를 하나 넣으면 칩·목록·주소·�
   })
 })
 
+describe('약관 내용 — 운영자가 정한 값 (PR #102)', () => {
+  const text = (id: string) => JSON.stringify(POLICIES.find((p) => p.id === id))
+
+  it('운영 주체·시행일·거절 신청 보관 기간은 채워졌다 — 대괄호는 아직 안 정한 둘뿐', () => {
+    const all = JSON.stringify(POLICIES)
+    expect(new Set(all.match(/\[[^\]"]+\]/g))).toEqual(
+      new Set(['[이름 · 직위 · 메일]', '[메일 발송 서비스]']),
+    )
+    expect(POLICIES.map((p) => p.effective)).toEqual(['2026-10-28', '2026-10-28'])
+    expect(all).toContain('ESC 캡스톤디자인 팀이 운영하는')
+    expect(all).toContain('ESC 캡스톤디자인 팀은 「개인정보')
+    expect(text('privacy')).toContain('거절한 날부터 7일 뒤 자동 삭제')
+  })
+
+  it('처리방침 — 접속 기록(IP)은 항목·보유 기간에, Cloudflare 는 처리 위탁·국외 이전에', () => {
+    const sec = (id: string) => JSON.stringify(POLICIES[1].sections.find((s) => s.id === id))
+    expect(sec('p2')).toContain('접속 IP')
+    expect(sec('p3')).toContain('접속 기록')
+    expect(sec('p6')).toContain('Cloudflare, Inc.')
+    expect(sec('p6')).toContain('국외 이전')
+  })
+})
+
 describe('약관 페이지 /policies/:doc', () => {
   it('로그인 없이 열린다, 없는 문서·/policies 는 이용약관으로', async () => {
     expect((await at('/policies/privacy')).currentRoute.value.matched[0].meta.gate).toBeFalsy()

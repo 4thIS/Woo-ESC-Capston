@@ -25,6 +25,14 @@ describe('메인 페이지 (landing.md)', () => {
     expect(w.findAll('a.cta--primary')).toHaveLength(1)
   })
 
+  it('시간표 미리보기 블록 라벨은 두 글자 — 넓은 화면 요일 칸에서 잘리지 않게 (#101)', async () => {
+    const w = await mountLanding()
+    const labels = w.findAll('.wp__label').map((l) => l.text())
+    expect(labels).toContain('예약')
+    expect(labels.every((l) => l.length === 2)).toBe(true)
+    expect(w.get('.wp__block--mine').text()).toBe('예약')
+  })
+
   it('학교 이름을 쓰지 않는다 — 서버를 부르지 않는 서비스 소개', async () => {
     const w = await mountLanding()
     expect(w.text()).not.toContain('MJC')
