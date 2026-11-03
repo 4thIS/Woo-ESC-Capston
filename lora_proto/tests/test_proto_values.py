@@ -33,3 +33,9 @@ def test_radio_params_match_spec_2():
     assert P.RADIO["RP_SF"] == 9
     assert P.RADIO["RP_PREAMBLE_WAKE_MS"] == 3000
     assert P.RADIO["RP_FREQ_MHZ"] == 922.5
+
+
+def test_node_slot_caps_match_spec_5_1():
+    # 방당 주간 정규 슬롯(LittleFS)·하루(RTC 캐시, RenderModel today[24]) 상한 — 2026-10-14 결정 (#74)
+    assert P.SLOT_WEEK_MAX == 96
+    assert P.SLOT_DAY_MAX == 24
