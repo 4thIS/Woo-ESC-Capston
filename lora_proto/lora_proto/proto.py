@@ -25,6 +25,10 @@ PROF_MAX = 12
 # --- 상태 판단 (§5.3) — 같은 날 수업 슬롯 사이 틈 0 < 틈 <= 15분 이면 쉬는시간 (#74) ---
 BREAK_GAP_MAX_MIN = 15
 
+# --- 노드 저장 상한 (§5.1) — 방당 주간 정규 슬롯·하루 슬롯 (#74). 넘으면 STORE_FAIL, 서버 CSV 도 같은 값 ---
+SLOT_WEEK_MAX = 96
+SLOT_DAY_MAX = 24
+
 
 class Type(IntEnum):
     TIME = 0x01
