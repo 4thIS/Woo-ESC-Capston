@@ -43,6 +43,8 @@ describe('약관 내용 — 운영자가 정한 값 (PR #102)', () => {
     const sec = (id: string) => JSON.stringify(POLICIES[1].sections.find((s) => s.id === id))
     expect(sec('p2')).toContain('접속 IP')
     expect(sec('p3')).toContain('접속 기록')
+    // 보유 기간은 compose.yaml x-logging 상한(서비스마다 10m × 3)과 같다
+    expect(sec('p3')).toContain('30MB')
     expect(sec('p6')).toContain('Cloudflare, Inc.')
     expect(sec('p6')).toContain('국외 이전')
   })

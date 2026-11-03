@@ -17,6 +17,15 @@
 # /docs·/static(통신 확인 페이지)은 server/.env 에 DEBUG=1 일 때만 열린다(운영에서는 끈다).
 name: woo-esc
 
+# 컨테이너 로그 상한 — 서비스마다 10 MB × 3 개(최대 30 MB), 넘으면 오래된 파일부터 지운다.
+# 로그에 접속 기록(접속 IP·요청 시각·주소)이 남아 개인정보 처리방침 3절 보유 기간과 같은 값이다
+# (web/src/student/policies.ts). 바꾸면 두 곳을 함께 고친다
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   server:
     build:
@@ -40,6 +49,7 @@ services:
       - server-data:/data          # SQLite DB — 컨테이너를 지우고 다시 빌드해도 남는다
     restart: unless-stopped         # Pi 재부팅·크래시 뒤 자동 기동 (systemd 유닛 불필요)
     stop_grace_period: 10s
+    logging: *logging
 
   web:
     build:
@@ -55,6 +65,7 @@ services:
       esc:
         ipv4_address: 172.30.250.10  # server 의 FORWARDED_ALLOW_IPS 와 같아야 한다
     restart: unless-stopped
+    logging: *logging
 
 # 고정 대역 — web 의 IP 를 server 가 믿을 프록시로 적어 두기 위해. 집·학교 망과 겹치면 두 곳을 함께 바꾼다
 networks:
