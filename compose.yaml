@@ -56,7 +56,8 @@ services:
         ipv4_address: 172.30.250.10  # server 의 FORWARDED_ALLOW_IPS 와 같아야 한다
     restart: unless-stopped
 
-# 고정 대역 — web 의 IP 를 server 가 믿을 프록시로 적어 두기 위해. 집·학교 망과 겹치면 두 곳을 함께 바꾼다
+# 고정 대역 — web 의 IP 를 server 가 믿을 프록시로 적어 두기 위해. 집·학교 망과 겹치면 두 곳을 함께 바꾼다.
+# 게이트웨이(첫 주소 .1)는 web/nginx.conf set_real_ip_from 이 Cloudflare 터널 경로로 믿는다 — 대역을 바꾸면 거기도
 networks:
   esc:
     ipam:
