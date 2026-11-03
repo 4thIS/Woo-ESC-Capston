@@ -5,7 +5,7 @@ const BLOCKS = [
   { day: 1, from: 1, span: 2, label: '수업' },
   { day: 2, from: 3, span: 1, label: '시험' },
   { day: 3, from: 1, span: 1, label: '수업' },
-  { day: 3, from: 4, span: 1, label: '내 예약', mine: true },
+  { day: 3, from: 4, span: 1, label: '예약', mine: true },
   { day: 4, from: 2, span: 2, label: '특강' },
   { day: 5, from: 1, span: 1, label: '수업' },
 ]

@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from lora_proto import proto as P
@@ -18,7 +18,6 @@ COLUMNS = ("school", "building", "room", "day", "start", "end", "type", "subject
 DAYS = "월화수목금토일"
 TYPES = ("수업", "시험", "휴강", "빈강의실", "특강", "대여")
 MAX_ERRORS = 100
-NODE_SLOT_MAX = 48  # v2 §12
 _HHMM = re.compile(r"^(\d{1,2}):(\d{2})$")
 
 
@@ -164,16 +163,26 @@ def parse(text: str, s: Session, school_id: int | None = None) -> tuple[list[Row
         rows.append(r)
     if errors:
         return rows, errors
-    # 노드 슬롯 상한: 포털 행 + 그 방에 남을 source≥2 슬롯 (겹치는 키는 포털 행이 skip 되므로 한 번만)
+    # 노드 슬롯 상한(주·하루, #74): 포털 행 + 그 방에 남을 source≥2 슬롯 (겹치는 키는 포털 행이 skip 되므로 한 번만)
     by_room: dict[int, set[tuple[int, int, int]]] = defaultdict(set)
     for r in rows:
         by_room[r.room_id].add((r.day, r.s_h, r.s_m))
     for rid, keys in by_room.items():
         kept = s.scalars(select(Slot).where(Slot.room_id == rid, Slot.source >= 2)).all()
-        total = len(keys | {(x.day, x.s_h, x.s_m) for x in kept})
-        if total > NODE_SLOT_MAX:
-            room_no = next(r.room for r in rows if r.room_id == rid)
-            errors.append(RowError(0, f"{room_no}: 슬롯 {total} 개 > {NODE_SLOT_MAX} (노드 상한)"))
+        total = keys | {(x.day, x.s_h, x.s_m) for x in kept}
+        room_no = next(r.room for r in rows if r.room_id == rid)
+        if len(total) > P.SLOT_WEEK_MAX:
+            errors.append(
+                RowError(0, f"{room_no}: 슬롯 {len(total)} 개 > {P.SLOT_WEEK_MAX} (노드 상한)")
+            )
+        for day, n in sorted(Counter(d for d, _h, _m in total).items()):
+            if n > P.SLOT_DAY_MAX:
+                errors.append(
+                    RowError(
+                        0,
+                        f"{room_no} {DAYS[day - 1]}: 슬롯 {n} 개 > {P.SLOT_DAY_MAX} (노드 하루 상한)",
+                    )
+                )
     return rows, errors
 
 

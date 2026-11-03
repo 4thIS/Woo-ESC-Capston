@@ -3,7 +3,7 @@ import json
 
 from sqlalchemy import select
 
-from app.auth.models import EmailToken
+from app.auth.models import EmailToken, User
 from app.domain import clock, daily
 from app.domain.models import Building, JobRun, Reservation, Room
 from app.lora_service.models import Outbox
@@ -90,6 +90,41 @@ def _run(app) -> dict:
         return json.loads(s.get(JobRun, daily.run_daily(app.state.Session)).result)
 
 
+def test_prune_rejected_signups_after_7_days(app, school, monkeypatch):
+    """거절된 가입 신청은 거절 뒤 7일이 지나면 지운다(처리방침 3절). 대기·활성 계정은 오래돼도 남긴다."""
+    _fix_clock(monkeypatch)
+
+    def user(email, status, decided_days_ago):
+        return User(
+            email=email,
+            school_id=1,
+            role="student",
+            status=status,
+            name="학생",
+            student_no=None,
+            pw_hash="x",
+            created_at=UTC_NOW - dt.timedelta(days=30),
+            approved_at=(
+                None if decided_days_ago is None else UTC_NOW - dt.timedelta(days=decided_days_ago)
+            ),
+        )
+
+    with app.state.Session() as s, s.begin():
+        s.add_all(
+            [
+                user("old@mju.ac.kr", "rejected", 8),
+                user("new@mju.ac.kr", "rejected", 6),
+                user("wait@mju.ac.kr", "pending_approval", None),
+                user("ok@mju.ac.kr", "active", 30),
+            ]
+        )
+    res = _run(app)
+    assert res["errors"] == [] and res["pruned"]["rejected_signups"] == 1
+    with app.state.Session() as s:
+        left = set(s.scalars(select(User.email).where(User.role == "student")))
+    assert left == {"new@mju.ac.kr", "wait@mju.ac.kr", "ok@mju.ac.kr"}
+
+
 def test_run_daily_five_steps(db, hub, app, school, students, monkeypatch):
     _fix_clock(monkeypatch)  # KST 9/23 10:30 → 오늘+7 = 9/30
     _, ids = _building(app, 1, "E", rooms=((301, 2), (302, 1)))
@@ -171,7 +206,12 @@ def test_run_daily_five_steps(db, hub, app, school, students, monkeypatch):
     assert res["errors"] == []
     assert res["expired"] == 1 and res["promoted"] == 2
     assert res["resynced"] == [["E", 301, 2, ["resv"]], ["E", 302, 1, ["schedule"]]]
-    assert res["pruned"] == {"reservations": 2, "job_runs": 1, "email_tokens": 1}
+    assert res["pruned"] == {
+        "reservations": 2,
+        "job_runs": 1,
+        "email_tokens": 1,
+        "rejected_signups": 0,
+    }
     with app.state.Session() as s:
         assert s.get(Reservation, 1).status == "expired"
         assert s.get(Reservation, 5) is None and s.get(Reservation, 7) is None
