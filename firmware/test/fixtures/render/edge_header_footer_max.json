@@ -1,0 +1,15 @@
+{
+  "name": "edge_header_footer_max",
+  "_note": "room 65535·unit 255·bld M — 헤더 호수와 푸터 폭(눈으로 확인)",
+  "layout": 1, "bld": "M", "room": 65535, "unit": 255,
+  "date_str": "10.22", "weekday": 4,
+  "cur":  {"subj": "캡스톤디자인", "prof": "김교수", "s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "type": 1, "flags": 1},
+  "next": {"subj": "자료구조", "prof": "박교수", "s_h": 14, "s_m": 0, "e_h": 14, "e_m": 50, "type": 1, "flags": 1},
+  "n_today": 2,
+  "today": [
+    {"s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "subj": "캡스톤디자인", "type": 1},
+    {"s_h": 14, "s_m": 0, "e_h": 14, "e_m": 50, "subj": "자료구조", "type": 1}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}

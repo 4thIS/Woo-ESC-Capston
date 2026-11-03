@@ -1,0 +1,16 @@
+{
+  "name": "edge_long_subject",
+  "_note": "ASCII 20자 과목 — 정보 행(28/700)·목록 현재 행(20/700)·목록 일반 행 + 시험 약어",
+  "_pending": "mh(#91): 목록 과목·약어 겹침은 약어가 이김(약어 자리+앞 8px 를 행 바탕색으로 덮기), 정보 행 ASCII 규칙은 #91 수정 대기",
+  "layout": 1, "bld": "E", "room": 301, "unit": 1,
+  "date_str": "10.22", "weekday": 4,
+  "cur":  {"subj": "ABCDEFGHIJKLMNOPQRST", "prof": "김교수", "s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "type": 1, "flags": 3},
+  "next": {"subj": "ABCDEFGHIJKLMNOPQRST", "prof": "박교수", "s_h": 15, "s_m": 0, "e_h": 15, "e_m": 50, "type": 2, "flags": 1},
+  "n_today": 2,
+  "today": [
+    {"s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "subj": "ABCDEFGHIJKLMNOPQRST", "type": 1},
+    {"s_h": 15, "s_m": 0, "e_h": 15, "e_m": 50, "subj": "ABCDEFGHIJKLMNOPQRST", "type": 2}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}

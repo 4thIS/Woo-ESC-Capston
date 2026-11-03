@@ -1,0 +1,14 @@
+{
+  "name": "edge_today_1",
+  "_note": "목록 1행, 현재 행 반전 1개",
+  "layout": 1, "bld": "E", "room": 301, "unit": 1,
+  "date_str": "10.22", "weekday": 4,
+  "cur":  {"subj": "캡스톤디자인", "prof": "김교수", "s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "type": 1, "flags": 1},
+  "next": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "n_today": 1,
+  "today": [
+    {"s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "subj": "캡스톤디자인", "type": 1}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}

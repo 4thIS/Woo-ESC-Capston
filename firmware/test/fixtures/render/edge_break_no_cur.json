@@ -1,0 +1,16 @@
+{
+  "name": "edge_break_no_cur",
+  "_note": "쉬는시간인데 cur 가 비어 옴(flags 0) — 지금 렌더는 형태 A 에 00:00 – 00:00",
+  "_pending": "cw(#89): 쉬는시간 동안 cur 에 싣는 값 / mh(#89 리뷰): 정보 영역·목록 반전이 곧 시작할 수업을 가리키는 쪽 제안",
+  "layout": 2, "bld": "E", "room": 301, "unit": 1,
+  "date_str": "10.22", "weekday": 4,
+  "cur":  {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "next": {"subj": "캡스톤디자인", "prof": "김교수", "s_h": 14, "s_m": 0, "e_h": 14, "e_m": 50, "type": 1, "flags": 1},
+  "n_today": 2,
+  "today": [
+    {"s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "subj": "캡스톤디자인", "type": 1},
+    {"s_h": 14, "s_m": 0, "e_h": 14, "e_m": 50, "subj": "캡스톤디자인", "type": 1}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}

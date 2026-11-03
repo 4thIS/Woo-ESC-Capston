@@ -1,0 +1,17 @@
+{
+  "name": "edge_day_over",
+  "_note": "오늘 수업이 모두 끝남 — 형태 B, 목록에는 지난 3개",
+  "_pending": "mh(#91): 형태 B 빈 문구 '오늘 일정 없음' → '오늘 남은 수업 없음'",
+  "layout": 4, "bld": "E", "room": 301, "unit": 1,
+  "date_str": "10.22", "weekday": 4,
+  "cur":  {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "next": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "n_today": 3,
+  "today": [
+    {"s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "subj": "자료구조", "type": 1},
+    {"s_h": 10, "s_m": 0, "e_h": 10, "e_m": 50, "subj": "운영체제", "type": 1},
+    {"s_h": 11, "s_m": 0, "e_h": 11, "e_m": 50, "subj": "알고리즘", "type": 1}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}

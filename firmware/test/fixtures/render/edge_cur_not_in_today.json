@@ -1,0 +1,17 @@
+{
+  "name": "edge_cur_not_in_today",
+  "_note": "cur(12:30 보강)이 today 에 없음 → 반전 행 없음, 다음 예정(13:00) 기준 창",
+  "layout": 1, "bld": "E", "room": 301, "unit": 1,
+  "date_str": "10.22", "weekday": 4,
+  "cur":  {"subj": "보강 세미나", "prof": "김교수", "s_h": 12, "s_m": 30, "e_h": 12, "e_m": 55, "type": 1, "flags": 1},
+  "next": {"subj": "웹프로그래밍", "prof": "박교수", "s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "type": 1, "flags": 1},
+  "n_today": 4,
+  "today": [
+    {"s_h": 10, "s_m": 0, "e_h": 10, "e_m": 50, "subj": "자료구조", "type": 1},
+    {"s_h": 11, "s_m": 0, "e_h": 11, "e_m": 50, "subj": "운영체제", "type": 1},
+    {"s_h": 12, "s_m": 0, "e_h": 12, "e_m": 50, "subj": "캡스톤디자인", "type": 1},
+    {"s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "subj": "웹프로그래밍", "type": 1}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}

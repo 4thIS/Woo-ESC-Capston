@@ -1,0 +1,18 @@
+{
+  "name": "edge_all_type_chips",
+  "_note": "목록 type 1·2·3·5·6 → 약어 4종, cur flags bit1 → 정보 형태 A 변경 칩",
+  "layout": 1, "bld": "E", "room": 301, "unit": 1,
+  "date_str": "10.22", "weekday": 4,
+  "cur":  {"subj": "캡스톤디자인", "prof": "김교수", "s_h": 10, "s_m": 0, "e_h": 10, "e_m": 50, "type": 1, "flags": 3},
+  "next": {"subj": "자료구조", "prof": "박교수", "s_h": 11, "s_m": 0, "e_h": 11, "e_m": 50, "type": 2, "flags": 1},
+  "n_today": 5,
+  "today": [
+    {"s_h": 10, "s_m": 0, "e_h": 10, "e_m": 50, "subj": "캡스톤디자인", "type": 1},
+    {"s_h": 11, "s_m": 0, "e_h": 11, "e_m": 50, "subj": "자료구조", "type": 2},
+    {"s_h": 12, "s_m": 0, "e_h": 12, "e_m": 50, "subj": "운영체제", "type": 3},
+    {"s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "subj": "AI 특강", "type": 5},
+    {"s_h": 14, "s_m": 0, "e_h": 14, "e_m": 50, "subj": "동아리 대여", "type": 6}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}
