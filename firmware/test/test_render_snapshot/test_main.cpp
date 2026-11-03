@@ -52,8 +52,14 @@ void test_snapshots_match() {
     } else {
       const std::string base = std::string(kSnapshotDir) + "/" + s + ".png";
       const SnapshotDiff d = compareToBaseline(g, base.c_str());
-      if (!d.baselineLoaded) {
-        line = s + ": no baseline - run python tools/render_preview.py --update-snapshots";
+      if (!d.baselineLoaded && d.baselineW > 0) {
+        line = s + ": baseline is " + std::to_string(d.baselineW) + "x" + std::to_string(d.baselineH) +
+               ", expected " + std::to_string(g.width()) + "x" + std::to_string(g.height()) +
+               " - check the PNG before regenerating";
+      } else if (!d.baselineLoaded) {
+        line =
+            s +
+            ": no baseline (missing or unreadable) - run python tools/render_preview.py --update-snapshots";
       } else if (d.diffPixels > 0) {
         std::error_code ec;
         fs::create_directories(kOutDir, ec);

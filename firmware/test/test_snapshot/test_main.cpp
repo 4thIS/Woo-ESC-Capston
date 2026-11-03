@@ -47,6 +47,26 @@ void test_size_mismatch_is_not_loaded() {
   remove(kBase);
 }
 
+// 크기가 다른 정답은 "정답 없음"과 구분해 알려야 한다 — 다시 만들라고 안내하면 잘못 덮어쓴다.
+void test_size_mismatch_reports_baseline_size() {
+  HostGfx small(10, 12);
+  TEST_ASSERT_TRUE(small.savePNG(kBase));
+  HostGfx g;
+  const SnapshotDiff d = compareToBaseline(g, kBase);
+  TEST_ASSERT_FALSE(d.baselineLoaded);
+  TEST_ASSERT_EQUAL(10, d.baselineW);
+  TEST_ASSERT_EQUAL(12, d.baselineH);
+  remove(kBase);
+}
+
+void test_missing_file_reports_zero_size() {
+  HostGfx g;
+  remove(kBase);
+  const SnapshotDiff d = compareToBaseline(g, kBase);
+  TEST_ASSERT_EQUAL(0, d.baselineW);
+  TEST_ASSERT_EQUAL(0, d.baselineH);
+}
+
 void test_rgba_baseline_compares_by_rgb() {
   // 이미지 편집기로 다시 저장해 알파 채널이 생긴 정답 — 색만 같으면 같은 그림이다.
   HostGfx g;
@@ -102,6 +122,8 @@ int main() {
   RUN_TEST(test_one_pixel_differs);
   RUN_TEST(test_missing_file_is_not_loaded);
   RUN_TEST(test_size_mismatch_is_not_loaded);
+  RUN_TEST(test_size_mismatch_reports_baseline_size);
+  RUN_TEST(test_missing_file_reports_zero_size);
   RUN_TEST(test_rgba_baseline_compares_by_rgb);
   RUN_TEST(test_diff_png_marks_changed_pixel_blue);
   RUN_TEST(test_diff_png_fails_without_baseline);

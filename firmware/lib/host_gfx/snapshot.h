@@ -7,6 +7,8 @@
 struct SnapshotDiff {
   bool baselineLoaded;  // 파일 없음·디코드 실패·크기가 gfx 와 다름이면 false
   long diffPixels;      // baselineLoaded 일 때만 의미. RGB 가 하나라도 다르면 1 픽셀
+  int baselineW;        // 디코드한 정답 크기. 파일 없음·디코드 실패면 0 — 크기 불일치와 "정답 없음"을 가른다
+  int baselineH;
 };
 
 SnapshotDiff compareToBaseline(const HostGfx& g, const char* baselinePng);

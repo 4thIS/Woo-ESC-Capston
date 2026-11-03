@@ -24,12 +24,14 @@ namespace {
 // 정답을 3채널로 강제해 읽는다(알파·팔레트 PNG 도 색만 비교). 크기가 다르면 실패로 본다.
 struct Baseline {
   unsigned char* px = nullptr;
+  int w = 0, h = 0;  // 디코드에 실패하면 0
   ~Baseline() {
     if (px != nullptr) stbi_image_free(px);
   }
   bool load(const char* path, const HostGfx& g) {
-    int w = 0, h = 0, n = 0;
+    int n = 0;
     px = stbi_load(path, &w, &h, &n, 3);
+    if (px == nullptr) w = h = 0;
     return px != nullptr && w == g.width() && h == g.height();
   }
   const unsigned char* at(int16_t x, int16_t y, int16_t w) const { return px + ((size_t)y * w + x) * 3; }
@@ -46,12 +48,12 @@ bool samePixel(const HostGfx& g, const Baseline& b, int16_t x, int16_t y) {
 
 SnapshotDiff compareToBaseline(const HostGfx& g, const char* baselinePng) {
   Baseline b;
-  if (!b.load(baselinePng, g)) return {false, 0};
+  if (!b.load(baselinePng, g)) return {false, 0, b.w, b.h};
   long diff = 0;
   for (int16_t y = 0; y < g.height(); y++)
     for (int16_t x = 0; x < g.width(); x++)
       if (!samePixel(g, b, x, y)) diff++;
-  return {true, diff};
+  return {true, diff, b.w, b.h};
 }
 
 bool saveDiffPNG(const HostGfx& g, const char* baselinePng, const char* outPng) {
