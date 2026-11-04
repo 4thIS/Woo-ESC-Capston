@@ -158,6 +158,8 @@ describe('LogoRiverPhysics', () => {
     expect(w.get('.river__field').attributes('aria-hidden')).toBe('true')
     expect(w.get('.river__field').findAll('button')).toHaveLength(0)
     expect(w.get('button').text()).toBe('멈춤')
+    // 로고 판을 숨겼으니 무엇을 멈추는지는 버튼이 말한다
+    expect(w.get('button').attributes('aria-label')).toBe('로고 흐름 멈춤')
   })
 
   it('프레임마다 로고가 왼쪽으로 흐른다', () => {

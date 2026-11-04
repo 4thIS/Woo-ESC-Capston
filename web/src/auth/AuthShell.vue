@@ -173,7 +173,7 @@ defineProps<{
     display: none;
   }
 }
-/* ESC 아래부터 흐른다. 창이 낮아도 아래쪽 글자 칸은 바탕색으로 덮는다 */
+/* ESC 아래부터 흐른다. 아래쪽 글자는 글자 칸 자체의 바탕색이 덮는다(.auth__intro-text) */
 .auth__intro-river {
   position: absolute;
   top: 88px;
@@ -184,9 +184,7 @@ defineProps<{
 .auth__intro-cover {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(180deg, var(--surface) 88px, transparent 108px),
-    linear-gradient(0deg, var(--surface) 190px, transparent 290px);
+  background: linear-gradient(180deg, var(--surface) 88px, transparent 108px);
   pointer-events: none;
 }
 .auth__intro-brand {
@@ -202,11 +200,24 @@ defineProps<{
 .auth__intro-brand a:hover {
   text-decoration: underline;
 }
+/* 칸 폭이 좁아 제목이 여러 줄이 되어도 글자 높이만큼 덮는다 — 칸 양옆·바닥까지, 위로는 옅어진다 */
 .auth__intro-text {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-3);
+  margin: 0 -48px -40px;
+  padding: 0 48px 40px;
+  background: var(--surface);
+}
+.auth__intro-text::before {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  height: 100px;
+  background: linear-gradient(0deg, var(--surface), transparent);
+  content: '';
 }
 .auth__intro-lead {
   margin: 0;

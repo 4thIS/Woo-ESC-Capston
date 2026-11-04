@@ -166,6 +166,18 @@ describe('잡기', () => {
     expect(w.bodies[0].y).toBeCloseTo(300, 0)
   })
 
+  it('held — 화면 오른쪽에 걸친 로고를 잡아도 튀지 않는다', () => {
+    const w = makeWorld([logo(1250, 300)]) // 폭 100 — 오른쪽 끝이 1300, 히어로 1280
+    grab(w, 0, 1275, 300)
+    moveGrab(w, 1276, 300, 1280)
+    run(w, 0.5)
+    expect(Math.abs(w.bodies[0].x - 1250)).toBeLessThanOrEqual(1)
+    // 왼쪽으로 끌면 그대로 따라오고, 그 뒤로는 히어로 안으로 제한된다
+    moveGrab(w, 1000, 300, 1280)
+    run(w, 0.5)
+    expect(w.bodies[0].x).toBeCloseTo(975, 0)
+  })
+
   it('held — 목표가 히어로 밖이면 히어로 안에 머문다', () => {
     const w = makeWorld([logo(500, 300)])
     grab(w, 0, 500, 300)
@@ -261,6 +273,17 @@ describe('pointerVelocity', () => {
       { t: 50, x: 500, y: 0 },
     ]
     expect(pointerVelocity(s, 300)).toEqual({ vx: 0, vy: 0 })
+  })
+
+  it('움직이다 멈춘 뒤 100ms 안에 놓아도 멈춘 시간까지 평균한다 — 세게 던지지 않는다', () => {
+    const v = pointerVelocity(
+      [
+        { t: 0, x: 0, y: 0 },
+        { t: 10, x: 10, y: 0 },
+      ],
+      100,
+    )
+    expect(v.vx).toBeCloseTo(100)
   })
 
   it('표본 하나면 0', () => {

@@ -202,7 +202,12 @@ onBeforeUnmount(() => {
         draggable="false"
       />
     </div>
-    <Button class="river__pause" variant="secondary" @click="togglePause">
+    <Button
+      class="river__pause"
+      variant="secondary"
+      :aria-label="paused ? '로고 흐름 재생' : '로고 흐름 멈춤'"
+      @click="togglePause"
+    >
       {{ paused ? '재생' : '멈춤' }}
     </Button>
   </div>

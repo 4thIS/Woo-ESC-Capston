@@ -368,7 +368,7 @@ const wide = useRiverWide()
 .foot__about {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
 }
 .foot__text {
   font-size: var(--font-size-xs);

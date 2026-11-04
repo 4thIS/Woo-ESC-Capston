@@ -46,6 +46,7 @@ export interface World {
   target: { x: number; y: number } | null
   grabDx: number
   grabDy: number
+  grabX: number
   acc: number
   t: number
 }
@@ -71,6 +72,7 @@ export function createWorld(logos: RiverLogo[], W: number, H: number): World {
     target: null,
     grabDx: 0,
     grabDy: 0,
+    grabX: 0,
     acc: 0,
     t: 0,
   }
@@ -219,15 +221,16 @@ export function grab(w: World, i: number, px: number, py: number): void {
   w.held = i
   w.grabDx = b.x - px
   w.grabDy = b.y - py
+  w.grabX = b.x
   w.target = { x: b.x, y: b.y }
 }
 
-/** 로고가 히어로 밖으로 나가지 않게 목표를 자른다 */
+/** 로고가 히어로 밖으로 나가지 않게 목표를 자른다. 화면 오른쪽에 걸친 채 잡은 로고는 그 자리까지 허용한다(튀지 않게) */
 export function moveGrab(w: World, px: number, py: number, heroW: number): void {
   if (w.held < 0) return
   const b = w.bodies[w.held]
   w.target = {
-    x: clamp(px + w.grabDx, b.w / 2, heroW - b.w / 2),
+    x: clamp(px + w.grabDx, b.w / 2, Math.max(heroW - b.w / 2, w.grabX)),
     y: clamp(py + w.grabDy, b.h / 2, w.H - b.h / 2),
   }
 }
@@ -252,7 +255,8 @@ export function pointerVelocity(
   if (recent.length < 2) return { vx: 0, vy: 0 }
   const a = recent[0]
   const b = recent[recent.length - 1]
-  const dt = (b.t - a.t) / 1000
+  // 지금까지의 시간으로 나눈다 — 멈춘 시간이 빠지면 멈췄다 놓아도 세게 던져진다
+  const dt = (now - a.t) / 1000
   if (dt <= 0) return { vx: 0, vy: 0 }
   return { vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt }
 }

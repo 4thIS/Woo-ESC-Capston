@@ -118,6 +118,23 @@ test.describe('터치 화면', () => {
   })
 })
 
+test.describe('좁은 인증 왼쪽', () => {
+  test.use({ viewport: { width: 700, height: 700 } })
+  test('제목이 몇 줄이 되어도 글자 칸이 로고를 덮는다', async ({ page }) => {
+    await page.goto('/login')
+    const text = page.locator('.auth__intro-text')
+    await expect(text).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+    const panel = (await page.locator('.auth__intro').boundingBox())!
+    const box = (await text.boundingBox())!
+    const lead = (await page.locator('.auth__intro-lead').boundingBox())!
+    // 칸 양옆과 바닥까지 덮고, 글자 윗줄도 덮는 칸 안에 있다
+    expect(box.x).toBeLessThanOrEqual(panel.x)
+    expect(box.x + box.width).toBeGreaterThanOrEqual(panel.x + panel.width - 1)
+    expect(box.y + box.height).toBeGreaterThanOrEqual(panel.y + panel.height - 1)
+    expect(lead.y).toBeGreaterThanOrEqual(box.y)
+  })
+})
+
 test('로그인 1280 — 흐르기만 하고 잡히지 않는다', async ({ page }) => {
   await page.goto('/login')
   await expect(page.locator('.auth__intro .river')).toHaveCount(1)
