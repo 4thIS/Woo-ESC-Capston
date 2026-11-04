@@ -54,6 +54,15 @@
     "aspect": 2.787
   },
   {
+    "slug": "knu",
+    "name": "경북대학교",
+    "rank": 7,
+    "file": "knu.png",
+    "source": "https://www.knu.ac.kr/wbbs/wbbs/download/emblem_plus_png.zip",
+    "license": "공식 다운로드, 상표 등록 · 외부인 사용은 허가 필요",
+    "aspect": 3.81
+  },
+  {
     "slug": "cuk",
     "name": "가톨릭대학교",
     "rank": 8,
@@ -108,6 +117,24 @@
     "aspect": 1.0
   },
   {
+    "slug": "mjc",
+    "name": "명지전문대학",
+    "rank": 13.5,
+    "file": "mjc.png",
+    "source": "https://www.mjc.ac.kr/file/fileDown.do?filePath=/ci&fileNm=bs-01.ai",
+    "license": "공식 다운로드(AI 를 투명 PNG 로 렌더링), 사용 조건 미확인",
+    "aspect": 0.978
+  },
+  {
+    "slug": "gachon",
+    "name": "가천대학교",
+    "rank": 14,
+    "file": "gachon.png",
+    "source": "https://www.gachon.ac.kr/sites/kor/file/logo_ai.zip",
+    "license": "공식 다운로드(AI 를 투명 PNG 로 렌더링), 사용 조건 미확인",
+    "aspect": 1.003
+  },
+  {
     "slug": "hongik",
     "name": "홍익대학교",
     "rank": 15,
@@ -135,6 +162,24 @@
     "aspect": 2.189
   },
   {
+    "slug": "kmu",
+    "name": "계명대학교",
+    "rank": 18,
+    "file": "kmu.png",
+    "source": "https://www.kmu.ac.kr/uni/main/download/sub01/symbol1.zip",
+    "license": "공식 다운로드(AI 를 투명 PNG 로 렌더링), 사용 조건 미확인",
+    "aspect": 2.059
+  },
+  {
+    "slug": "donga",
+    "name": "동아대학교",
+    "rank": 19,
+    "file": "donga.png",
+    "source": "https://www.donga.ac.kr/resources/donga_kor/home/donga-emblem.png",
+    "license": "공식 페이지, 사용 조건 미확인",
+    "aspect": 1.003
+  },
+  {
     "slug": "wku",
     "name": "원광대학교",
     "rank": 20,
@@ -142,6 +187,15 @@
     "source": "https://upload.wikimedia.org/wikipedia/commons/a/ad/Logo_WonKwang_University.svg",
     "license": "Public domain",
     "aspect": 1.0
+  },
+  {
+    "slug": "kookmin",
+    "name": "국민대학교",
+    "rank": 21,
+    "file": "kookmin.png",
+    "source": "https://www.kookmin.ac.kr/content/05sub/style0005/file/symbol_ai.zip",
+    "license": "공식 다운로드(AI 를 투명 PNG 로 렌더링), 사용 조건 미확인",
+    "aspect": 0.997
   },
   {
     "slug": "sejong",
