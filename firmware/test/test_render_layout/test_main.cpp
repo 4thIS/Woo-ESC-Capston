@@ -6,6 +6,7 @@
 
 #include "font_data.h"
 #include "host_gfx.h"
+#include "image_data.h"
 #include "render.h"
 #include "text.h"
 
@@ -165,8 +166,7 @@ void test_form_b_without_next_says_no_schedule() {
   renderLayout(g, m);
   TEST_ASSERT_LESS_THAN_INT(498,
                             countColor(g, 0, 291, 498, 292, HColor::BLACK));  // 형태 A 로 그려지지 않았다
-  TEST_ASSERT_GREATER_THAN_INT(80,
-                               countColor(g, 24, 310, 400, 345, HColor::BLACK));  // "오늘 일정 없음" 28/700
+  TEST_ASSERT_GREATER_THAN_INT(80, countColor(g, 24, 310, 400, 345, HColor::BLACK));  // 빈 문구 28/700
 }
 
 void test_change_chip_after_subject() {
@@ -177,6 +177,126 @@ void test_change_chip_after_subject() {
   const int16_t x = (int16_t)(146 + textWidthForTest(m.cur.subj) + 10);
   TEST_ASSERT_EQUAL(HColor::BLACK,
                     g.pixelAt((int16_t)(x + 1), (int16_t)(263 - 18 + 1)));  // 칩 흑 바탕 모서리
+}
+
+// ---------------------------------------------------------------------------
+// #91 스펙 반영(terminal-epaper.md 2026-10-21·10-28 이력) — 문구는 같은 폰트·같은 자리에 그린 참조와 영역
+// 비교.
+// ---------------------------------------------------------------------------
+
+static int diffCount(const HostGfx& a, const HostGfx& b, int x0, int y0, int x1, int y1) {
+  int n = 0;
+  for (int y = y0; y < y1; y++)
+    for (int x = x0; x < x1; x++)
+      if (a.pixelAt((int16_t)x, (int16_t)y) != b.pixelAt((int16_t)x, (int16_t)y)) n++;
+  return n;
+}
+
+static RenderModel overflowModel(uint8_t curIdx) {
+  RenderModel m = layout1Model();
+  m.nToday = 12;
+  for (uint8_t i = 0; i < 12; i++) setSlot(m.today[i], (uint8_t)(8 + i), (uint8_t)(8 + i), "자료구조", 1);
+  m.cur.sH = m.cur.eH = (uint8_t)(8 + curIdx);
+  return m;
+}
+
+void test_more_above_is_filled_up_triangle_and_count() {
+  // 현재 today[6] → start 3 → 0행(윗변 y 100) 이 ▲ + "4개 더". 삼각형: 밑변 x 518–527 · y 120, 꼭짓점 y 115.
+  HostGfx g;
+  renderLayout(g, overflowModel(6));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(518, 120));  // 밑변 왼끝
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(527, 120));  // 밑변 오른끝
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(522, 116));  // 꼭짓점 아래
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(518, 115));  // 위 모서리는 비어 있음
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(522, 121));  // 높이 6 밖
+  HostGfx ref;
+  ref.fillScreen(GxEPD_WHITE);
+  drawText(ref, kNanum16Regular, "4개 더", 534, 125, GxEPD_BLACK);  // 삼각형 뒤 간격 6
+  TEST_ASSERT_EQUAL(0, diffCount(g, ref, 530, 100, 700, 136));
+}
+
+void test_more_below_is_filled_down_triangle() {
+  // 현재 today[1] → start 0 → 끝 행(8행, 윗변 y 388) 이 ▼ + "4개 더". 밑변 y 403, 꼭짓점 y 408.
+  HostGfx g;
+  renderLayout(g, overflowModel(1));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(518, 403));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(522, 407));
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(518, 408));
+  HostGfx ref;
+  ref.fillScreen(GxEPD_WHITE);
+  drawText(ref, kNanum16Regular, "4개 더", 534, 413, GxEPD_BLACK);
+  TEST_ASSERT_EQUAL(0, diffCount(g, ref, 530, 388, 700, 424));
+}
+
+void test_form_b_without_next_says_no_more_classes_today() {
+  RenderModel m = layout4Model();
+  m.next.flags = 0;
+  HostGfx g;
+  renderLayout(g, m);
+  HostGfx ref;
+  ref.fillScreen(GxEPD_WHITE);
+  drawText(ref, kNanum28Bold, "오늘 남은 수업 없음", 24, 338, GxEPD_BLACK, -1);
+  TEST_ASSERT_EQUAL(0, diffCount(g, ref, 0, 300, 476, 350));
+}
+
+void test_layout7_second_label_is_reserver() {
+  RenderModel m = layout1Model();
+  m.layout = 7;
+  HostGfx g;
+  renderLayout(g, m);
+  HostGfx ref;
+  ref.fillScreen(GxEPD_WHITE);
+  drawText(ref, kNanum20Regular, "예약자", 24, 338, GxEPD_BLACK);
+  TEST_ASSERT_EQUAL(0, diffCount(g, ref, 0, 300, 140, 364));
+}
+
+void test_list_type_chip_wins_over_long_subject() {
+  // 2행(today[2], 15:00 시험, 윗변 y 172) 과목을 ASCII 20자로 — 약어 자리 + 앞 8 은 행 높이 전체가
+  // 바탕(백)이다.
+  RenderModel m = layout1Model();
+  strcpy(m.today[2].subj, "WWWWWWWWWWWWWWWWWWWW");
+  HostGfx g;
+  renderLayout(g, m);
+  const int16_t chipX = (int16_t)(800 - 18 - kImgChipSiheom.w);
+  TEST_ASSERT_EQUAL(0, countColor(g, chipX - 8, 172, chipX, 208, HColor::BLACK));
+  TEST_ASSERT_GREATER_THAN_INT(10, countColor(g, chipX, 172, 782, 208, HColor::BLACK));  // 약어는 그대로
+}
+
+void test_list_type_chip_wins_to_row_right_edge() {
+  // 과목(ASCII 20자 'W')은 x 572 에서 시작해 x 800 을 넘는다 — 약어 오른쪽 여백(x 782–799)에도 과목 조각이
+  // 남지 않는다.
+  RenderModel m = layout1Model();
+  strcpy(m.today[2].subj, "WWWWWWWWWWWWWWWWWWWW");
+  HostGfx g;
+  renderLayout(g, m);
+  TEST_ASSERT_EQUAL(0, countColor(g, 782, 172, 800, 208, HColor::BLACK));
+}
+
+void test_list_type_chip_wins_on_current_row() {
+  // 현재 행(반전)이면 덮는 색은 흑.
+  RenderModel m = layout1Model();
+  strcpy(m.today[1].subj, "WWWWWWWWWWWWWWWWWWWW");
+  m.today[1].type = 2;
+  HostGfx g;
+  renderLayout(g, m);
+  const int16_t chipX = (int16_t)(800 - 18 - kImgChipSiheom.w);
+  TEST_ASSERT_EQUAL(0, countColor(g, chipX - 8, 136, chipX, 172, HColor::WHITE));
+}
+
+void test_info_overflow_pins_change_chip_and_clears_list_side() {
+  // 값이 x 476 을 넘으면 변경 칩을 오른쪽 끝 x 476 에 붙이고, x 476–497 은 행 칸 전체(구분선 제외)를 백으로.
+  RenderModel m = layout1Model();
+  strcpy(m.cur.subj, "WWWWWWWWWWWWWWWWWWWW");
+  m.cur.flags = 0x03;
+  HostGfx g;
+  renderLayout(g, m);
+  const int16_t chipW = (int16_t)(kImgChipByeongyeong.w + 2 * 6);
+  const int16_t chipX = (int16_t)(476 - chipW);
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt((int16_t)(chipX + 1), (int16_t)(263 - 18 + 1)));  // 칩 흑 바탕
+  TEST_ASSERT_EQUAL(0, countColor(g, chipX - 10, 216, chipX, 291, HColor::BLACK));  // 칩 앞 간격 10 덮음
+  TEST_ASSERT_EQUAL(0, countColor(g, 476, 216, 498, 291, HColor::BLACK));           // 분할선 앞까지 백
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(480, 291));                            // 구분선은 남음
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(498, 250));                            // 분할선은 마지막에
 }
 
 void test_out_of_range_layout_is_blank() {
@@ -242,6 +362,14 @@ int main() {
   RUN_TEST(test_layout8_has_no_split_list_footer);
   RUN_TEST(test_layout8_title_and_new_tag_chip);
   RUN_TEST(test_layout8_empty_tag_omits_chip);
+  RUN_TEST(test_more_above_is_filled_up_triangle_and_count);
+  RUN_TEST(test_more_below_is_filled_down_triangle);
+  RUN_TEST(test_form_b_without_next_says_no_more_classes_today);
+  RUN_TEST(test_layout7_second_label_is_reserver);
+  RUN_TEST(test_list_type_chip_wins_over_long_subject);
+  RUN_TEST(test_list_type_chip_wins_to_row_right_edge);
+  RUN_TEST(test_list_type_chip_wins_on_current_row);
+  RUN_TEST(test_info_overflow_pins_change_chip_and_clears_list_side);
   RUN_TEST(test_out_of_range_layout_is_blank);
   return UNITY_END();
 }
