@@ -3,7 +3,7 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 - 생성일시: 2026-10-13, 최종 갱신: 2026-11-04
-- 상태: **완성 — 구현 진행 중, cw 리뷰 대기.** 이슈 #74의 결정(cw 댓글 2026-10-12·10-14·11-03·11-04 반영표)과 PR #78·#79·#103·#109·#111 머지본 기준.
+- 상태: **cw 승인(#119 코멘트 2026-11-04 03:05) — 구현 진행 중.** 승인 때 바뀐 것: `NotFound` + 버전 ≠ 0 → 버전 0(Task 5), `slotsDay` 를 v2 §5.1 에 반영(이 PR). 이슈 #74의 결정(cw 댓글 2026-10-12·10-14·11-03·11-04 반영표)과 PR #78·#79·#103·#109·#111 머지본 기준.
 - 기준 spec: `docs/specs/2026-09-09-lora-v2-wor-design.md` §3.3·§3.4·§3.5·§5.1–§5.4·§6.3·§6.4·§10.1 (`main` `842ef8d`, #111 개정본), 로드맵 §5 S8, `docs/design/screens/terminal-epaper.md`(쉬는시간 `cur` = `next`, #109)
 - 결정 근거: 이슈 #74(코드 위치·저장 인터페이스·쉬는시간 틈 규칙·담당·RTC 분담·ACK 순서·상한·추가 질문 7–12), #14(쉬는시간 — #74로 닫힘), #34(`lib/` 배치 선례), #89(쉬는시간 `cur` = 다음 슬롯)
 - 표기: `[확인]` 이 작업에서 직접 실행·열람 / `[계산]` 확인한 값으로 계산 / `[추정]` 확인 안 함 / ⚠️ 플랜이 정함 — 검토 대상
@@ -174,7 +174,7 @@ if (before != n) return ParseResult::Corrupt;  // 정상 종료면 before == n
 
 **Files:** Create `lib/node_store/rtc_state.h/.cpp` · Test `test/test_rtc_state/test_main.cpp`
 
-**Interfaces — Produces:** v2 §5.1 `rtc_state_t` 그대로 + 아래 스펙 변경 제안 1필드.
+**Interfaces — Produces:** v2 §5.1 `rtc_state_t` 그대로(`slotsDay` 포함 — 이 PR 에서 §5.1 에 추가, cw 승인).
 ```cpp
 namespace ns {
 constexpr uint32_t kRtcMagicBase = 0x52544300u;  // 'R''T''C' + 하위 바이트 = 레이아웃 버전 ⚠️ 값은 플랜이 정함
@@ -187,7 +187,7 @@ struct RtcState {
   uint8_t schedVer, resvVer, examVer, identVer, lastTxn;
   uint8_t lastLayout; uint8_t lastDay; uint16_t lastSlotStartMin;  // 상태키 — cw-14
   uint32_t lastTimeSyncEpoch; uint32_t nextStatusEpoch;              // cw-14
-  uint8_t slotsDay;                                                  // 스펙 변경 제안 — slots[] 가 어느 요일 것인지(0 = 비어 있음)
+  uint8_t slotsDay;                                                  // slots[] 의 요일, 0 = 비어 있음
   uint8_t nSlots; lc::SlotRec slots[LP_SLOT_DAY_MAX];               // 오늘 슬롯만
   uint8_t nResv;  lc::ResvRec resv[kResvMax];
   uint8_t nExam;  lc::ExamRec exams[kExamMax];
@@ -200,7 +200,7 @@ void rtcSeal(RtcState& s);         // magic·crc 기록. cw가 잠들기 직전 
 bool rtcValid(const RtcState& s);  // magic == kRtcMagic && crc 일치
 }
 ```
-**스펙 변경 제안 — `slotsDay`:** v2 구조체에는 `slots[]`가 어느 요일 것인지 담는 칸이 없다. `lastDay`는 cw-14의 상태키라 저장 계층이 쓰면 두 쪽이 한 값을 다르게 쓰게 된다. 날짜가 바뀌었는지(다시 채울지) 판단하려면 별도 칸이 필요하다 — 구조체 정의는 dh-08 몫(#74 결정 5)이라 plan이 넣고, cw 리뷰에서 확인한다.
+**`slotsDay`(cw 승인, #119 2026-11-04):** `slots[]`가 어느 요일 것인지 담는다. `lastDay`는 cw-14의 상태키라 따로 둔다. 날짜가 바뀌었는지(다시 채울지) 판단에 쓴다. v2 §5.1 `rtc_state_t` 에 `uint8_t slotsDay; // slots[] 의 요일, 0 = 비어 있음` 을 이 PR 의 plan 수정 커밋에서 넣었다.
 
 `[계산]` 레코드 합계 24×40 + 24×44 + 8×8 = 2,080 B(호스트 sizeof 측정값 SlotRec 40·ResvRec 44·ExamRec 8 기준 `[확인]`). 실제 크기는 테스트가 출력한다. ESP32에서의 크기는 실기 빌드 때 확인 `[추정: 같을 것]`.
 
@@ -300,13 +300,14 @@ StoreStatus factoryReset();                 // cfg·ver 지움, 파일 3개 삭�
 ```
 `weekday`를 모를 때(시계 무효) cw는 `0`을 넘긴다 → `slotsDay = 0`, `nSlots = 0` ⚠️.
 NVS 키(v2 §5.1 그대로): `cfg` — `bld` `room` `unit` `identVer` `provisioned` `statusHourUtc` `sessionWindowMs` / `ver` — `schedVer` `resvVer` `examVer` `lastTxn`.
-재구축: 파일별 결과가 `Corrupt`·`OverCapacity`·`ReadResult::Fail`이면 그 kind를 비우고 버전 0(NVS에도 0) — v2 §5.1. `NotFound`는 빈 표 + NVS 버전 그대로 ⚠️(처음 켠 노드·FILE 수신 전).
+재구축: 파일별 결과가 `Corrupt`·`OverCapacity`·`ReadResult::Fail`이면 그 kind를 비우고 버전 0(NVS에도 0) — v2 §5.1. `NotFound`는 NVS 버전이 0이면 빈 표(처음 켠 노드·FILE 수신 전), 버전 ≠ 0이면 `Corrupt`와 같게 그 kind 를 비우고 버전 0(NVS에도 0) — cw 지시(#119 2026-11-04). 쓰기는 빈 표도 파일로 남기므로(`writeAtomic` 길이 0) 버전이 있는데 파일이 없으면 데이터를 잃은 것이고, 버전을 두면 서버가 동기화됐다고 믿어 빈 화면이 계속된다. 버전 0이면 GAP 재동기가 걸린다.
 
 - [ ] **Step 1: 테스트** — 케이스:
   - `test_load_uses_valid_rtc`(seal된 RTC → `RtcCache`, `FakeFile::reads == 0`)
   - `test_load_rebuilds_when_invalid`: NVS·파일에 데이터 → RTC clear → `load(2)` == `Rebuilt`, 화요일 슬롯·예약·시험·버전·정체성 복원, `rtcValid` true
   - `test_load_corrupt_schedule_empties_ver0`: `/schedule.bin` 손상 → nSlots 0, schedVer 0, kv schedVer 0, 예약은 정상
   - `test_load_weekday_zero_no_slots`
+  - `test_load_missing_file_with_ver_resets_ver0`: kv `ver/schedVer` 5, `/schedule.bin` 없음 → RTC clear → `load(2)` → nSlots 0, schedVer 0, kv `ver/schedVer` 0. 같은 조건에서 버전 0 이면 버전 0 그대로·빈 표(처음 켠 노드)
   - `test_load_valid_rtc_other_day_refreshes`(화요일로 seal된 RTC → `load(3)` == `RtcCache`, `slotsDay` 3, 수요일 슬롯)
   - `test_refresh_day_switches`: 화→수 `refreshDay(3)` → 수요일 슬롯, `slotsDay` 3
   - `test_identity_persists`, `test_last_txn_persists`
@@ -423,7 +424,7 @@ v2의 "없으면 now + 24 h"는 다음 자정이 항상 후보라 도달하지 �
 
 - [ ] **Step 1:** 전체 게이트 — `test` 전부 PASS, `check` HIGH 0 / MEDIUM 0, NUL 검사 전부 0.
 - [ ] **Step 2:** `docs/progress.html` dh-08 체크·PR 번호(파일 상단 안내의 "현재 상태를 HTML로 복사" 절차).
-- [ ] **Step 3:** PR 본문에 스펙 변경 제안(`slotsDay`)과 ⚠️ 항목을 cw 리뷰 대상으로 적는다. 게시 후 재조회해 원문과 대조한다.
+- [ ] **Step 3:** PR 본문의 검증·체크리스트를 채우고 draft 를 푼다. 게시 후 재조회해 원문과 대조한다.
 - [ ] **Step 4:** Linux CI 결과 확인 뒤에야 "통과"로 보고.
 - [ ] **Step 5:** #74 닫기 — "plan 완성 시점에 직접 닫는다"(#74 댓글 2026-10-14·11-03). plan 문서를 올리는 시점에 dh가 닫는다.
 
@@ -431,13 +432,12 @@ v2의 "없으면 now + 24 h"는 다음 자정이 항상 후보라 도달하지 �
 
 ## 남은 확인 (구현을 막지 않음)
 
-- `slotsDay` 스펙 변경 제안 — cw 리뷰(Task 3).
-- ⚠️ 항목 목록(Self-Review 끝) — cw 리뷰.
 - ESP-IDF NVS 키 상한 15자 — 실기 어댑터(cw) 작성 때 확인.
-- CODEOWNERS `lib/node_store/`·`lib/schedule/` — cw.
+- CODEOWNERS `lib/node_store/`·`lib/schedule/`(dh+cw 공동) — cw 가 별도 PR 로 올린다(#119 2026-11-04).
+- `kResvMax`·`kExamMax` 를 `proto.h` 로 옮길지 — cw 가 나중에 판단(#119 2026-11-04).
 
 ## Self-Review
 
-- 스펙 시그니처: v2 §5.3 `LayoutDecision determineLayout(const ScheduleView& v, uint32_t nowEpoch)`, §5.4 `uint32_t nextChangeAt(const ScheduleView& v, uint32_t nowEpoch, uint32_t nextStatusEpoch)` — 2개 중 일치 2. §5.1 예시 `purgePast(today, clockValid)` — 이름·인자 순서 일치(`Date`, `bool`). §5.1 저장 결과 4종 — `StoreStatus` 일치. `rtc_state_t` 필드 — 전부 일치 + `slotsDay` 1개 추가(스펙 변경 제안으로 명시). `lc::nextRecord`·`dec*Body`·`enc*Body` 그대로 사용.
+- 스펙 시그니처: v2 §5.3 `LayoutDecision determineLayout(const ScheduleView& v, uint32_t nowEpoch)`, §5.4 `uint32_t nextChangeAt(const ScheduleView& v, uint32_t nowEpoch, uint32_t nextStatusEpoch)` — 2개 중 일치 2. §5.1 예시 `purgePast(today, clockValid)` — 이름·인자 순서 일치(`Date`, `bool`). §5.1 저장 결과 4종 — `StoreStatus` 일치. `rtc_state_t` 필드 — 전부 일치(`slotsDay` 는 이 PR 에서 §5.1 에 추가). `lc::nextRecord`·`dec*Body`·`enc*Body` 그대로 사용.
 - 스펙 절 대응: §5.1 → Task 1–5, §5.2 → Task 6, §5.3·§5.4 → Task 7(벡터 25건), §3.3 FILE 무조건 버전 → Task 4, §3.5 멱등 키 → Task 4, §10.1 경계값 → Task 6·7. 미대응(범위 밖, cw-14): §5.2 `clockValid` 판정·`CLOCK_STALE`, §6.3 상태키 비교·렌더 여부, §6.4 dispatch·ACK 송신·`lastTxn` 기록 시점, RenderModel 채우기.
-- cw 확인 항목(스펙 미명시 — 플랜이 정함): `kRtcMagicBase` 값, `slotsDay`, 없는 키 삭제 → Ok + 버전 갱신, 주간 표 정렬, 쓰기 순서(파일 → 버전), `NotFound`는 버전 유지, `purgePast`는 버전 유지, `load`가 요일이 다르면 `refreshDay`, weekday 0 = 슬롯 비움, 쉬는시간 상태키 = 다음 슬롯 시작, "없으면 +24 h" 분기 생략, `kResvMax`·`kExamMax` 로컬 상수.
+- 플랜이 정한 항목(스펙 미명시 — cw 승인 #119 2026-11-04): `kRtcMagicBase` 값, 없는 키 삭제 → Ok + 버전 갱신, 주간 표 정렬, 쓰기 순서(파일 → 버전), `purgePast`는 버전 유지, `load`가 요일이 다르면 `refreshDay`, weekday 0 = 슬롯 비움, 쉬는시간 상태키 = 다음 슬롯 시작, "없으면 +24 h" 분기 생략, `kResvMax`·`kExamMax` 로컬 상수.
