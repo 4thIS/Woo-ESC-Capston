@@ -93,7 +93,7 @@ describe('layoutLogos', () => {
     [600, 150, 0.3],
   ])('W=%i H=%i k=%f — 로고 20개가 경계 포함 겹치지 않고 위아래 안에 있다', (W, H, k) => {
     const out = layoutLogos(entries(20), { W, H, k })
-    expect(out).toHaveLength(20)
+    expect(out.length).toBeGreaterThanOrEqual(20)
     for (let i = 0; i < out.length; i++) {
       expect(out[i].y - out[i].h / 2, out[i].slug).toBeGreaterThanOrEqual(-0.5)
       expect(out[i].y + out[i].h / 2, out[i].slug).toBeLessThanOrEqual(H + 0.5)
@@ -102,6 +102,30 @@ describe('layoutLogos', () => {
         expect(hit?.overlap ?? 0, `${out[i].slug}-${out[j].slug}`).toBeLessThan(0.5)
       }
     }
+  })
+
+  it('밀도 — 넓은 화면일수록 로고가 늘어 면적의 약 38% 를 채운다', () => {
+    const fill = (W: number, H: number, k: number) => {
+      const out = layoutLogos(entries(20), { W, H, k })
+      return out.reduce((sum, l) => sum + l.w * l.h, 0) / (W * H)
+    }
+    expect(fill(2000, 720, 1)).toBeGreaterThan(0.33)
+    expect(fill(2000, 720, 1)).toBeLessThan(0.43)
+    expect(fill(2960, 720, 1)).toBeGreaterThan(0.33)
+    expect(layoutLogos(entries(20), { W: 2960, H: 720, k: 1 }).length).toBeGreaterThan(
+      layoutLogos(entries(20), { W: 2000, H: 720, k: 1 }).length,
+    )
+  })
+
+  it('반복 — 목록보다 줄지 않고, 같은 대학은 크기가 같고, 그려도 key 가 겹치지 않는다', () => {
+    const out = layoutLogos(entries(20), { W: 2960, H: 720, k: 1 })
+    expect(new Set(out.map((l) => l.url)).size).toBeLessThanOrEqual(20)
+    expect(new Set(out.map((l) => l.slug)).size).toBe(out.length)
+    const first = out[0]
+    const copy = out[20]
+    expect(copy.w).toBeCloseTo(first.w)
+    expect(copy.h).toBeCloseTo(first.h)
+    expect(layoutLogos(entries(3), { W: 600, H: 150, k: 0.3 }).length).toBeGreaterThanOrEqual(3)
   })
 
   it('두 번 불러도 결과가 같다', () => {

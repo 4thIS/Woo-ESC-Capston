@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
-import { LOGOS, riverCoverEdge } from '@/components/domain/logoRiver'
+import { LOGOS, layoutLogos, riverCoverEdge } from '@/components/domain/logoRiver'
 import LogoRiverPhysics from '@/student/views/landing/LogoRiverPhysics.vue'
 import { useRiverMode, useRiverWide } from '@/student/views/landing/useRiverMode'
 
@@ -107,7 +107,7 @@ describe('LogoRiverPhysics', () => {
   /** 덮이지 않은 화면 안 로고 번호 */
   function visibleLogo() {
     const edge = riverCoverEdge(HERO_W) + 140
-    const i = LOGOS.findIndex((_, n) => {
+    const i = w.findAll('img').findIndex((_, n) => {
       const p = logoAt(n)
       return p.x > edge + 60 && p.x < HERO_W - 60
     })
@@ -116,7 +116,7 @@ describe('LogoRiverPhysics', () => {
   }
   function coveredLogo() {
     const edge = riverCoverEdge(HERO_W) + 140
-    const i = LOGOS.findIndex((_, n) => {
+    const i = w.findAll('img').findIndex((_, n) => {
       const p = logoAt(n)
       return p.x > 60 && p.x < edge - 60
     })
@@ -152,7 +152,7 @@ describe('LogoRiverPhysics', () => {
 
   it('img 수 = N(복제 없음), alt 빈 값, 로고 판 aria-hidden, 버튼은 그 밖', () => {
     const imgs = w.findAll('img')
-    expect(imgs).toHaveLength(LOGOS.length)
+    expect(imgs).toHaveLength(layoutLogos(LOGOS, { W: 2000, H: 720, k: 1 }).length)
     for (const img of imgs) expect(img.attributes('alt')).toBe('')
     expect(w.classes()).toEqual(expect.arrayContaining(['river', 'river--physics']))
     expect(w.get('.river__field').attributes('aria-hidden')).toBe('true')
@@ -163,9 +163,10 @@ describe('LogoRiverPhysics', () => {
   })
 
   it('프레임마다 로고가 왼쪽으로 흐른다', () => {
-    const before = logoAt(0).x
-    for (let i = 0; i < 60; i++) tick()
-    expect(logoAt(0).x).toBeLessThan(before)
+    const i = visibleLogo() // 화면 안 로고 — 왼쪽 밖에 있으면 세계를 이어 오른쪽으로 넘어간다
+    const before = logoAt(i).x
+    for (let n = 0; n < 60; n++) tick()
+    expect(logoAt(i).x).toBeLessThan(before)
   })
 
   it('덮인 곳의 로고는 잡히지 않는다', () => {
@@ -211,10 +212,11 @@ describe('LogoRiverPhysics', () => {
     const e = fire('pointerdown', p.x, p.y)
     expect(capture).toHaveBeenCalledWith(1)
     expect(e.defaultPrevented).toBe(true)
-    fire('pointermove', p.x + 100, p.y + 50)
+    // 왼쪽으로 — 오른쪽 끝에 가까우면 히어로 안으로 잘린다
+    fire('pointermove', p.x - 100, p.y + 50)
     for (let n = 0; n < 40; n++) tick()
     const q = logoAt(i)
-    expect(Math.abs(q.x - (p.x + 100))).toBeLessThan(3)
+    expect(Math.abs(q.x - (p.x - 100))).toBeLessThan(3)
     // 누른 순간의 몽글몽글 오프셋(최대 BOB_PX)만큼은 어긋날 수 있다
     expect(Math.abs(q.y - (p.y + 50))).toBeLessThan(8)
   })

@@ -341,19 +341,19 @@ describe('오래 켜 둠', () => {
     for (let n = 0; n < 3600 * 60; n++) {
       if (holdLeft > 0 && --holdLeft === 0) release(w, (rnd() - 0.5) * 1800, (rnd() - 0.5) * 1800)
       if (w.held < 0 && n % 1200 === 0) {
-        const i = Math.floor(rnd() * 20)
+        const i = Math.floor(rnd() * w.bodies.length)
         grab(w, i, w.bodies[i].x, w.bodies[i].y)
         moveGrab(w, 200 + rnd() * 900, 100 + rnd() * 500, 1280)
         holdLeft = Math.floor(rnd() * 180) + 1
       }
       step(w, DT)
       if (n % 600 === 0) {
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < w.bodies.length; i++) {
           const b = w.bodies[i]
           expect(Number.isFinite(b.x + b.y + b.vx + b.vy)).toBe(true)
           drift += Math.abs(b.y - b.homeY)
           samples++
-          for (let j = i + 1; j < 20; j++) {
+          for (let j = i + 1; j < w.bodies.length; j++) {
             overlap += capsuleContact(b, w.bodies[j], W)?.overlap ?? 0
           }
         }
@@ -361,5 +361,5 @@ describe('오래 켜 둠', () => {
     }
     expect(drift / samples).toBeLessThan(120)
     expect(overlap / samples).toBeLessThan(2)
-  })
+  }, 60_000) // 21만 스텝 — 전체 테스트를 함께 돌리면 기본 5초를 넘는다
 })

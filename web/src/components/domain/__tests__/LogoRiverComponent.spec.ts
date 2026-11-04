@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import LogoRiver from '../LogoRiver.vue'
-import { LOGOS } from '../logoRiver'
+import { LOGOS, layoutLogos } from '../logoRiver'
 
 describe('LogoRiver — 흐르기만 하는 판 (spec §5)', () => {
   const mountRiver = (k = 1, height = 720) => mount(LogoRiver, { props: { k, height } })
@@ -9,7 +9,7 @@ describe('LogoRiver — 흐르기만 하는 판 (spec §5)', () => {
   it('로고마다 두 벌 — 이어 붙여 끊김 없이 돈다. alt 빈 값, 끌리지 않는다', () => {
     const imgs = mountRiver().findAll('img')
     expect(LOGOS.length).toBeGreaterThan(0)
-    expect(imgs).toHaveLength(LOGOS.length * 2)
+    expect(imgs).toHaveLength(layoutLogos(LOGOS, { W: 2000, H: 720, k: 1 }).length * 2)
     for (const img of imgs) {
       expect(img.attributes('alt')).toBe('')
       expect(img.attributes('draggable')).toBe('false')
@@ -36,7 +36,7 @@ describe('LogoRiver — 흐르기만 하는 판 (spec §5)', () => {
 
   it('두 번째 벌은 첫 번째 벌에서 W 만큼 오른쪽이다', () => {
     const imgs = mountRiver().findAll('img')
-    const n = LOGOS.length
+    const n = layoutLogos(LOGOS, { W: 2000, H: 720, k: 1 }).length
     const left = (i: number) =>
       parseFloat(imgs[i].attributes('style')!.match(/left: ([-\d.]+)px/)![1])
     expect(left(n) - left(0)).toBeCloseTo(2000)

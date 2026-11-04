@@ -49,6 +49,8 @@ const D_MIN = 110
 // 로고 사이 최소 틈 — 처음 자리에서 닿아 있지 않게
 const LAYOUT_GAP = 12
 const LAYOUT_ITER = 300
+// 판 면적 중 로고가 채우는 비율 — "한 번에 보이는 로고 수"를 정한다. 넓은 화면에서도 듬성해지지 않는다
+const FILL = 0.38
 
 /** 면적이 같은 지름 D 를 순서로 정하고 비율을 지킨다 — 가로 로고가 혼자 커 보이지 않게 */
 export function logoSize(i: number, n: number, aspect: number, k: number) {
@@ -82,13 +84,20 @@ export function layoutLogos(
   list: LogoEntry[],
   { W, H, k }: { W: number; H: number; k: number },
 ): RiverLogo[] {
-  const out: RiverLogo[] = list.map((e, i) => {
-    const { w, h } = logoSize(i, list.length, e.aspect, k)
+  if (!list.length) return []
+  const sizes = list.map((e, i) => logoSize(i, list.length, e.aspect, k))
+  const meanArea = sizes.reduce((sum, s) => sum + s.w * s.h, 0) / sizes.length
+  // 목록을 처음부터 되풀이해 채운다. 같은 대학은 크기가 같다
+  const count = Math.max(list.length, Math.round((FILL * W * H) / meanArea))
+  const out: RiverLogo[] = Array.from({ length: count }, (_, i) => {
+    const n = i % list.length
+    const e = list[n]
+    const { w, h } = sizes[n]
     return {
       ...capsuleShape(w, h),
       x: frac(i * 0.618) * W,
       y: h / 2 + frac(i * 0.382 + 0.2) * Math.max(0, H - h),
-      slug: e.slug,
+      slug: i < list.length ? e.slug : `${e.slug}-${Math.floor(i / list.length) + 1}`,
       url: logoUrl(e.file),
       w,
       h,
