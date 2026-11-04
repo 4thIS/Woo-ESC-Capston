@@ -102,8 +102,14 @@ bool waitIrq(uint32_t ms) {
   return true;
 }
 
+// 수신 쪽 프리앰블 길이 — 웨이크 프레임(≈3 s, SF9 733 심볼)을 받으려면 수신기 설정도 그만큼 길어야 한다.
+// 8 로 두면 깨어 있는 노드가 웨이크 프레임을 절반쯤 놓쳤다(2026-11-04 실측: wake 7/10, normal 20/20).
+constexpr uint16_t RX_PREAMBLE_SYM = (uint16_t)(RP_PREAMBLE_WAKE_MS / ((float)(1u << RP_SF) / RP_BW_KHZ)) + 1;
+
 void listen() {
   g_irq = false;
+  radio.standby();
+  radio.setPreambleLength(RX_PREAMBLE_SYM);
   int st = radio.startReceive();
   if (st != RADIOLIB_ERR_NONE) Serial.printf("[node] startReceive 실패 %d\n", st);
 }
@@ -158,8 +164,12 @@ void sendAck(const lc::Header& req, uint8_t status, uint8_t detail) {
     return;
   }
   g_irq = false;
-  if (radio.startTransmit(out, n) == RADIOLIB_ERR_NONE) waitIrq(2000);
+  uint32_t t0 = millis();
+  radio.setPreambleLength(RP_PREAMBLE_NORMAL);  // ACK 는 짧은 프리앰블(§6.8)
+  int st = radio.startTransmit(out, n);
+  bool done = st == RADIOLIB_ERR_NONE && waitIrq(2000);
   radio.finishTransmit();
+  Serial.printf("[node] ACK 송신 st=%d done=%d %lums\n", st, done, (unsigned long)(millis() - t0));
 }
 
 // 수신 프레임 하나를 처리한다. loop 와 패널 BUSY 콜백 양쪽에서 부른다.
