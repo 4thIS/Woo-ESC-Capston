@@ -54,15 +54,6 @@
     "aspect": 2.787
   },
   {
-    "slug": "knu",
-    "name": "경북대학교",
-    "rank": 7,
-    "file": "knu.png",
-    "source": "https://www.knu.ac.kr/wbbs/wbbs/download/emblem_plus_png.zip",
-    "license": "공식 다운로드, 상표 등록 · 외부인 사용은 허가 필요",
-    "aspect": 3.81
-  },
-  {
     "slug": "cuk",
     "name": "가톨릭대학교",
     "rank": 8,
