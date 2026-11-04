@@ -1,0 +1,182 @@
+[
+  {
+    "slug": "snu",
+    "name": "서울대학교",
+    "rank": 1,
+    "file": "snu.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/en/7/77/Seoul_national_university_emblem.svg",
+    "license": "Fair use",
+    "aspect": 0.964
+  },
+  {
+    "slug": "skku",
+    "name": "성균관대학교",
+    "rank": 2,
+    "file": "skku.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/en/4/40/Sungkyunkwan_University_seal.svg",
+    "license": "Fair use",
+    "aspect": 1.0
+  },
+  {
+    "slug": "korea",
+    "name": "고려대학교",
+    "rank": 3,
+    "file": "korea.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/en/f/f6/Korea_University_Global_Symbol.svg",
+    "license": "Fair use",
+    "aspect": 0.743
+  },
+  {
+    "slug": "yonsei",
+    "name": "연세대학교",
+    "rank": 4,
+    "file": "yonsei.png",
+    "source": "https://www.yonsei.ac.kr/sites/sc/images/sub/img-symbol1.png",
+    "license": "공식 페이지, 상표 등록 · 상업 목적 사용 불가",
+    "aspect": 1.0
+  },
+  {
+    "slug": "pnu",
+    "name": "부산대학교",
+    "rank": 5,
+    "file": "pnu.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/en/5/50/Pusan_National_University_logo.svg",
+    "license": "Fair use",
+    "aspect": 1.0
+  },
+  {
+    "slug": "konkuk",
+    "name": "건국대학교",
+    "rank": 6,
+    "file": "konkuk.png",
+    "source": "https://commons.wikimedia.org/wiki/File:Konkuk_University_logotype.png",
+    "license": "Public domain",
+    "aspect": 2.787
+  },
+  {
+    "slug": "cuk",
+    "name": "가톨릭대학교",
+    "rank": 8,
+    "file": "cuk.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/commons/0/04/Catholic_University_of_Korea_logo.svg",
+    "license": "Public domain",
+    "aspect": 1.348
+  },
+  {
+    "slug": "dongguk",
+    "name": "동국대학교",
+    "rank": 9,
+    "file": "dongguk.png",
+    "source": "https://www.dongguk.edu/resources/ui/Communicative_Logo.zip",
+    "license": "공식 다운로드(AI 를 투명 PNG 로 렌더링), 사용 조건 미확인",
+    "aspect": 3.209
+  },
+  {
+    "slug": "khu",
+    "name": "경희대학교",
+    "rank": 10,
+    "file": "khu.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/commons/2/2b/Kyung_Hee_University_Logo.svg",
+    "license": "Public domain",
+    "aspect": 3.415
+  },
+  {
+    "slug": "dankook",
+    "name": "단국대학교",
+    "rank": 11,
+    "file": "dankook.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/en/8/8a/Dankook_University_emblem.svg",
+    "license": "Fair use",
+    "aspect": 1.329
+  },
+  {
+    "slug": "cau",
+    "name": "중앙대학교",
+    "rank": 12,
+    "file": "cau.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/commons/6/68/Logo_of_Chung-Ang_University.svg",
+    "license": "Public domain",
+    "aspect": 1.062
+  },
+  {
+    "slug": "ajou",
+    "name": "아주대학교",
+    "rank": 13,
+    "file": "ajou.png",
+    "source": "https://www.ajou.ac.kr/kr/intro/uidownload.do",
+    "license": "공식 다운로드, 사용 조건 미확인",
+    "aspect": 1.0
+  },
+  {
+    "slug": "hongik",
+    "name": "홍익대학교",
+    "rank": 15,
+    "file": "hongik.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/commons/8/82/Hongik_emblem.svg",
+    "license": "Public domain",
+    "aspect": 1.0
+  },
+  {
+    "slug": "kyungnam",
+    "name": "경남대학교",
+    "rank": 16,
+    "file": "kyungnam.png",
+    "source": "https://www.kyungnam.ac.kr/sites/ko/images/sub/sym_1.png",
+    "license": "공식 페이지, 사용 조건 미확인",
+    "aspect": 0.803
+  },
+  {
+    "slug": "yu",
+    "name": "영남대학교",
+    "rank": 17,
+    "file": "yu.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/commons/b/bf/Yeungnam_University_Logo.svg",
+    "license": "Public domain",
+    "aspect": 2.189
+  },
+  {
+    "slug": "wku",
+    "name": "원광대학교",
+    "rank": 20,
+    "file": "wku.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/commons/a/ad/Logo_WonKwang_University.svg",
+    "license": "Public domain",
+    "aspect": 1.0
+  },
+  {
+    "slug": "sejong",
+    "name": "세종대학교",
+    "rank": 22,
+    "file": "sejong.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/en/e/ee/Sejong_University_logo.svg",
+    "license": "Fair use",
+    "aspect": 1.0
+  },
+  {
+    "slug": "mju",
+    "name": "명지대학교",
+    "rank": 23,
+    "file": "mju.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/en/c/cd/Myongji_University_logo.svg",
+    "license": "Fair use",
+    "aspect": 0.991
+  },
+  {
+    "slug": "kangwon",
+    "name": "강원대학교",
+    "rank": 24,
+    "file": "kangwon.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/commons/3/37/Logo_of_kangwon_national_university.svg",
+    "license": "Public domain",
+    "aspect": 2.643
+  },
+  {
+    "slug": "hanyang",
+    "name": "한양대학교",
+    "rank": 25,
+    "file": "hanyang.svg",
+    "source": "https://upload.wikimedia.org/wikipedia/commons/5/51/Hanyang_University_KORENG_logo.svg",
+    "license": "Public domain",
+    "aspect": 3.061
+  }
+]
