@@ -1,4 +1,4 @@
-import { readonly, ref } from 'vue'
+import { computed, readonly, ref } from 'vue'
 import type { LoginOut, Role } from '@/api/types'
 
 // JWT 는 sessionStorage 에 (auth.md 미결 2) — 새로고침은 살고, 탭을 닫으면 사라진다. localStorage 는 여전히 금지.
@@ -7,6 +7,8 @@ export type AuthNotice = 'expired' | 'forbidden' | 'idle'
 
 const current = ref<LoginOut | null>(null)
 export const session = readonly(current)
+/** 로그인 뒤 헤더·사이드바의 이름 — 그 사람의 학교. 학교 이름을 모르는 옛 세션·로그인 전은 'ESC' */
+export const schoolTitle = computed(() => session.value?.school_name || 'ESC')
 export const authNotice = ref<AuthNotice | null>(null)
 let key: string | null = null
 

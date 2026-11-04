@@ -96,6 +96,23 @@ describe('RoomView — /:bld/:room', () => {
     expect(cta.classes()).toContain('cta--compact')
   })
 
+  it('다음 비는 시간 — 불러오는 중엔 Skeleton, 실패면 카드 없음, 받은 뒤 없을 때만 빈 문구 (#70)', async () => {
+    stubMedia(true)
+    const EMPTY = '오늘은 더 비는 시간이 없어요'
+    const card = '[aria-labelledby="next-h"]'
+    api.week.mockReturnValue(new Promise(() => {}))
+    const loading = await mountAt(RoomView, '/E/401', '/:bld/:room', ROOMS)
+    expect(loading.w.get(card).text()).not.toContain(EMPTY)
+    expect(loading.w.get(card).find('.sk').exists()).toBe(true)
+    api.week.mockRejectedValue(new ApiError(500, MESSAGES[0]))
+    const failed = await mountAt(RoomView, '/E/401', '/:bld/:room', ROOMS)
+    expect(failed.w.find(card).exists()).toBe(false)
+    api.week.mockResolvedValue({ ...WEEK, free: [] })
+    const none = await mountAt(RoomView, '/E/401', '/:bld/:room', ROOMS)
+    expect(none.w.get(card).text()).toContain(EMPTY)
+    expect(none.w.get(card).find('.sk').exists()).toBe(false)
+  })
+
   it('목록에 없는 호수·주간 404 면 404 화면 + 강의실 목록 링크', async () => {
     const missing = await mountAt(RoomView, '/E/499', '/:bld/:room', ROOMS)
     expect(missing.w.get('h2').text()).toBe('찾을 수 없는 주소예요')

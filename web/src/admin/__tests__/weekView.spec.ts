@@ -74,7 +74,15 @@ describe('layoutDay', () => {
       ['s11-1-10-0', 0, 2],
       ['r7', 1, 2],
     ])
-    expect(overlaps).toEqual([{ s: 660, e: 720, lane: 1, lanes: 2 }])
+    expect(overlaps).toEqual([{ s: 660, e: 720, lane: 1, lanes: 2, side: 'left' }])
+  })
+  it('겹침 라벨은 겹친 구간이 끝나며 먼저 끝난 블록 쪽 — 그 아래는 블록 글자가 없다 (#70)', () => {
+    const side = (s: Parameters<typeof S>[0], v: Parameters<typeof V>[0]) =>
+      layoutDay(weekBlocks([S(s)], [V(v)], monday)).overlaps[0].side
+    // 09:00–09:50 수업 + 09:30–10:30 예약 — 왼쪽 수업이 먼저 끝난다
+    expect(side({ s_h: 9, e_h: 9, e_m: 50 }, { s_h: 9, s_m: 30, e_h: 10, e_m: 30 })).toBe('left')
+    // 10:00–12:00 수업 안의 10:30–11:30 예약 — 오른쪽 예약이 먼저 끝난다
+    expect(side({ s_h: 10, e_h: 12 }, { s_h: 10, s_m: 30, e_h: 11, e_m: 30 })).toBe('right')
   })
   it('맞닿으면 한 줄, 휴강·신청과의 겹침은 나란히만 (막대 없음)', () => {
     const touch = weekBlocks([S({ e_h: 11 }), S({ id: 2, s_h: 11, e_h: 12 })], [], monday)

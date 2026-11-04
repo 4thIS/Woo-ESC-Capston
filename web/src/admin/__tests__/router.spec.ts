@@ -16,6 +16,13 @@ describe('admin router', () => {
     expect(at.matched).toHaveLength(2)
     expect(at.params.roomId).toBe('12')
     expect(r.resolve('/week').matched).toHaveLength(2)
-    expect(r.resolve('/rooms/x/week').matched).toHaveLength(0)
+    expect(r.resolve('/rooms/x/week').params.roomId).toBeUndefined()
+  })
+
+  it('없는 주소도 로그인 먼저 — 세션 없이 /login 으로 (#70)', async () => {
+    const r = makeRouter(createMemoryHistory())
+    await r.push('/nope')
+    await r.isReady()
+    expect(r.currentRoute.value.path).toBe('/login')
   })
 })

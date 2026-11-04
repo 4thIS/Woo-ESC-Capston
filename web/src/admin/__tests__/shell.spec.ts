@@ -106,6 +106,27 @@ describe('AdminShell', () => {
     expect(b.w.find('.banner').exists()).toBe(false)
   })
 
+  it('사이드바 머리는 로그인한 학교 — 로고는 첫 글자, 학교 이름을 모르는 옛 세션은 ESC (#70)', async () => {
+    setSession({ token: 't', role: 'admin', school_id: 2, school_name: '우송대', name: '관리자2' })
+    const a = await mountApp()
+    expect(a.w.get('.shell__logo').text()).toBe('우')
+    expect(a.w.get('.shell__brand-text b').text()).toBe('우송대')
+    expect(a.w.text()).not.toContain('MJC')
+    a.w.unmount()
+    setSession({ token: 't', role: 'admin', school_id: 1, name: '관리자1' })
+    const b = await mountApp()
+    expect(b.w.get('.shell__logo').text()).toBe('E')
+    expect(b.w.get('.shell__brand-text b').text()).toBe('ESC')
+  })
+
+  it('없는 주소 — 메뉴는 그대로, 찾을 수 없다는 말과 전송 현황으로 가는 길 (#70)', async () => {
+    const { w, router } = await mountApp('/nope/1')
+    expect(w.findAll('nav a')).toHaveLength(6)
+    expect(w.get('.shell__main').text()).toContain('찾을 수 없는 주소입니다')
+    await w.get('.shell__main .empty button').trigger('click')
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/dashboard'))
+  })
+
   it('넓으면 Banner 없음', async () => {
     const { w } = await mountApp()
     expect(w.find('.banner').exists()).toBe(false)

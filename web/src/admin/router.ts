@@ -20,6 +20,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'nodes', component: () => import('./views/NodesView.vue') },
       { path: 'dashboard', component: () => import('./views/DashboardView.vue') },
       { path: 'users', component: () => import('./views/UsersView.vue') },
+      { path: ':pathMatch(.*)*', component: () => import('./views/NotFoundView.vue') },
     ],
   },
   { path: '/login', component: () => import('@/auth/LoginView.vue'), props: { app: 'admin' } },

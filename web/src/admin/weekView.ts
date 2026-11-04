@@ -32,6 +32,8 @@ export interface Overlap {
   /** 막대는 이 lane 의 왼쪽 경계에 선다 */
   lane: number
   lanes: number
+  /** 라벨을 놓을 쪽 — 겹친 구간이 끝날 때 함께 끝나는 블록의 쪽. 그 아래는 비어 있다 */
+  side: 'left' | 'right'
 }
 export interface Range {
   from: number
@@ -109,7 +111,16 @@ export function layoutDay(blocks: Block[]): { placed: Placed[]; overlaps: Overla
       if (!a.busy || !b.busy) continue
       const s = Math.max(a.s, b.s)
       const e = Math.min(a.e, b.e)
-      if (s < e) overlaps.push({ s, e, lane: Math.max(a.lane, b.lane), lanes: a.lanes })
+      if (s < e) {
+        const left = a.lane < b.lane ? a : b
+        overlaps.push({
+          s,
+          e,
+          lane: Math.max(a.lane, b.lane),
+          lanes: a.lanes,
+          side: left.e === e ? 'left' : 'right',
+        })
+      }
     }
   return { placed, overlaps }
 }
