@@ -388,8 +388,9 @@ function toRooms() {
               left: `calc(${(o.lane / o.lanes) * 100}% - 1.5px)`,
             }"
           >
-            <!-- 막대 왼쪽에 두 줄로 — 오른쪽 블록의 라벨을 가리지 않고, 반 폭(1440·7열 ≈78px)에 들어간다 -->
-            <span class="wk__overlap-label num"
+            <!-- 막대 아래 바깥, 먼저 끝난 블록 쪽에 두 줄로 — 블록 글자는 위쪽에 있어 덮지 않고, 반 폭(1440·7열 ≈78px)에 들어간다.
+                 ponytail: 바로 이어지는 다음 블록의 윗줄은 가릴 수 있다 — 겹침 자체가 고쳐야 할 상태라 둔다 -->
+            <span class="wk__overlap-label num" :class="`wk__overlap-label--${o.side}`"
               ><span>겹침</span> <span>{{ clock(o.s) }}–{{ clock(o.e) }}</span></span
             >
           </div>
@@ -653,11 +654,9 @@ function toRooms() {
 }
 .wk__overlap-label {
   position: absolute;
-  top: var(--space-1);
-  right: 6px;
+  top: 100%;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
   padding: 0 var(--space-1);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -665,6 +664,14 @@ function toRooms() {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   white-space: nowrap;
+}
+.wk__overlap-label--left {
+  right: 0;
+  align-items: flex-end;
+}
+.wk__overlap-label--right {
+  left: 0;
+  align-items: flex-start;
 }
 .wk__overlay {
   position: absolute;

@@ -507,6 +507,10 @@ test('주간 시간표 — 호수를 누르면 그 강의실의 한 주, 19시 �
     '예약 · 특강',
   )
   await expect(page.locator('.wk__overlap-label')).toHaveText('겹침 11:00–12:00')
+  // 라벨은 막대 아래 바깥 — 블록 글자(과목명)를 덮지 않는다 (#70)
+  const bar = await page.locator('.wk__overlap').boundingBox()
+  const label = await page.locator('.wk__overlap-label').boundingBox()
+  expect(label!.y).toBeGreaterThanOrEqual(bar!.y + bar!.height)
   // 앞 테스트의 Toast 가 상단 바 오른쪽(+ 슬롯 추가)을 가린다 — 걷힌 뒤 찍는다
   await expect(page.locator('.toast')).toHaveCount(0, { timeout: 10_000 })
   await shot(page, 'admin-week-1440')
@@ -552,4 +556,18 @@ test('다른 학교 관리자 — 우리 강의실 주간 주소는 "찾을 수 
     otherPage.getByText('강의실을 찾을 수 없습니다. 위에서 다른 강의실을 고르세요.'),
   ).toBeVisible()
   await shot(otherPage, 'admin-week-notfound-1440')
+})
+
+test('없는 주소 — 흰 화면이 아니라 메뉴와 안내, 전송 현황으로 간다', async () => {
+  await otherPage.evaluate(() => {
+    window.history.pushState({}, '', '/admin/nope')
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  })
+  await expect(otherPage.getByText('찾을 수 없는 주소입니다')).toBeVisible()
+  await expect(otherPage.getByRole('link', { name: '회원' })).toBeVisible()
+  // 페이지 전환 애니메이션이 끝난 뒤 찍는다 (opacity 0 도 toBeVisible 은 통과)
+  await expect(otherPage.locator('.page')).toHaveCSS('opacity', '1')
+  await shot(otherPage, 'admin-notfound-1440')
+  await otherPage.getByRole('button', { name: '전송 현황으로' }).click()
+  await expect(otherPage).toHaveURL(/\/admin\/dashboard$/)
 })

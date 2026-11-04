@@ -101,9 +101,11 @@ const retry = () => void reload()
         </ol>
       </section>
 
-      <section v-if="wide" class="room__card" aria-labelledby="next-h">
+      <!-- 불러오지 못했으면 카드째 뺀다 — '오늘' 카드가 다시 시도를 준다 -->
+      <section v-if="wide && (week || !weekError)" class="room__card" aria-labelledby="next-h">
         <h2 id="next-h" class="room__h">다음 비는 시간</h2>
-        <p v-if="next" class="room__next-v num">
+        <Skeleton v-if="!week" />
+        <p v-else-if="next" class="room__next-v num">
           {{ next.from }} – {{ next.to }} ·
           {{ durationText(hmToMin(next.to) - hmToMin(next.from)) }}
         </p>

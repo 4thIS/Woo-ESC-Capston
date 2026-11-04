@@ -5,7 +5,7 @@ import SidebarNav from '@/components/ui/SidebarNav.vue'
 import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
-import { clearSession, session } from '@/lib/session'
+import { clearSession, schoolTitle, session } from '@/lib/session'
 import { ApiError } from '@/api/client'
 import { roomsApi } from '@/api/rooms'
 import type { SchoolOut } from '@/api/types'
@@ -67,8 +67,11 @@ const left = computed(() => mmss(idle.remaining.value))
     <SidebarNav :items="nav">
       <template #header>
         <div class="shell__brand">
-          <span class="shell__logo" aria-hidden="true">MJC</span>
-          <p class="shell__brand-text"><b>MJC ESC</b><span>강의실 게시 관리자</span></p>
+          <span class="shell__logo" aria-hidden="true">{{ schoolTitle.slice(0, 1) }}</span>
+          <p class="shell__brand-text">
+            <b>{{ schoolTitle }}</b
+            ><span>강의실 게시 관리자</span>
+          </p>
         </div>
       </template>
       <template #footer>
@@ -155,6 +158,7 @@ const left = computed(() => mmss(idle.remaining.value))
 .shell__logo {
   display: grid;
   place-items: center;
+  flex: none;
   width: 32px;
   height: 32px;
   border-radius: var(--radius-lg);
