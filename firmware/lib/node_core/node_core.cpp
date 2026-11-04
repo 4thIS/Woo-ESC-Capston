@@ -54,6 +54,14 @@ bool sameSlot(const lc::SlotRec& a, const lc::SlotRec& b) {
   return a.day == b.day && a.sH == b.sH && a.sM == b.sM;
 }
 
+// 하루 상한 LP_SLOT_DAY_MAX(v2 §5.1) — 주간 96 과 따로 본다
+uint8_t countDay(const lc::SlotRec* arr, uint8_t n, uint8_t day) {
+  uint8_t c = 0;
+  for (uint8_t i = 0; i < n; ++i)
+    if (arr[i].day == day) ++c;
+  return c;
+}
+
 // FILE_END: 레코드 스트림을 풀어 그 kind 를 통째로 바꾼다. 실패하면 State 는 그대로.
 uint8_t replaceKind(State& s, const FileRx& f) {
   static State tmp;
@@ -72,6 +80,8 @@ uint8_t replaceKind(State& s, const FileRx& f) {
     if (f.kind == LP_FILEKIND_SCHEDULE) {
       if (tmp.nSlots >= LP_SLOT_WEEK_MAX) return LP_ACK_STORE_FAIL;
       ok = lc::decSlotBody(r, rl, tmp.slots[tmp.nSlots]);
+      if (ok && countDay(tmp.slots, tmp.nSlots, tmp.slots[tmp.nSlots].day) >= LP_SLOT_DAY_MAX)
+        return LP_ACK_STORE_FAIL;
       if (ok) ++tmp.nSlots;
     } else if (f.kind == LP_FILEKIND_RESV) {
       if (tmp.nResv >= kResvMax) return LP_ACK_STORE_FAIL;
@@ -105,6 +115,9 @@ uint8_t apply(State& s, FileRx& f, const lc::Header& h, const uint8_t* p, Outcom
     case LP_TYPE_SLOT_SET: {
       lc::SlotRec r{};
       if (!lc::decSlotSet(p, h.len, v, r)) return LP_ACK_BAD_PAYLOAD;
+      bool exists = false;
+      for (uint8_t i = 0; i < s.nSlots; ++i) exists = exists || sameSlot(s.slots[i], r);
+      if (!exists && countDay(s.slots, s.nSlots, r.day) >= LP_SLOT_DAY_MAX) return LP_ACK_STORE_FAIL;
       if (!upsert(s.slots, s.nSlots, (uint8_t)LP_SLOT_WEEK_MAX, r, sameSlot)) return LP_ACK_STORE_FAIL;
       o.changed = true;
       return applyVer(s.schedVer, v);

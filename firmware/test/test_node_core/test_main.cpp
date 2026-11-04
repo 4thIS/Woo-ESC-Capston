@@ -247,6 +247,44 @@ void test_file_bad_crc() {
                          run(hdr(LP_TYPE_FILE_END, 3), lc::encFileEnd(e, g_pl, sizeof g_pl)).status);
 }
 
+static std::vector<uint8_t> dayBody(int n, uint8_t day) {
+  std::vector<uint8_t> body;
+  uint8_t rec[64];
+  for (int i = 0; i < n; ++i) {
+    size_t k = lc::encSlotBody(
+        slot(day, (uint8_t)(i / 2), (uint8_t)(i % 2 * 30), (uint8_t)(i / 2), (uint8_t)(i % 2 * 30 + 20), "x"),
+        rec + 2, sizeof rec - 2);
+    rec[0] = LP_TYPE_SLOT_SET;
+    rec[1] = (uint8_t)k;
+    body.insert(body.end(), rec, rec + 2 + k);
+  }
+  return body;
+}
+
+// 하루 상한 LP_SLOT_DAY_MAX(v2 §5.1·§12) — 주간 합계가 96 이하여도 한 요일 25번째는 STORE_FAIL
+void test_day_cap_slot_set() {
+  for (int i = 0; i < LP_SLOT_DAY_MAX; ++i) S->slots[i] = slot(2, (uint8_t)i, 0, (uint8_t)i, 50, "x");
+  S->nSlots = LP_SLOT_DAY_MAX;
+  S->lastTxn = 5;
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_STORE_FAIL, slotSet(6, 1, slot(2, 23, 55, 23, 59, "넘침")).status);
+  TEST_ASSERT_EQUAL_UINT8(LP_SLOT_DAY_MAX, S->nSlots);
+  TEST_ASSERT_EQUAL_UINT8(5, S->lastTxn);
+  // 이미 있는 키는 교체라 OK, 다른 요일은 여유가 있으니 OK
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, slotSet(7, 1, slot(2, 3, 0, 3, 50, "교체")).status);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, slotSet(8, 2, slot(3, 9, 0, 9, 50, "수요일")).status);
+  TEST_ASSERT_EQUAL_UINT8(LP_SLOT_DAY_MAX + 1, S->nSlots);
+}
+
+void test_day_cap_file_keeps_old() {
+  slotSet(1, 1, slot(1, 9, 0, 9, 50, "그대로"));
+  auto body = dayBody(LP_SLOT_DAY_MAX + 1, 2);
+  Outcome end;
+  fileSession(body, 9, 20, -1, end);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_STORE_FAIL, end.status);
+  TEST_ASSERT_EQUAL_UINT8(1, S->nSlots);
+  TEST_ASSERT_EQUAL_UINT8(1, S->schedVer);
+}
+
 // ---------------- 판정 벡터 §5.3 ----------------
 void test_room_state_vectors() {
   FILE* f = fopen("../lora_proto/room_state_vectors.json", "rb");
@@ -361,6 +399,8 @@ int main() {
   RUN_TEST(test_file_session_replaces_whole_kind);
   RUN_TEST(test_file_missing_reports_first_seq);
   RUN_TEST(test_file_bad_crc);
+  RUN_TEST(test_day_cap_slot_set);
+  RUN_TEST(test_day_cap_file_keeps_old);
   RUN_TEST(test_room_state_vectors);
   RUN_TEST(test_kst_conversion);
   RUN_TEST(test_model_class_fills_cur_next_today);
