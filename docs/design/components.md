@@ -263,12 +263,14 @@ v2에서 쓸 수 있는 수단은 다섯이고, 이 밖으로 나가지 않는�
 | prop | 값 | 기본 |
 |---|---|---|
 | `items` | `{ to, label }[]` | — |
+| `header` | slot | — |
 | `footer` | slot | — |
 
 폭 220px, 바탕 `sunken`, 우측 `line.2` 1px. 항목 높이 32px, 라운드 `radius.md`, 패딩 `space.2` `space.3`, `font.size.md`.
 
 - 평상시 `text.2`, hover 바탕 `gray.50`.
 - **활성: 바탕 `brand.tint` + 글자 `brand` + `medium`.** 활성 표시는 `brand`를 쓰는 두 자리 중 하나다(다른 하나는 1차 버튼).
+- `header` 슬롯은 위에 붙는다 — 관리자 웹의 학교 표시가 들어간다. 32px 로고 칸(**학교 이름 첫 글자**) + 학교 이름 + 그 아래 `강의실 게시 관리자`. 학교 이름은 로그인 응답의 **`school_name` 만** 적고 `ESC` 를 붙이지 않는다. `school_name` 이 없는 옛 세션이면 `ESC`(로고 `E`)다 — 학생 웹과 같은 규칙([student-room.md](screens/student-room.md) 내 정보 줄). 학교 이름을 고정 글자로 넣지 않는다(#70 — 다른 학교 관리자에게도 `MJC` 로 보였다).
 - `footer` 슬롯은 아래에 붙는다 — 모뎀Pi 연결 상태가 들어간다.
 
 ## StatTile
