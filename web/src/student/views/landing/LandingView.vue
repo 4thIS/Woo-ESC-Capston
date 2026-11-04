@@ -61,7 +61,7 @@ const wide = useRiverWide()
       <section ref="heroEl" class="hero band band--surface">
         <div class="hero__band">
           <LogoRiverPhysics v-if="physics" :surface="heroEl" />
-          <LogoRiver v-else-if="wide" :k="1" :height="720" />
+          <LogoRiver v-else-if="wide" :k="1" :height="648" />
           <LogoRiver v-else :k="0.56" :height="300" />
         </div>
         <!-- 글자를 지키는 덮개 — 숫자는 logoRiver.ts riverCoverEdge 와 맞춘다 -->
@@ -155,19 +155,14 @@ const wide = useRiverWide()
   min-height: 100vh;
   background: var(--surface);
 }
-/* 히어로 위에 얹힌다. 따라 내려오지 않는다 — 투명 헤더가 아래 구역 글자와 겹치지 않게.
-   빈 곳은 뒤의 로고를 잡을 수 있게 포인터를 통과시킨다 */
+/* 바탕색과 선으로 히어로와 나눈다 — 로고 강은 이 아래에서만 흐른다 */
 .lh {
-  position: absolute;
+  position: sticky;
   top: 0;
-  right: 0;
-  left: 0;
   z-index: 1;
   height: 58px;
-  pointer-events: none;
-}
-.lh__nav > * {
-  pointer-events: auto;
+  border-bottom: var(--border-thin) solid var(--line-2);
+  background: var(--surface);
 }
 .lh__in {
   display: flex;
@@ -183,10 +178,8 @@ const wide = useRiverWide()
   display: flex;
   gap: var(--space-2);
 }
-.lh__nav .lh__signup {
+.lh__signup {
   display: none;
-  /* 뒤로 지나가는 로고에 글자가 묻히지 않게 — 테두리 없는 버튼이라 바탕만 깐다 */
-  background: color-mix(in srgb, var(--surface) 85%, transparent);
 }
 .wrap {
   padding: 0 var(--space-4);
@@ -209,12 +202,12 @@ const wide = useRiverWide()
   border-bottom: var(--border-thin) solid var(--line-2);
 }
 .hero.band {
-  padding-top: 360px;
+  padding-top: 302px;
 }
-/* 폰 · 태블릿: 헤더와 글자 사이의 로고 띠 — 로고가 글자 뒤로 지나가지 않는다 */
+/* 폰 · 태블릿: 상단 바와 글자 사이의 로고 띠 — 로고가 글자 뒤로 지나가지 않는다 */
 .hero__band {
   position: absolute;
-  top: 58px;
+  top: 0;
   right: 0;
   left: 0;
   height: 300px;
@@ -222,13 +215,7 @@ const wide = useRiverWide()
 .hero__cover {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    var(--surface) 58px,
-    transparent 78px,
-    transparent 310px,
-    var(--surface) 358px
-  );
+  background: linear-gradient(180deg, transparent 252px, var(--surface) 300px);
   pointer-events: none;
 }
 .hero__grid {
@@ -392,7 +379,7 @@ const wide = useRiverWide()
 }
 
 @media (min-width: 640px) {
-  .lh__nav .lh__signup {
+  .lh__signup {
     display: flex;
   }
   .wrap {
@@ -438,18 +425,17 @@ const wide = useRiverWide()
   .lh {
     height: 72px;
   }
-  /* 넓은 화면: 높이 720, 뒤 전체에 로고, 왼쪽 글 + 버튼 세로 가운데 */
+  /* 넓은 화면: 상단 바 72 + 히어로 648, 뒤 전체에 로고, 왼쪽 글 + 버튼 세로 가운데 */
   .hero {
     display: flex;
     align-items: center;
-    height: 720px;
+    height: 648px;
   }
   .hero.band {
     padding: 0;
   }
   .hero__band {
-    top: 0;
-    height: 720px;
+    height: 648px;
   }
   .hero__cover {
     background: linear-gradient(

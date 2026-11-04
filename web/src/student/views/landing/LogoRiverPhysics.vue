@@ -19,7 +19,7 @@ import {
 // 프레임마다 Vue 를 거치지 않고 transform 만 쓴다
 const props = defineProps<{ surface: HTMLElement | null }>()
 
-const H = 720
+const H = 648 // 히어로 높이 (LandingView)
 const BASE_W = 2000
 // 덮개가 반쯤 옅어진 곳부터 잡힌다 — 안 보이는 로고가 잡히면 안 된다
 const GRAB_FROM_COVER = 140

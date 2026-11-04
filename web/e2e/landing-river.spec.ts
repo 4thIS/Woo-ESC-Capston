@@ -169,6 +169,15 @@ for (const width of [390, 768, 1280, 2560]) {
           () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
         )
         expect(over, path).toBeLessThanOrEqual(0)
+        // 상단 바는 바탕색과 선으로 나뉘고, 로고 강은 그 아래에서만 흐른다
+        if (path === '/') {
+          const bar = page.locator('.lh')
+          await expect(bar).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+          await expect(bar).not.toHaveCSS('border-bottom-style', 'none')
+          const barBox = (await bar.boundingBox())!
+          const heroBox = (await page.locator('.hero').boundingBox())!
+          expect(heroBox.y).toBeGreaterThanOrEqual(barBox.y + barBox.height - 1)
+        }
         // 폰 · 태블릿은 로고 띠가 글자 위에 있다 — 글자가 로고에 겹치지 않는다
         if (path === '/' && width < 1024) {
           const band = (await page.locator('.hero__band').boundingBox())!

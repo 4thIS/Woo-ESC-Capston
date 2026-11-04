@@ -152,7 +152,7 @@ describe('LogoRiverPhysics', () => {
 
   it('img 수 = N(복제 없음), alt 빈 값, 로고 판 aria-hidden, 버튼은 그 밖', () => {
     const imgs = w.findAll('img')
-    expect(imgs).toHaveLength(layoutLogos(LOGOS, { W: 2000, H: 720, k: 1 }).length)
+    expect(imgs).toHaveLength(layoutLogos(LOGOS, { W: 2000, H: 648, k: 1 }).length)
     for (const img of imgs) expect(img.attributes('alt')).toBe('')
     expect(w.classes()).toEqual(expect.arrayContaining(['river', 'river--physics']))
     expect(w.get('.river__field').attributes('aria-hidden')).toBe('true')
