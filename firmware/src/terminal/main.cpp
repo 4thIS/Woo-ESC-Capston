@@ -104,7 +104,8 @@ bool waitIrq(uint32_t ms) {
 
 void listen() {
   g_irq = false;
-  radio.startReceive();
+  int st = radio.startReceive();
+  if (st != RADIOLIB_ERR_NONE) Serial.printf("[node] startReceive 실패 %d\n", st);
 }
 
 int radioBegin() {
@@ -172,12 +173,17 @@ void pollRadio() {
   float rssi = radio.getRSSI(), snr = radio.getSNR();
   lc::Header h{};
   const uint8_t* p = nullptr;
-  if (rs == RADIOLIB_ERR_NONE && lc::decodeFrame(buf, len, h, p) && nc::isForMe(ME, h)) {
+  bool ok = rs == RADIOLIB_ERR_NONE && lc::decodeFrame(buf, len, h, p);
+  if (!ok) Serial.printf("[node] 수신 버림 rs=%d len=%u RSSI %.0f\n", rs, (unsigned)len, rssi);
+  if (ok && nc::isForMe(ME, h)) {
     g_lastRxMs = millis();
     g_backup = g_state;
     nc::Outcome o = nc::handleFrame(g_state, g_file, h, p);
     bool txnMoved = g_state.lastTxn != g_backup.lastTxn;
-    if ((o.changed || txnMoved) && !saveState()) {
+    uint32_t ts = millis();
+    bool saved = !(o.changed || txnMoved) || saveState();
+    uint32_t saveMs = millis() - ts;
+    if (!saved) {
       g_state = g_backup;  // 저장 실패 — 적용도 되돌리고 STORE_FAIL(재송 1회 후 failed)
       o.changed = false;
       if (o.status != nc::kNoAck) o.status = LP_ACK_STORE_FAIL;
@@ -189,9 +195,9 @@ void pollRadio() {
     }
     if (o.changed) g_dirty = true;
     if (o.status != nc::kNoAck) sendAck(h, o.status, o.detail);
-    Serial.printf("[node] type=0x%02x txn=%u ACK=%d ver S%u/R%u/E%u slots=%u RSSI %.0f SNR %.1f\n", h.type,
-                  h.txn, o.status == nc::kNoAck ? -1 : o.status, g_state.schedVer, g_state.resvVer,
-                  g_state.examVer, g_state.nSlots, rssi, snr);
+    Serial.printf("[node] type=0x%02x txn=%u ACK=%d ver S%u/R%u/E%u slots=%u save=%lums RSSI %.0f SNR %.1f\n",
+                  h.type, h.txn, o.status == nc::kNoAck ? -1 : o.status, g_state.schedVer, g_state.resvVer,
+                  g_state.examVer, g_state.nSlots, (unsigned long)saveMs, rssi, snr);
   }
   listen();
 }
