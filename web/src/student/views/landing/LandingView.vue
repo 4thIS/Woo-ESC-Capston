@@ -62,7 +62,7 @@ const wide = useRiverWide()
         <div class="hero__band">
           <LogoRiverPhysics v-if="physics" :surface="heroEl" />
           <LogoRiver v-else-if="wide" :k="1" :height="720" />
-          <LogoRiver v-else :k="0.56" :height="430" />
+          <LogoRiver v-else :k="0.56" :height="300" />
         </div>
         <!-- 글자를 지키는 덮개 — 숫자는 logoRiver.ts riverCoverEdge 와 맞춘다 -->
         <div class="hero__cover"></div>
@@ -183,8 +183,10 @@ const wide = useRiverWide()
   display: flex;
   gap: var(--space-2);
 }
-.lh__signup {
+.lh__nav .lh__signup {
   display: none;
+  /* 뒤로 지나가는 로고에 글자가 묻히지 않게 — 테두리 없는 버튼이라 바탕만 깐다 */
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
 }
 .wrap {
   padding: 0 var(--space-4);
@@ -204,26 +206,28 @@ const wide = useRiverWide()
 .hero {
   position: relative;
   overflow: hidden;
-  padding-top: 360px;
   border-bottom: var(--border-thin) solid var(--line-2);
 }
-/* 폰 · 태블릿: 위쪽 로고 띠, 글자는 그 아래 */
+.hero.band {
+  padding-top: 360px;
+}
+/* 폰 · 태블릿: 헤더와 글자 사이의 로고 띠 — 로고가 글자 뒤로 지나가지 않는다 */
 .hero__band {
   position: absolute;
-  top: 40px;
+  top: 58px;
   right: 0;
   left: 0;
-  height: 430px;
+  height: 300px;
 }
 .hero__cover {
   position: absolute;
   inset: 0;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--surface) 85%, transparent) 0,
-    transparent 76px,
+    var(--surface) 58px,
+    transparent 78px,
     transparent 310px,
-    var(--surface) 400px
+    var(--surface) 358px
   );
   pointer-events: none;
 }
@@ -388,7 +392,7 @@ const wide = useRiverWide()
 }
 
 @media (min-width: 640px) {
-  .lh__signup {
+  .lh__nav .lh__signup {
     display: flex;
   }
   .wrap {
@@ -439,6 +443,8 @@ const wide = useRiverWide()
     display: flex;
     align-items: center;
     height: 720px;
+  }
+  .hero.band {
     padding: 0;
   }
   .hero__band {

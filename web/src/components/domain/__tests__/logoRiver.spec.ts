@@ -89,8 +89,8 @@ describe('layoutLogos', () => {
   it.each([
     [2000, 720, 1],
     [1440, 470, 0.72],
-    [1120, 430, 0.56],
-    [600, 200, 0.3],
+    [1120, 300, 0.56],
+    [600, 150, 0.3],
   ])('W=%i H=%i k=%f — 로고 20개가 경계 포함 겹치지 않고 위아래 안에 있다', (W, H, k) => {
     const out = layoutLogos(entries(20), { W, H, k })
     expect(out).toHaveLength(20)

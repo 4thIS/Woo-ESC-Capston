@@ -135,6 +135,12 @@ for (const width of [390, 768, 1280, 2560]) {
           () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
         )
         expect(over, path).toBeLessThanOrEqual(0)
+        // 폰 · 태블릿은 로고 띠가 글자 위에 있다 — 글자가 로고에 겹치지 않는다
+        if (path === '/' && width < 1024) {
+          const band = (await page.locator('.hero__band').boundingBox())!
+          const text = (await page.locator('.hero__text').boundingBox())!
+          expect(text.y, '글자가 띠 아래').toBeGreaterThanOrEqual(band.y + band.height - 1)
+        }
         await page.screenshot({
           path: `e2e/.shots/river${path === '/' ? '-landing' : '-login'}-${width}.png`,
         })

@@ -54,15 +54,16 @@ const copies = computed(() =>
 </template>
 
 <style scoped>
+/* 위아래 12px 여유 — 몽글몽글 움직임이 판 끝에서 잘리지 않게 */
 .river {
   position: absolute;
-  inset: 0;
+  inset: -12px 0;
   overflow: hidden;
   pointer-events: none;
 }
 .river__track {
   position: absolute;
-  top: 0;
+  top: 12px;
   left: 0;
   height: 100%;
   animation: river-drift 50s linear infinite;

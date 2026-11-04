@@ -24,7 +24,7 @@ defineProps<{
     <slot name="banner" />
     <!-- 폰 로그인 위 띠 — 다른 화면은 폼이 첫 화면에서 밀려 두지 않는다 (auth.md) -->
     <div v-if="surface === 'student' && home" class="auth__band">
-      <LogoRiver :k="0.3" :height="200" />
+      <div class="auth__band-river"><LogoRiver :k="0.3" :height="150" /></div>
       <div class="auth__band-cover"></div>
       <a href="/" class="auth__band-home" aria-label="메인 페이지">‹ ESC</a>
       <p class="auth__band-lead">학교의 빈 강의실을 <br />확인하고 예약하세요.</p>
@@ -34,7 +34,7 @@ defineProps<{
       <aside v-if="surface === 'student'" class="auth__intro">
         <!-- 로그인 전에는 학교를 모른다(웹메일 도메인으로 정해진다) — 학교 이름 없이 서비스 이름만 -->
         <!-- 메인 페이지 / 로 — 관리자 앱에서도 페이지를 새로 연다(라우터 이동 아님) -->
-        <LogoRiver :k="0.72" :height="470" />
+        <div class="auth__intro-river"><LogoRiver :k="0.72" :height="470" /></div>
         <div class="auth__intro-cover"></div>
         <p class="auth__intro-brand"><a href="/">ESC</a></p>
         <div class="auth__intro-text">
@@ -90,22 +90,30 @@ defineProps<{
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  height: 270px;
+  height: 300px;
   padding: var(--space-3) var(--space-4) var(--space-4);
   overflow: hidden;
   border-bottom: var(--border-thin) solid var(--line-2);
   background: var(--surface);
   color: var(--text-1);
 }
+/* ‹ ESC 와 한 문장 사이의 띠 — 로고가 글자 뒤로 지나가지 않는다 */
+.auth__band-river {
+  position: absolute;
+  top: 64px;
+  right: 0;
+  left: 0;
+  height: 150px;
+}
 .auth__band-cover {
   position: absolute;
   inset: 0;
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--surface) 80%, transparent) 0,
-    transparent 54px,
-    transparent 119px,
-    var(--surface) 189px
+    var(--surface) 64px,
+    transparent 76px,
+    transparent 200px,
+    var(--surface) 222px
   );
   pointer-events: none;
 }
@@ -165,17 +173,20 @@ defineProps<{
     display: none;
   }
 }
-/* 아래쪽 글자 칸을 바탕색으로 덮는다 — 로고는 위 470px 안에 있다 */
+/* ESC 아래부터 흐른다. 창이 낮아도 아래쪽 글자 칸은 바탕색으로 덮는다 */
+.auth__intro-river {
+  position: absolute;
+  top: 88px;
+  right: 0;
+  left: 0;
+  height: 470px;
+}
 .auth__intro-cover {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--surface) 80%, transparent) 0,
-    transparent 14%,
-    transparent 44%,
-    var(--surface) 68%
-  );
+  background:
+    linear-gradient(180deg, var(--surface) 88px, transparent 108px),
+    linear-gradient(0deg, var(--surface) 190px, transparent 290px);
   pointer-events: none;
 }
 .auth__intro-brand {
