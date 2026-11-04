@@ -200,32 +200,56 @@ static RenderModel overflowModel(uint8_t curIdx) {
   return m;
 }
 
+// 삼각형(밑변 x 518–528, 11 px)이 꼭짓점 x 523 을 축으로 좌우 대칭이다 — 1비트라 밑변이 홀수여야 한다(#118).
+static void assertTriangleSymmetric(const HostGfx& g, int y0, int y1) {
+  for (int y = y0; y <= y1; y++)
+    for (int k = 0; k <= 5; k++)
+      TEST_ASSERT_EQUAL(g.pixelAt((int16_t)(518 + k), (int16_t)y), g.pixelAt((int16_t)(528 - k), (int16_t)y));
+}
+
 void test_more_above_is_filled_up_triangle_and_count() {
-  // 현재 today[6] → start 3 → 0행(윗변 y 100) 이 ▲ + "4개 더". 삼각형: 밑변 x 518–527 · y 120, 꼭짓점 y 115.
+  // 현재 today[6] → start 3 → 0행(윗변 y 100) 이 ▲ + "4개 더". 삼각형: 밑변 x 518–528 · y 120, 꼭짓점 (523,
+  // 115).
   HostGfx g;
   renderLayout(g, overflowModel(6));
   TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(518, 120));  // 밑변 왼끝
-  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(527, 120));  // 밑변 오른끝
-  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(522, 116));  // 꼭짓점 아래
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(528, 120));  // 밑변 오른끝(밑변 11)
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(523, 115));  // 꼭짓점
   TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(518, 115));  // 위 모서리는 비어 있음
-  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(522, 121));  // 높이 6 밖
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(529, 120));  // 밑변 밖
+  TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(523, 121));  // 높이 6 밖
+  assertTriangleSymmetric(g, 115, 120);
   HostGfx ref;
   ref.fillScreen(GxEPD_WHITE);
-  drawText(ref, kNanum16Regular, "4개 더", 534, 125, GxEPD_BLACK);  // 삼각형 뒤 간격 6
+  drawText(ref, kNanum16Regular, "4개 더", 535, 125, GxEPD_BLACK);  // 삼각형 뒤 간격 6
   TEST_ASSERT_EQUAL(0, diffCount(g, ref, 530, 100, 700, 136));
 }
 
 void test_more_below_is_filled_down_triangle() {
-  // 현재 today[1] → start 0 → 끝 행(8행, 윗변 y 388) 이 ▼ + "4개 더". 밑변 y 403, 꼭짓점 y 408.
+  // 현재 today[1] → start 0 → 끝 행(8행, 윗변 y 388) 이 ▼ + "4개 더". 밑변 y 403, 꼭짓점 (523, 408).
   HostGfx g;
   renderLayout(g, overflowModel(1));
   TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(518, 403));
-  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(522, 407));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(528, 403));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(523, 408));
   TEST_ASSERT_EQUAL(HColor::WHITE, g.pixelAt(518, 408));
+  assertTriangleSymmetric(g, 403, 408);
   HostGfx ref;
   ref.fillScreen(GxEPD_WHITE);
-  drawText(ref, kNanum16Regular, "4개 더", 534, 413, GxEPD_BLACK);
+  drawText(ref, kNanum16Regular, "4개 더", 535, 413, GxEPD_BLACK);
   TEST_ASSERT_EQUAL(0, diffCount(g, ref, 530, 388, 700, 424));
+}
+
+void test_form_b_long_subject_is_cleared_on_list_side() {
+  // 형태 B 과목(ASCII 20자)은 x 204 에서 시작해 분할선을 넘는다 — 정보 영역(y 216–439)의 x 476–497 은 백,
+  // 분할선은 그대로(#118).
+  RenderModel m = layout4Model();
+  strcpy(m.next.subj, "WWWWWWWWWWWWWWWWWWWW");
+  HostGfx g;
+  renderLayout(g, m);
+  TEST_ASSERT_EQUAL(0, countColor(g, 476, 216, 498, 440, HColor::BLACK));
+  TEST_ASSERT_EQUAL(HColor::BLACK, g.pixelAt(498, 300));                                // 분할선
+  TEST_ASSERT_GREATER_THAN_INT(100, countColor(g, 204, 330, 476, 380, HColor::BLACK));  // 과목은 그려짐
 }
 
 void test_form_b_without_next_says_no_more_classes_today() {
@@ -364,6 +388,7 @@ int main() {
   RUN_TEST(test_layout8_empty_tag_omits_chip);
   RUN_TEST(test_more_above_is_filled_up_triangle_and_count);
   RUN_TEST(test_more_below_is_filled_down_triangle);
+  RUN_TEST(test_form_b_long_subject_is_cleared_on_list_side);
   RUN_TEST(test_form_b_without_next_says_no_more_classes_today);
   RUN_TEST(test_layout7_second_label_is_reserver);
   RUN_TEST(test_list_type_chip_wins_over_long_subject);

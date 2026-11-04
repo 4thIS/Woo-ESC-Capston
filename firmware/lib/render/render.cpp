@@ -156,12 +156,16 @@ void drawInfoB(Adafruit_GFX& g, const RenderModel& m) {
   formatHM(m.next.sH, m.next.sM, hm, sizeof hm);
   const int16_t tw = drawText(g, kNanum62ExtraBold, hm, kPad, base, GxEPD_BLACK, kTrack62);
   drawText(g, kNanum28Bold, m.next.subj, (int16_t)(kPad + tw + kNextTimeGap), base, GxEPD_BLACK, kTrack28);
+  // 과목(ASCII 20자)이 분할선을 넘으면 목록 칸이 이긴다 — 형태 A 와 같은 규칙(#118). 형태 B 는 행 구분선이
+  // 없어 정보 영역 세로 전체를 덮는다. 목록·분할선은 이후에 그린다.
+  g.fillRect(kValueRight, kInfoY, (int16_t)(kW - kValueRight), kInfoH, GxEPD_WHITE);
 }
 
 constexpr int16_t kTypeChipGap = 8;  // 과목 ↔ type 약어(겹치면 이 폭까지 덮는다)
-// 목록 잘림 표시 — 채운 삼각형(밑변 10 · 높이 6, 행 윗변 +15–20) + 간격 6 + "n개 더"(16/400).
+// 목록 잘림 표시 — 채운 삼각형(밑변 11 · 높이 6, 행 윗변 +15–20) + 간격 6 + "n개 더"(16/400).
 // ↑·↓ 글리프는 16 px 에서 1 px 막대라 "↑ 4개 더"가 "14개 더"로 읽혔다(#89 layout 6, #91).
-constexpr int16_t kMoreTriBase = 10;
+// 밑변은 홀수 — 1비트라 짝수면 꼭짓점이 반 픽셀 치우친다(#118, 꼭짓점 x 523).
+constexpr int16_t kMoreTriBase = 11;
 constexpr int16_t kMoreTriTop = 15;
 constexpr int16_t kMoreTriBottom = 20;
 constexpr int16_t kMoreTextGap = 6;
