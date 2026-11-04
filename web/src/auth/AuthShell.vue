@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
+import LogoRiver from '@/components/domain/LogoRiver.vue'
 
 // home — 로그인 화면만: 폼 위 이름이 `‹ ESC`, ‹ 는 메인 페이지 / 로 (auth.md 「탭」)
 // titleHidden — 로그인 화면만: 탭·제출 버튼이 이미 '로그인'이라 제목은 스크린리더용으로만 (auth.md, #95)
@@ -21,18 +22,25 @@ defineProps<{
     :data-surface="surface === 'student' ? 'student' : undefined"
   >
     <slot name="banner" />
+    <!-- 폰 로그인 위 띠 — 다른 화면은 폼이 첫 화면에서 밀려 두지 않는다 (auth.md) -->
+    <div v-if="surface === 'student' && home" class="auth__band">
+      <LogoRiver :k="0.3" :height="200" />
+      <div class="auth__band-cover"></div>
+      <a href="/" class="auth__band-home" aria-label="메인 페이지">‹ ESC</a>
+      <p class="auth__band-lead">학교의 빈 강의실을 <br />확인하고 예약하세요.</p>
+    </div>
     <div class="auth__body">
       <!-- 학생 PC(≥640) 는 좌우 분할 — 왼쪽 소개, 오른쪽 폼. 폰에서는 숨긴다 -->
       <aside v-if="surface === 'student'" class="auth__intro">
         <!-- 로그인 전에는 학교를 모른다(웹메일 도메인으로 정해진다) — 학교 이름 없이 서비스 이름만 -->
         <!-- 메인 페이지 / 로 — 관리자 앱에서도 페이지를 새로 연다(라우터 이동 아님) -->
+        <LogoRiver :k="0.72" :height="470" />
+        <div class="auth__intro-cover"></div>
         <p class="auth__intro-brand"><a href="/">ESC</a></p>
-        <p class="auth__intro-lead">학교의 빈 강의실을 확인하고 예약하세요.</p>
-        <ul class="auth__intro-list">
-          <li>지금 빈 강의실</li>
-          <li>이번 주 시간표</li>
-          <li>예약 신청·승인</li>
-        </ul>
+        <div class="auth__intro-text">
+          <p class="auth__intro-lead">학교의 빈 강의실을 <br />확인하고 예약하세요.</p>
+          <p class="auth__intro-can">지금 빈 강의실 · 이번 주 시간표 · 예약 신청·승인</p>
+        </div>
       </aside>
       <div class="auth__pane">
         <main class="auth__card">
@@ -77,21 +85,73 @@ defineProps<{
 .auth__intro {
   display: none;
 }
+.auth__band {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 270px;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  overflow: hidden;
+  border-bottom: var(--border-thin) solid var(--line-2);
+  background: var(--surface);
+  color: var(--text-1);
+}
+.auth__band-cover {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface) 80%, transparent) 0,
+    transparent 54px,
+    transparent 119px,
+    var(--surface) 189px
+  );
+  pointer-events: none;
+}
+.auth__band-home {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: var(--control-height-md);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: inherit;
+  text-decoration: none;
+}
+.auth__band-lead {
+  position: relative;
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+/* 띠가 ‹ ESC 를 이미 말한다 — 폼 위 이름이 두 번 나오지 않게 */
+.auth__band ~ .auth__body .auth__brand {
+  display: none;
+}
 @media (min-width: 640px) {
-  /* 좌우 분할 — 왼쪽 소개 패널(가라앉은 면 — brand 는 1차 액션 전용), 오른쪽 폼을 세로 가운데 */
+  .auth__band {
+    display: none;
+  }
+  /* 좌우 분할 — 왼쪽 소개 패널(brand 는 1차 액션 전용), 오른쪽 폼을 세로 가운데 */
   .auth--student .auth__body {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     min-height: 100vh;
   }
   .auth--student .auth__intro {
+    position: relative;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: space-between;
     gap: var(--space-5);
-    padding: var(--space-7);
+    min-width: 0;
+    padding: 40px 48px;
+    overflow: hidden;
     border-right: var(--border-thin) solid var(--line-2);
-    background: var(--sunken);
+    background: var(--surface);
     color: var(--text-1);
   }
   .auth--student .auth__pane {
@@ -105,9 +165,23 @@ defineProps<{
     display: none;
   }
 }
+/* 아래쪽 글자 칸을 바탕색으로 덮는다 — 로고는 위 470px 안에 있다 */
+.auth__intro-cover {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface) 80%, transparent) 0,
+    transparent 14%,
+    transparent 44%,
+    var(--surface) 68%
+  );
+  pointer-events: none;
+}
 .auth__intro-brand {
+  position: relative;
   margin: 0;
-  font-size: var(--font-size-md);
+  font-size: 20px;
   font-weight: var(--font-weight-bold);
 }
 .auth__intro-brand a {
@@ -117,19 +191,23 @@ defineProps<{
 .auth__intro-brand a:hover {
   text-decoration: underline;
 }
-.auth__intro-lead {
-  margin: 0;
-  max-width: 20em;
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
-  line-height: var(--leading-tight);
-}
-.auth__intro-list {
+.auth__intro-text {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 14px;
+}
+.auth__intro-lead {
   margin: 0;
-  padding-left: 1.2em;
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.auth__intro-can {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-2);
 }
 .auth--admin .auth__card {
   max-width: 360px;
