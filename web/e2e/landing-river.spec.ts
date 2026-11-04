@@ -65,7 +65,7 @@ test('PC — 잡으면 포인터를 따라 멈춰 있고, 다른 로고는 계�
   await page.mouse.up()
 })
 
-test('PC — 던지면 날아갔다가 5초 안에 왼쪽 약 40 px/s 로 돌아온다', async ({ page }) => {
+test('PC — 던지면 날아갔다가 5초 안에 왼쪽 약 60 px/s 로 돌아온다', async ({ page }) => {
   await openPc(page)
   const { i, x, y } = await visibleLogo(page)
   await page.mouse.move(x, y)
@@ -82,8 +82,8 @@ test('PC — 던지면 날아갔다가 5초 안에 왼쪽 약 40 px/s 로 돌아
   const a = await centerOf(page, i)
   await page.waitForTimeout(1000)
   const b = await centerOf(page, i)
-  expect(a.x - b.x).toBeGreaterThan(20)
-  expect(a.x - b.x).toBeLessThan(70)
+  expect(a.x - b.x).toBeGreaterThan(35)
+  expect(a.x - b.x).toBeLessThan(90)
 })
 
 test('PC — 로그인 링크는 잡기와 상관없이 /login 으로 간다', async ({ page }) => {

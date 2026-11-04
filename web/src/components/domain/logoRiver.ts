@@ -41,6 +41,9 @@ export function logoUrl(file: string): string {
   return FILES[`../../assets/logos/${file}`] ?? ''
 }
 
+/** 흐름 속도(px/s) — 배율 1 기준. 흐르기만 하는 판과 물리 판이 같은 값을 쓴다 */
+export const RIVER_SPEED = 60
+
 const D_MAX = 170
 const D_MIN = 110
 // 로고 사이 최소 틈 — 처음 자리에서 닿아 있지 않게

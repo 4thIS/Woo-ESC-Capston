@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { LOGOS, layoutLogos } from './logoRiver'
+import { LOGOS, RIVER_SPEED, layoutLogos } from './logoRiver'
 
 // 대학 로고가 오른쪽에서 왼쪽으로 흐르기만 하는 판 — 메인(폰·태블릿·터치)과 인증 화면.
 // 잡고 던지는 판은 메인 PC 전용 LogoRiverPhysics. 움직임 줄이기는 base.css 전역 규칙이 끈다
@@ -9,7 +9,6 @@ const props = defineProps<{ k: number; height: number }>()
 // 긴 로고의 반폭보다 커서, 두 벌이 이어지는 곳이 화면에 보이지 않는다
 const MARGIN = 200
 const BASE_W = 2000
-const BASE_SPEED = 40
 const MIN_SPEED_K = 0.7
 
 const margin = computed(() => MARGIN * props.k)
@@ -17,7 +16,7 @@ const W = computed(() => Math.max(BASE_W * props.k, (window.screen?.width ?? 0) 
 const logos = computed(() => layoutLogos(LOGOS, { W: W.value, H: props.height, k: props.k }))
 const trackStyle = computed(() => ({
   width: `${W.value * 2}px`,
-  animationDuration: `${W.value / (BASE_SPEED * Math.max(props.k, MIN_SPEED_K))}s`,
+  animationDuration: `${(W.value / (RIVER_SPEED * Math.max(props.k, MIN_SPEED_K))).toFixed(1)}s`,
 }))
 const copies = computed(() =>
   [0, 1].flatMap((n) =>

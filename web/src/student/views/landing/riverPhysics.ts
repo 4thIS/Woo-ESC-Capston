@@ -1,10 +1,10 @@
 // 대학 로고 강의 물리 — DOM 없는 순수 계산 (docs/specs/2026-11-04-landing-logo-river-design.md §4)
 // 라이브러리를 쓰지 않는다: 회전 없는 캡슐 20개와 흐름 힘이면 충분하다
-import { capsuleContact, type RiverLogo } from '@/components/domain/logoRiver'
+import { capsuleContact, RIVER_SPEED, type RiverLogo } from '@/components/domain/logoRiver'
 
 /** 손맛 조절값 — 실제로 던져 보고 맞춘다. 바꾸면 spec §4 표도 함께 */
 export const TUNING = {
-  FLOW: 40, // px/s 흐름 속도
+  FLOW: RIVER_SPEED, // px/s 흐름 속도
   FLOW_TAU: 0.8, // s 속도가 흐름으로 돌아가는 시간
   LANE_K: 1.2, // /s² 자기 줄로 돌아가는 힘
   LANE_DAMP: 1.6, // /s 세로 흔들림 줄임

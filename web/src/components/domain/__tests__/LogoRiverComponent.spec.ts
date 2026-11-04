@@ -26,9 +26,9 @@ describe('LogoRiver — 흐르기만 하는 판 (spec §5)', () => {
   })
 
   it.each([
-    [1, 720, '4000px', '50s'],
-    [0.56, 430, '2240px', '40s'],
-  ])('k=%f — 트랙 폭 = 2W, 지속 시간 = W ÷ (40 × max(k, 0.7))', (k, height, width, dur) => {
+    [1, 720, '4000px', '33.3s'],
+    [0.56, 430, '2240px', '26.7s'],
+  ])('k=%f — 트랙 폭 = 2W, 지속 시간 = W ÷ (60 × max(k, 0.7))', (k, height, width, dur) => {
     const track = mountRiver(k, height).get('.river__track').attributes('style')
     expect(track).toContain(`width: ${width}`)
     expect(track).toContain(`animation-duration: ${dur}`)

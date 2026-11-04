@@ -33,12 +33,12 @@ function run(w: World, seconds: number) {
 }
 
 describe('흐름 · 잇기', () => {
-  it('아무도 안 건드리면 모두 vx ≈ -40, 1초에 약 40px 왼쪽', () => {
+  it('아무도 안 건드리면 모두 vx ≈ -60, 1초에 약 60px 왼쪽', () => {
     const w = makeWorld([logo(900, 300), logo(300, 500)])
     const x0 = w.bodies[0].x
     run(w, 1)
     expect(w.bodies[0].vx).toBeCloseTo(-TUNING.FLOW)
-    expect(x0 - w.bodies[0].x).toBeCloseTo(40, 0)
+    expect(x0 - w.bodies[0].x).toBeCloseTo(60, 0)
   })
 
   it('왼쪽 -WRAP_MARGIN 을 지나면 W 만큼 오른쪽으로, 오른쪽으로 던져 넘어가면 반대로', () => {
@@ -76,7 +76,7 @@ describe('흐름 · 잇기', () => {
 })
 
 describe('던지기 · 충돌', () => {
-  it('throw — release(900,0) 뒤 5초 안에 vx 가 -40 ±2, 이동 거리 720px 이하', () => {
+  it('throw — release(900,0) 뒤 5초 안에 흐름 속도 ±2, 이동 거리 720px 이하', () => {
     const w = makeWorld([logo(0, 300)])
     grab(w, 0, 0, 300)
     release(w, 900, 0)
