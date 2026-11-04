@@ -20,6 +20,7 @@ docs/design/
 │   ├── admin-nodes.md      ← 노드 상태·모뎀Pi·등록 대기
 │   ├── admin-users.md      ← 회원 승인 (S4a)
 │   ├── student-room.md     ← 학생 웹 (S10, 모바일 우선, 라우트 6개)
+│   ├── policies.md         ← 약관 및 정책 `/policies/:doc` · 가입 동의 안내 (로그인 없이, 반응형)
 │   └── terminal-epaper.md  ← 단말 e-Paper 화면 (→ firmware/src/terminal/, 소비자는 dh)
 └── assets/            ← 시안에서 뽑은 아이콘·이미지 원본 (wj가 web/src/assets/ 로 복사)
 ```
