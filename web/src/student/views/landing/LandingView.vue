@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import LogoRiver from '@/components/domain/LogoRiver.vue'
 import CtaLink from '../../CtaLink.vue'
 import EpaperPreview from './EpaperPreview.vue'
+import LogoRiverPhysics from './LogoRiverPhysics.vue'
 import ResvPreview from './ResvPreview.vue'
 import RoomListPreview from './RoomListPreview.vue'
+import { useRiverMode, useRiverWide } from './useRiverMode'
 import WeekPreview from './WeekPreview.vue'
 
 // 로그인 전 `/` — 학교 소개가 아니라 학생이 할 수 있는 일 소개. 학교를 모르고 서버를 부르지 않는다 (landing.md)
@@ -34,6 +38,10 @@ const STEPS = [
   ['이름 · 학번 · 비밀번호 입력', '링크를 연 화면에서 계정을 마무리해요.'],
   ['관리자 승인 뒤 로그인', '승인되면 메일이 와요. 그때부터 로그인할 수 있어요.'],
 ] as const
+
+const heroEl = ref<HTMLElement | null>(null)
+const physics = useRiverMode() // 마우스 쓰는 PC 에서만 로고를 잡고 던진다
+const wide = useRiverWide()
 </script>
 
 <template>
@@ -50,13 +58,21 @@ const STEPS = [
     </header>
 
     <main>
-      <section class="hero band band--surface">
+      <section ref="heroEl" class="hero band band--surface">
+        <div class="hero__band">
+          <LogoRiverPhysics v-if="physics" :surface="heroEl" />
+          <LogoRiver v-else-if="wide" :k="1" :height="720" />
+          <LogoRiver v-else :k="0.56" :height="430" />
+        </div>
+        <!-- 글자를 지키는 덮개 — 숫자는 logoRiver.ts riverCoverEdge 와 맞춘다 -->
+        <div class="hero__cover"></div>
         <div class="wrap hero__grid">
           <div class="hero__text">
             <p class="hero__eyebrow">강의실 시간표 · 예약</p>
             <h1 class="hero__title">
               빈 강의실,<br class="hero__br" />
-              폰으로 바로 확인하세요.
+              폰으로 바로<br class="hero__br" />
+              확인하세요.
             </h1>
             <p class="hero__lead">
               지금 비어 있는 강의실을 찾고, 이번 주 시간표를 보고, 필요한 시간에 예약을 신청하세요.
@@ -67,9 +83,7 @@ const STEPS = [
               <CtaLink to="/login" class="hero__btn">로그인</CtaLink>
               <CtaLink to="/signup" variant="secondary" class="hero__btn">가입 신청</CtaLink>
             </div>
-            <p class="hero__note">학교 웹메일로 가입 · 관리자 승인 뒤 이용</p>
           </div>
-          <RoomListPreview :rows="4" class="hero__preview" />
         </div>
       </section>
 
@@ -116,7 +130,10 @@ const STEPS = [
 
     <footer class="band band--surface band--line">
       <div class="wrap foot">
-        <p class="foot__text">ESC — 전자종이 · LoRa 강의실 시간표 게시 시스템</p>
+        <div class="foot__about">
+          <p class="foot__text">ESC — 전자종이 · LoRa 강의실 시간표 게시 시스템</p>
+          <p class="foot__text">표시된 로고는 각 대학의 상표이며, 제휴나 도입을 뜻하지 않습니다.</p>
+        </div>
         <nav class="foot__links" aria-label="약관 · 관리자">
           <RouterLink to="/policies/terms" class="foot__link">이용약관</RouterLink>
           <!-- 개인정보 처리방침은 눈에 띄게(굵게) — 웹사이트 관례 -->
@@ -134,16 +151,23 @@ const STEPS = [
 <style scoped>
 /* 세 폭(landing.md 「반응형」) — 폰 < 640 · 태블릿 640–1023 · 넓은 화면 ≥ 1024 */
 .landing {
+  position: relative;
   min-height: 100vh;
   background: var(--surface);
 }
+/* 히어로 위에 얹힌다. 따라 내려오지 않는다 — 투명 헤더가 아래 구역 글자와 겹치지 않게.
+   빈 곳은 뒤의 로고를 잡을 수 있게 포인터를 통과시킨다 */
 .lh {
-  position: sticky;
+  position: absolute;
   top: 0;
+  right: 0;
+  left: 0;
   z-index: 1;
   height: 58px;
-  border-bottom: var(--border-thin) solid var(--line-2);
-  background: var(--surface);
+  pointer-events: none;
+}
+.lh__nav > * {
+  pointer-events: auto;
 }
 .lh__in {
   display: flex;
@@ -178,9 +202,33 @@ const STEPS = [
   border-top: var(--border-thin) solid var(--line-2);
 }
 .hero {
+  position: relative;
+  overflow: hidden;
+  padding-top: 360px;
   border-bottom: var(--border-thin) solid var(--line-2);
 }
+/* 폰 · 태블릿: 위쪽 로고 띠, 글자는 그 아래 */
+.hero__band {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  left: 0;
+  height: 430px;
+}
+.hero__cover {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface) 85%, transparent) 0,
+    transparent 76px,
+    transparent 310px,
+    var(--surface) 400px
+  );
+  pointer-events: none;
+}
 .hero__grid {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
@@ -204,14 +252,14 @@ const STEPS = [
 }
 .hero__title {
   margin: 0;
-  font-size: 26px;
-  font-weight: var(--font-weight-bold);
-  line-height: 1.3;
-  text-wrap: balance;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 .hero__lead {
-  max-width: 520px;
-  font-size: 16px;
+  max-width: 480px;
+  font-size: 15px;
   line-height: 1.65;
   color: var(--text-2);
 }
@@ -222,10 +270,6 @@ const STEPS = [
 }
 .hero__btn {
   min-height: 52px;
-}
-.hero__note {
-  font-size: var(--font-size-xs);
-  color: var(--text-3);
 }
 .sec__title {
   margin: 0;
@@ -317,6 +361,11 @@ const STEPS = [
 .band:has(.foot) {
   padding: var(--space-4) 0;
 }
+.foot__about {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .foot__text {
   font-size: var(--font-size-xs);
   color: var(--text-3);
@@ -357,18 +406,13 @@ const STEPS = [
     align-items: center;
   }
   .hero__title {
-    font-size: 32px;
+    font-size: 40px;
   }
   .hero__br {
     display: none;
   }
   .hero__actions {
     flex-direction: row;
-  }
-  .hero__preview {
-    width: 100%;
-    max-width: 440px;
-    text-align: left;
   }
   .features {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -387,18 +431,41 @@ const STEPS = [
     margin: 0 auto;
     padding: 0 80px;
   }
-  /* 넓은 화면: 2단 — 왼쪽 글 + 버튼, 오른쪽 미리보기 440px, 세로 가운데 */
-  .hero__grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 440px;
+  .lh {
+    height: 72px;
+  }
+  /* 넓은 화면: 높이 720, 뒤 전체에 로고, 왼쪽 글 + 버튼 세로 가운데 */
+  .hero {
+    display: flex;
     align-items: center;
+    height: 720px;
+    padding: 0;
+  }
+  .hero__band {
+    top: 0;
+    height: 720px;
+  }
+  .hero__cover {
+    background: linear-gradient(
+      90deg,
+      var(--surface) calc(max(0px, (100% - 1280px) / 2) + 560px),
+      transparent calc(max(0px, (100% - 1280px) / 2) + 840px)
+    );
+  }
+  .hero__grid {
+    align-items: flex-start;
+    width: 100%;
     text-align: left;
   }
   .hero__text {
     align-items: flex-start;
+    max-width: 480px;
   }
   .hero__title {
-    font-size: 40px;
+    font-size: clamp(36px, 4.6vw, 60px);
+  }
+  .hero__lead {
+    font-size: 17px;
   }
   .hero__br {
     display: inline;
