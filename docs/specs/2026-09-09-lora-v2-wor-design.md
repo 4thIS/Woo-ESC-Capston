@@ -103,6 +103,7 @@
 - SF9/BW125 기준 심볼 시간 4.096 ms → wake 프리앰블 ≈ 733 심볼. 200 B 페이로드 공중시간 ≈ 1.2 s, wake 포함 ≈ 4.3 s.
 - 프리앰블 `wake` 3.0 s 산정 근거: Rx duty 감지 간격(최대 ≈ 1.6 s) + 딥슬립 부팅·라디오 재초기화(≈ 0.5 s) + 여유. 감지가 늦어 본문을 놓친 경우는 §6.5 세션 창 + 백엔드 재시도로 흡수.
 - SF 변경 시 `RP_PREAMBLE_WAKE_MS`는 ms 단위라 자동 환산되므로 값 유지.
+- **수신기 프리앰블 설정도 wake 길이로 둔다**(2026-11-04 실측, PR #117). 깨어 있는 노드가 수신 프리앰블을 8 로 두면 wake 프레임을 절반쯤 놓쳤다(wake 7/10·normal 20/20). wake 심볼 수로 두면 wake 20/20·normal 20/20. 송신(ACK·업링크)할 때만 8 로 바꾼다.
 
 ---
 
@@ -202,11 +203,11 @@ HELLO       [mac 6B][fw u8][batt_mV u16 BE]   헤더 BLD=0x00 ROOM=0 UNIT=0 TXN=
 |---|---|---|
 | 0x00 OK | 적용 완료 | acked |
 | 0x01 BAD_CRC | 앱 CRC 불일치 | 재전송 |
-| 0x02 BAD_PAYLOAD | 파싱 실패/길이 오류 | failed + 로그(코덱 버그 의심) |
+| 0x02 BAD_PAYLOAD | 파싱 실패/길이 오류 — FILE_END CRC 는 맞는데 본문이 레코드로 풀리지 않는 경우 포함(#74 11) | failed + 로그(코덱 버그 의심) |
 | 0x03 STORE_FAIL | 파일시스템 기록 실패 | 재전송 1회 후 failed |
 | 0x04 GAP | 적용은 했으나 `(NEW_VER - 이전 ver) mod 255 != 1` (중간 패치 유실). **FILE 세션에는 적용하지 않는다**(§3.3) | acked + **해당 kind FILE 재동기 큐잉** (pending 작업이 있어도 억제하지 않음) |
 | 0x05 FILE_MISSING | detail = 첫 누락 seq | 해당 seq부터 FILE_DATA 재송 |
-| 0x06 UNSUPPORTED | 모르는 TYPE/CMD | failed |
+| 0x06 UNSUPPORTED | 모르는 TYPE/CMD, `SET_PARAM` 의 모르는 `paramId`(#74 11) | failed |
 | 0x07 BUSY | 렌더 중 등으로 지금 처리 불가 | 5 s 후 재전송 |
 | 0x08 DUP | 같은 TXN 재수신 — 재적용 없이 ACK만 | acked |
 
@@ -383,8 +384,8 @@ setup():
 ### 6.3 handleTimer
 1. `clockValid` 아니면 goToSleep(다음 시도 10 min).
 2. `now >= nextStatusEpoch` → STATUS 송신, `nextStatusEpoch = 다음날 statusHour + hash(mac)%1800 s`.
-3. `layout = determineLayout(now)`; 상태키 `(layout, day, curSlotStart)` 비교. 다르면 `render(layout)`.
-4. `sleepUntil = nextChangeAt(now)`.
+3. `d = determineLayout(view, now)`(§5.3, `view` = RTC 캐시의 오늘 슬롯·예약·시험); 상태키 `(d.layout, day, curSlotStart)` 비교. 다르면 `render(d.layout)` — `cur`·`next` 는 `d` 가 정한 항목으로 채운다(쉬는시간이면 `cur` = `next`).
+4. `sleepUntil = nextChangeAt(view, now, nextStatusEpoch)`(§5.4, +2 s 포함).
 
 ### 6.4 handleRadio (DIO1 웨이크)
 ```
@@ -392,13 +393,13 @@ startReceive()                       // 프리앰블이 아직 공중에 있으�
 loop (세션 창 sessionWindowMs, 기본 10 s, 프레임 수신 시마다 연장):
   frame = readData() if RX_DONE
   검증: NET_ID, CRC8, 대상(§6.6) — 불일치면 무시
-  TXN == lastTxn → ACK(DUP) 후 continue   // lastTxn 은 결과가 OK 인 프레임만 기록한다(§5.1, #74 10)
+  TXN == lastTxn → ACK(DUP) 후 continue   // lastTxn 은 저장 결과가 OK 인 프레임만 기록한다(GAP 도 저장은 OK, §5.1, #74 10)
   dispatch(TYPE):
     TIME       → setClock, lastTimeSyncEpoch, flags.REQUEST_STATUS면 랜덤 지연 STATUS 예약
     SLOT_*/RESV_*/EXAM_* → apply(멱등) → 버전 검사(GAP?) → LittleFS 기록 → ACK(저장 결과 OK|GAP|STORE_FAIL|BAD_PAYLOAD|UNSUPPORTED)
     FILE_BEGIN → 수신 버퍼 준비(kind,totalLen,nChunks) → ACK(OK)
     FILE_DATA  → seq 위치에 복사, 비트맵 갱신 → ACK(OK / FILE_MISSING)
-    FILE_END   → crc16 검증 → kind 전체 교체 → LittleFS 기록 → 버전 갱신 → ACK(OK)
+    FILE_END   → crc16 검증(불일치 BAD_CRC) → 레코드 풀기 → kind 전체 교체 → LittleFS 기록 → 버전 갱신 → ACK(저장 결과 OK|STORE_FAIL|BAD_PAYLOAD)
     CMD        → 실행 → ACK
     SET_ROOM   → MAC 일치 & 미설정 → 정체성 저장(NVS) → provisioned=true → ACK(OK) → 렌더 플래그
   ACK는 **저장이 끝나면 렌더 전에** 송신 (렌더 7~20 s 동안 서버가 기다리지 않게)
@@ -408,7 +409,7 @@ loop (세션 창 sessionWindowMs, 기본 10 s, 프레임 수신 시마다 연장
 세션 창 종료 후: dirty면 handleTimer()의 3~4 수행(렌더는 최대 1회)
 ```
 - 세션 창 안에서는 normal 프리앰블 프레임도 받는다(FILE_DATA/END는 normal로 온다).
-- 렌더 중 수신은 하지 않는다(렌더 후 세션 창을 3 s 재개하여 밀린 프레임 1개 수용). 그 사이 온 프레임은 백엔드 재시도로 회복.
+- 렌더 중에도 수신한다 — 패널 리프레시(≈27 s)를 기다리는 busy 콜백에서 수신·저장·ACK 를 처리하고, 리프레시 중 바뀐 내용은 dirty 로 남겨 다음 렌더에 반영한다(2026-11-04, PR #117 — 10/28 실기에서 렌더 중 미수신이 재시도를 몰리게 했다). 그래도 놓친 프레임은 백엔드 재시도로 회복.
 
 ### 6.5 handleButton (GPIO0)
 - 짧게(<1 s): `FORCE_RENDER` + STATUS 송신 (현장 확인용).
@@ -667,7 +668,7 @@ epaper-v2/
 | 상황 | 처리 |
 |---|---|
 | 프리앰블 감지 후 본문 놓침 | 세션 창 10 s 동안 깨어 있음 → 백엔드 재시도(5 s 후)가 normal/wake 무관하게 수신됨 |
-| 렌더 중 프레임 도착 | 미수신. 백엔드 재시도로 회복(BUSY ACK는 렌더 직전 도착 시에만) |
+| 렌더 중 프레임 도착 | busy 콜백에서 수신·저장·ACK(§6.4, PR #117). 놓치면 백엔드 재시도로 회복 |
 | 같은 호수 2유닛 | 백엔드가 유닛별 행으로 분해, 각자 TXN·ACK |
 | 시계 미동기 콜드 부팅 | 렌더 보류, 10 min마다 타이머 웨이크로 재확인, 다음 정각 TIME으로 복구. STATUS에 CLOCK_STALE |
 | 버전 롤오버(255→1) | 버전은 1~255 롤링(0=미정)이므로 단말은 `(new - old) mod 255 == 1`로 연속 판정 (mod 256이면 255→1이 GAP로 오판됨. 2026-09-10 정정) |
