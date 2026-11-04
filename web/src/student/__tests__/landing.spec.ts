@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import LandingView from '@/student/views/landing/LandingView.vue'
@@ -13,16 +13,61 @@ async function mountLanding() {
   return mount(LandingView, { global: { plugins: [router] } })
 }
 
+function stubMedia(matching: string[]) {
+  vi.stubGlobal('matchMedia', (q: string) => ({
+    matches: matching.includes(q),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }))
+}
+const PC = '(min-width: 1024px) and (hover: hover) and (pointer: fine)'
+const WIDE = '(min-width: 1024px)'
+
 describe('메인 페이지 (landing.md)', () => {
-  it('히어로 — 제목은 h1 하나, 로그인(brand 채움은 이 하나)·가입 신청', async () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('히어로 — 제목은 h1 하나, 로그인(brand 채움은 이 하나)·가입 신청, 보조 문구와 미리보기 없음', async () => {
     const w = await mountLanding()
     expect(w.findAll('h1').map((h) => h.text())).toEqual(['빈 강의실, 폰으로 바로 확인하세요.'])
     const hero = w.get('.hero')
     expect(hero.text()).toContain('강의실 시간표 · 예약')
-    expect(hero.text()).toContain('학교 웹메일로 가입 · 관리자 승인 뒤 이용')
+    expect(hero.text()).not.toContain('관리자 승인 뒤 이용')
+    expect(hero.findAll('[role="img"]')).toHaveLength(0)
     expect(hero.get('a.cta--primary').attributes('href')).toBe('/login')
     expect(hero.get('a.cta--secondary').attributes('href')).toBe('/signup')
     expect(w.findAll('a.cta--primary')).toHaveLength(1)
+  })
+
+  it('matchMedia 없으면 흐르기만 하는 판(폰 배율), 넓은 터치 화면은 배율 1, 마우스 PC 는 잡는 판', async () => {
+    const phone = await mountLanding()
+    expect(phone.get('.hero .river').classes()).not.toContain('river--physics')
+    expect(phone.get('.hero .river__track').attributes('style')).toContain('width: 2240px')
+    phone.unmount()
+
+    stubMedia([WIDE])
+    const touch = await mountLanding()
+    expect(touch.get('.hero .river').classes()).not.toContain('river--physics')
+    expect(touch.get('.hero .river__track').attributes('style')).toContain('width: 4000px')
+    touch.unmount()
+
+    stubMedia([WIDE, PC])
+    const pc = await mountLanding()
+    expect(pc.get('.hero .river').classes()).toContain('river--physics')
+    pc.unmount()
+  })
+
+  it('움직임 줄이기면 PC 에서도 잡는 판을 쓰지 않는다', async () => {
+    stubMedia([WIDE, PC, '(prefers-reduced-motion: reduce)'])
+    const w = await mountLanding()
+    expect(w.get('.hero .river').classes()).not.toContain('river--physics')
+    w.unmount()
+  })
+
+  it('바닥글에 로고 고지 한 줄', async () => {
+    const w = await mountLanding()
+    expect(w.get('footer').text()).toContain(
+      '표시된 로고는 각 대학의 상표이며, 제휴나 도입을 뜻하지 않습니다.',
+    )
   })
 
   it('시간표 미리보기 블록 라벨은 두 글자 — 넓은 화면 요일 칸에서 잘리지 않게 (#101)', async () => {
@@ -54,7 +99,6 @@ describe('메인 페이지 (landing.md)', () => {
     const previews = w.findAll('[role="img"]')
     expect(previews.map((p) => p.attributes('aria-label'))).toEqual([
       '강의실 목록 예시',
-      '강의실 목록 예시',
       '주간 시간표 예시',
       '예약 신청 예시',
       '문 앞 화면 예시',
@@ -65,13 +109,12 @@ describe('메인 페이지 (landing.md)', () => {
     const head = ep.get('.ep__head').text()
     expect(head).toContain('목요일')
     expect(head).not.toMatch(/\d{1,2}:\d{2}/)
-    // 히어로 4행(★ 하나, 사용중 둘 — 수업중·시험중), 카드 1은 같은 것의 3행
-    const [hero, card] = previews
-    expect(hero.findAll('.lr')).toHaveLength(4)
+    // 카드 1은 3행(★ 하나, 사용중 둘 — 수업중·시험중)
+    const [card] = previews
     expect(card.findAll('.lr')).toHaveLength(3)
-    expect(hero.text()).toContain('수업중')
-    expect(hero.text()).toContain('시험중')
-    expect(hero.findAll('.lr__star--on')).toHaveLength(1)
+    expect(card.text()).toContain('수업중')
+    expect(card.text()).toContain('시험중')
+    expect(card.findAll('.lr__star--on')).toHaveLength(1)
   })
 
   it('시작하는 방법 3단계 — 번호는 칠하지 않는다, 폰용 가입 신청하기', async () => {
