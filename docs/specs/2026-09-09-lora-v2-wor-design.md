@@ -202,11 +202,11 @@ HELLO       [mac 6B][fw u8][batt_mV u16 BE]   헤더 BLD=0x00 ROOM=0 UNIT=0 TXN=
 |---|---|---|
 | 0x00 OK | 적용 완료 | acked |
 | 0x01 BAD_CRC | 앱 CRC 불일치 | 재전송 |
-| 0x02 BAD_PAYLOAD | 파싱 실패/길이 오류 | failed + 로그(코덱 버그 의심) |
+| 0x02 BAD_PAYLOAD | 파싱 실패/길이 오류 — FILE_END CRC 는 맞는데 본문이 레코드로 풀리지 않는 경우 포함(#74 11) | failed + 로그(코덱 버그 의심) |
 | 0x03 STORE_FAIL | 파일시스템 기록 실패 | 재전송 1회 후 failed |
 | 0x04 GAP | 적용은 했으나 `(NEW_VER - 이전 ver) mod 255 != 1` (중간 패치 유실). **FILE 세션에는 적용하지 않는다**(§3.3) | acked + **해당 kind FILE 재동기 큐잉** (pending 작업이 있어도 억제하지 않음) |
 | 0x05 FILE_MISSING | detail = 첫 누락 seq | 해당 seq부터 FILE_DATA 재송 |
-| 0x06 UNSUPPORTED | 모르는 TYPE/CMD | failed |
+| 0x06 UNSUPPORTED | 모르는 TYPE/CMD, `SET_PARAM` 의 모르는 `paramId`(#74 11) | failed |
 | 0x07 BUSY | 렌더 중 등으로 지금 처리 불가 | 5 s 후 재전송 |
 | 0x08 DUP | 같은 TXN 재수신 — 재적용 없이 ACK만 | acked |
 
@@ -383,8 +383,8 @@ setup():
 ### 6.3 handleTimer
 1. `clockValid` 아니면 goToSleep(다음 시도 10 min).
 2. `now >= nextStatusEpoch` → STATUS 송신, `nextStatusEpoch = 다음날 statusHour + hash(mac)%1800 s`.
-3. `layout = determineLayout(now)`; 상태키 `(layout, day, curSlotStart)` 비교. 다르면 `render(layout)`.
-4. `sleepUntil = nextChangeAt(now)`.
+3. `d = determineLayout(view, now)`(§5.3, `view` = RTC 캐시의 오늘 슬롯·예약·시험); 상태키 `(d.layout, day, curSlotStart)` 비교. 다르면 `render(d.layout)` — `cur`·`next` 는 `d` 가 정한 항목으로 채운다(쉬는시간이면 `cur` = `next`).
+4. `sleepUntil = nextChangeAt(view, now, nextStatusEpoch)`(§5.4, +2 s 포함).
 
 ### 6.4 handleRadio (DIO1 웨이크)
 ```
@@ -392,13 +392,13 @@ startReceive()                       // 프리앰블이 아직 공중에 있으�
 loop (세션 창 sessionWindowMs, 기본 10 s, 프레임 수신 시마다 연장):
   frame = readData() if RX_DONE
   검증: NET_ID, CRC8, 대상(§6.6) — 불일치면 무시
-  TXN == lastTxn → ACK(DUP) 후 continue   // lastTxn 은 결과가 OK 인 프레임만 기록한다(§5.1, #74 10)
+  TXN == lastTxn → ACK(DUP) 후 continue   // lastTxn 은 저장 결과가 OK 인 프레임만 기록한다(GAP 도 저장은 OK, §5.1, #74 10)
   dispatch(TYPE):
     TIME       → setClock, lastTimeSyncEpoch, flags.REQUEST_STATUS면 랜덤 지연 STATUS 예약
     SLOT_*/RESV_*/EXAM_* → apply(멱등) → 버전 검사(GAP?) → LittleFS 기록 → ACK(저장 결과 OK|GAP|STORE_FAIL|BAD_PAYLOAD|UNSUPPORTED)
     FILE_BEGIN → 수신 버퍼 준비(kind,totalLen,nChunks) → ACK(OK)
     FILE_DATA  → seq 위치에 복사, 비트맵 갱신 → ACK(OK / FILE_MISSING)
-    FILE_END   → crc16 검증 → kind 전체 교체 → LittleFS 기록 → 버전 갱신 → ACK(OK)
+    FILE_END   → crc16 검증(불일치 BAD_CRC) → 레코드 풀기 → kind 전체 교체 → LittleFS 기록 → 버전 갱신 → ACK(저장 결과 OK|STORE_FAIL|BAD_PAYLOAD)
     CMD        → 실행 → ACK
     SET_ROOM   → MAC 일치 & 미설정 → 정체성 저장(NVS) → provisioned=true → ACK(OK) → 렌더 플래그
   ACK는 **저장이 끝나면 렌더 전에** 송신 (렌더 7~20 s 동안 서버가 기다리지 않게)
