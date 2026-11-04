@@ -20,6 +20,9 @@
 /firmware/lib/adafruit_gfx_vendor/  @Hyeon02-kr
 /firmware/lib/render/               @Hyeon02-kr
 /firmware/lib/render_model/         @ssenu @Hyeon02-kr
+/firmware/lib/node_store/           @ssenu @Hyeon02-kr
+/firmware/lib/schedule/             @ssenu @Hyeon02-kr
+/firmware/lib/epd_colors/           @Hyeon02-kr
 /firmware/lib/bitmap_font/          @Hyeon02-kr
 /firmware/lib/bitmap_image/         @Hyeon02-kr
 /firmware/tools/                    @Hyeon02-kr
