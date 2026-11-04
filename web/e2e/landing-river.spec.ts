@@ -1,5 +1,22 @@
 import { expect, test, type Page } from '@playwright/test'
 
+// e2e 는 node 타입(tsconfig.node.json) — page.evaluate 콜백은 브라우저에서 도는데 DOM lib 이 없다
+interface Box {
+  getBoundingClientRect(): {
+    left: number
+    top: number
+    right: number
+    bottom: number
+    width: number
+    height: number
+  }
+}
+declare const document: {
+  querySelector(s: string): Box | null
+  querySelectorAll(s: string): Box[]
+  documentElement: { scrollWidth: number; clientWidth: number }
+}
+
 // 메인 페이지 로고 강 (docs/specs/2026-11-04-landing-logo-river-design.md §8)
 // 프로젝트 기본은 움직임 줄이기라 물리는 여기서 켠다
 test.use({ reducedMotion: 'no-preference', viewport: { width: 1280, height: 800 } })
@@ -7,7 +24,7 @@ test.use({ reducedMotion: 'no-preference', viewport: { width: 1280, height: 800 
 /** 덮이지 않은 곳의 로고 하나 — 번호와 화면 중심 */
 async function visibleLogo(page: Page) {
   return page.evaluate(() => {
-    const imgs = [...document.querySelectorAll<HTMLImageElement>('.river--physics img')]
+    const imgs = [...document.querySelectorAll('.river--physics img')]
     const hero = document.querySelector('.hero')!.getBoundingClientRect()
     const i = imgs.findIndex((el) => {
       const r = el.getBoundingClientRect()
