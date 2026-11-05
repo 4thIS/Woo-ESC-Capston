@@ -297,6 +297,7 @@ typedef struct {
   uint8_t  schedVer, resvVer, examVer, identVer, lastTxn;
   uint8_t  lastLayout; uint8_t lastDay; uint16_t lastSlotStartMin;   // 상태키
   uint32_t lastTimeSyncEpoch; uint32_t nextStatusEpoch;
+  uint8_t  slotsDay;         // slots[] 의 요일, 0 = 비어 있음
   uint8_t  nSlots; lc::SlotRec slots[LP_SLOT_DAY_MAX];  // 오늘 슬롯만 24 × 40 B = 960 B (subj 20 B·prof 12 B + 널, lora_codec 구조체 재사용). 주간 96 은 LittleFS
   uint8_t  nResv;  lc::ResvRec resv[24];   // 24 × 44 B = 1,056 B
   uint8_t  nExam;  lc::ExamRec exams[8];   //  8 ×  8 B =    64 B
