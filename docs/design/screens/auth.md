@@ -152,7 +152,7 @@ S4a는 가입을 둘로 쪼갰다 — ① 웹메일만 받아 링크를 보내�
 
 ## 넓은 폭 — 학생 화면만 좌우로 나눈다
 
-학생 웹의 인증 화면 다섯은 `bp.tablet` 이상에서 **좌우 반반**이다(시안 [로고 강](https://claude.ai/artifact/DDAuxgcbhPELj65YHEvd5W) `D-Login`, 2026-11-04 변경). 폰에서는 왼쪽을 감추고 폼만 보이되, **로그인 화면만** 폼 위에 300px 로고 띠를 둔다(`D-Phone`).
+학생 웹의 인증 화면 다섯은 `bp.tablet` 이상에서 **좌우 반반**이다(2026-11-04 변경, 시안 [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Student-Wide-Auth` · `Wide-Auth-Tabs`). 폰에서는 왼쪽을 감추고 폼만 보이되, **로그인 화면만** 폼 위에 300px 로고 띠를 둔다(`Auth-Tabs` · `Auth-Tabs-Admin`).
 
 ```
 ┌──────────────────────────┬──────────────────────────┐

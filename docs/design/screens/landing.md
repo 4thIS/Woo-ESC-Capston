@@ -1,6 +1,6 @@
 # 메인 페이지 — `/` (로그인 전)
 
-- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Landing`(390) · `Tablet-Landing`(768) · `Wide-Landing`(1280) — 기능 카드 아래 구역. 히어로는 [로고 강 시안](https://claude.ai/artifact/DDAuxgcbhPELj65YHEvd5W) `D-Landing`(1280) · `D-Phone`(390)
+- 시안: [캔버스](https://claude.ai/artifact/NLQyYEEdt4Rv6Dn7JZZuHi) `Landing`(390) · `Tablet-Landing`(768) · `Wide-Landing`(1280) — 로고 강 히어로까지 한 곳에 (2026-11-09, 따로 있던 로고 강 시안을 구현 기준으로 합쳤다). 캔버스의 로고는 흐름의 한 장면을 멈춘 그림이다
 - 동작 설계: [`docs/specs/2026-11-04-landing-logo-river-design.md`](../../specs/2026-11-04-landing-logo-river-design.md)
 - 소비자: wj → `web/src/student/views/`
 - 전제: `tokens.md` v2 (`student` 치수 세트) · `components.md`
