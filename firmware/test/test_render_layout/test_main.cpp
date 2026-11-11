@@ -274,6 +274,30 @@ void test_layout7_second_label_is_reserver() {
   TEST_ASSERT_EQUAL(0, diffCount(g, ref, 0, 300, 140, 364));
 }
 
+// layout 7 에서 cur.prof 가 비면(학생 웹 예약 — 서버가 이름을 싣지 않는다) 값 자리에 "학생"(28/700, #124
+// #128).
+static void assertInfoRow2Value(uint8_t layout, const char* prof, const char* expected) {
+  RenderModel m = layout1Model();
+  m.layout = layout;
+  strcpy(m.cur.prof, prof);
+  HostGfx g;
+  renderLayout(g, m);
+  HostGfx ref;
+  ref.fillScreen(GxEPD_WHITE);
+  drawText(ref, kNanum28Bold, expected, 146, 338, GxEPD_BLACK, -1);
+  TEST_ASSERT_EQUAL(0, diffCount(g, ref, 146, 300, 476, 364));
+}
+
+void test_layout7_empty_prof_shows_student() {
+  assertInfoRow2Value(7, "", "학생");
+}
+void test_layout7_named_prof_kept() {
+  assertInfoRow2Value(7, "김관리", "김관리");
+}
+void test_other_layout_empty_prof_stays_empty() {
+  assertInfoRow2Value(1, "", "");
+}
+
 void test_list_type_chip_wins_over_long_subject() {
   // 2행(today[2], 15:00 시험, 윗변 y 172) 과목을 ASCII 20자로 — 약어 자리 + 앞 8 은 행 높이 전체가
   // 바탕(백)이다.
@@ -391,6 +415,9 @@ int main() {
   RUN_TEST(test_form_b_long_subject_is_cleared_on_list_side);
   RUN_TEST(test_form_b_without_next_says_no_more_classes_today);
   RUN_TEST(test_layout7_second_label_is_reserver);
+  RUN_TEST(test_layout7_empty_prof_shows_student);
+  RUN_TEST(test_layout7_named_prof_kept);
+  RUN_TEST(test_other_layout_empty_prof_stays_empty);
   RUN_TEST(test_list_type_chip_wins_over_long_subject);
   RUN_TEST(test_list_type_chip_wins_to_row_right_edge);
   RUN_TEST(test_list_type_chip_wins_on_current_row);

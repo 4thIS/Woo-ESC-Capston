@@ -128,8 +128,12 @@ void drawInfoA(Adafruit_GFX& g, const RenderModel& m) {
     }
     drawChip(g, kImgChipByeongyeong, chipX, (int16_t)(kInfoRowBase[0] - kInfoChipLift));
   }
-  // layout 7(대여중)은 cur.prof 자리에 예약자 이름이 온다.
-  drawInfoRow(g, 1, m.layout == 7 ? "예약자" : "담당교수", m.cur.prof);
+  // layout 7(대여중)은 cur.prof 자리에 예약자 이름이 온다. 학생 웹 예약은 서버가 이름을 싣지 않아(공개 화면)
+  // 비어 오므로 "학생"으로 대신한다(#124, terminal-epaper.md 형태 A).
+  if (m.layout == 7)
+    drawInfoRow(g, 1, "예약자", m.cur.prof[0] ? m.cur.prof : "학생");
+  else
+    drawInfoRow(g, 1, "담당교수", m.cur.prof);
   char s[6], e[6], range[24];
   formatHM(m.cur.sH, m.cur.sM, s, sizeof s);
   formatHM(m.cur.eH, m.cur.eM, e, sizeof e);
