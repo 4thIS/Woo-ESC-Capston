@@ -10,6 +10,7 @@ docs/design/
 ├── README.md          ← 이 문서 (규칙·템플릿)
 ├── tokens.md          ← 디자인 토큰: 원시·시맨틱·도메인 3층 + 치수 (→ web/src/styles/)
 ├── components.md      ← 컴포넌트 카탈로그: variant·size·상태 (→ web/src/components/ ui/ · domain/ · chart/)
+├── logo.md            ← 로고(막대 글자 ESC) · 파비콘(E): 짜임 · 색 · 크기 · 쓰는 자리 (원본 SVG 는 assets/logo/)
 ├── screens/
 │   ├── landing.md          ← 메인 페이지 `/` (로그인 전 — 학생 기능 소개·로그인·가입, 반응형)
 │   ├── auth.md             ← 가입·로그인·재설정 (학생·관리자 공용 흐름, 로그인 `학생 | 관리자` 탭)
@@ -23,6 +24,7 @@ docs/design/
 │   ├── policies.md         ← 약관 및 정책 `/policies/:doc` · 가입 동의 안내 (로그인 없이, 반응형)
 │   └── terminal-epaper.md  ← 단말 e-Paper 화면 (→ firmware/src/terminal/, 소비자는 dh)
 └── assets/            ← 시안에서 뽑은 아이콘·이미지 원본 (wj가 web/src/assets/ 로 복사)
+    └── logo/          ← esc-logo.svg · esc-logo-dark.svg · favicon.svg · favicon-16.svg
 ```
 
 시안 자체(Figma 링크·PNG)는 각 문서 상단에 링크한다. 저장소에는 **값과 규칙**만 남긴다 — 코드가 읽을 수 있어야 한다.
