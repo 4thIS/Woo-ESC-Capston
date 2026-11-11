@@ -139,9 +139,9 @@ defineProps<{
 .auth__band-lead {
   position: relative;
   margin: 0;
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.3;
+  font-size: var(--font-size-display-band);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--leading-display);
 }
 /* 띠가 ‹ ESC 를 이미 말한다 — 폼 위 이름이 두 번 나오지 않게 */
 .auth__band ~ .auth__body .auth__brand {
@@ -164,7 +164,7 @@ defineProps<{
     justify-content: space-between;
     gap: var(--space-5);
     min-width: 0;
-    padding: 40px 48px;
+    padding: var(--panel-inset-y) var(--space-7);
     overflow: hidden;
     border-right: var(--border-thin) solid var(--line-2);
     background: var(--surface);
@@ -213,8 +213,8 @@ defineProps<{
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin: 0 -48px -40px;
-  padding: 0 48px 40px;
+  margin: 0 calc(-1 * var(--space-7)) calc(-1 * var(--panel-inset-y));
+  padding: 0 var(--space-7) var(--panel-inset-y);
   background: var(--surface);
 }
 .auth__intro-text::before {
@@ -228,14 +228,14 @@ defineProps<{
 }
 .auth__intro-lead {
   margin: 0;
-  font-size: 32px;
-  font-weight: 800;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
+  font-size: var(--font-size-display-auth);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display-auth);
 }
 .auth__intro-can {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--font-size-md);
   color: var(--text-2);
 }
 .auth--admin .auth__card {

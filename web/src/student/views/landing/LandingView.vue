@@ -182,7 +182,7 @@ const wide = useRiverWide()
   display: none;
 }
 .wrap {
-  padding: 0 var(--space-4);
+  padding: 0 var(--page-gutter);
 }
 .band {
   padding: var(--space-6) 0;
@@ -243,15 +243,15 @@ const wide = useRiverWide()
 }
 .hero__title {
   margin: 0;
-  font-size: 34px;
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+  font-size: var(--font-size-display-hero);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--leading-display-hero);
+  letter-spacing: var(--tracking-display-hero);
 }
 .hero__lead {
   max-width: 480px;
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: var(--font-size-lead);
+  line-height: var(--leading-relaxed);
   color: var(--text-2);
 }
 .hero__actions {
@@ -382,9 +382,6 @@ const wide = useRiverWide()
   .lh__signup {
     display: flex;
   }
-  .wrap {
-    padding: 0 40px;
-  }
   .band {
     padding: var(--space-7) 0;
   }
@@ -395,9 +392,6 @@ const wide = useRiverWide()
   }
   .hero__text {
     align-items: center;
-  }
-  .hero__title {
-    font-size: 40px;
   }
   .hero__br {
     display: none;
@@ -418,9 +412,8 @@ const wide = useRiverWide()
 
 @media (min-width: 1024px) {
   .wrap {
-    max-width: calc(1120px + 160px);
+    max-width: calc(1120px + 2 * var(--page-gutter));
     margin: 0 auto;
-    padding: 0 80px;
   }
   .lh {
     height: 72px;
@@ -452,12 +445,6 @@ const wide = useRiverWide()
   .hero__text {
     align-items: flex-start;
     max-width: 480px;
-  }
-  .hero__title {
-    font-size: clamp(36px, 4.6vw, 60px);
-  }
-  .hero__lead {
-    font-size: 17px;
   }
   .hero__br {
     display: inline;
