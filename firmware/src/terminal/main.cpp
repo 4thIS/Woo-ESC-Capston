@@ -52,7 +52,8 @@ void IRAM_ATTR onDio1() {
 
 // GxEPD2 Z08 초기화에는 승압 소프트스타트(0x06, BTST)가 없다. Good Display GDEY075Z08 은 기본값으로도
 // 그려지지만, Waveshare 7.5" (B)(SKU 13380) 은 승압이 서지 않아 리프레시가 ~1 s 만에 끝나고 화면이 그대로다
-// (2026-11-04 2번 노드 실측: 1.1 s → 0x06 추가 시 17.9 s). 제조사 예제 값(17 17 28 17)을 POWER ON 전에 넣는다.
+// (2026-11-04 2번 노드 실측: 1.1 s → 0x06 추가 시 17.9 s). 제조사 예제 값(17 17 28 17)을 POWER ON 전에
+// 넣는다.
 class EpdZ08 : public GxEPD2_750c_Z08 {
  public:
   using GxEPD2_750c_Z08::GxEPD2_750c_Z08;
