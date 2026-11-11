@@ -1,6 +1,6 @@
 {
   "name": "edge_today_24_tail",
-  "_note": "24개(30분 블록)·현재 24번째 → start 15, 첫 행 ↑ 16개 더",
+  "_note": "24개(30분 블록)·현재 24번째 → start 15, 첫 행 위 삼각형 16개 더",
   "layout": 1, "bld": "E", "room": 301, "unit": 1,
   "date_str": "10.22", "weekday": 4,
   "cur":  {"subj": "이산수학", "prof": "김교수", "s_h": 19, "s_m": 30, "e_h": 19, "e_m": 55, "type": 1, "flags": 1},

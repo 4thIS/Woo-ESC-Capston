@@ -1,6 +1,6 @@
 {
   "name": "edge_today_12_both",
-  "_note": "12개·현재 4번째 → start 2, 첫 행 ↑ 3개 더·끝 행 ↓ 2개 더, 일정 7행",
+  "_note": "12개·현재 4번째 → start 2, 첫 행 위 삼각형 3개 더·끝 행 아래 삼각형 2개 더, 일정 7행",
   "layout": 1, "bld": "E", "room": 301, "unit": 1,
   "date_str": "10.22", "weekday": 4,
   "cur":  {"subj": "선형대수", "prof": "김교수", "s_h": 11, "s_m": 0, "e_h": 11, "e_m": 50, "type": 1, "flags": 1},
