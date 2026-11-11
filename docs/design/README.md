@@ -24,7 +24,7 @@ docs/design/
 │   ├── policies.md         ← 약관 및 정책 `/policies/:doc` · 가입 동의 안내 (로그인 없이, 반응형)
 │   └── terminal-epaper.md  ← 단말 e-Paper 화면 (→ firmware/src/terminal/, 소비자는 dh)
 └── assets/            ← 시안에서 뽑은 아이콘·이미지 원본 (wj가 web/src/assets/ 로 복사)
-    └── logo/          ← esc-logo.svg · favicon.svg · favicon-16.svg
+    └── logo/          ← esc-logo.svg · esc-logo-dark.svg · favicon.svg · favicon-16.svg
 ```
 
 시안 자체(Figma 링크·PNG)는 각 문서 상단에 링크한다. 저장소에는 **값과 규칙**만 남긴다 — 코드가 읽을 수 있어야 한다.

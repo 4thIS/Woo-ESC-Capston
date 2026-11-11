@@ -1,7 +1,7 @@
 # 로고 · 파비콘
 
 - 시안: https://claude.ai/artifact/SQ1D7DS78Ke8hzpft9t6tn — 판 `C 확정안` 의 **로고 ②**. 같은 캔버스에 후보 A~L 12개가 있다
-- 원본 파일: [`assets/logo/`](assets/logo/) — `esc-logo.svg`(로고) · `favicon.svg`(파비콘, 다크 탭 대응) · `favicon-16.svg`(16px 전용)
+- 원본 파일: [`assets/logo/`](assets/logo/) — `esc-logo.svg`(로고) · `esc-logo-dark.svg`(어두운 바탕용 로고) · `favicon.svg`(파비콘, 다크 탭 대응) · `favicon-16.svg`(16px 전용)
 - 소비자: wj → 학생 웹 · 관리자 웹의 브랜드 자리, `web/index.html` · `web/admin.html` 의 아이콘
 
 ## 무엇인가
@@ -48,13 +48,17 @@
 
 ## 색
 
-| 자리 | 밝은 바탕 | 다크 탭 (파비콘만) |
-|---|---|---|
-| 먹 | `text.1` #262626 — 흰 바탕 대비 15.13 | #E3E3E3(`gray.200`) — #35363A 위 9.40 |
-| 파랑 | `brand` #0B5ED7 — 흰 바탕 대비 5.84 | #5B9BF0 — #35363A 위 4.25 |
+로고에는 밝은 판과 어두운 판 둘이 있다. 막대 · 좌표 · 파랑 자리는 같고 두 색만 바뀐다.
 
-- 로고는 **흰 바탕(`surface` · `bg`) 위에만** 둔다. 웹에 다크 모드가 없으므로(`tokens.md` — 범위 밖) 반전 로고는 만들지 않는다.
-- 다크 탭 값은 **파비콘 전용**이다. 브라우저 탭이 어두우면 #262626 이 탭 바탕(#35363A 대비 1.25)에 묻히기 때문이다. `favicon.svg` 안의 `prefers-color-scheme: dark` 로 바꾸고, 웹 토큰으로 올리지 않는다(#5B9BF0 은 팔레트에 없는 값이다).
+| 자리 | 밝은 판 `esc-logo.svg` · 밝은 탭 파비콘 | 어두운 판 `esc-logo-dark.svg` · 어두운 탭 파비콘 |
+|---|---|---|
+| 먹 | `text.1` #262626 — 흰 바탕 대비 15.13 | #E3E3E3(`gray.200`) — #262626 위 11.79 · #35363A 위 9.40 |
+| 파랑 | `brand` #0B5ED7 — 흰 바탕 대비 5.84 | #5B9BF0 — #262626 위 5.33 · #35363A 위 4.25 |
+
+- **밝은 판은 밝은 바탕**(흰색 · `surface` · `bg` · `sunken` 까지), **어두운 판은 어두운 바탕**(#262626 · `gray.800` 이하 어둡기)에 둔다. 바탕에 맞지 않는 판을 쓰면 먹이 바탕에 묻힌다 — 밝은 판의 #262626 은 #35363A 위 1.25, 어두운 판의 #E3E3E3 은 흰 바탕 위 1.28 이다. 그 사이 회색(`gray.300`~`gray.600`) 바탕에는 로고를 두지 않는다.
+- 어두운 판은 **어두운 화면 · 자료용**이다 — 발표 자료, 어두운 GitHub README, 웹에 다크 모드가 들어오면 그때. 지금 웹에는 다크 모드가 없으므로(`tokens.md` — 범위 밖) 화면에 바로 쓰는 자리는 없다.
+- 시스템 설정을 따라 바꿔야 하는 자리면 `<picture>` 로 고른다: `<source srcset="/esc-logo-dark.svg" media="(prefers-color-scheme: dark)">` + `<img src="/esc-logo.svg" alt="ESC">`. 파비콘은 `favicon.svg` 안의 `prefers-color-scheme: dark` 가 이미 바꾼다.
+- 어두운 판의 두 값(#E3E3E3 · #5B9BF0)은 **로고 · 파비콘 전용**이고 웹 토큰으로 올리지 않는다(#5B9BF0 은 팔레트에 없는 값이다). 다크 모드가 들어오면 그때 토큰으로 다시 정한다.
 - 색을 바꾸지 않는다 — 한 색(먹만, 파랑만)으로 칠하거나, 파랑 자리를 옮기지 않는다.
 
 ## 크기 · 여백
@@ -86,6 +90,7 @@
 | 파일 | 만드는 법 | 연결 |
 |---|---|---|
 | `esc-logo.svg` | [`assets/logo/esc-logo.svg`](assets/logo/esc-logo.svg) 그대로 | 화면에서 `<img>` 또는 인라인 SVG |
+| `esc-logo-dark.svg` | [`assets/logo/esc-logo-dark.svg`](assets/logo/esc-logo-dark.svg) 그대로 | 지금은 화면에 연결하지 않는다 — 다크 모드가 들어오면 위 `<picture>` 로 |
 | `favicon.svg` | [`assets/logo/favicon.svg`](assets/logo/favicon.svg) 그대로 | `<link rel="icon" href="/favicon.svg" type="image/svg+xml">` |
 | `favicon.ico` | 16 = `favicon-16.svg`, 32 = `favicon.svg` 의 밝은 색을 래스터로 | `<link rel="icon" href="/favicon.ico" sizes="32x32">` — SVG 를 못 읽는 브라우저용 |
 | `apple-touch-icon.png` | 180 × 180, 흰 바탕(#FFFFFF)을 꽉 채우고 `favicon.svg` 를 그대로 키운다(밝은 색). 모서리는 iOS 가 깎는다 | `<link rel="apple-touch-icon" href="/apple-touch-icon.png">` |
@@ -99,9 +104,10 @@
 - 로고 옆에 글자 `ESC` 나 파비콘 `E` 를 또 붙이지 않는다 — `E` 가 두 번 읽힌다.
 - 로고를 상태 표시(배지 · 점 · 차트) 안에 넣지 않는다. 파랑이 "지금" 표시와 섞인다.
 - 로고 뒤에 적색(`room.busy`)을 깔지 않는다.
+- 밝은 판을 어두운 바탕에, 어두운 판을 밝은 바탕에 두지 않는다. 판 둘 사이의 중간 색을 새로 만들지 않는다.
 
 ## 변경 이력
 
 | 날짜 | 내용 |
 |---|---|
-| 2026-11-11 | 처음 작성 — 후보 12개 중 C(세 줄 E) 를 고르고, 로고는 막대 글자 `ESC`(② — `E` · `S` 가운데 줄과 `C` 전체 파랑), 파비콘은 `E` |
+| 2026-11-11 | 처음 작성 — 후보 12개 중 C(세 줄 E) 를 고르고, 로고는 막대 글자 `ESC`(② — `E` · `S` 가운데 줄과 `C` 전체 파랑), 파비콘은 `E`. 어두운 바탕용 판 `esc-logo-dark.svg`(#E3E3E3 · #5B9BF0) |
