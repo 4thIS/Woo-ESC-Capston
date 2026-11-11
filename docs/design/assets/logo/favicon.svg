@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>
+    .ink { fill: #262626; }
+    .now { fill: #0B5ED7; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #E3E3E3; }
+      .now { fill: #5B9BF0; }
+    }
+  </style>
+  <rect class="ink" x="10" y="8" width="9" height="48"/>
+  <rect class="ink" x="10" y="8" width="44" height="9"/>
+  <rect class="now" x="23" y="27.5" width="31" height="9"/>
+  <rect class="ink" x="10" y="47" width="44" height="9"/>
+</svg>
