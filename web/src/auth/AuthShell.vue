@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import LogoRiver from '@/components/domain/LogoRiver.vue'
+import logo from '@/assets/logo/esc-logo.svg'
 
 // home — 로그인 화면만: 폼 위 이름이 `‹ ESC`, ‹ 는 메인 페이지 / 로 (auth.md 「탭」)
 // titleHidden — 로그인 화면만: 탭·제출 버튼이 이미 '로그인'이라 제목은 스크린리더용으로만 (auth.md, #95)
@@ -26,7 +27,9 @@ defineProps<{
     <div v-if="surface === 'student' && home" class="auth__band">
       <div class="auth__band-river"><LogoRiver :k="0.3" :height="150" /></div>
       <div class="auth__band-cover"></div>
-      <a href="/" class="auth__band-home" aria-label="메인 페이지">‹ ESC</a>
+      <a href="/" class="auth__band-home" aria-label="메인 페이지"
+        >‹ <img :src="logo" alt="ESC" width="44" height="16"
+      /></a>
       <p class="auth__band-lead">학교의 빈 강의실을 <br />확인하고 예약하세요.</p>
     </div>
     <div class="auth__body">
@@ -36,7 +39,10 @@ defineProps<{
         <!-- 메인 페이지 / 로 — 관리자 앱에서도 페이지를 새로 연다(라우터 이동 아님) -->
         <div class="auth__intro-river"><LogoRiver :k="0.72" :height="470" /></div>
         <div class="auth__intro-cover"></div>
-        <p class="auth__intro-brand"><a href="/">ESC</a></p>
+        <!-- 로고 높이 20 (logo.md) — 링크 칸은 터치 하한 48 -->
+        <p class="auth__intro-brand">
+          <a href="/"><img :src="logo" alt="ESC" width="55" height="20" /></a>
+        </p>
         <div class="auth__intro-text">
           <p class="auth__intro-lead">학교의 빈 강의실을 <br />확인하고 예약하세요.</p>
           <p class="auth__intro-can">지금 빈 강의실 · 이번 주 시간표 · 예약 신청·승인</p>
@@ -45,7 +51,8 @@ defineProps<{
       <div class="auth__pane">
         <main class="auth__card">
           <p class="auth__brand">
-            <a v-if="home" href="/" class="auth__home" aria-label="메인 페이지">‹</a>ESC
+            <a v-if="home" href="/" class="auth__home" aria-label="메인 페이지">‹</a
+            ><img :src="logo" alt="ESC" :width="home ? 44 : 55" :height="home ? 16 : 20" />
           </p>
           <slot name="tabs" />
           <h1 class="auth__title" :class="{ 'auth__title--sr': titleHidden }">
@@ -121,6 +128,7 @@ defineProps<{
   position: relative;
   display: inline-flex;
   align-items: center;
+  gap: var(--space-2);
   align-self: flex-start;
   min-height: var(--control-height-md);
   font-size: var(--font-size-lg);
@@ -131,9 +139,9 @@ defineProps<{
 .auth__band-lead {
   position: relative;
   margin: 0;
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.3;
+  font-size: var(--font-size-display-band);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--leading-display);
 }
 /* 띠가 ‹ ESC 를 이미 말한다 — 폼 위 이름이 두 번 나오지 않게 */
 .auth__band ~ .auth__body .auth__brand {
@@ -156,7 +164,7 @@ defineProps<{
     justify-content: space-between;
     gap: var(--space-5);
     min-width: 0;
-    padding: 40px 48px;
+    padding: var(--panel-inset-y) var(--space-7);
     overflow: hidden;
     border-right: var(--border-thin) solid var(--line-2);
     background: var(--surface);
@@ -189,16 +197,15 @@ defineProps<{
 }
 .auth__intro-brand {
   position: relative;
+  display: flex;
   margin: 0;
-  font-size: 20px;
-  font-weight: var(--font-weight-bold);
 }
 .auth__intro-brand a {
-  color: inherit;
-  text-decoration: none;
-}
-.auth__intro-brand a:hover {
-  text-decoration: underline;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-md);
+  /* 칸만 48 로 키우고 자리는 로고 높이만큼 — 아래 로고 강·글자 위치가 그대로 */
+  margin: calc((20px - var(--control-height-md)) / 2) 0;
 }
 /* 칸 폭이 좁아 제목이 여러 줄이 되어도 글자 높이만큼 덮는다 — 칸 양옆·바닥까지, 위로는 옅어진다 */
 .auth__intro-text {
@@ -206,8 +213,8 @@ defineProps<{
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin: 0 -48px -40px;
-  padding: 0 48px 40px;
+  margin: 0 calc(-1 * var(--space-7)) calc(-1 * var(--panel-inset-y));
+  padding: 0 var(--space-7) var(--panel-inset-y);
   background: var(--surface);
 }
 .auth__intro-text::before {
@@ -221,14 +228,14 @@ defineProps<{
 }
 .auth__intro-lead {
   margin: 0;
-  font-size: 32px;
-  font-weight: 800;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
+  font-size: var(--font-size-display-auth);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display-auth);
 }
 .auth__intro-can {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--font-size-md);
   color: var(--text-2);
 }
 .auth--admin .auth__card {

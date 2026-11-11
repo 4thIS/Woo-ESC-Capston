@@ -6,6 +6,7 @@ import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
 import { clearSession, schoolTitle, session } from '@/lib/session'
+import faviconE from '@/assets/logo/favicon-16.svg'
 import { ApiError } from '@/api/client'
 import { roomsApi } from '@/api/rooms'
 import type { SchoolOut } from '@/api/types'
@@ -67,7 +68,17 @@ const left = computed(() => mmss(idle.remaining.value))
     <SidebarNav :items="nav">
       <template #header>
         <div class="shell__brand">
-          <span class="shell__logo" aria-hidden="true">{{ schoolTitle.slice(0, 1) }}</span>
+          <!-- school_name 이 없는 옛 세션은 파비콘 E (logo.md 「쓰는 자리」). favicon.svg 는 시스템 다크에서
+               밝은 색으로 바뀌어 흰 사이드바에서 사라진다 — 바뀌지 않는 16 격자 그림을 정확히 2배로 -->
+          <img
+            v-if="!session?.school_name"
+            :src="faviconE"
+            class="shell__logo-img"
+            alt=""
+            width="32"
+            height="32"
+          />
+          <span v-else class="shell__logo" aria-hidden="true">{{ schoolTitle.slice(0, 1) }}</span>
           <p class="shell__brand-text">
             <b>{{ schoolTitle }}</b
             ><span>강의실 게시 관리자</span>
@@ -154,6 +165,9 @@ const left = computed(() => mmss(idle.remaining.value))
   display: flex;
   align-items: center;
   gap: var(--space-3);
+}
+.shell__logo-img {
+  flex: none;
 }
 .shell__logo {
   display: grid;

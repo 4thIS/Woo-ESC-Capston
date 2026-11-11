@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import LogoRiver from '@/components/domain/LogoRiver.vue'
+import logo from '@/assets/logo/esc-logo.svg'
 import CtaLink from '../../CtaLink.vue'
 import EpaperPreview from './EpaperPreview.vue'
 import LogoRiverPhysics from './LogoRiverPhysics.vue'
@@ -49,7 +50,7 @@ const wide = useRiverWide()
     <header class="lh">
       <!-- 본문과 같은 틀(.wrap) — 넓은 화면에서 헤더 양끝이 본문 1120px 양끝에 맞는다 -->
       <div class="wrap lh__in">
-        <span class="lh__brand">ESC</span>
+        <img :src="logo" alt="ESC" width="55" height="20" class="lh__brand" />
         <nav class="lh__nav" aria-label="계정">
           <CtaLink to="/signup" variant="ghost" compact class="lh__signup">가입 신청</CtaLink>
           <CtaLink to="/login" variant="secondary" compact>로그인</CtaLink>
@@ -171,8 +172,7 @@ const wide = useRiverWide()
   height: 100%;
 }
 .lh__brand {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
+  display: block;
 }
 .lh__nav {
   display: flex;
@@ -182,7 +182,7 @@ const wide = useRiverWide()
   display: none;
 }
 .wrap {
-  padding: 0 var(--space-4);
+  padding: 0 var(--page-gutter);
 }
 .band {
   padding: var(--space-6) 0;
@@ -243,15 +243,15 @@ const wide = useRiverWide()
 }
 .hero__title {
   margin: 0;
-  font-size: 34px;
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+  font-size: var(--font-size-display-hero);
+  font-weight: var(--font-weight-heavy);
+  line-height: var(--leading-display-hero);
+  letter-spacing: var(--tracking-display-hero);
 }
 .hero__lead {
   max-width: 480px;
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: var(--font-size-lead);
+  line-height: var(--leading-relaxed);
   color: var(--text-2);
 }
 .hero__actions {
@@ -382,9 +382,6 @@ const wide = useRiverWide()
   .lh__signup {
     display: flex;
   }
-  .wrap {
-    padding: 0 40px;
-  }
   .band {
     padding: var(--space-7) 0;
   }
@@ -395,9 +392,6 @@ const wide = useRiverWide()
   }
   .hero__text {
     align-items: center;
-  }
-  .hero__title {
-    font-size: 40px;
   }
   .hero__br {
     display: none;
@@ -418,9 +412,8 @@ const wide = useRiverWide()
 
 @media (min-width: 1024px) {
   .wrap {
-    max-width: calc(1120px + 160px);
+    max-width: calc(1120px + 2 * var(--page-gutter));
     margin: 0 auto;
-    padding: 0 80px;
   }
   .lh {
     height: 72px;
@@ -452,12 +445,6 @@ const wide = useRiverWide()
   .hero__text {
     align-items: flex-start;
     max-width: 480px;
-  }
-  .hero__title {
-    font-size: clamp(36px, 4.6vw, 60px);
-  }
-  .hero__lead {
-    font-size: 17px;
   }
   .hero__br {
     display: inline;
