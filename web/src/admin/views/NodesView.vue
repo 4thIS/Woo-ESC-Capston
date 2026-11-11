@@ -12,6 +12,7 @@ import NodeStateBadge from '@/components/domain/NodeStateBadge.vue'
 import SignalBars from '@/components/domain/SignalBars.vue'
 import { adminApi } from '@/api/admin'
 import { loraApi } from '@/api/lora'
+import { roomsApi } from '@/api/rooms'
 import { ApiError } from '@/api/client'
 import type { NodeOut } from '@/api/types'
 import { useResource } from '@/lib/useResource'
@@ -27,12 +28,14 @@ const modemPanel = ref<InstanceType<typeof ModemPanel> | null>(null)
 
 // 블록 셋 = 엔드포인트 셋 (admin-nodes.md). 한 번에 읽어 한 시각(refreshedAt)으로 보인다
 const { data, error, loading, refreshedAt, reload } = useResource(async () => {
-  const [modems, nodes, pending] = await Promise.all([
+  // 건물 — 모뎀Pi 카드의 담당 건물(Building.modem_id). 서버 ModemOut 에는 건물이 없다
+  const [modems, nodes, pending, buildings] = await Promise.all([
     loraApi.modems(),
     adminApi.nodes(),
     loraApi.pending(),
+    roomsApi.buildings(),
   ])
-  return { modems, nodes, pending }
+  return { modems, nodes, pending, buildings }
 })
 // 노드를 켜 놓고 이 화면을 보는 일이 잦다 — 30초 (숨김이면 정지, 떠나면 해제)
 usePolling(reload, 30_000)
@@ -179,7 +182,13 @@ async function broadcast() {
       </div>
     </header>
 
-    <ModemPanel ref="modemPanel" :modems="data?.modems" :loading="loading" @changed="reload" />
+    <ModemPanel
+      ref="modemPanel"
+      :modems="data?.modems"
+      :buildings="data?.buildings"
+      :loading="loading"
+      @changed="reload"
+    />
 
     <section class="nodes__block" aria-labelledby="nodes-esp">
       <div class="nodes__block-head">

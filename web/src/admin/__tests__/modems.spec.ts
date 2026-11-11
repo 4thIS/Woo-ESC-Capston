@@ -4,7 +4,7 @@ import { nextTick } from 'vue'
 import ModemPanel from '@/admin/views/nodes/ModemPanel.vue'
 import { loraApi } from '@/api/lora'
 import { ApiError, MESSAGES } from '@/api/client'
-import type { ModemOut } from '@/api/types'
+import type { BuildingOut, ModemOut } from '@/api/types'
 import { dismissToast, toasts } from '@/components/ui/toast'
 
 vi.mock('@/api/lora', () => ({ loraApi: { registerModem: vi.fn(), rotateToken: vi.fn() } }))
@@ -19,8 +19,18 @@ const m = (over: Partial<ModemOut> = {}): ModemOut => ({
   school_id: 1,
   ...over,
 })
-const mountPanel = (modems?: ModemOut[], loading = false) =>
-  mount(ModemPanel, { props: { modems, loading }, global: { stubs: { teleport: true } } })
+const mountPanel = (modems?: ModemOut[], loading = false, buildings: BuildingOut[] = []) =>
+  mount(ModemPanel, {
+    props: { modems, buildings, loading },
+    global: { stubs: { teleport: true } },
+  })
+const b = (id: number, name: string, modem_id: string | null): BuildingOut => ({
+  id,
+  school_id: 1,
+  name,
+  bld: String.fromCharCode(64 + id),
+  modem_id,
+})
 const button = (w: VueWrapper, text: string) => w.findAll('button').find((b) => b.text() === text)!
 async function issueToken(w: VueWrapper) {
   lora.registerModem.mockResolvedValue({ modem_id: 'gonghak-02', token: 'tok-abc' })
@@ -41,15 +51,42 @@ describe('ModemPanel', () => {
   it('카드 — 연결됨(solid)/끊김(danger), 접속 기록 없음, 토큰은 어디에도 없다', () => {
     const w = mountPanel([
       m(),
-      m({ modem_id: 'sahoe-01', connected: false, last_seen_at: null, agent_ver: null }),
+      m({
+        modem_id: 'sahoe-01',
+        connected: false,
+        last_seen_at: null,
+        agent_ver: null,
+        modem_fw: null,
+      }),
     ])
     const cards = w.findAll('li.modem')
     expect(cards[0].text()).toContain('gonghak-01')
-    expect(cards[0].text()).toContain('agent 0.4.1 · 방금')
+    expect(cards[0].text()).toContain('agent 0.4.1 · fw 1.2.0 · 방금')
     expect(cards[0].get('.badge').text()).toBe('연결됨')
     expect(cards[1].get('.badge--danger').text()).toBe('끊김')
     expect(cards[1].text()).toContain('agent — · 접속 기록 없음')
     expect(w.find('code.token').exists()).toBe(false)
+  })
+
+  it('카드 머리 — 상태 점 + ID + 담당 건물(건물.modem_id), 메타에 모뎀 fw (admin-nodes.md, #70)', () => {
+    const w = mountPanel(
+      [
+        m(),
+        m({ modem_id: 'sahoe-01', connected: false, modem_fw: null }),
+        m({ modem_id: 'spare' }),
+      ],
+      false,
+      [b(1, '공학관', 'gonghak-01'), b(2, '사회관', 'sahoe-01'), b(3, '별관', 'gonghak-01')],
+    )
+    const cards = w.findAll('li.modem')
+    expect(cards[0].get('.modem__id').text()).toBe('gonghak-01 공학관 · 별관')
+    expect(cards[0].get('.modem__dot').classes()).not.toContain('modem__dot--off')
+    expect(cards[0].text()).toContain('agent 0.4.1 · fw 1.2.0 · 방금')
+    expect(cards[1].get('.modem__dot').classes()).toContain('modem__dot--off')
+    expect(cards[1].get('.modem__id').text()).toBe('sahoe-01 사회관')
+    expect(cards[1].text()).not.toContain('fw')
+    // 아무 건물에도 배정되지 않은 모뎀Pi 는 ID 만
+    expect(cards[2].get('.modem__id').text()).toBe('spare')
   })
 
   it('로딩 중 첫 조회 — Skeleton 2개', () => {
