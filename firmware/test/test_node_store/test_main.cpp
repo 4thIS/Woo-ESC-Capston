@@ -476,6 +476,307 @@ void test_exam_cap_storefail() {
   TEST_ASSERT_EQUAL_UINT8(1, store->state().examVer);
 }
 
+// ---- Task 5: 부팅 적재·요일 전환·정체성·TXN·파라미터·초기화 ----
+
+// 화요일(2) 12:00 · 수요일(3) 9:00 슬롯, 예약 1, 시험 1, 정체성·TXN 을 넣어 둔다.
+void seedStore() {
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applySlotSet(5, makeSlot(2, 12, 0)));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applySlotSet(5, makeSlot(3, 9, 0)));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyResvSet(3, makeResv(7, 26, 10, 14), kToday, true));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyExamSet(4, makeExam(11)));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setIdentity(ns::Identity{2, 305, 7}, 6));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setLastTxn(9));
+}
+
+void test_load_uses_valid_rtc() {
+  seedStore();
+  ns::rtcSeal(*rtc);
+  fs->reads = 0;
+  TEST_ASSERT_EQUAL(ns::LoadSource::RtcCache, store->load(2));
+  TEST_ASSERT_EQUAL(0, fs->reads);
+  TEST_ASSERT_EQUAL_UINT8(1, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(12, store->state().slots[0].sH);
+}
+
+void test_load_rebuilds_when_invalid() {
+  seedStore();
+  ns::rtcClear(*rtc);
+  TEST_ASSERT_EQUAL(ns::LoadSource::Rebuilt, store->load(2));
+  const ns::RtcState& s = store->state();
+  TEST_ASSERT_TRUE(ns::rtcValid(s));
+  TEST_ASSERT_EQUAL_UINT8(2, s.slotsDay);
+  TEST_ASSERT_EQUAL_UINT8(1, s.nSlots);
+  TEST_ASSERT_EQUAL_UINT8(12, s.slots[0].sH);
+  TEST_ASSERT_EQUAL_UINT8(1, s.nResv);
+  TEST_ASSERT_EQUAL_UINT16(7, s.resv[0].resvId);
+  TEST_ASSERT_EQUAL_UINT8(1, s.nExam);
+  TEST_ASSERT_EQUAL_UINT16(11, s.exams[0].examId);
+  TEST_ASSERT_EQUAL_UINT8(5, s.schedVer);
+  TEST_ASSERT_EQUAL_UINT8(3, s.resvVer);
+  TEST_ASSERT_EQUAL_UINT8(4, s.examVer);
+  TEST_ASSERT_EQUAL_UINT8(2, s.bld);
+  TEST_ASSERT_EQUAL_UINT16(305, s.room);
+  TEST_ASSERT_EQUAL_UINT8(7, s.unit);
+  TEST_ASSERT_EQUAL_UINT8(6, s.identVer);
+  TEST_ASSERT_EQUAL_UINT8(1, s.provisioned);
+  TEST_ASSERT_EQUAL_UINT8(9, s.lastTxn);
+}
+
+void test_load_corrupt_schedule_empties_ver0() {
+  seedStore();
+  const lc::SlotRec two[2] = {makeSlot(2, 9, 0), makeSlot(2, 10, 0)};
+  const size_t full = ns::writeSlots(two, 2, body, sizeof(body));
+  fs->putRaw("/schedule.bin", std::vector<uint8_t>(body, body + full - 1));
+  ns::rtcClear(*rtc);
+  TEST_ASSERT_EQUAL(ns::LoadSource::Rebuilt, store->load(2));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().schedVer);
+  TEST_ASSERT_EQUAL_UINT32(0, kvVer("schedVer"));
+  TEST_ASSERT_EQUAL_UINT8(1, store->state().nResv);  // 예약은 정상
+  TEST_ASSERT_EQUAL_UINT8(3, store->state().resvVer);
+  TEST_ASSERT_TRUE(ns::rtcValid(store->state()));
+}
+
+// 읽기 실패(cap 초과)와 상한 초과도 손상과 같게 그 kind 만 비우고 버전 0.
+void test_load_read_fail_and_over_capacity_empty_ver0() {
+  seedStore();
+  fs->putRaw("/resv.bin", std::vector<uint8_t>(ns::kSchedFileMax + 1, 0));  // read Fail
+  // 시험 레코드 한 개를 상한+1 번 이어 붙인다 → parse OverCapacity (writeExams 는 상한 초과 count 면 0)
+  const lc::ExamRec one = makeExam(1);
+  const size_t oneLen = ns::writeExams(&one, 1, body, sizeof(body));
+  TEST_ASSERT_TRUE(oneLen > 0);
+  std::vector<uint8_t> raw;
+  for (int i = 0; i <= ns::kExamMax; ++i) raw.insert(raw.end(), body, body + oneLen);
+  fs->putRaw("/exam.bin", raw);
+  ns::rtcClear(*rtc);
+  TEST_ASSERT_EQUAL(ns::LoadSource::Rebuilt, store->load(2));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nResv);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().resvVer);
+  TEST_ASSERT_EQUAL_UINT32(0, kvVer("resvVer"));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nExam);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().examVer);
+  TEST_ASSERT_EQUAL_UINT32(0, kvVer("examVer"));
+  TEST_ASSERT_EQUAL_UINT8(1, store->state().nSlots);  // 시간표는 정상
+  TEST_ASSERT_EQUAL_UINT8(5, store->state().schedVer);
+}
+
+void test_load_weekday_zero_no_slots() {
+  seedStore();
+  ns::rtcClear(*rtc);
+  TEST_ASSERT_EQUAL(ns::LoadSource::Rebuilt, store->load(0));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().slotsDay);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(5, store->state().schedVer);  // 파일은 정상이라 버전 그대로
+  TEST_ASSERT_EQUAL_UINT8(1, store->state().nResv);
+}
+
+// 쓰기는 빈 표도 파일로 남기므로, 버전이 있는데 파일이 없으면 데이터를 잃은 것 — 버전 0(cw 지시, #119).
+void test_load_missing_file_with_ver_resets_ver0() {
+  TEST_ASSERT_TRUE(kv->set("ver", "schedVer", 5));
+  TEST_ASSERT_TRUE(kv->set("ver", "examVer", 2));
+  ns::rtcClear(*rtc);
+  TEST_ASSERT_EQUAL(ns::LoadSource::Rebuilt, store->load(2));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().schedVer);
+  TEST_ASSERT_EQUAL_UINT32(0, kvVer("schedVer"));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().examVer);
+  TEST_ASSERT_EQUAL_UINT32(0, kvVer("examVer"));
+}
+
+// 같은 조건에서 버전 0 이면 처음 켠 노드 — 빈 표, NVS 는 건드리지 않는다.
+void test_load_missing_file_ver0_is_first_boot() {
+  ns::rtcClear(*rtc);
+  TEST_ASSERT_EQUAL(ns::LoadSource::Rebuilt, store->load(2));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().schedVer);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().provisioned);
+  uint32_t v = 0;
+  TEST_ASSERT_FALSE(kv->get("ver", "schedVer", v));
+  TEST_ASSERT_FALSE(kv->get("ver", "resvVer", v));
+  TEST_ASSERT_FALSE(kv->get("ver", "examVer", v));
+  TEST_ASSERT_TRUE(ns::rtcValid(store->state()));
+}
+
+void test_load_valid_rtc_other_day_refreshes() {
+  seedStore();
+  ns::rtcSeal(*rtc);
+  TEST_ASSERT_EQUAL(ns::LoadSource::RtcCache, store->load(3));
+  TEST_ASSERT_EQUAL_UINT8(3, store->state().slotsDay);
+  TEST_ASSERT_EQUAL_UINT8(1, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(9, store->state().slots[0].sH);
+  TEST_ASSERT_EQUAL_UINT8(5, store->state().schedVer);
+}
+
+void test_refresh_day_switches() {
+  seedStore();
+  TEST_ASSERT_EQUAL_UINT8(12, store->state().slots[0].sH);
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->refreshDay(3));
+  TEST_ASSERT_EQUAL_UINT8(3, store->state().slotsDay);
+  TEST_ASSERT_EQUAL_UINT8(1, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(9, store->state().slots[0].sH);
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->refreshDay(4));  // 슬롯 없는 요일
+  TEST_ASSERT_EQUAL_UINT8(4, store->state().slotsDay);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().slots[0].sH);
+}
+
+// 실행 중 /schedule.bin 손상 — Task 4 loadWeek 와 같은 규칙(버전 0·슬롯 비움·StoreFail).
+void test_refresh_day_corrupt_resets_ver0() {
+  seedStore();
+  const lc::SlotRec two[2] = {makeSlot(2, 9, 0), makeSlot(2, 10, 0)};
+  const size_t full = ns::writeSlots(two, 2, body, sizeof(body));
+  fs->putRaw("/schedule.bin", std::vector<uint8_t>(body, body + full - 1));
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail, store->refreshDay(3));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().schedVer);
+  TEST_ASSERT_EQUAL_UINT32(0, kvVer("schedVer"));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(3, store->state().slotsDay);
+}
+
+// 일시적 읽기 오류 — 버전은 그대로, slotsDay 0 이라 다음 load(weekday) 가 다시 시도한다.
+void test_refresh_day_read_fail_retries_on_load() {
+  seedStore();
+  const lc::SlotRec wed = makeSlot(3, 9, 0);
+  const size_t wedLen = ns::writeSlots(&wed, 1, body, sizeof(body));
+  TEST_ASSERT_TRUE(wedLen > 0);
+  const std::vector<uint8_t> good(body, body + wedLen);
+  ns::rtcSeal(*rtc);  // 화요일(slotsDay 2), schedVer 5
+  fs->putRaw("/schedule.bin", std::vector<uint8_t>(ns::kSchedFileMax + 1, 0));  // read Fail
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail, store->refreshDay(3));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().slotsDay);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().slots[0].sH);
+  TEST_ASSERT_EQUAL_UINT32(5, kvVer("schedVer"));
+  TEST_ASSERT_EQUAL_UINT8(5, store->state().schedVer);
+
+  fs->putRaw("/schedule.bin", good);  // 복구
+  ns::rtcSeal(*rtc);
+  TEST_ASSERT_EQUAL(ns::LoadSource::RtcCache, store->load(3));
+  TEST_ASSERT_EQUAL_UINT8(3, store->state().slotsDay);
+  TEST_ASSERT_EQUAL_UINT8(1, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(3, store->state().slots[0].day);
+  TEST_ASSERT_EQUAL_UINT8(5, store->state().schedVer);
+}
+
+// slotsDay 0 상태에서 쓰기가 와도 파일·버전은 정상이고 RTC 슬롯 캐시만 빈 채로 둔다.
+void test_write_with_slots_day_zero_keeps_cache_empty() {
+  seedStore();
+  fs->putRaw("/schedule.bin", std::vector<uint8_t>(ns::kSchedFileMax + 1, 0));  // read Fail
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail, store->refreshDay(3));
+  const lc::SlotRec wed = makeSlot(3, 9, 0);
+  const size_t wedLen = ns::writeSlots(&wed, 1, body, sizeof(body));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->replaceKind(LP_FILEKIND_SCHEDULE, 6, body,
+                                                        static_cast<uint16_t>(wedLen), kToday, true));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().slotsDay);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(6, store->state().schedVer);
+  TEST_ASSERT_EQUAL_UINT32(6, kvVer("schedVer"));
+  TEST_ASSERT_EQUAL_UINT8(1, readSlots(gSlots));
+}
+
+void test_identity_persists() {
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setIdentity(ns::Identity{4, 1201, 2}, 8));
+  uint32_t v = 0;
+  TEST_ASSERT_TRUE(kv->get("cfg", "bld", v));
+  TEST_ASSERT_EQUAL_UINT32(4, v);
+  TEST_ASSERT_TRUE(kv->get("cfg", "room", v));
+  TEST_ASSERT_EQUAL_UINT32(1201, v);
+  TEST_ASSERT_TRUE(kv->get("cfg", "unit", v));
+  TEST_ASSERT_EQUAL_UINT32(2, v);
+  TEST_ASSERT_TRUE(kv->get("cfg", "identVer", v));
+  TEST_ASSERT_EQUAL_UINT32(8, v);
+  TEST_ASSERT_TRUE(kv->get("cfg", "provisioned", v));
+  TEST_ASSERT_EQUAL_UINT32(1, v);
+  TEST_ASSERT_EQUAL_UINT8(4, store->state().bld);
+  TEST_ASSERT_EQUAL_UINT16(1201, store->state().room);
+  TEST_ASSERT_EQUAL_UINT8(2, store->state().unit);
+  TEST_ASSERT_EQUAL_UINT8(8, store->state().identVer);
+  TEST_ASSERT_EQUAL_UINT8(1, store->state().provisioned);
+}
+
+// 저장 실패면 StoreFail, RTC 는 그대로.
+void test_identity_and_txn_store_fail_keep_rtc() {
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setIdentity(ns::Identity{4, 1201, 2}, 8));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setLastTxn(3));
+  kv->failSetsAfter = 0;
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail, store->setIdentity(ns::Identity{9, 999, 9}, 9));
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail, store->setLastTxn(4));
+  TEST_ASSERT_EQUAL_UINT8(4, store->state().bld);
+  TEST_ASSERT_EQUAL_UINT16(1201, store->state().room);
+  TEST_ASSERT_EQUAL_UINT8(8, store->state().identVer);
+  TEST_ASSERT_EQUAL_UINT8(3, store->state().lastTxn);
+}
+
+void test_last_txn_persists() {
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setLastTxn(42));
+  TEST_ASSERT_EQUAL_UINT32(42, kvVer("lastTxn"));
+  TEST_ASSERT_EQUAL_UINT8(42, store->state().lastTxn);
+}
+
+void test_set_param_known_and_unknown() {
+  uint32_t out = 0;
+  TEST_ASSERT_FALSE(store->param(1, out));  // 아직 안 씀
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setParam(1, 7));
+  TEST_ASSERT_TRUE(store->param(1, out));
+  TEST_ASSERT_EQUAL_UINT32(7, out);
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setParam(2, 600000));
+  TEST_ASSERT_TRUE(store->param(2, out));
+  TEST_ASSERT_EQUAL_UINT32(600000, out);
+  TEST_ASSERT_TRUE(kv->get("cfg", "statusHourUtc", out));
+  TEST_ASSERT_EQUAL_UINT32(7, out);
+  TEST_ASSERT_TRUE(kv->get("cfg", "sessionWindowMs", out));
+  TEST_ASSERT_EQUAL_UINT32(600000, out);
+  TEST_ASSERT_EQUAL(StoreStatus::Unsupported, store->setParam(9, 1));
+  TEST_ASSERT_FALSE(store->param(9, out));
+  kv->failSetsAfter = 0;
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail, store->setParam(1, 8));
+}
+
+void test_factory_reset_clears_all() {
+  seedStore();
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setParam(1, 7));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->factoryReset());
+  uint32_t v = 0;
+  TEST_ASSERT_FALSE(kv->get("cfg", "bld", v));
+  TEST_ASSERT_FALSE(kv->get("cfg", "provisioned", v));
+  TEST_ASSERT_FALSE(kv->get("ver", "schedVer", v));
+  TEST_ASSERT_FALSE(kv->get("ver", "lastTxn", v));
+  TEST_ASSERT_FALSE(store->param(1, v));
+  size_t len = 0;
+  TEST_ASSERT_EQUAL(ns::ReadResult::NotFound, fs->read("/schedule.bin", fileBuf, sizeof(fileBuf), len));
+  TEST_ASSERT_EQUAL(ns::ReadResult::NotFound, fs->read("/resv.bin", fileBuf, sizeof(fileBuf), len));
+  TEST_ASSERT_EQUAL(ns::ReadResult::NotFound, fs->read("/exam.bin", fileBuf, sizeof(fileBuf), len));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().provisioned);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nResv);
+  TEST_ASSERT_FALSE(ns::rtcValid(store->state()));
+  // 초기화 뒤 부팅은 처음 켠 노드와 같다.
+  TEST_ASSERT_EQUAL(ns::LoadSource::Rebuilt, store->load(2));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().provisioned);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().schedVer);
+}
+
+// 임의 적용 10회 뒤: write-through 로 쌓인 RTC 와, RTC 를 비우고 NVS·파일에서 다시 적재한 RTC 가
+// seal 뒤 바이트까지 같아야 한다(패딩 포함 CRC).
+void test_write_through_matches_rebuild() {
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setIdentity(ns::Identity{1, 204, 3}, 2));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applySlotSet(1, makeSlot(2, 13, 0)));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applySlotSet(2, makeSlot(2, 9, 30, "자료구조")));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applySlotSet(3, makeSlot(4, 10, 0)));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyResvSet(1, makeResv(1, 26, 10, 14), kToday, true));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyResvSet(2, makeResv(2, 26, 10, 15), kToday, true));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyExamSet(1, makeExam(5)));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applySlotDel(4, lc::SlotDel{2, 13, 0}));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyResvDel(3, lc::ResvDel{1}));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setLastTxn(17));
+  ns::RtcState want;
+  std::memcpy(&want, rtc.get(), sizeof(want));
+  ns::rtcSeal(want);
+  ns::rtcClear(*rtc);
+  TEST_ASSERT_EQUAL(ns::LoadSource::Rebuilt, store->load(2));
+  TEST_ASSERT_EQUAL_MEMORY(&want, rtc.get(), sizeof(want));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_slot_set_writes_file_ver_and_today);
@@ -505,5 +806,23 @@ int main() {
   RUN_TEST(test_purge_past_keeps_version);
   RUN_TEST(test_exam_set_del);
   RUN_TEST(test_exam_cap_storefail);
+  RUN_TEST(test_load_uses_valid_rtc);
+  RUN_TEST(test_load_rebuilds_when_invalid);
+  RUN_TEST(test_load_corrupt_schedule_empties_ver0);
+  RUN_TEST(test_load_read_fail_and_over_capacity_empty_ver0);
+  RUN_TEST(test_load_weekday_zero_no_slots);
+  RUN_TEST(test_load_missing_file_with_ver_resets_ver0);
+  RUN_TEST(test_load_missing_file_ver0_is_first_boot);
+  RUN_TEST(test_load_valid_rtc_other_day_refreshes);
+  RUN_TEST(test_refresh_day_switches);
+  RUN_TEST(test_refresh_day_corrupt_resets_ver0);
+  RUN_TEST(test_refresh_day_read_fail_retries_on_load);
+  RUN_TEST(test_write_with_slots_day_zero_keeps_cache_empty);
+  RUN_TEST(test_identity_persists);
+  RUN_TEST(test_identity_and_txn_store_fail_keep_rtc);
+  RUN_TEST(test_last_txn_persists);
+  RUN_TEST(test_set_param_known_and_unknown);
+  RUN_TEST(test_factory_reset_clears_all);
+  RUN_TEST(test_write_through_matches_rebuild);
   return UNITY_END();
 }

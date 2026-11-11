@@ -6,7 +6,16 @@ namespace ns {
 
 namespace {
 
-constexpr const char* kVerSpace = "ver";  // NVS 키 이름은 v2 §5.1
+constexpr const char* kCfgSpace = "cfg";  // NVS 이름공간·키 이름은 v2 §5.1
+constexpr const char* kBldKey = "bld";
+constexpr const char* kRoomKey = "room";
+constexpr const char* kUnitKey = "unit";
+constexpr const char* kIdentVerKey = "identVer";
+constexpr const char* kProvisionedKey = "provisioned";
+constexpr const char* kStatusHourKey = "statusHourUtc";
+constexpr const char* kSessionWindowKey = "sessionWindowMs";
+constexpr const char* kLastTxnKey = "lastTxn";
+constexpr const char* kVerSpace = "ver";
 constexpr const char* kSchedVerKey = "schedVer";
 constexpr const char* kResvVerKey = "resvVer";
 constexpr const char* kExamVerKey = "examVer";
@@ -72,6 +81,24 @@ StoreStatus toStatus(ParseResult pr) {
   return pr == ParseResult::Corrupt ? StoreStatus::BadPayload : StoreStatus::StoreFail;
 }
 
+// 없는 키는 0.
+uint32_t kvGet(KvStore& kv, const char* space, const char* key) {
+  uint32_t v = 0;
+  return kv.get(space, key, v) ? v : 0;
+}
+
+// paramId → NVS 키. 모르는 id 는 nullptr.
+const char* paramKey(uint8_t paramId) {
+  switch (paramId) {
+    case 1:
+      return kStatusHourKey;
+    case 2:
+      return kSessionWindowKey;
+    default:
+      return nullptr;
+  }
+}
+
 }  // namespace
 
 NodeStore::NodeStore(KvStore& kv, FileStore& fs, RtcState& rtc) : kv_(kv), fs_(fs), rtc_(rtc) {}
@@ -80,12 +107,17 @@ NodeStore::NodeStore(KvStore& kv, FileStore& fs, RtcState& rtc) : kv_(kv), fs_(f
 // 손상(Corrupt·OverCapacity)이면 버전 0·RTC 슬롯 캐시 비움 → 다음 STATUS 버전 비교로 서버가 FILE 재동기를
 // 건다(v2 §5.1). 파일은 다시 쓰지도 지우지도 않는다 — 빈 표 뒤에 SLOT_SET 이 오면 데이터를 잃고도 새 버전을
 // 주장하게 되므로, 덮어쓰기는 재동기(replaceKind)에 맡긴다.
-StoreStatus NodeStore::loadWeek(uint8_t& n) {
+// readFailed 가 있으면 읽기 오류(ReadResult::Fail)일 때만 true 로 쓴다(손상과 구별해야 하는 호출자용).
+StoreStatus NodeStore::loadWeek(uint8_t& n, bool* readFailed) {
   n = 0;
+  if (readFailed != nullptr) *readFailed = false;
   size_t len = 0;
   const ReadResult rr = fs_.read(kSchedPath, gFile, sizeof(gFile), len);
   if (rr == ReadResult::NotFound) return StoreStatus::Ok;
-  if (rr != ReadResult::Ok) return StoreStatus::StoreFail;
+  if (rr != ReadResult::Ok) {
+    if (readFailed != nullptr) *readFailed = true;
+    return StoreStatus::StoreFail;
+  }
   if (parseSlots(gFile, static_cast<uint16_t>(len), gWeek, n) != ParseResult::Ok) {
     n = 0;
     (void)kv_.set(kVerSpace, kSchedVerKey, 0);  // best effort — 실패해도 RTC 버전 0 이 STATUS 로 나간다
@@ -259,6 +291,134 @@ StoreStatus NodeStore::purgePast(Date today, bool clockValid) {
   std::memcpy(rtc_.resv, gResv, n * sizeof(lc::ResvRec));
   rtc_.nResv = n;
   return StoreStatus::Ok;
+}
+
+// 재구축용 읽기. true = gFile[0, len) 에 파일 내용이 있다. false = 그 kind 는 빈 표.
+// ver = NVS 버전. 읽기 실패, 또는 NotFound 인데 버전이 0 이 아니면(쓰기는 빈 표도 파일로 남기므로 데이터를
+// 잃은 것) 버전을 0 으로 내린다. NotFound + 버전 0 은 처음 켠 노드 — 아무것도 쓰지 않는다.
+bool NodeStore::readKind(const char* path, const char* verKey, uint8_t& ver, size_t& len) {
+  ver = static_cast<uint8_t>(kvGet(kv_, kVerSpace, verKey));
+  const ReadResult rr = fs_.read(path, gFile, sizeof(gFile), len);
+  if (rr == ReadResult::Ok) return true;
+  if (rr == ReadResult::NotFound && ver == 0) return false;
+  dropKind(verKey, ver);
+  return false;
+}
+
+void NodeStore::dropKind(const char* verKey, uint8_t& ver) {
+  (void)kv_.set(kVerSpace, verKey, 0);  // best effort — 실패해도 RTC 버전 0 이 STATUS 로 나간다
+  ver = 0;
+}
+
+// RTC 를 비우고 NVS·파일에서 다시 채운다. 봉인은 load 가 한다.
+void NodeStore::rebuild(uint8_t weekday) {
+  rtcClear(rtc_);  // 패딩까지 0 — CRC 가 결정적이어야 한다
+  rtc_.bld = static_cast<uint8_t>(kvGet(kv_, kCfgSpace, kBldKey));
+  rtc_.room = static_cast<uint16_t>(kvGet(kv_, kCfgSpace, kRoomKey));
+  rtc_.unit = static_cast<uint8_t>(kvGet(kv_, kCfgSpace, kUnitKey));
+  rtc_.identVer = static_cast<uint8_t>(kvGet(kv_, kCfgSpace, kIdentVerKey));
+  rtc_.provisioned = static_cast<uint8_t>(kvGet(kv_, kCfgSpace, kProvisionedKey));
+  rtc_.lastTxn = static_cast<uint8_t>(kvGet(kv_, kVerSpace, kLastTxnKey));
+  rtc_.slotsDay = weekday;
+
+  size_t len = 0;
+  uint8_t n = 0;
+  if (readKind(kSchedPath, kSchedVerKey, rtc_.schedVer, len)) {
+    if (parseSlots(gFile, static_cast<uint16_t>(len), gWeek, n) == ParseResult::Ok) {
+      if (weekday != 0) rtc_.nSlots = slotsOfDay(gWeek, n, weekday, rtc_.slots);
+    } else {
+      dropKind(kSchedVerKey, rtc_.schedVer);
+    }
+  }
+  if (readKind(kResvPath, kResvVerKey, rtc_.resvVer, len)) {
+    if (parseResv(gFile, static_cast<uint16_t>(len), gResv, n) == ParseResult::Ok) {
+      std::memcpy(rtc_.resv, gResv, n * sizeof(lc::ResvRec));
+      rtc_.nResv = n;
+    } else {
+      dropKind(kResvVerKey, rtc_.resvVer);
+    }
+  }
+  if (readKind(kExamPath, kExamVerKey, rtc_.examVer, len)) {
+    if (parseExams(gFile, static_cast<uint16_t>(len), gExam, n) == ParseResult::Ok) {
+      std::memcpy(rtc_.exams, gExam, n * sizeof(lc::ExamRec));
+      rtc_.nExam = n;
+    } else {
+      dropKind(kExamVerKey, rtc_.examVer);
+    }
+  }
+}
+
+LoadSource NodeStore::load(uint8_t weekday) {
+  if (rtcValid(rtc_)) {
+    if (weekday != 0 && rtc_.slotsDay != weekday) (void)refreshDay(weekday);
+    return LoadSource::RtcCache;
+  }
+  rebuild(weekday);
+  rtcSeal(rtc_);
+  return LoadSource::Rebuilt;
+}
+
+StoreStatus NodeStore::refreshDay(uint8_t weekday) {
+  rtc_.slotsDay = weekday;
+  std::memset(rtc_.slots, 0, sizeof(rtc_.slots));
+  rtc_.nSlots = 0;
+  if (weekday == 0) return StoreStatus::Ok;
+  uint8_t n = 0;
+  bool readFailed = false;
+  const StoreStatus st = loadWeek(n, &readFailed);  // 손상이면 버전 0·StoreFail (Task 4 규칙)
+  if (readFailed) {
+    // 일시적 읽기 오류 — 버전은 그대로. slotsDay 0 이면 다음 load(weekday) 가 다시 시도한다.
+    // (이 상태로 commitSlots 가 돌아도 slotsOfDay(…, 0) 은 0 개라 슬롯 캐시는 빈 채로 유지된다)
+    rtc_.slotsDay = 0;
+    return st;
+  }
+  if (st != StoreStatus::Ok) return st;
+  rtc_.nSlots = slotsOfDay(gWeek, n, weekday, rtc_.slots);
+  return StoreStatus::Ok;
+}
+
+StoreStatus NodeStore::setLastTxn(uint8_t txn) {
+  if (!kv_.set(kVerSpace, kLastTxnKey, txn)) return StoreStatus::StoreFail;
+  rtc_.lastTxn = txn;
+  return StoreStatus::Ok;
+}
+
+// provisioned 를 마지막에 쓴다 — 중간에 실패해도 반쯤 쓴 정체성이 "등록됨"으로 보이지 않게.
+StoreStatus NodeStore::setIdentity(const Identity& id, uint8_t identVer) {
+  if (!kv_.set(kCfgSpace, kBldKey, id.bld) || !kv_.set(kCfgSpace, kRoomKey, id.room) ||
+      !kv_.set(kCfgSpace, kUnitKey, id.unit) || !kv_.set(kCfgSpace, kIdentVerKey, identVer) ||
+      !kv_.set(kCfgSpace, kProvisionedKey, 1)) {
+    return StoreStatus::StoreFail;
+  }
+  rtc_.bld = id.bld;
+  rtc_.room = id.room;
+  rtc_.unit = id.unit;
+  rtc_.identVer = identVer;
+  rtc_.provisioned = 1;
+  return StoreStatus::Ok;
+}
+
+StoreStatus NodeStore::setParam(uint8_t paramId, uint32_t value) {
+  const char* key = paramKey(paramId);
+  if (key == nullptr) return StoreStatus::Unsupported;
+  return kv_.set(kCfgSpace, key, value) ? StoreStatus::Ok : StoreStatus::StoreFail;
+}
+
+bool NodeStore::param(uint8_t paramId, uint32_t& out) {
+  const char* key = paramKey(paramId);
+  return key != nullptr && kv_.get(kCfgSpace, key, out);
+}
+
+// 일부 단계가 실패해도 끝까지 시도하고 RTC 는 항상 비운다 — 봉인이 없으니 다음 load 가 저장소에서 다시
+// 읽는다.
+StoreStatus NodeStore::factoryReset() {
+  bool ok = kv_.eraseSpace(kCfgSpace);
+  ok = kv_.eraseSpace(kVerSpace) && ok;
+  ok = fs_.remove(kSchedPath) && ok;
+  ok = fs_.remove(kResvPath) && ok;
+  ok = fs_.remove(kExamPath) && ok;
+  rtcClear(rtc_);
+  return ok ? StoreStatus::Ok : StoreStatus::StoreFail;
 }
 
 }  // namespace ns
