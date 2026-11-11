@@ -63,6 +63,15 @@ describe('메인 페이지 (landing.md)', () => {
     w.unmount()
   })
 
+  it('헤더 왼쪽은 ESC 로고(높이 20), 바닥글 문장 안의 ESC 는 글자 그대로 (logo.md)', async () => {
+    const w = await mountLanding()
+    const img = w.get('header img')
+    expect(img.attributes('alt')).toBe('ESC')
+    expect(img.attributes('height')).toBe('20')
+    expect(w.get('header').text()).not.toContain('ESC')
+    expect(w.get('footer').text()).toContain('ESC — 전자종이')
+  })
+
   it('바닥글에 로고 고지 한 줄', async () => {
     const w = await mountLanding()
     expect(w.get('footer').text()).toContain(

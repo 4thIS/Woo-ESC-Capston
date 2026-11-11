@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import LogoRiver from '@/components/domain/LogoRiver.vue'
+import logo from '@/assets/logo/esc-logo.svg'
 import CtaLink from '../../CtaLink.vue'
 import EpaperPreview from './EpaperPreview.vue'
 import LogoRiverPhysics from './LogoRiverPhysics.vue'
@@ -49,7 +50,7 @@ const wide = useRiverWide()
     <header class="lh">
       <!-- 본문과 같은 틀(.wrap) — 넓은 화면에서 헤더 양끝이 본문 1120px 양끝에 맞는다 -->
       <div class="wrap lh__in">
-        <span class="lh__brand">ESC</span>
+        <img :src="logo" alt="ESC" width="55" height="20" class="lh__brand" />
         <nav class="lh__nav" aria-label="계정">
           <CtaLink to="/signup" variant="ghost" compact class="lh__signup">가입 신청</CtaLink>
           <CtaLink to="/login" variant="secondary" compact>로그인</CtaLink>
@@ -171,8 +172,7 @@ const wide = useRiverWide()
   height: 100%;
 }
 .lh__brand {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
+  display: block;
 }
 .lh__nav {
   display: flex;
