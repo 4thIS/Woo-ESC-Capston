@@ -36,21 +36,21 @@ def test_slot_set_layout_and_roundtrip():
         e_h=10,
         e_m=50,
         type=P.SlotType.CLASS,
-        subject="가" * 6 + "ab",
+        subject="가" * 10 + "ab",
         professor="정필성",
     )
     b = encode_payload(s)
-    subj = ("가" * 6 + "ab").encode()
+    subj = ("가" * 10 + "ab").encode()
     prof = "정필성".encode()
     assert b == bytes([3, 3, 9, 0, 10, 50, 1, len(subj)]) + subj + bytes([len(prof)]) + prof
     assert decode_payload(P.Type.SLOT_SET, b) == s
 
 
 def test_slot_set_string_limits():
-    ok = SlotSet(1, 1, 9, 0, 10, 0, 1, "가" * 6 + "ab", "가" * 4)  # 20 B, 12 B
+    ok = SlotSet(1, 1, 9, 0, 10, 0, 1, "가" * 10 + "ab", "가" * 4)  # 32 B, 12 B
     encode_payload(ok)
     with pytest.raises(FrameError):
-        encode_payload(SlotSet(1, 1, 9, 0, 10, 0, 1, "가" * 7, "x"))  # 21 B
+        encode_payload(SlotSet(1, 1, 9, 0, 10, 0, 1, "가" * 11, "x"))  # 33 B
     with pytest.raises(FrameError):
         encode_payload(SlotSet(1, 1, 9, 0, 10, 0, 1, "x", "가" * 5))  # 15 B
 

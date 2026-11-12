@@ -297,13 +297,13 @@ typedef struct {
   uint8_t  schedVer, resvVer, examVer, identVer, lastTxn;
   uint8_t  lastLayout; uint8_t lastDay; uint16_t lastSlotStartMin;   // 상태키
   uint32_t lastTimeSyncEpoch; uint32_t nextStatusEpoch;
-  uint8_t  nSlots; lc::SlotRec slots[LP_SLOT_DAY_MAX];  // 오늘 슬롯만 24 × 40 B = 960 B (subj 20 B·prof 12 B + 널, lora_codec 구조체 재사용). 주간 96 은 LittleFS
-  uint8_t  nResv;  lc::ResvRec resv[24];   // 24 × 44 B = 1,056 B
+  uint8_t  nSlots; lc::SlotRec slots[LP_SLOT_DAY_MAX];  // 오늘 슬롯만 24 × 52 B = 1,248 B (subj 32 B·prof 12 B + 널, lora_codec 구조체 재사용). 주간 96 은 LittleFS
+  uint8_t  nResv;  lc::ResvRec resv[24];   // 24 × 56 B = 1,344 B
   uint8_t  nExam;  lc::ExamRec exams[8];   //  8 ×  8 B =    64 B
   uint16_t crc;
-} rtc_state_t;                           // 합계 ≈ 2.1 KB (RTC slow 8 KB 내)
+} rtc_state_t;                           // 합계 ≈ 2.7 KB (RTC slow 8 KB 내)
 ```
-- 문자열은 고정 버퍼(UTF-8, 과목 20 B, 교수 12 B)로 잘라 저장. 화면 표시 한계와 일치.
+- 문자열은 고정 버퍼(UTF-8, 과목 32 B, 교수 12 B)로 잘라 저장. 화면 표시 한계와 일치. 과목 32 B 는 분반을 과목명 뒤에 붙이기 위한 값이다(「웹프로그래밍실습 102」, 2026-11-12 — 실제 최장 「임베디드시스템개론 102」 31 B, 화면 실측으로 왼쪽 과목명·오늘 목록 모두 들어감).
 - 용량 초과 시 `STORE_FAIL` ACK. **상한(2026-10-14 결정, #74)**: 방당 주간 정규 슬롯 `LP_SLOT_WEEK_MAX` = 96(LittleFS `/schedule.bin`), 하루 `LP_SLOT_DAY_MAX` = 24, 예약 24, 시험 8. 수업을 블록마다 슬롯으로 보내 평일 하루 최대 15 × 5 = 75 에 여유를 둔 값이다. RTC 캐시에는 **오늘 슬롯만**(RenderModel `today[24]` 와 같은 수) 두고, 날짜가 바뀌면 LittleFS 에서 그날 슬롯을 다시 채운다. 서버 CSV 검사(`csv_import`)도 같은 상수로 막는다.
 
 **저장 계층 규칙 (2026-10-12 개정, 이슈 #74 결정 1·2·5)**
