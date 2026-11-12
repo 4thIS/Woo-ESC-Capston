@@ -75,10 +75,10 @@
         "e_h": 23,
         "e_m": 59,
         "type": 6,
-        "subject": "가가가가가가ab",
+        "subject": "가가가가가가가가가가ab",
         "professor": "가가가가"
       },
-      "frame_hex": "21 4b 02 45 01 2d 01 ff 29 ff 07 17 3b 17 3b 06 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 7e"
+      "frame_hex": "21 4b 02 45 01 2d 01 ff 35 ff 07 17 3b 17 3b 06 20 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 b4"
     },
     {
       "name": "slot_set_unit0_all_units",
@@ -256,10 +256,10 @@
       "payload": {
         "new_ver": 9,
         "kind": 1,
-        "total_len": 504,
+        "total_len": 486,
         "n_chunks": 3
       },
-      "frame_hex": "21 4b 09 45 01 2d 01 0f 05 09 01 01 f8 03 0a"
+      "frame_hex": "21 4b 09 45 01 2d 01 0f 05 09 01 01 e6 03 8b"
     },
     {
       "name": "file_data_seq0_full_200B",
@@ -273,9 +273,9 @@
       },
       "payload": {
         "seq": 0,
-        "data": "02280109000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002280209000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002280309000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002280409000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002280509000a000114eab080eab080eab080eab080eab080eab08061620ceab0"
+        "data": "02340109000a000120eab080eab080eab080eab080eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002340209000a000120eab080eab080eab080eab080eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002340309000a000120eab080eab080eab080eab080eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002340409000a000120eab080eab080eab080eab080eab080eab080eab080eab080eab080eab0"
       },
-      "frame_hex": "21 4b 0a 45 01 2d 01 10 c9 00 02 28 01 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 02 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 03 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 04 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 05 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 fe"
+      "frame_hex": "21 4b 0a 45 01 2d 01 10 c9 00 02 34 01 09 00 0a 00 01 20 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 34 02 09 00 0a 00 01 20 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 34 03 09 00 0a 00 01 20 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 34 04 09 00 0a 00 01 20 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 c3"
     },
     {
       "name": "file_data_seq2_tail",
@@ -289,9 +289,9 @@
       },
       "payload": {
         "seq": 2,
-        "data": "b080eab08061620ceab080eab080eab080eab08002280409000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002280509000a000114eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab080"
+        "data": "b080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab08002340209000a000120eab080eab080eab080eab080eab080eab080eab080eab080eab080eab08061620ceab080eab080eab080eab080"
       },
-      "frame_hex": "21 4b 0a 45 01 2d 01 12 69 02 b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 04 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 28 05 09 00 0a 00 01 14 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 a3"
+      "frame_hex": "21 4b 0a 45 01 2d 01 12 57 02 b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 02 34 02 09 00 0a 00 01 20 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 ea b0 80 61 62 0c ea b0 80 ea b0 80 ea b0 80 ea b0 80 f2"
     },
     {
       "name": "file_end",
@@ -304,9 +304,9 @@
         "flags": 1
       },
       "payload": {
-        "crc16": 61574
+        "crc16": 45845
       },
-      "frame_hex": "21 4b 0b 45 01 2d 01 13 02 f0 86 c8"
+      "frame_hex": "21 4b 0b 45 01 2d 01 13 02 b3 15 5c"
     },
     {
       "name": "file_begin_empty_resv",
