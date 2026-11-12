@@ -111,13 +111,6 @@ void test_today_current_row_inverted() {
   TEST_ASSERT_GREATER_THAN_INT(30, countColor(g, 518, 136, 780, 172, HColor::WHITE));  // 반전 행 흰 글자
 }
 
-void test_today_type_chip_right_aligned() {
-  HostGfx g;
-  renderLayout(g, layout1Model());
-  // 2행(15:00, 시험) 오른쪽 끝(x 782 이전)에 칩 글자.
-  TEST_ASSERT_GREATER_THAN_INT(10, countColor(g, 740, 172, 782, 208, HColor::BLACK));
-}
-
 void test_today_empty_message() {
   RenderModel m = layout1Model();
   m.nToday = 0;
@@ -298,37 +291,15 @@ void test_other_layout_empty_prof_stays_empty() {
   assertInfoRow2Value(1, "", "");
 }
 
-void test_list_type_chip_wins_over_long_subject() {
-  // 2행(today[2], 15:00 시험, 윗변 y 172) 과목을 ASCII 20자로 — 약어 자리 + 앞 8 은 행 높이 전체가
-  // 바탕(백)이다.
+void test_list_draws_no_type_chip() {
+  // 목록 type 약어 삭제(2026-11-12) — 2행(today[2], 15:00 시험, 윗변 y 172)의 과목이 짧아도 행 오른쪽
+  // (예전 약어 자리 x 700–800)에 잉크가 없다. 현재 행(1행, 반전)도 그 자리는 흑 바탕 그대로.
   RenderModel m = layout1Model();
-  strcpy(m.today[2].subj, "WWWWWWWWWWWWWWWWWWWW");
-  HostGfx g;
-  renderLayout(g, m);
-  const int16_t chipX = (int16_t)(800 - 18 - kImgChipSiheom.w);
-  TEST_ASSERT_EQUAL(0, countColor(g, chipX - 8, 172, chipX, 208, HColor::BLACK));
-  TEST_ASSERT_GREATER_THAN_INT(10, countColor(g, chipX, 172, 782, 208, HColor::BLACK));  // 약어는 그대로
-}
-
-void test_list_type_chip_wins_to_row_right_edge() {
-  // 과목(ASCII 20자 'W')은 x 572 에서 시작해 x 800 을 넘는다 — 약어 오른쪽 여백(x 782–799)에도 과목 조각이
-  // 남지 않는다.
-  RenderModel m = layout1Model();
-  strcpy(m.today[2].subj, "WWWWWWWWWWWWWWWWWWWW");
-  HostGfx g;
-  renderLayout(g, m);
-  TEST_ASSERT_EQUAL(0, countColor(g, 782, 172, 800, 208, HColor::BLACK));
-}
-
-void test_list_type_chip_wins_on_current_row() {
-  // 현재 행(반전)이면 덮는 색은 흑.
-  RenderModel m = layout1Model();
-  strcpy(m.today[1].subj, "WWWWWWWWWWWWWWWWWWWW");
   m.today[1].type = 2;
   HostGfx g;
   renderLayout(g, m);
-  const int16_t chipX = (int16_t)(800 - 18 - kImgChipSiheom.w);
-  TEST_ASSERT_EQUAL(0, countColor(g, chipX - 8, 136, chipX, 172, HColor::WHITE));
+  TEST_ASSERT_EQUAL(0, countColor(g, 700, 172, 800, 208, HColor::BLACK));
+  TEST_ASSERT_EQUAL(0, countColor(g, 700, 136, 800, 172, HColor::WHITE));
 }
 
 void test_info_overflow_pins_change_chip_and_clears_list_side() {
@@ -401,7 +372,6 @@ int main() {
   RUN_TEST(test_black_band_has_bottom_line);
   RUN_TEST(test_info_form_a_dividers_and_values);
   RUN_TEST(test_today_current_row_inverted);
-  RUN_TEST(test_today_type_chip_right_aligned);
   RUN_TEST(test_today_empty_message);
   RUN_TEST(test_today_overflow_shows_more_rows);
   RUN_TEST(test_form_b_has_no_dividers_and_big_time);
@@ -418,9 +388,7 @@ int main() {
   RUN_TEST(test_layout7_empty_prof_shows_student);
   RUN_TEST(test_layout7_named_prof_kept);
   RUN_TEST(test_other_layout_empty_prof_stays_empty);
-  RUN_TEST(test_list_type_chip_wins_over_long_subject);
-  RUN_TEST(test_list_type_chip_wins_to_row_right_edge);
-  RUN_TEST(test_list_type_chip_wins_on_current_row);
+  RUN_TEST(test_list_draws_no_type_chip);
   RUN_TEST(test_info_overflow_pins_change_chip_and_clears_list_side);
   RUN_TEST(test_out_of_range_layout_is_blank);
   return UNITY_END();

@@ -10,7 +10,7 @@ namespace {
 
 // strncpy 는 src 가 cap 이상이면 널을 안 붙인다. RenderModel 을 영으로 초기화하지 않고
 // 넘기는 호출자도 있을 수 있어(공개 API) 잘림 여부와 무관하게 여기서 항상 종단한다.
-// subj[21]에 UTF-8 한글은 7글자면 차므로 잘림은 가정이 아니라 실제로 일어난다.
+// subj[33]에 UTF-8 한글은 11글자면 차므로 잘림은 가정이 아니라 실제로 일어난다.
 void copyStr(char* dest, size_t cap, const char* src) {
   if (cap == 0) return;
   strncpy(dest, src, cap - 1);

@@ -37,11 +37,7 @@ struct ImageCase {
 
 static const ImageCase kCases[] = {
     {&kImgChipByeongyeong, "src/fonts/images/chip_byeongyeong.bin", 27, 16, 4, 14},
-    {&kImgChipDaeyeo, "src/fonts/images/chip_daeyeo.bin", 28, 16, 4, 14},
-    {&kImgChipHyugang, "src/fonts/images/chip_hyugang.bin", 31, 15, 4, 14},
     {&kImgChipOneul, "src/fonts/images/chip_oneul.bin", 32, 14, 4, 14},
-    {&kImgChipSiheom, "src/fonts/images/chip_siheom.bin", 28, 16, 4, 14},
-    {&kImgChipTeukgang, "src/fonts/images/chip_teukgang.bin", 31, 17, 4, 14},
     {&kImgStatusBinganguisil, "src/fonts/images/status_binganguisil.bin", 270, 75, 34, 67},
     {&kImgStatusDaeyeojung, "src/fonts/images/status_daeyeojung.bin", 209, 76, 27, 67},
     {&kImgStatusHyugang, "src/fonts/images/status_hyugang.bin", 141, 76, 18, 67},
@@ -115,10 +111,11 @@ void test_draw_bitmap_transparent_outside_canvas_untouched() {
   // 손대지 않는다.
   HostGfx gfx;
   gfx.fillRect(0, 0, gfx.width(), gfx.height(), GxEPD_RED);
-  gfx.drawBitmap(200, 200, kImgChipDaeyeo.bitmap, kImgChipDaeyeo.w, kImgChipDaeyeo.h, GxEPD_BLACK);
+  gfx.drawBitmap(200, 200, kImgChipByeongyeong.bitmap, kImgChipByeongyeong.w, kImgChipByeongyeong.h,
+                 GxEPD_BLACK);
   TEST_ASSERT_EQUAL(HColor::RED, gfx.pixelAt(0, 0));
   TEST_ASSERT_EQUAL(HColor::RED, gfx.pixelAt(199, 200));
-  TEST_ASSERT_EQUAL(HColor::RED, gfx.pixelAt(200 + kImgChipDaeyeo.w + 5, 200));
+  TEST_ASSERT_EQUAL(HColor::RED, gfx.pixelAt(200 + kImgChipByeongyeong.w + 5, 200));
 }
 
 // ---------------------------------------------------------------------------

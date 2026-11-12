@@ -102,15 +102,15 @@ typedef struct {
   char     bld; uint16_t room; uint8_t unit;
   char     dateStr[6];          // "MM.DD" (2026-09-16 추가, mh 화면 스펙 미결 1)
   uint8_t  weekday;             // 1=월..7=일
-  struct { char subj[21]; char prof[13];
+  struct { char subj[33]; char prof[13];
            uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } cur, next;
                                 // type = lora_proto SlotType(1 수업·2 시험·3 휴강·4 빈강의실·5 특강·6 대여, 0 = 비어 있음)
                                 // flags bit0 = 존재함, bit1 = 변경 배지(휴강·보강·변경)
   uint8_t  nToday;
-  struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // 하루 최대 24 동결(S3 spec §2.1). 넘치면 시작 순 앞 24개만. 렌더는 표시 상한 N 개만 그린다
+  struct { uint8_t sH,sM,eH,eM; char subj[33]; uint8_t type; } today[24];  // 하루 최대 24 동결(S3 spec §2.1). 넘치면 시작 순 앞 24개만. 렌더는 표시 상한 N 개만 그린다
   char     newTag[9];           // "NEW-1A7F" — layout 8 전용, MAC 하위 2 B (2026-09-16 추가, mh 화면 스펙 미결 2)
   uint16_t battMv;              // battPct 는 제거 (2026-09-16 — 방전 곡선 없이 % 환산은 임의값)
-} RenderModel;                  // 728 B(호스트·ESP32-S3 동일, test_render_model 이 고정), 매 웨이크 재계산
+} RenderModel;                  // 1,040 B(호스트·ESP32-S3 동일, test_render_model 이 고정 — 과목 32 B, 2026-11-12), 매 웨이크 재계산
 ```
 
 > **동결 (cw-11, 2026-10-12, #27)**: `nowStr`·`prev` 제거 — 화면이 현재 시각·이전 수업을 그리지 않는다(화면 스펙 #19, 쉬는시간 화면은 `next` 의 시작 시각만 — #74). `type` 값 도메인 명시, `today[24]` 동결(#74 블록 슬롯이어도 하루 최대 약 13개). 이후 필드를 바꾸려면 cw·dh 협의 후 이 절과 `firmware/lib/render_model/render_model.h` 를 한 PR 에서.

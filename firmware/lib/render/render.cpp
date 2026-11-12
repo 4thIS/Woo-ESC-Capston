@@ -165,7 +165,6 @@ void drawInfoB(Adafruit_GFX& g, const RenderModel& m) {
   g.fillRect(kValueRight, kInfoY, (int16_t)(kW - kValueRight), kInfoH, GxEPD_WHITE);
 }
 
-constexpr int16_t kTypeChipGap = 8;  // 과목 ↔ type 약어(겹치면 이 폭까지 덮는다)
 // 목록 잘림 표시 — 채운 삼각형(밑변 11 · 높이 6, 행 윗변 +15–20) + 간격 6 + "n개 더"(16/400).
 // ↑·↓ 글리프는 16 px 에서 1 px 막대라 "↑ 4개 더"가 "14개 더"로 읽혔다(#89 layout 6, #91).
 // 밑변은 홀수 — 1비트라 짝수면 꼭짓점이 반 픽셀 치우친다(#118, 꼭짓점 x 523).
@@ -217,15 +216,6 @@ void drawTodayList(Adafruit_GFX& g, const RenderModel& m) {
     formatHM(t.sH, t.sM, hm, sizeof hm);
     drawText(g, kNanum16Regular, hm, x0, base, fg);
     drawText(g, isCur ? kNanum20Bold : kNanum20Regular, t.subj, (int16_t)(x0 + kTimeW + kTimeGap), base, fg);
-    const BitmapImage* chip = typeChip(t.type);
-    if (chip != nullptr) {
-      // 과목이 길면(ASCII 20자) 약어 자리까지 닿는다 — 약어 앞 간격부터 행 오른쪽 끝(x 800)까지 행 높이
-      // 전체를 바탕색으로 덮고 약어를 그린다. 약어 뒤 여백(18)까지 덮어야 넘친 과목 조각이 남지 않는다.
-      const int16_t chipX = (int16_t)(kListX + kListW - kListPadX - chip->w);
-      g.fillRect((int16_t)(chipX - kTypeChipGap), top, (int16_t)(kListX + kListW - (chipX - kTypeChipGap)),
-                 kRowH, isCur ? GxEPD_BLACK : GxEPD_WHITE);
-      drawImage(g, *chip, chipX, (int16_t)(base - chip->baseline), fg);
-    }
   }
 }
 

@@ -55,13 +55,21 @@ void test_weekday_names() {
   TEST_ASSERT_EQUAL_STRING("", weekdayName(8));
 }
 
-void test_type_chips() {
-  TEST_ASSERT_NULL(typeChip(1));  // 수업은 생략
-  TEST_ASSERT_EQUAL_PTR(&kImgChipSiheom, typeChip(2));
-  TEST_ASSERT_EQUAL_PTR(&kImgChipHyugang, typeChip(3));
-  TEST_ASSERT_NULL(typeChip(4));  // 빈강의실은 today[] 에 오지 않는다
-  TEST_ASSERT_EQUAL_PTR(&kImgChipTeukgang, typeChip(5));
-  TEST_ASSERT_EQUAL_PTR(&kImgChipDaeyeo, typeChip(6));
+// 오늘 목록 연속 교시 한 행(2026-11-12): 합친 행은 cur(교시 하나)를 포함한다 — 같은 시각 행이 먼저.
+void test_window_cur_inside_merged_row() {
+  RenderModel m{};
+  m.nToday = 3;
+  m.today[0] = {9, 0, 11, 50, "웹실습 102", 1};
+  m.today[1] = {12, 0, 14, 50, "웹실습 101", 1};
+  m.today[2] = {13, 0, 13, 50, "스터디", 6};  // 겹치는 예약
+  m.cur = {"웹실습 102", "", 10, 0, 10, 50, 1, 1};
+  TEST_ASSERT_EQUAL_INT8(0, todayWindow(m).curIdx);
+  m.cur = {"웹실습 101", "", 13, 0, 13, 50, 1, 1};
+  TEST_ASSERT_EQUAL_INT8(2, todayWindow(m).curIdx);  // 시각이 똑같은 행 우선
+  m.cur = {"웹실습 101", "", 14, 0, 14, 50, 1, 1};
+  TEST_ASSERT_EQUAL_INT8(1, todayWindow(m).curIdx);
+  m.cur = {"없음", "", 16, 0, 16, 50, 1, 1};
+  TEST_ASSERT_EQUAL_INT8(-1, todayWindow(m).curIdx);
 }
 
 void test_format_hm_pads_zero() {
@@ -190,7 +198,7 @@ int main() {
   RUN_TEST(test_band_style_per_layout);
   RUN_TEST(test_status_image_per_layout);
   RUN_TEST(test_weekday_names);
-  RUN_TEST(test_type_chips);
+  RUN_TEST(test_window_cur_inside_merged_row);
   RUN_TEST(test_format_hm_pads_zero);
   RUN_TEST(test_subline_in_use_states_uses_cur_end);
   RUN_TEST(test_subline_break_uses_next_start);

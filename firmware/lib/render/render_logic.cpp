@@ -12,11 +12,21 @@ bool sameTimes(const TodaySlot& t, const RenderSlot& s) {
   return t.sH == s.sH && t.sM == s.sM && t.eH == s.eH && t.eM == s.eM;
 }
 
-// s 가 존재(flags bit0)하고 today[0..count) 에 같은 시각 항목이 있으면 그 인덱스, 아니면 -1.
+bool contains(const TodaySlot& t, const RenderSlot& s) {
+  const int ts = t.sH * 60 + t.sM, te = t.eH * 60 + t.eM;
+  const int ss = s.sH * 60 + s.sM, se = s.eH * 60 + s.eM;
+  return ss <= se && ts <= ss && se <= te;  // 끝이 시작보다 앞인 값(손상)은 포함으로 보지 않는다
+}
+
+// s 가 존재(flags bit0)하면 today[0..count) 에서 s 의 행 인덱스, 없으면 -1. 같은 시각 행이 먼저고, 없으면
+// s 를 포함하는 행 — 상태 판단이 연속 교시를 한 행으로 합쳐 싣는다(terminal-epaper.md 「오늘 목록」,
+// 2026-11-12).
 int8_t findSlot(const RenderModel& m, uint8_t count, const RenderSlot& s) {
   if (!(s.flags & 0x01)) return -1;
   for (uint8_t i = 0; i < count; i++)
     if (sameTimes(m.today[i], s)) return (int8_t)i;
+  for (uint8_t i = 0; i < count; i++)
+    if (contains(m.today[i], s)) return (int8_t)i;
   return -1;
 }
 }  // namespace
@@ -62,21 +72,6 @@ const char* weekdayName(uint8_t weekday) {
   static const char* const kNames[] = {"월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"};
   if (weekday < 1 || weekday > 7) return "";
   return kNames[weekday - 1];
-}
-
-const BitmapImage* typeChip(uint8_t type) {
-  switch (type) {
-    case 2:
-      return &kImgChipSiheom;
-    case 3:
-      return &kImgChipHyugang;
-    case 5:
-      return &kImgChipTeukgang;
-    case 6:
-      return &kImgChipDaeyeo;
-    default:
-      return nullptr;
-  }
 }
 
 void formatHM(uint8_t h, uint8_t m, char* out, size_t cap) {
