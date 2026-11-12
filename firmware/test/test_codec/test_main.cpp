@@ -250,7 +250,8 @@ void test_every_vector_payload_decodes_and_reencodes() {
 }
 
 void test_string_over_limit_rejected() {
-  // 구조체 버퍼(LP_SUBJ_MAX+1)에는 한계 + 1 B 를 담을 수 없으므로 디코더 쪽 한계만 검사: subjLen = LP_SUBJ_MAX + 1
+  // 구조체 버퍼(LP_SUBJ_MAX+1)에는 한계 + 1 B 를 담을 수 없으므로 디코더 쪽 한계만 검사: subjLen =
+  // LP_SUBJ_MAX + 1
   uint8_t bad[7 + 1 + LP_SUBJ_MAX + 1 + 2] = {1, 3, 9, 0, 10, 0, 1, LP_SUBJ_MAX + 1};
   for (int i = 0; i < LP_SUBJ_MAX + 1; ++i) bad[8 + i] = 'a';
   bad[8 + LP_SUBJ_MAX + 1] = 1;
