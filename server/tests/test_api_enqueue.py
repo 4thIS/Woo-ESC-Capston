@@ -44,7 +44,9 @@ def test_version_increments_and_rolls_255_to_1(db):
 
 def test_bad_subject_rolls_back_version_and_inserts_nothing(db, hub):
     with pytest.raises(ValueError):
-        api.enqueue_slot_set("E", 301, 1, (9, 0), (10, 0), 1, "가" * 7, "b")  # 21 B > 20
+        api.enqueue_slot_set(
+            "E", 301, 1, (9, 0), (10, 0), 1, "가" * (P.SUBJ_MAX // 3 + 1), "b"
+        )  # 상한 + 1~3 B
     with db() as s:
         assert s.get(RoomVersion, ("E", 301, "schedule")) is None
     assert _rows(db) == [] and hub.notified == []

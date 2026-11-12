@@ -10,6 +10,15 @@ from typing import Any, ClassVar, Literal
 from lora_proto import proto as P
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+# 전각 영숫자·기호(U+FF01–FF5E)와 전각 공백(U+3000)을 반각으로 — 노드 글꼴에 전각이 없어 e-Paper 에
+# 찍히지 않는다(#140, 학교 시간표의 「ＡＩ전자계산기구조」). NFKC 는 쓰지 않는다: 한글 낱자(ㅋ U+3131)를
+# 조합용 자모로 바꾸고 ①·Ⅱ·㈜·… 까지 바꾼다
+_HALFWIDTH = {c: c - 0xFEE0 for c in range(0xFF01, 0xFF5F)} | {0x3000: 0x20}
+
+
+def halfwidth(s: str) -> str:
+    return s.translate(_HALFWIDTH)
+
 
 def _bytes_max(s: str, n: int, name: str) -> str:
     if len(s.encode("utf-8")) > n:
@@ -98,12 +107,12 @@ class _Span(BaseModel):
     @field_validator("subject")
     @classmethod
     def _subj(cls, v: str) -> str:
-        return _bytes_max(v, P.SUBJ_MAX, "subject")
+        return _bytes_max(halfwidth(v), P.SUBJ_MAX, "subject")
 
     @field_validator("professor")
     @classmethod
     def _prof(cls, v: str) -> str:
-        return _bytes_max(v, P.PROF_MAX, "professor")
+        return _bytes_max(halfwidth(v), P.PROF_MAX, "professor")
 
 
 class SlotIn(_Span):
@@ -131,7 +140,7 @@ class StudentResvIn(BaseModel):
     @field_validator("subject")
     @classmethod
     def _subj(cls, v: str) -> str:
-        return _bytes_max(v, P.SUBJ_MAX, "subject")
+        return _bytes_max(halfwidth(v), P.SUBJ_MAX, "subject")
 
     @model_validator(mode="after")
     def _order(self):
