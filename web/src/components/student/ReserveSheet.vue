@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { FreeDay, FreeRange, StudentResvIn } from '@/api/types'
-import { SUBJ_MAX } from '@/components/domain/rules'
+import { SUBJ_MAX, halfwidth } from '@/components/domain/rules'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
@@ -206,12 +206,14 @@ function submit() {
     </div>
 
     <div class="rs__sec">
+      <!-- 전각 영숫자는 칸에서 반각으로 — 서버도 같은 규칙으로 저장한다 (이슈 140) -->
       <Input
-        v-model="subject"
+        :model-value="subject"
         label="무엇에 쓰나요"
         required
         :max-bytes="maxBytes"
         :hint="DOOR_HINT"
+        @update:model-value="(v: string) => (subject = halfwidth(v))"
       />
       <p class="rs__note">예약하면 관리자 승인 뒤 확정돼요</p>
     </div>

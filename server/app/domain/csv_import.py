@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.domain.models import Building, Room, School, Slot
+from app.schemas import halfwidth
 
 COLUMNS = ("school", "building", "room", "day", "start", "end", "type", "subject", "professor")
 DAYS = "월화수목금토일"
@@ -121,11 +122,13 @@ def _row(n: int, rec: dict[str, str], lk: _Lookup) -> Row | RowError:
     type_ = _type(rec["type"])
     if type_ is None:
         return RowError(n, f"type: '{rec['type']}' 은 수업~대여 또는 1~6")
-    if _bytes(rec["subject"]) > P.SUBJ_MAX:
-        return RowError(n, f"subject {_bytes(rec['subject'])} B > {P.SUBJ_MAX} B (UTF-8)")
-    if _bytes(rec["professor"]) > P.PROF_MAX:
-        return RowError(n, f"professor {_bytes(rec['professor'])} B > {P.PROF_MAX} B (UTF-8)")
-    return Row(n, rid, bld, room, day, *start, *end, type_, rec["subject"], rec["professor"])
+    # 바이트 상한은 반각으로 바꾼 뒤 잰다 — 저장되는 값이 그것이다 (#140)
+    subject, professor = halfwidth(rec["subject"]), halfwidth(rec["professor"])
+    if _bytes(subject) > P.SUBJ_MAX:
+        return RowError(n, f"subject {_bytes(subject)} B > {P.SUBJ_MAX} B (UTF-8)")
+    if _bytes(professor) > P.PROF_MAX:
+        return RowError(n, f"professor {_bytes(professor)} B > {P.PROF_MAX} B (UTF-8)")
+    return Row(n, rid, bld, room, day, *start, *end, type_, subject, professor)
 
 
 def parse(text: str, s: Session, school_id: int | None = None) -> tuple[list[Row], list[RowError]]:
