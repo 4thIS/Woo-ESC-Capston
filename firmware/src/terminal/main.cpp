@@ -50,9 +50,25 @@ void IRAM_ATTR onDio1() {
   g_irq = true;
 }
 
+// GxEPD2 Z08 초기화에는 승압 소프트스타트(0x06, BTST)가 없다. Good Display GDEY075Z08 은 기본값으로도
+// 그려지지만, Waveshare 7.5" (B)(SKU 13380) 은 승압이 서지 않아 리프레시가 ~1 s 만에 끝나고 화면이 그대로다
+// (2026-11-04 2번 노드 실측: 1.1 s → 0x06 추가 시 17.9 s). 제조사 예제 값(17 17 28 17)을 POWER ON 전에
+// 넣는다.
+class EpdZ08 : public GxEPD2_750c_Z08 {
+ public:
+  using GxEPD2_750c_Z08::GxEPD2_750c_Z08;
+  // init() 의 하드웨어 리셋 뒤, 첫 POWER ON(0x04) 전에 부른다. 레지스터는 다음 리셋까지 유지된다.
+  void boosterSoftStart() {
+    _writeCommand(0x06);
+    _writeData(0x17);
+    _writeData(0x17);
+    _writeData(0x28);
+    _writeData(0x17);
+  }
+};
+
 SPIClass epdSpi(HSPI);
-GxEPD2_3C<GxEPD2_750c_Z08, GxEPD2_750c_Z08::HEIGHT / 2> display(GxEPD2_750c_Z08(EPD_CS, EPD_DC, EPD_RST,
-                                                                                EPD_BUSY));
+GxEPD2_3C<EpdZ08, EpdZ08::HEIGHT / 2> display(EpdZ08(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
 
 nc::State g_state, g_backup;
 nc::FileRx g_file;
@@ -221,6 +237,7 @@ void render(const RenderModel& m) {
   digitalWrite(VEXT_CTRL, LOW);
   delay(50);
   display.init(0, true, 2, false);
+  display.epd2.boosterSoftStart();
   display.setRotation(0);
   display.setFullWindow();
   display.firstPage();

@@ -1,0 +1,16 @@
+{
+  "name": "edge_glyph_fallbacks",
+  "_note": "목록 밖 글자(똠)는 건너뜀, 20 B 에서 잘린 UTF-8 은 ? 하나",
+  "layout": 1, "bld": "E", "room": 301, "unit": 1,
+  "date_str": "10.22", "weekday": 4,
+  "cur":  {"subj": "똠양꿍세미나", "prof": "김교수", "s_h": 10, "s_m": 0, "e_h": 10, "e_m": 50, "type": 1, "flags": 1},
+  "next": {"subj": "캡스톤디자인A설계", "prof": "박교수", "s_h": 11, "s_m": 0, "e_h": 11, "e_m": 50, "type": 1, "flags": 1},
+  "n_today": 3,
+  "today": [
+    {"s_h": 10, "s_m": 0, "e_h": 10, "e_m": 50, "subj": "똠양꿍세미나", "type": 1},
+    {"s_h": 11, "s_m": 0, "e_h": 11, "e_m": 50, "subj": "캡스톤디자인A설계", "type": 1},
+    {"s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "subj": "자료구조", "type": 1}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}
