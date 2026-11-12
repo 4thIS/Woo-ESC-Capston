@@ -44,11 +44,13 @@ void test_date_str_and_new_tag_capacity() {
   TEST_ASSERT_EQUAL(9, sizeof(m.newTag));
 }
 
-// cw-11(#27) 동결 — nowStr·prev 제거. 남은 필드만으로 크기가 정해진다(로드맵 §4.1 "728 B", 제거 전 774 B).
+// cw-11(#27) 동결 — nowStr·prev 제거. 남은 필드만으로 크기가 정해진다(로드맵 §4.1).
+// 2026-11-12 과목 20 → 32 B(subj[21] → [33], 분반을 과목명 뒤에): 728 B → 1,040 B(+12 × (cur·next 2 + today
+// 24)).
 void test_frozen_size() {
-  TEST_ASSERT_EQUAL(40, sizeof(RenderSlot));
-  TEST_ASSERT_EQUAL(26, sizeof(TodaySlot));
-  TEST_ASSERT_EQUAL(728, sizeof(RenderModel));  // char·uint8·uint16 뿐이라 호스트·ESP32-S3 같은 값
+  TEST_ASSERT_EQUAL(52, sizeof(RenderSlot));
+  TEST_ASSERT_EQUAL(38, sizeof(TodaySlot));
+  TEST_ASSERT_EQUAL(1040, sizeof(RenderModel));  // char·uint8·uint16 뿐이라 호스트·ESP32-S3 같은 값
 }
 
 int main() {

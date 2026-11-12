@@ -383,6 +383,71 @@ void test_model_exam_period() {
   TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_EXAM, m.layout);
 }
 
+// ---------------- 오늘 목록: 연속 교시 한 행 (terminal-epaper.md 「오늘 목록」, 2026-11-12) ----------------
+// 목요일 803호 — 102반 09:00–11:50(3교시) 다음 101반 12:00–14:50(3교시). 과목·교수 같고 반 사이 틈도 10분이라
+// 분반(과목명 뒤)만이 두 수업을 가른다.
+static void thursdayTwoSections() {
+  uint8_t txn = 1;
+  for (uint8_t h = 9; h <= 11; ++h) slotSet(txn, txn, slot(4, h, 0, h, 50, "웹실습 102")), ++txn;
+  for (uint8_t h = 12; h <= 14; ++h) slotSet(txn, txn, slot(4, h, 0, h, 50, "웹실습 101")), ++txn;
+}
+
+void test_today_merges_periods_of_same_section_only() {
+  thursdayTwoSections();
+  RenderModel m;
+  buildModel(ME, *S, kstEpoch(2026, 11, 19, 10, 20), m);
+  TEST_ASSERT_EQUAL_UINT8(2, m.nToday);
+  TEST_ASSERT_EQUAL_STRING("웹실습 102", m.today[0].subj);
+  TEST_ASSERT_EQUAL_UINT8(9, m.today[0].sH);
+  TEST_ASSERT_EQUAL_UINT8(0, m.today[0].sM);
+  TEST_ASSERT_EQUAL_UINT8(11, m.today[0].eH);
+  TEST_ASSERT_EQUAL_UINT8(50, m.today[0].eM);
+  TEST_ASSERT_EQUAL_STRING("웹실습 101", m.today[1].subj);
+  TEST_ASSERT_EQUAL_UINT8(12, m.today[1].sH);
+  TEST_ASSERT_EQUAL_UINT8(14, m.today[1].eH);
+  TEST_ASSERT_EQUAL_UINT8(50, m.today[1].eM);
+  // 정보 영역은 교시 단위 그대로
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_CLASS, m.layout);
+  TEST_ASSERT_EQUAL_UINT8(10, m.cur.sH);
+  TEST_ASSERT_EQUAL_UINT8(10, m.cur.eH);
+  TEST_ASSERT_EQUAL_UINT8(50, m.cur.eM);
+}
+
+void test_today_merge_keeps_break_per_period() {
+  thursdayTwoSections();
+  RenderModel m;
+  buildModel(ME, *S, kstEpoch(2026, 11, 19, 10, 55), m);  // 102반 2·3교시 사이 쉬는시간
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_BREAK, m.layout);
+  TEST_ASSERT_EQUAL_UINT8(11, m.cur.sH);  // cur = 곧 시작할 교시
+  TEST_ASSERT_EQUAL_UINT8(2, m.nToday);
+  buildModel(ME, *S, kstEpoch(2026, 11, 19, 11, 55), m);  // 반이 바뀌는 틈도 쉬는시간(과목·교수 같음)
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_BREAK, m.layout);
+  TEST_ASSERT_EQUAL_STRING("웹실습 101", m.cur.subj);
+}
+
+void test_today_merge_rules_gap_type_and_contiguous() {
+  slotSet(1, 1, slot(4, 9, 0, 9, 50, "자료구조"));
+  slotSet(2, 2, slot(4, 10, 6, 10, 56, "자료구조"));  // 틈 16분 → 따로
+  slotSet(3, 3, slot(4, 12, 0, 13, 0, "캡스톤"));
+  slotSet(4, 4, slot(4, 13, 0, 14, 0, "캡스톤"));  // 틈 0분 → 합침
+  slotSet(5, 5, slot(4, 15, 0, 15, 50, "특강"));
+  slotSet(6, 6, slot(4, 16, 0, 16, 50, "특강", LP_SLOTTYPE_SPECIAL));  // type 다름 → 따로
+  slotSet(7, 7, slot(4, 17, 0, 17, 50, "운영체제"));
+  slotSet(8, 8, slot(4, 18, 5, 18, 55, "운영체제"));  // 틈 15분 → 합침(경계 포함)
+  RenderModel m;
+  buildModel(ME, *S, kstEpoch(2026, 11, 19, 8, 0), m);
+  TEST_ASSERT_EQUAL_UINT8(6, m.nToday);
+  TEST_ASSERT_EQUAL_UINT8(9, m.today[0].sH);
+  TEST_ASSERT_EQUAL_UINT8(10, m.today[1].sH);
+  TEST_ASSERT_EQUAL_UINT8(12, m.today[2].sH);
+  TEST_ASSERT_EQUAL_UINT8(14, m.today[2].eH);
+  TEST_ASSERT_EQUAL_UINT8(LP_SLOTTYPE_CLASS, m.today[3].type);
+  TEST_ASSERT_EQUAL_UINT8(LP_SLOTTYPE_SPECIAL, m.today[4].type);
+  TEST_ASSERT_EQUAL_UINT8(17, m.today[5].sH);
+  TEST_ASSERT_EQUAL_UINT8(18, m.today[5].eH);
+  TEST_ASSERT_EQUAL_UINT8(55, m.today[5].eM);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_is_for_me);
@@ -407,5 +472,8 @@ int main() {
   RUN_TEST(test_model_break_cur_is_next);
   RUN_TEST(test_model_resv_today_beats_slot);
   RUN_TEST(test_model_exam_period);
+  RUN_TEST(test_today_merges_periods_of_same_section_only);
+  RUN_TEST(test_today_merge_keeps_break_per_period);
+  RUN_TEST(test_today_merge_rules_gap_type_and_contiguous);
   return UNITY_END();
 }

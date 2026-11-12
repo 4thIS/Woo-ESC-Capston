@@ -49,13 +49,13 @@ v1(`esp32_e-paper_syllabus`, 상위 폴더에서 실물 확인)은 실제 GxEPD2
 한 강의실이 하루에 가질 수 있는 서로 다른 시작 시각(=최악의 경우 서로 다른 과목이 들어갈 수 있는 슬롯 수)의 최댓값이 24이므로, `today[]`는 이 수를 손실 없이 담아야 한다. `RenderModel`은 로드맵 §4.1에 "≈ 550 B, **매 웨이크 재계산**"이라 명시된 임시 구조체로(2026-09-16 QR·battPct 제거 후 갱신된 값) `rtc_state_t`(RTC slow memory 8 KB 제한)에 영속 저장되지 않으므로, 24로 늘려도(약 +312 B) ESP32-S3 SRAM(512 KB)에 실질적 제약이 없다.
 
 ```c
-struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // 09:00~22:55, 주간 18 + 야간 6
+struct { uint8_t sH,sM,eH,eM; char subj[33]; uint8_t type; } today[24];  // 09:00~22:55, 주간 18 + 야간 6
 ```
 
 ## 3. 접근 제어 / 제약
 
 - 렌더 함수(`renderLayout` 등)는 `Adafruit_GFX&` 타입에만 의존한다. 실기 초기화(`display.init()`)·전원 관리(`hibernate()`, `epd2.powerOff()`)는 렌더 함수 밖, 호출자(S8 상태머신) 책임이다. 호스트 쪽은 이 호출들을 이름만 맞춘 no-op으로 스텁한다.
-- 문자열 길이는 `lora_proto.proto.SUBJ_MAX`(20 B)·`PROF_MAX`(12 B) 그대로 — 렌더 계층은 잘라내지 않는다(상위 계층이 이미 보장, v2 §5.1).
+- 문자열 길이는 `lora_proto.proto.SUBJ_MAX`(32 B, 2026-11-12)·`PROF_MAX`(12 B) 그대로 — 렌더 계층은 잘라내지 않는다(상위 계층이 이미 보장, v2 §5.1).
 - 픽스처 JSON 키는 snake_case, C++ `RenderModel` 필드는 camelCase (S1 관례, §4.2).
 - PNG 출력은 800×480, 3색(흰/검/빨강)을 그대로 RGB 값으로 매핑해 저장한다(디더링 없음 — 실기와 동일하게 3색만 존재).
 
@@ -107,10 +107,10 @@ typedef struct {
   char     bld; uint16_t room; uint8_t unit;
   char     dateStr[6];          // "MM.DD" (2026-09-16 추가, mh 화면 스펙 미결 1)
   uint8_t  weekday;             // 1=월..7=일
-  struct { char subj[21]; char prof[13];
+  struct { char subj[33]; char prof[13];
            uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } cur, next;  // type = lora_proto SlotType
   uint8_t  nToday;
-  struct { uint8_t sH,sM,eH,eM; char subj[21]; uint8_t type; } today[24];  // §2.1
+  struct { uint8_t sH,sM,eH,eM; char subj[33]; uint8_t type; } today[24];  // §2.1
   char     newTag[9];           // "NEW-1A7F" — layout 8 전용, MAC 하위 2 B (2026-09-16 추가, mh 화면 스펙 미결 2)
   uint16_t battMv;
 } RenderModel;
