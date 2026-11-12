@@ -155,6 +155,15 @@ describe('ResvForm', () => {
     expect(api.saveResv.mock.calls[0][1]).toMatchObject({ id: 7, subject: '신입생 OT 2부' })
   })
 
+  it('사용 목적·주관 부서의 전각 영숫자는 반각으로 (#140)', async () => {
+    await mountForm({ mode: 'edit', value: resv() })
+    await control('사용 목적').setValue('ＡＩ　특강')
+    await control('주관 부서').setValue('ＩＴ')
+    await save()
+    await flushPromises()
+    expect(api.saveResv.mock.calls[0][1]).toMatchObject({ subject: 'AI 특강', professor: 'IT' })
+  })
+
   it('409 가득 참 — 사람 문장, 목록 새로 고침, 폼은 열어 둔다', async () => {
     api.saveResv.mockRejectedValue(
       new ApiError(409, MESSAGES[409], [], {

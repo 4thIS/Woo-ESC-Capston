@@ -5,10 +5,12 @@ import {
   examKey,
   floorLabel,
   floorOf,
+  halfwidth,
   resvKey,
   resvWindow,
   slotKey,
   spansOverlap,
+  SUBJ_MAX,
 } from '@/components/domain/rules'
 
 const span = (s: string, e: string) => {
@@ -19,6 +21,18 @@ const span = (s: string, e: string) => {
 const e409 = (detail: string) => new ApiError(409, MESSAGES[409], [], { detail })
 
 describe('rules', () => {
+  it('SUBJ_MAX 32 B — lora_proto LP_SUBJ_MAX (분반을 과목명 뒤에 붙인다, #140)', () => {
+    expect(SUBJ_MAX).toBe(32)
+  })
+
+  it('halfwidth — 전각 영숫자·기호와 전각 공백만 반각으로, 한글 낱자·원문자·로마 숫자는 그대로 (서버와 같다, #140)', () => {
+    expect(halfwidth('ＡＩ전자계산기구조')).toBe('AI전자계산기구조')
+    expect(halfwidth('！～０９ａｚ（１）')).toBe('!~09az(1)')
+    expect(halfwidth('웹　프로그래밍')).toBe('웹 프로그래밍')
+    const keep = '강의실 ㅋㅋ ① Ⅱ ㈜ … ㎡ ｶ'
+    expect(halfwidth(keep)).toBe(keep)
+  })
+
   it('spansOverlap — 걸치면 겹침, 끝이 맞닿으면 아님', () => {
     expect(spansOverlap(span('09:00', '11:00'), span('10:00', '12:00'))).toBe(true)
     expect(spansOverlap(span('09:00', '12:00'), span('10:00', '11:00'))).toBe(true)

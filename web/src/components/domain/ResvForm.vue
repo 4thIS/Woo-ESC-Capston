@@ -14,6 +14,7 @@ import {
   LATER_HINT,
   PROF_MAX,
   SUBJ_MAX,
+  halfwidth,
   TYPE_OPTIONS,
   conflictMessage,
   resvKey,
@@ -190,8 +191,19 @@ async function save() {
           required
           :error="errors.end"
         />
-        <Input v-model="draft.subject" label="사용 목적" :max-bytes="SUBJ_MAX" />
-        <Input v-model="draft.professor" label="주관 부서" :max-bytes="PROF_MAX" />
+        <!-- 전각 영숫자는 칸에서 반각으로 — 서버도 같은 규칙으로 저장한다 (이슈 140) -->
+        <Input
+          :model-value="draft.subject"
+          label="사용 목적"
+          :max-bytes="SUBJ_MAX"
+          @update:model-value="(v: string) => (draft.subject = halfwidth(v))"
+        />
+        <Input
+          :model-value="draft.professor"
+          label="주관 부서"
+          :max-bytes="PROF_MAX"
+          @update:model-value="(v: string) => (draft.professor = halfwidth(v))"
+        />
       </div>
       <p v-if="mode === 'edit'" class="form__hint">다른 강의실로 옮기려면 지우고 다시 만드세요.</p>
     </form>

@@ -13,6 +13,7 @@ import {
   DAY_OPTIONS,
   PROF_MAX,
   SUBJ_MAX,
+  halfwidth,
   TYPE_OPTIONS,
   conflictMessage,
   slotKey,
@@ -194,8 +195,19 @@ async function save() {
           required
           :error="errors.end"
         />
-        <Input v-model="draft.subject" label="과목명" :max-bytes="SUBJ_MAX" />
-        <Input v-model="draft.professor" label="교수" :max-bytes="PROF_MAX" />
+        <!-- 전각 영숫자는 칸에서 반각으로 — 서버도 같은 규칙으로 저장한다 (이슈 140) -->
+        <Input
+          :model-value="draft.subject"
+          label="과목명"
+          :max-bytes="SUBJ_MAX"
+          @update:model-value="(v: string) => (draft.subject = halfwidth(v))"
+        />
+        <Input
+          :model-value="draft.professor"
+          label="교수"
+          :max-bytes="PROF_MAX"
+          @update:model-value="(v: string) => (draft.professor = halfwidth(v))"
+        />
         <Select v-model="draft.type" label="유형" :options="TYPE_OPTIONS" />
       </div>
       <p v-if="value?.source === 1" class="form__hint">

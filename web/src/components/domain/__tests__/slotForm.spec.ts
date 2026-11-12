@@ -147,6 +147,19 @@ describe('SlotForm', () => {
     expect(w.emitted('saved')![0]).toEqual([{ roomId: 11, key: 's11-1-13-0', outboxIds: [7] }])
   })
 
+  it('과목명·교수의 전각 영숫자는 입력 칸에서 반각으로 — 바이트 표시가 저장 값과 같다 (#140)', async () => {
+    await mountForm({ preset: { room_id: 12, day: 3, s_h: 14, s_m: 0 } })
+    await control('과목명').setValue('ＡＩ전자계산기구조')
+    await control('교수').setValue('ＬＥＥ')
+    expect((control('과목명').element as HTMLInputElement).value).toBe('AI전자계산기구조')
+    await save()
+    await flushPromises()
+    expect(api.putSlot.mock.calls[0][1]).toMatchObject({
+      subject: 'AI전자계산기구조',
+      professor: 'LEE',
+    })
+  })
+
   it('키가 같으면 지우지 않는다', async () => {
     await mountForm({ mode: 'edit', value: slot() })
     await control('과목명').setValue('캡스톤디자인2')
