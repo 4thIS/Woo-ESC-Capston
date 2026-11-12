@@ -74,6 +74,21 @@ const char* weekdayName(uint8_t weekday) {
   return kNames[weekday - 1];
 }
 
+const BitmapImage* typeChip(uint8_t type) {
+  switch (type) {
+    case 2:
+      return &kImgChipSiheom;
+    case 3:
+      return &kImgChipHyugang;
+    case 5:
+      return &kImgChipTeukgang;
+    case 6:
+      return &kImgChipDaeyeo;
+    default:
+      return nullptr;
+  }
+}
+
 void formatHM(uint8_t h, uint8_t m, char* out, size_t cap) {
   snprintf(out, cap, "%02u:%02u", (unsigned)h, (unsigned)m);
 }

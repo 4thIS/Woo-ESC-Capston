@@ -53,7 +53,10 @@ IMAGES: list[tuple[str, str, int, int, str]] = [
     ("title_seoljeongdaegi", "kImgTitleSeoljeongdaegi", 62, 800, "설정 대기"),
     # 16px/700 칩류 — 글자 마스크만(칩 바탕 사각형·패딩은 Task4가 fillRect로 그린다)
     ("chip_oneul", "kImgChipOneul", 16, 700, "오늘"),
-    # 목록 type 약어 4종(시험·휴강·특강·대여)은 2026-11-12 삭제 — 상태 띠가 지금 상태를 보여 준다
+    ("chip_siheom", "kImgChipSiheom", 16, 700, "시험"),
+    ("chip_hyugang", "kImgChipHyugang", 16, 700, "휴강"),
+    ("chip_teukgang", "kImgChipTeukgang", 16, 700, "특강"),
+    ("chip_daeyeo", "kImgChipDaeyeo", 16, 700, "대여"),
     ("chip_byeongyeong", "kImgChipByeongyeong", 16, 700, "변경"),
 ]
 

@@ -15,6 +15,8 @@ BandStyle bandStyle(uint8_t layout);
 const BitmapImage* statusImage(uint8_t layout);
 // 1=월 ~ 7=일 → "월요일" ~ "일요일". 범위 밖은 "".
 const char* weekdayName(uint8_t weekday);
+// type 2 시험·3 휴강·5 특강·6 대여 → 칩 이미지. 1 수업·그 밖은 nullptr(그리지 않는다).
+const BitmapImage* typeChip(uint8_t type);
 // "HH:MM"
 void formatHM(uint8_t h, uint8_t m, char* out, size_t cap);
 // 상태 띠 보조 문구. 쓸 문구가 없으면 false 이고 out 은 "".
