@@ -103,6 +103,7 @@
 - SF9/BW125 기준 심볼 시간 4.096 ms → wake 프리앰블 ≈ 733 심볼. 200 B 페이로드 공중시간 ≈ 1.2 s, wake 포함 ≈ 4.3 s.
 - 프리앰블 `wake` 3.0 s 산정 근거: Rx duty 감지 간격(최대 ≈ 1.6 s) + 딥슬립 부팅·라디오 재초기화(≈ 0.5 s) + 여유. 감지가 늦어 본문을 놓친 경우는 §6.5 세션 창 + 백엔드 재시도로 흡수.
 - SF 변경 시 `RP_PREAMBLE_WAKE_MS`는 ms 단위라 자동 환산되므로 값 유지.
+- **수신기 프리앰블 설정도 wake 길이로 둔다**(2026-11-04 실측, PR #117). 깨어 있는 노드가 수신 프리앰블을 8 로 두면 wake 프레임을 절반쯤 놓쳤다(wake 7/10·normal 20/20). wake 심볼 수로 두면 wake 20/20·normal 20/20. 송신(ACK·업링크)할 때만 8 로 바꾼다.
 
 ---
 
@@ -297,13 +298,13 @@ typedef struct {
   uint8_t  lastLayout; uint8_t lastDay; uint16_t lastSlotStartMin;   // 상태키
   uint32_t lastTimeSyncEpoch; uint32_t nextStatusEpoch;
   uint8_t  slotsDay;         // slots[] 의 요일, 0 = 비어 있음
-  uint8_t  nSlots; lc::SlotRec slots[LP_SLOT_DAY_MAX];  // 오늘 슬롯만 24 × 40 B = 960 B (subj 20 B·prof 12 B + 널, lora_codec 구조체 재사용). 주간 96 은 LittleFS
-  uint8_t  nResv;  lc::ResvRec resv[24];   // 24 × 44 B = 1,056 B
+  uint8_t  nSlots; lc::SlotRec slots[LP_SLOT_DAY_MAX];  // 오늘 슬롯만 24 × 52 B = 1,248 B (subj 32 B·prof 12 B + 널, lora_codec 구조체 재사용). 주간 96 은 LittleFS
+  uint8_t  nResv;  lc::ResvRec resv[24];   // 24 × 56 B = 1,344 B
   uint8_t  nExam;  lc::ExamRec exams[8];   //  8 ×  8 B =    64 B
   uint16_t crc;
-} rtc_state_t;                           // 합계 ≈ 2.1 KB (RTC slow 8 KB 내)
+} rtc_state_t;                           // 합계 ≈ 2.7 KB (RTC slow 8 KB 내)
 ```
-- 문자열은 고정 버퍼(UTF-8, 과목 20 B, 교수 12 B)로 잘라 저장. 화면 표시 한계와 일치.
+- 문자열은 고정 버퍼(UTF-8, 과목 32 B, 교수 12 B)로 잘라 저장. 화면 표시 한계와 일치. 과목 32 B 는 분반을 과목명 뒤에 붙이기 위한 값이다(「웹프로그래밍실습 102」, 2026-11-12 — 실제 최장 「임베디드시스템개론 102」 31 B, 화면 실측으로 왼쪽 과목명·오늘 목록 모두 들어감).
 - 용량 초과 시 `STORE_FAIL` ACK. **상한(2026-10-14 결정, #74)**: 방당 주간 정규 슬롯 `LP_SLOT_WEEK_MAX` = 96(LittleFS `/schedule.bin`), 하루 `LP_SLOT_DAY_MAX` = 24, 예약 24, 시험 8. 수업을 블록마다 슬롯으로 보내 평일 하루 최대 15 × 5 = 75 에 여유를 둔 값이다. RTC 캐시에는 **오늘 슬롯만**(RenderModel `today[24]` 와 같은 수) 두고, 날짜가 바뀌면 LittleFS 에서 그날 슬롯을 다시 채운다. 서버 CSV 검사(`csv_import`)도 같은 상수로 막는다.
 
 **저장 계층 규칙 (2026-10-12 개정, 이슈 #74 결정 1·2·5)**
@@ -409,7 +410,7 @@ loop (세션 창 sessionWindowMs, 기본 10 s, 프레임 수신 시마다 연장
 세션 창 종료 후: dirty면 handleTimer()의 3~4 수행(렌더는 최대 1회)
 ```
 - 세션 창 안에서는 normal 프리앰블 프레임도 받는다(FILE_DATA/END는 normal로 온다).
-- 렌더 중 수신은 하지 않는다(렌더 후 세션 창을 3 s 재개하여 밀린 프레임 1개 수용). 그 사이 온 프레임은 백엔드 재시도로 회복.
+- 렌더 중에도 수신한다 — 패널 리프레시(≈27 s)를 기다리는 busy 콜백에서 수신·저장·ACK 를 처리하고, 리프레시 중 바뀐 내용은 dirty 로 남겨 다음 렌더에 반영한다(2026-11-04, PR #117 — 10/28 실기에서 렌더 중 미수신이 재시도를 몰리게 했다). 그래도 놓친 프레임은 백엔드 재시도로 회복.
 
 ### 6.5 handleButton (GPIO0)
 - 짧게(<1 s): `FORCE_RENDER` + STATUS 송신 (현장 확인용).
@@ -668,7 +669,7 @@ epaper-v2/
 | 상황 | 처리 |
 |---|---|
 | 프리앰블 감지 후 본문 놓침 | 세션 창 10 s 동안 깨어 있음 → 백엔드 재시도(5 s 후)가 normal/wake 무관하게 수신됨 |
-| 렌더 중 프레임 도착 | 미수신. 백엔드 재시도로 회복(BUSY ACK는 렌더 직전 도착 시에만) |
+| 렌더 중 프레임 도착 | busy 콜백에서 수신·저장·ACK(§6.4, PR #117). 놓치면 백엔드 재시도로 회복 |
 | 같은 호수 2유닛 | 백엔드가 유닛별 행으로 분해, 각자 TXN·ACK |
 | 시계 미동기 콜드 부팅 | 렌더 보류, 10 min마다 타이머 웨이크로 재확인, 다음 정각 TIME으로 복구. STATUS에 CLOCK_STALE |
 | 버전 롤오버(255→1) | 버전은 1~255 롤링(0=미정)이므로 단말은 `(new - old) mod 255 == 1`로 연속 판정 (mod 256이면 255→1이 GAP로 오판됨. 2026-09-10 정정) |

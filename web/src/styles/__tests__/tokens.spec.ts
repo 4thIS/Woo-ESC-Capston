@@ -34,6 +34,30 @@ describe('tokens.css 는 tokens.md 를 그대로 옮긴다', () => {
     }
   })
 
+  it('표시용 글자 · 페이지 여백 — 루트는 폰 값, 태블릿 · 넓은 화면에서 재정의 (tokens.md, #129)', () => {
+    const root = {
+      'font-size-display-hero': '34px',
+      'font-size-display-auth': '32px',
+      'font-size-display-band': '22px',
+      'font-size-lead': '15px',
+      'font-weight-heavy': '800',
+      'leading-display-hero': '1.2',
+      'leading-display': '1.3',
+      'leading-relaxed': '1.65',
+      'tracking-display-hero': '-0.02em',
+      'tracking-display-auth': '-0.01em',
+      'page-gutter': 'var(--space-4)',
+      'panel-inset-y': '40px',
+    }
+    for (const [name, v] of Object.entries(root)) expect(cssVar(tokens, name), name).toBe(v)
+    const at = (bp: number) => tokens.split(`@media (min-width: ${bp}px)`)[1] ?? ''
+    expect(cssVar(at(640), 'font-size-display-hero')).toBe('40px')
+    expect(cssVar(at(640), 'page-gutter')).toBe('40px')
+    expect(cssVar(at(1024), 'font-size-display-hero')).toBe('clamp(36px, 4.6vw, 60px)')
+    expect(cssVar(at(1024), 'font-size-lead')).toBe('17px')
+    expect(cssVar(at(1024), 'page-gutter')).toBe('80px')
+  })
+
   it('2층은 1층을 가리킨다 (값을 복사하지 않는다)', () => {
     expect(cssVar(tokens, 'brand')).toBe('var(--blue-600)')
     expect(cssVar(tokens, 'danger')).toBe('var(--red-700)')

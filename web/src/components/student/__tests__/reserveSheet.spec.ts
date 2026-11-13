@@ -87,6 +87,15 @@ describe('ReserveSheet — 제약은 고를 수 없게 건다 (student-room.md �
     ])
   })
 
+  it('목적의 전각 영숫자는 반각으로 — 보내는 값도 (#140)', async () => {
+    const w = mount(ReserveSheet, { props: base })
+    await w.findAll('input[name="span"]')[1].setValue()
+    await w.get('.field__control').setValue('ＡＩ 스터디')
+    expect((w.get('.field__control').element as HTMLInputElement).value).toBe('AI 스터디')
+    await w.get('form').trigger('submit')
+    expect(w.emitted('submit')![0][0]).toMatchObject({ subject: 'AI 스터디' })
+  })
+
   it('막는 이유 — 가득·3건·하루 상한, 버튼은 disabled (다 골라도)', async () => {
     const filled = async (props: Partial<{ myFutureCount: number; locked: boolean }>) => {
       const w = mount(ReserveSheet, { props: { ...base, ...props } })

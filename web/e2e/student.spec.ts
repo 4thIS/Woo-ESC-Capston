@@ -350,7 +350,7 @@ test('예약 — 날짜 칩 8개, 서버가 준 빈 구간만, 신청하면 내 
   await page.getByLabel('시작', { exact: true }).selectOption({ label: '10:00' })
   await page.getByLabel('끝', { exact: true }).selectOption({ label: '11:00' })
   await page.getByLabel(/무엇에 쓰나요/).fill('캡스톤 스터디')
-  await expect(page.getByText('19 / 20 B')).toBeVisible()
+  await expect(page.getByText('19 / 32 B')).toBeVisible()
   await expect(page.getByText('문 앞 화면에는 "학생 예약"으로만 표시돼요')).toBeVisible()
   await shot(page, 'student-reserve-390')
   await page.getByRole('button', { name: '예약하기' }).click()

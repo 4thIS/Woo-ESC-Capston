@@ -106,7 +106,7 @@ describe('AdminShell', () => {
     expect(b.w.find('.banner').exists()).toBe(false)
   })
 
-  it('사이드바 머리는 로그인한 학교 — 로고는 첫 글자, 학교 이름을 모르는 옛 세션은 ESC (#70)', async () => {
+  it('사이드바 머리는 로그인한 학교 — 로고는 첫 글자, 학교 이름을 모르는 옛 세션은 ESC + 파비콘 E (#70, logo.md)', async () => {
     setSession({ token: 't', role: 'admin', school_id: 2, school_name: '우송대', name: '관리자2' })
     const a = await mountApp()
     expect(a.w.get('.shell__logo').text()).toBe('우')
@@ -115,7 +115,8 @@ describe('AdminShell', () => {
     a.w.unmount()
     setSession({ token: 't', role: 'admin', school_id: 1, name: '관리자1' })
     const b = await mountApp()
-    expect(b.w.get('.shell__logo').text()).toBe('E')
+    expect(b.w.get('img.shell__logo-img').attributes('alt')).toBe('')
+    expect(b.w.find('.shell__logo').exists()).toBe(false)
     expect(b.w.get('.shell__brand-text b').text()).toBe('ESC')
   })
 

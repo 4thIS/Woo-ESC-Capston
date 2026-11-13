@@ -1,0 +1,22 @@
+{
+  "name": "edge_roman_numerals",
+  "_note": "Ⅰ–Ⅸ(Noto 대체 글리프)가 정보·목록 양쪽에 그려짐. Ⅹ 는 9행에 안 들어가 단위 테스트(test_bitmap_font)가 맡음",
+  "layout": 1, "bld": "E", "room": 301, "unit": 1,
+  "date_str": "10.22", "weekday": 4,
+  "cur":  {"subj": "설계실습Ⅴ", "prof": "김교수", "s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "type": 1, "flags": 1},
+  "next": {"subj": "전자기학Ⅵ", "prof": "박교수", "s_h": 14, "s_m": 0, "e_h": 14, "e_m": 50, "type": 1, "flags": 1},
+  "n_today": 9,
+  "today": [
+    {"s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "subj": "운영체제Ⅰ", "type": 1},
+    {"s_h": 10, "s_m": 0, "e_h": 10, "e_m": 50, "subj": "회로이론Ⅱ", "type": 1},
+    {"s_h": 11, "s_m": 0, "e_h": 11, "e_m": 50, "subj": "공학수학Ⅲ", "type": 1},
+    {"s_h": 12, "s_m": 0, "e_h": 12, "e_m": 50, "subj": "물리실험Ⅳ", "type": 1},
+    {"s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "subj": "설계실습Ⅴ", "type": 1},
+    {"s_h": 14, "s_m": 0, "e_h": 14, "e_m": 50, "subj": "전자기학Ⅵ", "type": 1},
+    {"s_h": 15, "s_m": 0, "e_h": 15, "e_m": 50, "subj": "신호처리Ⅶ", "type": 1},
+    {"s_h": 16, "s_m": 0, "e_h": 16, "e_m": 50, "subj": "제어공학Ⅷ", "type": 1},
+    {"s_h": 17, "s_m": 0, "e_h": 17, "e_m": 50, "subj": "통신이론Ⅸ", "type": 1}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}

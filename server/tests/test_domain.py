@@ -4,6 +4,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from lora_proto import codec as C
+from lora_proto import proto as P
 from sqlalchemy import select
 
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
@@ -255,11 +256,11 @@ def test_validation_errors(client):
             "e_h": 10,
             "e_m": 0,
             "type": 1,
-            "subject": "가" * 7,
+            "subject": "a" * (P.SUBJ_MAX + 1),
             "professor": "",
         },
-    )  # 21 B
-    assert bad.status_code == 422 and "20 B" in str(
+    )  # 상한 + 1 B
+    assert bad.status_code == 422 and f"{P.SUBJ_MAX} B" in str(
         bad.json()
     )  # Pydantic 검증 = 422 (FastAPI 표준)
     assert (

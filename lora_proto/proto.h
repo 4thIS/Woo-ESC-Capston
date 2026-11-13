@@ -15,7 +15,8 @@
 #define LP_BLD_ALL        0xFF
 #define LP_ROOM_ALL       0xFFFF
 #define LP_UNIT_ALL       0
-#define LP_SUBJ_MAX       20
+// 과목명 UTF-8 상한 — 분반을 과목명 뒤에 붙인다(「웹프로그래밍실습 102」, 2026-11-12 팀장 결정). 실제 최장 31 B
+#define LP_SUBJ_MAX       32
 #define LP_PROF_MAX       12
 // v2 §5.3 쉬는시간: 같은 날 수업 슬롯 사이 틈이 0 < 틈 <= 이 값(분)이면 쉬는시간 (#74). 판정 벡터는 room_state_vectors.json
 #define LP_BREAK_GAP_MAX_MIN 15

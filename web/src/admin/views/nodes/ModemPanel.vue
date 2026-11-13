@@ -9,11 +9,19 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import { showToast } from '@/components/ui/toast'
 import { loraApi } from '@/api/lora'
 import { ApiError } from '@/api/client'
-import type { ModemOut, TokenOut } from '@/api/types'
+import type { BuildingOut, ModemOut, TokenOut } from '@/api/types'
 import { formatKst, relativeKo } from '@/lib/time'
 
-const props = defineProps<{ modems?: ModemOut[]; loading: boolean }>()
+const props = defineProps<{ modems?: ModemOut[]; buildings?: BuildingOut[]; loading: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
+// 담당 건물 — 건물이 모뎀Pi 를 가리킨다(Building.modem_id). 보통 한 곳이지만 여러 곳이면 모두
+const buildingsOf = computed(() => {
+  const by = new Map<string, string[]>()
+  for (const b of props.buildings ?? []) {
+    if (b.modem_id) by.set(b.modem_id, [...(by.get(b.modem_id) ?? []), b.name])
+  }
+  return by
+})
 // 첫 조회가 실패하면(로딩도 아니고 데이터도 없음) "없음"이 아니라 "불러오지 못했다"
 const failed = computed(() => !props.loading && props.modems === undefined)
 
@@ -108,9 +116,21 @@ async function copy() {
     />
     <ul v-else-if="modems" class="modems">
       <li v-for="md in modems" :key="md.modem_id" class="modem">
-        <p class="modem__id">{{ md.modem_id }}</p>
+        <!-- ● gonghak-01 공학관 (admin-nodes.md). 점은 아래 배지와 같은 뜻이라 읽지 않는다 -->
+        <p class="modem__id">
+          <span
+            class="modem__dot"
+            :class="{ 'modem__dot--off': !md.connected }"
+            aria-hidden="true"
+          ></span
+          >{{ md.modem_id }}
+          <span v-if="buildingsOf.get(md.modem_id)" class="modem__bld">{{
+            buildingsOf.get(md.modem_id)!.join(' · ')
+          }}</span>
+        </p>
         <p class="modem__meta num">
           agent {{ md.agent_ver ?? '—' }} ·
+          <template v-if="md.modem_fw">fw {{ md.modem_fw }} · </template>
           <span v-if="md.last_seen_at" :title="formatKst(md.last_seen_at)">{{
             relativeKo(md.last_seen_at)
           }}</span>
@@ -197,7 +217,25 @@ async function copy() {
   margin: 0;
 }
 .modem__id {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-weight: var(--font-weight-bold);
+}
+/* 아래 배지 글자색과 같다 — 연결됨 text.1 · 끊김 danger (admin-nodes.md) */
+.modem__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-1);
+}
+.modem__dot--off {
+  background: var(--danger);
+}
+.modem__bld {
+  font-weight: var(--font-weight-regular);
+  color: var(--text-2);
 }
 .modem__meta {
   font-size: var(--font-size-sm);

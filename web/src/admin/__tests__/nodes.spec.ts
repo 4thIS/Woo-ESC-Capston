@@ -12,11 +12,13 @@ import {
 } from '@/admin/nodesView'
 import { adminApi } from '@/api/admin'
 import { loraApi } from '@/api/lora'
+import { roomsApi } from '@/api/rooms'
 import { ApiError, MESSAGES } from '@/api/client'
 import type { Enqueued, NodeOut } from '@/api/types'
 import { dismissToast, toasts } from '@/components/ui/toast'
 
 vi.mock('@/api/admin', () => ({ adminApi: { nodes: vi.fn() } }))
+vi.mock('@/api/rooms', () => ({ roomsApi: { buildings: vi.fn() } }))
 vi.mock('@/api/lora', () => ({
   loraApi: {
     modems: vi.fn(),
@@ -29,6 +31,7 @@ vi.mock('@/api/lora', () => ({
   },
 }))
 const nodesApi = vi.mocked(adminApi.nodes)
+const buildingsApi = vi.mocked(roomsApi.buildings)
 const lora = vi.mocked(loraApi, true)
 
 const node = (over: Partial<NodeOut> = {}): NodeOut => ({
@@ -83,6 +86,7 @@ beforeEach(() => {
   toasts.value.forEach((t) => dismissToast(t.id))
   nodesApi.mockReset().mockResolvedValue([node(), never({ room_id: 2, room: 402 })])
   lora.modems.mockReset().mockResolvedValue([])
+  buildingsApi.mockReset().mockResolvedValue([])
   lora.pending.mockReset().mockResolvedValue([])
   lora.syncRoom.mockReset().mockResolvedValue({ outbox_ids: [1], id: null })
   lora.broadcastTime.mockReset()
@@ -146,6 +150,24 @@ describe('nodesView', () => {
 })
 
 describe('NodesView', () => {
+  it('모뎀Pi 카드의 담당 건물은 건물 목록(modem_id)에서 — 노드 목록과 함께 읽는다 (#70)', async () => {
+    lora.modems.mockResolvedValue([
+      {
+        modem_id: 'm1',
+        agent_ver: '0.4.1',
+        modem_fw: null,
+        last_seen_at: null,
+        connected: true,
+        school_id: 1,
+      },
+    ])
+    buildingsApi.mockResolvedValue([
+      { id: 1, school_id: 1, name: '공학관', bld: 'E', modem_id: 'm1' },
+    ])
+    const w = await mountView()
+    expect(w.get('li.modem .modem__id').text()).toBe('m1 공학관')
+  })
+
   it('보고 없는 노드가 먼저, 빈 칸은 —, 응답 없음 배지 · 값은 V·dBm·버전', async () => {
     const w = await mountView()
     expect(firstCells(w)).toEqual(['공학관 402', '공학관 401'])

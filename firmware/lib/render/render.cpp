@@ -107,24 +107,49 @@ int16_t drawInfoRow(Adafruit_GFX& g, int row, const char* label, const char* val
   return drawText(g, kNanum28Bold, value, kValueX, kInfoRowBase[row], GxEPD_BLACK, kTrack28);
 }
 
+// 정보 행 칸(구분선 제외) — 값이 넘칠 때 덮는 세로 범위. terminal-epaper.md 형태 A 넘침 규칙.
+constexpr int16_t kInfoCellTop[3] = {kInfoY, kDivider1Y + 1, kDivider2Y + 1};
+constexpr int16_t kInfoCellBottom[3] = {kDivider1Y, kDivider2Y, kFooterY};  // 미포함
+constexpr int16_t kValueRight = 476;                                        // 값 영역 오른쪽 끝(x 146–476)
+constexpr int16_t kInfoChipGap = 10;                                        // 값 ↔ 변경 칩
+
 void drawInfoA(Adafruit_GFX& g, const RenderModel& m) {
   g.drawFastHLine(0, kDivider1Y, kSplitX, GxEPD_BLACK);
   g.drawFastHLine(0, kDivider2Y, kSplitX, GxEPD_BLACK);
   const int16_t subjW = drawInfoRow(g, 0, "과목명", m.cur.subj);
-  if (m.cur.flags & 0x02)
-    drawChip(g, kImgChipByeongyeong, (int16_t)(kValueX + subjW + 10),
-             (int16_t)(kInfoRowBase[0] - kInfoChipLift));
-  drawInfoRow(g, 1, "담당교수", m.cur.prof);
+  if (m.cur.flags & 0x02) {
+    // 넘치면 칩을 오른쪽 끝 x 476 에 붙이고, 칩 자리(앞 간격 포함)를 백으로 먼저 덮는다 — 칩이 이긴다.
+    const int16_t chipW = (int16_t)(kImgChipByeongyeong.w + 2 * kChipPadX);
+    int16_t chipX = (int16_t)(kValueX + subjW + kInfoChipGap);
+    if (chipX + chipW > kValueRight) {
+      chipX = (int16_t)(kValueRight - chipW);
+      g.fillRect((int16_t)(chipX - kInfoChipGap), kInfoCellTop[0], (int16_t)(chipW + kInfoChipGap),
+                 (int16_t)(kInfoCellBottom[0] - kInfoCellTop[0]), GxEPD_WHITE);
+    }
+    drawChip(g, kImgChipByeongyeong, chipX, (int16_t)(kInfoRowBase[0] - kInfoChipLift));
+  }
+  // layout 7(대여중)은 cur.prof 자리에 예약자 이름이 온다. 학생 웹 예약은 서버가 이름을 싣지 않아(공개 화면)
+  // 비어 오므로 "학생"으로 대신한다(#124, terminal-epaper.md 형태 A).
+  if (m.layout == 7)
+    drawInfoRow(g, 1, "예약자", m.cur.prof[0] ? m.cur.prof : "학생");
+  else
+    drawInfoRow(g, 1, "담당교수", m.cur.prof);
   char s[6], e[6], range[24];
   formatHM(m.cur.sH, m.cur.sM, s, sizeof s);
   formatHM(m.cur.eH, m.cur.eM, e, sizeof e);
   snprintf(range, sizeof range, "%s \xE2\x80\x93 %s", s, e);  // U+2013 en dash
   drawInfoRow(g, 2, "강의시간", range);
+  // 값 영역을 넘친 글자가 분할선 너머 목록 칸에 남지 않게 x 476 오른쪽 행 칸을 백으로(목록·분할선은 이후에
+  // 그린다).
+  for (int r = 0; r < 3; r++)
+    g.fillRect(kValueRight, kInfoCellTop[r], (int16_t)(kW - kValueRight),
+               (int16_t)(kInfoCellBottom[r] - kInfoCellTop[r]), GxEPD_WHITE);
 }
 
 void drawInfoB(Adafruit_GFX& g, const RenderModel& m) {
   if (!(m.next.flags & 0x01)) {
-    drawText(g, kNanum28Bold, "오늘 일정 없음", kPad, kNoScheduleBase, GxEPD_BLACK, kTrack28);
+    // "남은" — 하루가 끝나도 옆 목록에는 그날 수업이 보이므로 "오늘 일정 없음"은 모순으로 읽힌다.
+    drawText(g, kNanum28Bold, "오늘 남은 수업 없음", kPad, kNoScheduleBase, GxEPD_BLACK, kTrack28);
     return;
   }
   const int16_t blockH = (int16_t)(kNanum20Regular.cellH + kNextLabelGap + kNanum62ExtraBold.cellH);
@@ -135,6 +160,31 @@ void drawInfoB(Adafruit_GFX& g, const RenderModel& m) {
   formatHM(m.next.sH, m.next.sM, hm, sizeof hm);
   const int16_t tw = drawText(g, kNanum62ExtraBold, hm, kPad, base, GxEPD_BLACK, kTrack62);
   drawText(g, kNanum28Bold, m.next.subj, (int16_t)(kPad + tw + kNextTimeGap), base, GxEPD_BLACK, kTrack28);
+  // 과목(ASCII 20자)이 분할선을 넘으면 목록 칸이 이긴다 — 형태 A 와 같은 규칙(#118). 형태 B 는 행 구분선이
+  // 없어 정보 영역 세로 전체를 덮는다. 목록·분할선은 이후에 그린다.
+  g.fillRect(kValueRight, kInfoY, (int16_t)(kW - kValueRight), kInfoH, GxEPD_WHITE);
+}
+
+constexpr int16_t kTypeChipGap = 8;  // 과목 ↔ type 약어(겹치면 이 폭까지 덮는다)
+// 목록 잘림 표시 — 채운 삼각형(밑변 11 · 높이 6, 행 윗변 +15–20) + 간격 6 + "n개 더"(16/400).
+// ↑·↓ 글리프는 16 px 에서 1 px 막대라 "↑ 4개 더"가 "14개 더"로 읽혔다(#89 layout 6, #91).
+// 밑변은 홀수 — 1비트라 짝수면 꼭짓점이 반 픽셀 치우친다(#118, 꼭짓점 x 523).
+constexpr int16_t kMoreTriBase = 11;
+constexpr int16_t kMoreTriTop = 15;
+constexpr int16_t kMoreTriBottom = 20;
+constexpr int16_t kMoreTextGap = 6;
+
+void drawMoreRow(Adafruit_GFX& g, int16_t x0, int16_t top, bool up, uint8_t count) {
+  const int16_t xl = x0, xr = (int16_t)(x0 + kMoreTriBase - 1), xm = (int16_t)(x0 + (kMoreTriBase - 1) / 2);
+  const int16_t yt = (int16_t)(top + kMoreTriTop), yb = (int16_t)(top + kMoreTriBottom);
+  if (up)
+    g.fillTriangle(xm, yt, xl, yb, xr, yb, GxEPD_BLACK);  // ▲ 위로 잘림
+  else
+    g.fillTriangle(xl, yt, xr, yt, xm, yb, GxEPD_BLACK);  // ▼ 아래로 잘림
+  char more[16];
+  snprintf(more, sizeof more, "%u개 더", (unsigned)count);
+  drawText(g, kNanum16Regular, more, (int16_t)(x0 + kMoreTriBase + kMoreTextGap),
+           (int16_t)(top + kRowTextBase), GxEPD_BLACK);
 }
 
 void drawTodayList(Adafruit_GFX& g, const RenderModel& m) {
@@ -150,15 +200,12 @@ void drawTodayList(Adafruit_GFX& g, const RenderModel& m) {
   for (uint8_t r = 0; r < w.rows; r++) {
     const int16_t top = (int16_t)(rowsTop + r * kRowH);
     const int16_t base = (int16_t)(top + kRowTextBase);
-    char more[24];
     if (r == 0 && w.moreAbove > 0) {
-      snprintf(more, sizeof more, "\xE2\x86\x91 %u개 더", (unsigned)w.moreAbove);  // ↑
-      drawText(g, kNanum16Regular, more, x0, base, GxEPD_BLACK);
+      drawMoreRow(g, x0, top, true, w.moreAbove);
       continue;
     }
     if (r == w.rows - 1 && w.moreBelow > 0) {
-      snprintf(more, sizeof more, "\xE2\x86\x93 %u개 더", (unsigned)w.moreBelow);  // ↓
-      drawText(g, kNanum16Regular, more, x0, base, GxEPD_BLACK);
+      drawMoreRow(g, x0, top, false, w.moreBelow);
       continue;
     }
     const uint8_t i = (uint8_t)(w.start + r);
@@ -171,9 +218,14 @@ void drawTodayList(Adafruit_GFX& g, const RenderModel& m) {
     drawText(g, kNanum16Regular, hm, x0, base, fg);
     drawText(g, isCur ? kNanum20Bold : kNanum20Regular, t.subj, (int16_t)(x0 + kTimeW + kTimeGap), base, fg);
     const BitmapImage* chip = typeChip(t.type);
-    if (chip != nullptr)
-      drawImage(g, *chip, (int16_t)(kListX + kListW - kListPadX - chip->w), (int16_t)(base - chip->baseline),
-                fg);
+    if (chip != nullptr) {
+      // 과목이 길면(ASCII 20자) 약어 자리까지 닿는다 — 약어 앞 간격부터 행 오른쪽 끝(x 800)까지 행 높이
+      // 전체를 바탕색으로 덮고 약어를 그린다. 약어 뒤 여백(18)까지 덮어야 넘친 과목 조각이 남지 않는다.
+      const int16_t chipX = (int16_t)(kListX + kListW - kListPadX - chip->w);
+      g.fillRect((int16_t)(chipX - kTypeChipGap), top, (int16_t)(kListX + kListW - (chipX - kTypeChipGap)),
+                 kRowH, isCur ? GxEPD_BLACK : GxEPD_WHITE);
+      drawImage(g, *chip, chipX, (int16_t)(base - chip->baseline), fg);
+    }
   }
 }
 

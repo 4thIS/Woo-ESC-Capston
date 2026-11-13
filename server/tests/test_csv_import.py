@@ -95,6 +95,15 @@ def test_parse_missing_header_is_row0(app, seeded):
     assert rows == [] and errors == [CI.RowError(0, "헤더에 없는 컬럼: professor")]
 
 
+def test_parse_halfwidths_before_byte_check(app, seeded):
+    """전각 영숫자·전각 공백은 반각으로 바꾼 뒤 잰다 — 노드 글꼴에 전각이 없다 (#140)"""
+    full = "Ａ" * (P.SUBJ_MAX // 3 + 1)  # 전각이면 상한을 넘고, 반각이면 들어간다
+    rows, errors = _parse(app, HEADER + f"명지,E,301,월,09:00,10:00,1,{full},ＫＩＭ　교수\n")
+    assert errors == []
+    assert rows[0].subject == "A" * (P.SUBJ_MAX // 3 + 1)
+    assert rows[0].professor == "KIM 교수"
+
+
 @pytest.mark.parametrize(
     "line,msg",
     [
@@ -110,7 +119,10 @@ def test_parse_missing_header_is_row0(app, seeded):
         ("명지,E,301,월,09:00,09:00,1,a,", "end 09:00 ≤ start 09:00"),
         ("명지,E,301,월,09:00,10:00,실습,a,", "type: '실습' 은 수업~대여 또는 1~6"),
         ("명지,E,301,월,09:00,10:00,7,a,", "type: '7' 은 수업~대여 또는 1~6"),
-        ("명지,E,301,월,09:00,10:00,1,가나다라마바사,", "subject 21 B > 20 B (UTF-8)"),
+        (
+            f"명지,E,301,월,09:00,10:00,1,{'a' * (P.SUBJ_MAX + 1)},",
+            f"subject {P.SUBJ_MAX + 1} B > {P.SUBJ_MAX} B (UTF-8)",
+        ),
         ("명지,E,301,월,09:00,10:00,1,a,가나다라마", "professor 15 B > 12 B (UTF-8)"),
     ],
 )

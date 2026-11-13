@@ -3,9 +3,19 @@ import type { ApiError } from '@/api/client'
 import type { SlotSource, SlotType } from '@/api/types'
 import { addDays } from '@/lib/time'
 
-/** UTF-8 바이트 상한 — lora_proto LP_SUBJ_MAX / LP_PROF_MAX (서버 schemas._Span 과 같다) */
-export const SUBJ_MAX = 20
+/** UTF-8 바이트 상한 — lora_proto LP_SUBJ_MAX / LP_PROF_MAX (서버 schemas._Span 과 같다).
+ * 과목은 분반을 뒤에 붙여 32 B (「임베디드시스템개론 102」 31 B, #140) */
+export const SUBJ_MAX = 32
 export const PROF_MAX = 12
+
+/** 전각 영숫자·기호(U+FF01–FF5E)·전각 공백(U+3000) → 반각. 노드 글꼴에 전각이 없다(#140).
+ * 서버 schemas.halfwidth 와 같다 — 입력 칸에서 바꿔야 바이트 표시가 저장 값과 맞는다(전각 3 B → 1 B).
+ * NFKC 는 쓰지 않는다: 한글 낱자·①·Ⅱ·㈜ 까지 바꾼다 */
+export const halfwidth = (s: string) =>
+  s.replace(/[\uFF01-\uFF5E\u3000]/g, (c) =>
+    c === '\u3000' ? ' ' : String.fromCharCode(c.charCodeAt(0) - 0xfee0),
+  )
+
 /** 예약은 오늘~+7 일만 노드로 간다 (서버 RESV_HORIZON_DAYS) */
 export const RESV_HORIZON_DAYS = 7
 
