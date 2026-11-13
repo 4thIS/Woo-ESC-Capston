@@ -11,7 +11,7 @@
 namespace ns {
 
 constexpr uint32_t kRtcMagicBase = 0x52544300u;  // 'R''T''C' + 하위 바이트 = 레이아웃 버전
-constexpr uint32_t kRtcLayoutVer = 1;            // 구조를 바꾸면 +1 → 옛 캐시 자동 무효화
+constexpr uint32_t kRtcLayoutVer = 2;            // 구조를 바꾸면 +1 → 옛 캐시 자동 무효화
 constexpr uint32_t kRtcMagic = kRtcMagicBase | kRtcLayoutVer;
 
 struct RtcState {

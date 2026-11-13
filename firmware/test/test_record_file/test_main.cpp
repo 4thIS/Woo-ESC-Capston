@@ -75,6 +75,13 @@ size_t writeSpread(uint8_t n, uint8_t* buf, size_t cap) {
   return len;
 }
 
+// UTF-8 바이트 정확히 LP_SUBJ_MAX(32) — 한글 10자(30 B) + ASCII 2자.
+constexpr char kLongSubj[] = "가나다라마바사아자차ab";
+// UTF-8 바이트 정확히 LP_PROF_MAX(12) — 한글 4자.
+constexpr char kLongProf[] = "홍길동님";
+static_assert(sizeof(kLongSubj) - 1 == LP_SUBJ_MAX, "과목명 32 B");
+static_assert(sizeof(kLongProf) - 1 == LP_PROF_MAX, "교수 12 B");
+
 }  // namespace
 
 void test_slots_roundtrip() {
@@ -226,6 +233,48 @@ void test_resv_25_over() {
                     static_cast<int>(ns::parseResv(buf, static_cast<uint16_t>(len), out, count)));
 }
 
+// #141 — 과목명·교수가 모두 상한(32·12 B)인 슬롯 96개가 kSchedFileMax 안에 들어간다.
+void test_full_week_long_subjects_roundtrip() {
+  static lc::SlotRec in[LP_SLOT_WEEK_MAX];
+  for (uint8_t i = 0; i < LP_SLOT_WEEK_MAX; ++i) {
+    in[i] =
+        makeSlot(static_cast<uint8_t>(i % 7 + 1), static_cast<uint8_t>(6 + i / 7), 0, kLongSubj, kLongProf);
+  }
+  uint8_t buf[ns::kSchedFileMax];
+  const size_t len = ns::writeSlots(in, LP_SLOT_WEEK_MAX, buf, sizeof(buf));
+  TEST_ASSERT_GREATER_THAN_UINT(0, len);
+  TEST_ASSERT_LESS_OR_EQUAL_UINT(ns::kSchedFileMax, len);
+  static lc::SlotRec out[LP_SLOT_WEEK_MAX];
+  uint8_t count = 0;
+  TEST_ASSERT_EQUAL(static_cast<int>(ParseResult::Ok),
+                    static_cast<int>(ns::parseSlots(buf, static_cast<uint16_t>(len), out, count)));
+  TEST_ASSERT_EQUAL_UINT8(LP_SLOT_WEEK_MAX, count);
+  for (uint8_t i = 0; i < LP_SLOT_WEEK_MAX; ++i) TEST_ASSERT_TRUE(sameSlot(in[i], out[i]));
+}
+
+void test_full_resv_long_subjects_roundtrip() {
+  lc::ResvRec in[ns::kResvMax];
+  for (uint8_t i = 0; i < ns::kResvMax; ++i) {
+    in[i] = makeResv(static_cast<uint16_t>(i + 1));
+    std::strncpy(in[i].subj, kLongSubj, LP_SUBJ_MAX);
+    std::strncpy(in[i].prof, kLongProf, LP_PROF_MAX);
+  }
+  uint8_t buf[ns::kResvFileMax];
+  const size_t len = ns::writeResv(in, ns::kResvMax, buf, sizeof(buf));
+  TEST_ASSERT_GREATER_THAN_UINT(0, len);
+  TEST_ASSERT_LESS_OR_EQUAL_UINT(ns::kResvFileMax, len);
+  lc::ResvRec out[ns::kResvMax];
+  uint8_t count = 0;
+  TEST_ASSERT_EQUAL(static_cast<int>(ParseResult::Ok),
+                    static_cast<int>(ns::parseResv(buf, static_cast<uint16_t>(len), out, count)));
+  TEST_ASSERT_EQUAL_UINT8(ns::kResvMax, count);
+  for (uint8_t i = 0; i < ns::kResvMax; ++i) {
+    TEST_ASSERT_EQUAL_UINT16(in[i].resvId, out[i].resvId);
+    TEST_ASSERT_EQUAL_STRING(kLongSubj, out[i].subj);
+    TEST_ASSERT_EQUAL_STRING(kLongProf, out[i].prof);
+  }
+}
+
 void test_write_cap_too_small_zero() {
   lc::SlotRec in[2] = {makeSlot(2, 12, 0), makeSlot(3, 9, 0)};
   uint8_t buf[ns::kSchedFileMax];
@@ -256,6 +305,8 @@ int main() {
   RUN_TEST(test_resv_roundtrip);
   RUN_TEST(test_exam_roundtrip);
   RUN_TEST(test_resv_25_over);
+  RUN_TEST(test_full_week_long_subjects_roundtrip);
+  RUN_TEST(test_full_resv_long_subjects_roundtrip);
   RUN_TEST(test_write_cap_too_small_zero);
   RUN_TEST(test_slots_of_day_sorted);
   return UNITY_END();

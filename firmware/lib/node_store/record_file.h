@@ -11,11 +11,17 @@ namespace ns {
 
 constexpr uint8_t kResvMax = 24;  // v2 §5.1
 constexpr uint8_t kExamMax = 8;   // v2 §5.1
-// 레코드 최대 = 2(헤더) + 본문(슬롯 40·예약 44·시험 8 B) — [계산] 본문 최대: 슬롯 6+1+20+1+12, 예약
-// 2+8+1+20+1+12
-constexpr size_t kSchedFileMax = LP_SLOT_WEEK_MAX * (2 + 40);  // 4,032 B
-constexpr size_t kResvFileMax = kResvMax * (2 + 44);           // 1,104 B
-constexpr size_t kExamFileMax = kExamMax * (2 + 8);            //    80 B
+// 본문 최대 — 코덱 직렬화(문자열은 [길이:1][바이트] 접두) 기준. 과목명·교수 상한이 바뀌면 자동으로 따라간다.
+// 슬롯 6(day·시작 HM·끝 HM·type) + 1+LP_SUBJ_MAX + 1+LP_PROF_MAX = 52 B
+// 예약 10(resvId 2·y·m·d·시작 HM·끝 HM·type) + 1+LP_SUBJ_MAX + 1+LP_PROF_MAX = 56 B
+// 시험 8(examId 2 + 날짜 6) B
+constexpr size_t kSlotBodyMax = 6 + 1 + LP_SUBJ_MAX + 1 + LP_PROF_MAX;
+constexpr size_t kResvBodyMax = 10 + 1 + LP_SUBJ_MAX + 1 + LP_PROF_MAX;
+constexpr size_t kExamBodyMax = 8;
+// 레코드 최대 = 2(헤더) + 본문 최대
+constexpr size_t kSchedFileMax = LP_SLOT_WEEK_MAX * (2 + kSlotBodyMax);  // 5,184 B
+constexpr size_t kResvFileMax = kResvMax * (2 + kResvBodyMax);           // 1,392 B
+constexpr size_t kExamFileMax = kExamMax * (2 + kExamBodyMax);           //    80 B
 
 enum class ParseResult : uint8_t { Ok, Corrupt, OverCapacity };
 

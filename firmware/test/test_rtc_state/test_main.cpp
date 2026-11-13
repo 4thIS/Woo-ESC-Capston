@@ -48,6 +48,16 @@ void test_old_layout_magic_invalid() {
   TEST_ASSERT_FALSE(ns::rtcValid(s));
 }
 
+// 직전 레이아웃(#141 이전)으로 봉인된 캐시도 CRC 가 맞아도 무효.
+void test_prev_layout_magic_invalid() {
+  RtcState s;
+  ns::rtcClear(s);
+  ns::rtcSeal(s);
+  s.magic = ns::kRtcMagicBase | (ns::kRtcLayoutVer - 1);
+  s.crc = lc::crc16(reinterpret_cast<const uint8_t*>(&s), offsetof(RtcState, crc));
+  TEST_ASSERT_FALSE(ns::rtcValid(s));
+}
+
 void test_size_within_budget() {
   char msg[48];
   std::snprintf(msg, sizeof(msg), "sizeof(RtcState) = %u B", static_cast<unsigned>(sizeof(RtcState)));
@@ -61,6 +71,7 @@ int main() {
   RUN_TEST(test_seal_then_valid);
   RUN_TEST(test_flip_byte_invalid);
   RUN_TEST(test_old_layout_magic_invalid);
+  RUN_TEST(test_prev_layout_magic_invalid);
   RUN_TEST(test_size_within_budget);
   return UNITY_END();
 }

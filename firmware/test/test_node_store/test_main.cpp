@@ -758,6 +758,30 @@ void test_factory_reset_clears_all() {
 
 // 임의 적용 10회 뒤: write-through 로 쌓인 RTC 와, RTC 를 비우고 NVS·파일에서 다시 적재한 RTC 가
 // seal 뒤 바이트까지 같아야 한다(패딩 포함 CRC).
+// #141 — 과목명·교수가 모두 상한(32·12 B)인 96개 주간 표도 저장·재구성된다.
+void test_full_week_long_subjects_store_and_rebuild() {
+  const char* const longSubj = "가나다라마바사아자차ab";  // 32 B
+  const char* const longProf = "홍길동님";                // 12 B
+  static lc::SlotRec in[LP_SLOT_WEEK_MAX];
+  uint8_t dayCount = 0;
+  for (uint8_t i = 0; i < LP_SLOT_WEEK_MAX; ++i) {
+    in[i] = makeSlot(static_cast<uint8_t>(1 + i % 7), static_cast<uint8_t>(6 + i / 7), 0, longSubj);
+    std::strncpy(in[i].prof, longProf, LP_PROF_MAX);
+    if (in[i].day == 2) ++dayCount;
+  }
+  static uint8_t big[ns::kSchedFileMax];
+  const size_t len = ns::writeSlots(in, LP_SLOT_WEEK_MAX, big, sizeof(big));
+  TEST_ASSERT_GREATER_THAN_UINT(0, len);
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->replaceKind(LP_FILEKIND_SCHEDULE, 7, big,
+                                                        static_cast<uint16_t>(len), kToday, true));
+  ns::rtcClear(*rtc);
+  TEST_ASSERT_EQUAL(ns::LoadSource::Rebuilt, store->load(2));
+  TEST_ASSERT_EQUAL_UINT8(7, store->state().schedVer);
+  TEST_ASSERT_EQUAL_UINT8(dayCount, store->state().nSlots);
+  TEST_ASSERT_EQUAL_STRING(longSubj, store->state().slots[0].subj);
+  TEST_ASSERT_EQUAL_STRING(longProf, store->state().slots[0].prof);
+}
+
 void test_write_through_matches_rebuild() {
   TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setIdentity(ns::Identity{1, 204, 3}, 2));
   TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applySlotSet(1, makeSlot(2, 13, 0)));
@@ -824,5 +848,6 @@ int main() {
   RUN_TEST(test_set_param_known_and_unknown);
   RUN_TEST(test_factory_reset_clears_all);
   RUN_TEST(test_write_through_matches_rebuild);
+  RUN_TEST(test_full_week_long_subjects_store_and_rebuild);
   return UNITY_END();
 }
