@@ -147,6 +147,58 @@ void test_sunday_slot_matches() {
   TEST_ASSERT_EQUAL_UINT8(7, d.day);
 }
 
+// 결정 메타데이터(by·index·slotStartMin) — 상태키(cw-14)가 읽는 값이라 판정 결과와 따로 고정한다.
+void test_decision_metadata_resv() {
+  const lc::ResvRec rs[2] = {resv(26, 10, 14, 540, 600, LP_SLOTTYPE_RENTAL),  // 다른 날 — 무시
+                             resv(26, 10, 13, 540, 600, LP_SLOTTYPE_RENTAL)};
+  const sch::ScheduleView v{nullptr, 0, rs, 2, nullptr, 0};
+  const sch::LayoutDecision d = sch::determineLayout(v, kTue0930);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_RENTAL, d.layout);
+  TEST_ASSERT_TRUE(d.by == sch::Decider::Resv);
+  TEST_ASSERT_EQUAL_UINT8(1, d.index);  // resv[] 위치
+  TEST_ASSERT_EQUAL_UINT8(2, d.day);
+  TEST_ASSERT_EQUAL_UINT16(540, d.slotStartMin);
+}
+
+void test_decision_metadata_exam_slot() {
+  const lc::SlotRec ss[2] = {slot(3, 480, 530, LP_SLOTTYPE_CLASS),  // 수요일 — 무시
+                             slot(2, 540, 590, LP_SLOTTYPE_CLASS)};
+  const lc::ExamRec x = exam(26, 10, 13, 26, 10, 13);
+  const sch::ScheduleView v{ss, 2, nullptr, 0, &x, 1};
+  const sch::LayoutDecision d = sch::determineLayout(v, kTue0930);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_EXAM, d.layout);
+  TEST_ASSERT_TRUE(d.by == sch::Decider::ExamSlot);
+  TEST_ASSERT_EQUAL_UINT8(1, d.index);  // slots[] 위치
+  TEST_ASSERT_EQUAL_UINT8(2, d.day);
+  TEST_ASSERT_EQUAL_UINT16(540, d.slotStartMin);
+}
+
+void test_decision_metadata_free() {
+  const sch::ScheduleView v{nullptr, 0, nullptr, 0, nullptr, 0};
+  const sch::LayoutDecision d = sch::determineLayout(v, kTue0930);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_EMPTY, d.layout);
+  TEST_ASSERT_TRUE(d.by == sch::Decider::Free);
+  TEST_ASSERT_EQUAL_UINT8(0xFF, d.index);
+  TEST_ASSERT_EQUAL_UINT8(2, d.day);
+  TEST_ASSERT_EQUAL_UINT16(sch::kNoSlot, d.slotStartMin);
+}
+
+// 시험 종료일 다음날 00:00 후보 = kstMidnight(종료일) + 24 h. 종료일이 오늘이면 다음 자정과 정확히 같아야
+// 하고 (kstMidnight 계산이 틀리면 값이 어긋난다), 더 먼 종료일·이미 끝난 시험은 다음 자정이 이긴다.
+void test_exam_end_candidate_next_midnight() {
+  const uint32_t want = kWed0000 + 2;
+  const lc::ExamRec ends14 = exam(26, 10, 12, 26, 10, 14);  // 어제 시작, 내일 끝
+  const sch::ScheduleView v1{nullptr, 0, nullptr, 0, &ends14, 1};
+  TEST_ASSERT_EQUAL_UINT32_MESSAGE(want, sch::nextChangeAt(v1, kTue0930, 0xFFFFFFFFu), "내일 끝나는 시험");
+  const lc::ExamRec ends13 = exam(26, 10, 12, 26, 10, 13);  // 오늘 끝 — 종료일 +1 = 다음 자정
+  const sch::ScheduleView v2{nullptr, 0, nullptr, 0, &ends13, 1};
+  TEST_ASSERT_EQUAL_UINT32_MESSAGE(want, sch::nextChangeAt(v2, kTue0930, 0xFFFFFFFFu),
+                                   "오늘 끝나는 시험: 종료일 +1 일 00:00 이 다음 자정과 같아야 한다");
+  const lc::ExamRec ended = exam(26, 10, 10, 26, 10, 12);  // 어제 끝 — 후보 없음(과거)
+  const sch::ScheduleView v3{nullptr, 0, nullptr, 0, &ended, 1};
+  TEST_ASSERT_EQUAL_UINT32_MESSAGE(want, sch::nextChangeAt(v3, kTue0930, 0xFFFFFFFFu), "이미 끝난 시험");
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_load_vectors);
@@ -157,5 +209,9 @@ int main(int, char**) {
   RUN_TEST(test_other_weekday_slot_ignored);
   RUN_TEST(test_break_decider_is_next_slot);
   RUN_TEST(test_sunday_slot_matches);
+  RUN_TEST(test_decision_metadata_resv);
+  RUN_TEST(test_decision_metadata_exam_slot);
+  RUN_TEST(test_decision_metadata_free);
+  RUN_TEST(test_exam_end_candidate_next_midnight);
   return UNITY_END();
 }

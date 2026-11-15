@@ -25,6 +25,12 @@ void test_afternoon() {
   expectKst(1791866998u, 2026, 10, 13, 2, 13, 49, 58);
 }
 
+// 일요일(weekday 7) — 주 경계. 2026-10-18.
+void test_sunday() {
+  expectKst(1792249200u, 2026, 10, 18, 7, 0, 0, 0);
+  expectKst(1792283400u, 2026, 10, 18, 7, 9, 30, 0);
+}
+
 void test_year_end_last_second() {
   expectKst(1798729199u, 2026, 12, 31, 4, 23, 59, 59);
 }
@@ -56,7 +62,7 @@ void test_kst_midnight_roundtrip() {
   const sch::KstTime t = sch::toKst(1791866998u);
   const uint32_t mid = sch::kstMidnight(t.year, t.month, t.day);
   TEST_ASSERT_EQUAL_UINT32(1791817200u, mid);
-  TEST_ASSERT_EQUAL_UINT32(1791866998u - mid, 13u * 3600 + 49 * 60 + 58);
+  TEST_ASSERT_EQUAL_UINT32(13u * 3600 + 49 * 60 + 58, 1791866998u - mid);
 }
 
 void test_minute_of_day() {
@@ -73,6 +79,7 @@ int main() {
   UNITY_BEGIN();
   RUN_TEST(test_midnight_tuesday);
   RUN_TEST(test_afternoon);
+  RUN_TEST(test_sunday);
   RUN_TEST(test_year_end_last_second);
   RUN_TEST(test_year_rollover);
   RUN_TEST(test_leap_day);

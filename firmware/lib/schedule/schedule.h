@@ -6,6 +6,8 @@
 // 강의실 상태 판정 (v2 §5.3·§5.4). lora_proto/room_state_vectors.json 으로 서버 room_state 와 대조한다.
 namespace sch {
 
+// RTC 배열을 가리키는 비소유 뷰. NodeStore 변경 멤버를 부르면 배열이 바뀌므로 이전 LayoutDecision.index 는
+// 무효다 — 변경 뒤에는 다시 판정한다.
 struct ScheduleView {
   const lc::SlotRec* slots;
   uint8_t nSlots;  // 오늘 요일 슬롯(RTC slots[]). 다른 요일은 무시

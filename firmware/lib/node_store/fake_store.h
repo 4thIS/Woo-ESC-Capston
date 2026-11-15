@@ -1,7 +1,6 @@
 // 테스트용 메모리 fake. 실패 주입(failSetsAfter·failWritesAfter)과 파일 손상(truncate·putRaw)을 지원한다.
 #pragma once
 
-#include <algorithm>
 #include <cstring>
 #include <map>
 #include <string>

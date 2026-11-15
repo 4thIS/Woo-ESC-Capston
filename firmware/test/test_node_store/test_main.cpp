@@ -301,6 +301,30 @@ void test_corrupt_week_file_resets_ver0() {
   TEST_ASSERT_EQUAL_UINT8(9, store->state().slots[0].sH);
 }
 
+// 실행 중 /schedule.bin 이 사라졌는데 버전이 0 이 아니면 데이터를 잃은 것 — 손상과 같이 버전 0(부팅 재구축의
+// readKind 규칙과 같은 원칙). 첫 부팅(버전 0 + 파일 없음)은 빈 표 그대로다.
+void test_runtime_missing_week_file_resets_ver0() {
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applySlotSet(5, makeSlot(2, 12, 0)));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applySlotSet(6, makeSlot(3, 9, 0)));
+  ns::rtcSeal(*rtc);
+  TEST_ASSERT_TRUE(fs->remove("/schedule.bin"));
+  TEST_ASSERT_EQUAL(ns::LoadSource::RtcCache, store->load(2));
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail, store->applySlotSet(7, makeSlot(4, 10, 0)));
+  TEST_ASSERT_EQUAL_UINT32(0, kvVer("schedVer"));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().schedVer);
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(2, store->state().slotsDay);  // 요일은 유지
+
+  const lc::SlotRec thu = makeSlot(4, 10, 0);
+  const size_t len = ns::writeSlots(&thu, 1, body, sizeof(body));
+  TEST_ASSERT_TRUE(len > 0);
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->replaceKind(LP_FILEKIND_SCHEDULE, 8, body,
+                                                        static_cast<uint16_t>(len), kToday, true));
+  TEST_ASSERT_EQUAL_UINT8(8, store->state().schedVer);
+  TEST_ASSERT_EQUAL_UINT32(8, kvVer("schedVer"));
+  TEST_ASSERT_EQUAL_UINT8(1, readSlots(gSlots));
+}
+
 // 읽기 오류(일시적일 수 있음)는 StoreFail 만 — 버전·RTC 는 그대로.
 void test_week_read_fail_keeps_ver() {
   TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applySlotSet(5, makeSlot(2, 12, 0)));
@@ -633,6 +657,18 @@ void test_refresh_day_corrupt_resets_ver0() {
   TEST_ASSERT_EQUAL_UINT8(3, store->state().slotsDay);
 }
 
+// 실행 중 /schedule.bin 이 사라짐 — refreshDay 도 loadWeek 규칙을 따른다(버전 0·슬롯 비움·StoreFail).
+void test_refresh_day_missing_file_resets_ver0() {
+  seedStore();
+  ns::rtcSeal(*rtc);
+  TEST_ASSERT_TRUE(fs->remove("/schedule.bin"));
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail, store->refreshDay(3));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().schedVer);
+  TEST_ASSERT_EQUAL_UINT32(0, kvVer("schedVer"));
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nSlots);
+  TEST_ASSERT_EQUAL_UINT8(3, store->state().slotsDay);
+}
+
 // 일시적 읽기 오류 — 버전은 그대로, slotsDay 0 이라 다음 load(weekday) 가 다시 시도한다.
 void test_refresh_day_read_fail_retries_on_load() {
   seedStore();
@@ -672,6 +708,44 @@ void test_write_with_slots_day_zero_keeps_cache_empty() {
   TEST_ASSERT_EQUAL_UINT8(6, store->state().schedVer);
   TEST_ASSERT_EQUAL_UINT32(6, kvVer("schedVer"));
   TEST_ASSERT_EQUAL_UINT8(1, readSlots(gSlots));
+}
+
+// RTC 가 쓰레기여도(개수 필드가 상한 밖) 정적 작업 버퍼 범위를 넘어 쓰지 않는다 — 개수를 상한으로 자른다.
+// 배열은 유효한 레코드로 가득 채우고 개수만 200 으로 망가뜨린다.
+void garbleCounts() {
+  ns::rtcClear(*rtc);
+  for (uint8_t i = 0; i < ns::kResvMax; ++i)
+    rtc->resv[i] = makeResv(static_cast<uint16_t>(i + 1), 26, 10, 14);
+  for (uint8_t i = 0; i < ns::kExamMax; ++i) rtc->exams[i] = makeExam(static_cast<uint16_t>(i + 1));
+  rtc->nResv = 200;
+  rtc->nExam = 200;
+}
+
+void test_garbage_rtc_counts_are_clamped() {
+  garbleCounts();
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyResvDel(1, lc::ResvDel{9999}));
+  TEST_ASSERT_EQUAL_UINT8(ns::kResvMax, store->state().nResv);
+  TEST_ASSERT_EQUAL_UINT8(ns::kResvMax, readResv(gResv));
+
+  garbleCounts();
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyExamDel(1, lc::ExamDel{9999}));
+  TEST_ASSERT_EQUAL_UINT8(ns::kExamMax, store->state().nExam);
+  TEST_ASSERT_EQUAL_UINT8(ns::kExamMax, readExams(gExams));
+
+  garbleCounts();  // 24개로 잘려 가득 참 — 새 id 는 StoreFail
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail, store->applyResvSet(2, makeResv(99, 26, 10, 14), kToday, true));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyResvSet(2, makeResv(3, 26, 10, 15), kToday, true));
+  TEST_ASSERT_EQUAL_UINT8(ns::kResvMax, store->state().nResv);
+
+  garbleCounts();
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail, store->applyExamSet(2, makeExam(99)));
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyExamSet(2, makeExam(3)));
+  TEST_ASSERT_EQUAL_UINT8(ns::kExamMax, store->state().nExam);
+
+  garbleCounts();
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->purgePast(Date{26, 10, 15}, true));  // 전부 지난 날짜
+  TEST_ASSERT_EQUAL_UINT8(0, store->state().nResv);
+  TEST_ASSERT_EQUAL_UINT8(0, readResv(gResv));
 }
 
 void test_identity_persists() {
@@ -756,8 +830,6 @@ void test_factory_reset_clears_all() {
   TEST_ASSERT_EQUAL_UINT8(0, store->state().schedVer);
 }
 
-// 임의 적용 10회 뒤: write-through 로 쌓인 RTC 와, RTC 를 비우고 NVS·파일에서 다시 적재한 RTC 가
-// seal 뒤 바이트까지 같아야 한다(패딩 포함 CRC).
 // #141 — 과목명·교수가 모두 상한(32·12 B)인 96개 주간 표도 저장·재구성된다.
 void test_full_week_long_subjects_store_and_rebuild() {
   const char* const longSubj = "가나다라마바사아자차ab";  // 32 B
@@ -782,6 +854,8 @@ void test_full_week_long_subjects_store_and_rebuild() {
   TEST_ASSERT_EQUAL_STRING(longProf, store->state().slots[0].prof);
 }
 
+// 임의 적용 10회 뒤: write-through 로 쌓인 RTC 와, RTC 를 비우고 NVS·파일에서 다시 적재한 RTC 가
+// seal 뒤 바이트까지 같아야 한다(패딩 포함 CRC).
 void test_write_through_matches_rebuild() {
   TEST_ASSERT_EQUAL(StoreStatus::Ok, store->setIdentity(ns::Identity{1, 204, 3}, 2));
   TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applySlotSet(1, makeSlot(2, 13, 0)));
@@ -817,6 +891,7 @@ int main() {
   RUN_TEST(test_ver_write_fail_storefail);
   RUN_TEST(test_corrupt_week_file_resets_ver0);
   RUN_TEST(test_week_read_fail_keeps_ver);
+  RUN_TEST(test_runtime_missing_week_file_resets_ver0);
   RUN_TEST(test_replace_kind_sets_ver_even_if_lower);
   RUN_TEST(test_replace_corrupt_body_badpayload);
   RUN_TEST(test_replace_over_capacity_storefail_keeps_old);
@@ -840,7 +915,9 @@ int main() {
   RUN_TEST(test_load_valid_rtc_other_day_refreshes);
   RUN_TEST(test_refresh_day_switches);
   RUN_TEST(test_refresh_day_corrupt_resets_ver0);
+  RUN_TEST(test_refresh_day_missing_file_resets_ver0);
   RUN_TEST(test_refresh_day_read_fail_retries_on_load);
+  RUN_TEST(test_garbage_rtc_counts_are_clamped);
   RUN_TEST(test_write_with_slots_day_zero_keeps_cache_empty);
   RUN_TEST(test_identity_persists);
   RUN_TEST(test_identity_and_txn_store_fail_keep_rtc);

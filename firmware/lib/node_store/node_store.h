@@ -25,7 +25,20 @@ struct Identity {
 };
 enum class LoadSource : uint8_t { RtcCache, Rebuilt };
 
-// 내부 작업 버퍼는 .cpp 의 정적 버퍼를 쓴다(ESP32 스택 보호) — 인스턴스가 여럿이어도 동시 호출은 금지.
+// 내부 작업 버퍼는 .cpp 의 정적 버퍼를 쓴다(ESP32 스택 보호) — 인스턴스가 여럿이어도 동시 호출은 금지(재진입
+// 불가).
+//
+// 호출 계약(호출자 = cw 수신·부팅 코드):
+// - load() 를 다른 멤버(apply*·replaceKind·purgePast·refreshDay)보다 먼저 부른다. 예약·시험은 RTC 배열이
+//   원본이라 load 전에는 비어 있다.
+// - load() 에는 날짜가 없다 — 지난 예약 정리는 호출자가 유효한 날짜로 purgePast 를 부른다.
+// - load(0)(시계 무효)이고 RTC 가 유효하면 기존 슬롯·slotsDay 를 그대로 둔다. 시계가 유효해지면 호출자가
+//   refreshDay(weekday) 를 부르고, 자정에도 부른다. refreshDay 가 읽기 실패로 slotsDay = 0 을 남기면 호출자가
+//   다시 시도한다.
+// - 모든 변경 멤버는 RTC 를 바꾸되 봉인하지 않는다 — 잠들기 전에 호출자가 rtcSeal 한다.
+// - 재구축(load 가 RTC 를 다시 채울 때)은 호출자 소유 필드(lastLayout·lastDay·lastSlotStartMin·
+//   lastTimeSyncEpoch·nextStatusEpoch)를 0 으로 둔다.
+// - GAP·DUP 판정과 setLastTxn(Ok 일 때만 호출)은 수신 코드 몫이다.
 class NodeStore {
  public:
   NodeStore(KvStore& kv, FileStore& fs, RtcState& rtc);

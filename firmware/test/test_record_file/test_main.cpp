@@ -243,7 +243,7 @@ void test_full_week_long_subjects_roundtrip() {
   uint8_t buf[ns::kSchedFileMax];
   const size_t len = ns::writeSlots(in, LP_SLOT_WEEK_MAX, buf, sizeof(buf));
   TEST_ASSERT_GREATER_THAN_UINT(0, len);
-  TEST_ASSERT_LESS_OR_EQUAL_UINT(ns::kSchedFileMax, len);
+  TEST_ASSERT_EQUAL_UINT(ns::kSchedFileMax, len);  // 최대 길이 — 상한과 정확히 같다
   static lc::SlotRec out[LP_SLOT_WEEK_MAX];
   uint8_t count = 0;
   TEST_ASSERT_EQUAL(static_cast<int>(ParseResult::Ok),
@@ -262,7 +262,7 @@ void test_full_resv_long_subjects_roundtrip() {
   uint8_t buf[ns::kResvFileMax];
   const size_t len = ns::writeResv(in, ns::kResvMax, buf, sizeof(buf));
   TEST_ASSERT_GREATER_THAN_UINT(0, len);
-  TEST_ASSERT_LESS_OR_EQUAL_UINT(ns::kResvFileMax, len);
+  TEST_ASSERT_EQUAL_UINT(ns::kResvFileMax, len);  // 최대 길이 — 상한과 정확히 같다
   lc::ResvRec out[ns::kResvMax];
   uint8_t count = 0;
   TEST_ASSERT_EQUAL(static_cast<int>(ParseResult::Ok),

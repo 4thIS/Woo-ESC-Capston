@@ -129,8 +129,8 @@ namespace ns {
 constexpr uint8_t kResvMax = 24;  // v2 §5.1
 constexpr uint8_t kExamMax = 8;   // v2 §5.1
 // 레코드 최대 = 2(헤더) + 본문(슬롯 40·예약 44·시험 8 B) — [계산] 본문 최대: 슬롯 6+1+20+1+12, 예약 2+8+1+20+1+12
-constexpr size_t kSchedFileMax = LP_SLOT_WEEK_MAX * (2 + 40);  // 4,032 B
-constexpr size_t kResvFileMax  = kResvMax * (2 + 44);         // 1,104 B
+constexpr size_t kSchedFileMax = LP_SLOT_WEEK_MAX * (2 + 40);  // 4,032 B (#141 이후 5,184 B)
+constexpr size_t kResvFileMax  = kResvMax * (2 + 44);         // 1,104 B (#141 이후 1,392 B)
 constexpr size_t kExamFileMax  = kExamMax * (2 + 8);          //    80 B
 
 enum class ParseResult : uint8_t { Ok, Corrupt, OverCapacity };
@@ -178,7 +178,7 @@ if (before != n) return ParseResult::Corrupt;  // 정상 종료면 before == n
 ```cpp
 namespace ns {
 constexpr uint32_t kRtcMagicBase = 0x52544300u;  // 'R''T''C' + 하위 바이트 = 레이아웃 버전 ⚠️ 값은 플랜이 정함
-constexpr uint32_t kRtcLayoutVer = 1;            // 구조를 바꾸면 +1 → 옛 캐시 자동 무효화
+constexpr uint32_t kRtcLayoutVer = 1;            // 구조를 바꾸면 +1 → 옛 캐시 자동 무효화 (#141 이후 레이아웃 버전 2)
 constexpr uint32_t kRtcMagic = kRtcMagicBase | kRtcLayoutVer;
 
 struct RtcState {
@@ -202,7 +202,7 @@ bool rtcValid(const RtcState& s);  // magic == kRtcMagic && crc 일치
 ```
 **`slotsDay`(cw 승인, #119 2026-11-04):** `slots[]`가 어느 요일 것인지 담는다. `lastDay`는 cw-14의 상태키라 따로 둔다. 날짜가 바뀌었는지(다시 채울지) 판단에 쓴다. v2 §5.1 `rtc_state_t` 에 `uint8_t slotsDay; // slots[] 의 요일, 0 = 비어 있음` 을 이 PR 의 plan 수정 커밋에서 넣었다.
 
-`[계산]` 레코드 합계 24×40 + 24×44 + 8×8 = 2,080 B(호스트 sizeof 측정값 SlotRec 40·ResvRec 44·ExamRec 8 기준 `[확인]`). 실제 크기는 테스트가 출력한다. ESP32에서의 크기는 실기 빌드 때 확인 `[추정: 같을 것]`.
+`[계산]` 레코드 합계 24×40 + 24×44 + 8×8 = 2,080 B(호스트 sizeof 측정값 SlotRec 40·ResvRec 44·ExamRec 8 기준 `[확인]`) (#141 이후 SlotRec 52·ResvRec 56 → 24×52 + 24×56 + 8×8 = 2,656 B, `sizeof(RtcState)` 2,692 B `[확인: 호스트 sizeof]` — 레이아웃 버전 2). 실제 크기는 테스트가 출력한다. ESP32에서의 크기는 실기 빌드 때 확인 `[추정: 같을 것]`.
 
 - [ ] **Step 1: 테스트** — 케이스:
   - `test_cleared_is_invalid`, `test_seal_then_valid`

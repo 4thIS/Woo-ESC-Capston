@@ -76,6 +76,11 @@ uint8_t purgeResv(uint8_t n, Date today) {
   return m;
 }
 
+// RTC 개수 필드를 상한으로 자른다 — RTC 가 쓰레기여도 정적 작업 버퍼 밖을 읽고 쓰지 않게.
+uint8_t clampCount(uint8_t n, uint8_t max) {
+  return n > max ? max : n;
+}
+
 StoreStatus toStatus(ParseResult pr) {
   if (pr == ParseResult::Ok) return StoreStatus::Ok;
   return pr == ParseResult::Corrupt ? StoreStatus::BadPayload : StoreStatus::StoreFail;
@@ -103,22 +108,24 @@ const char* paramKey(uint8_t paramId) {
 
 NodeStore::NodeStore(KvStore& kv, FileStore& fs, RtcState& rtc) : kv_(kv), fs_(fs), rtc_(rtc) {}
 
-// /schedule.bin → gWeek. 없으면 빈 표. 읽기 오류(일시적일 수 있음)는 StoreFail 만.
+// /schedule.bin → gWeek. 없으면 빈 표(버전 0 일 때만 — 첫 부팅). 읽기 오류(일시적일 수 있음)는 StoreFail 만.
 // 손상(Corrupt·OverCapacity)이면 버전 0·RTC 슬롯 캐시 비움 → 다음 STATUS 버전 비교로 서버가 FILE 재동기를
-// 건다(v2 §5.1). 파일은 다시 쓰지도 지우지도 않는다 — 빈 표 뒤에 SLOT_SET 이 오면 데이터를 잃고도 새 버전을
-// 주장하게 되므로, 덮어쓰기는 재동기(replaceKind)에 맡긴다.
-// readFailed 가 있으면 읽기 오류(ReadResult::Fail)일 때만 true 로 쓴다(손상과 구별해야 하는 호출자용).
+// 건다(v2 §5.1). 쓰기는 빈 표도 파일로 남기므로 버전이 있는데 파일이 없는 것도 손상과 같이 취급한다(부팅
+// 재구축 readKind 와 같은 원칙). 파일은 다시 쓰지도 지우지도 않는다 — 빈 표 뒤에 SLOT_SET 이 오면 데이터를
+// 잃고도 새 버전을 주장하게 되므로, 덮어쓰기는 재동기(replaceKind)에 맡긴다. readFailed 가 있으면 읽기
+// 오류(ReadResult::Fail)일 때만 true 로 쓴다(손상과 구별해야 하는 호출자용).
 StoreStatus NodeStore::loadWeek(uint8_t& n, bool* readFailed) {
   n = 0;
   if (readFailed != nullptr) *readFailed = false;
   size_t len = 0;
   const ReadResult rr = fs_.read(kSchedPath, gFile, sizeof(gFile), len);
-  if (rr == ReadResult::NotFound) return StoreStatus::Ok;
-  if (rr != ReadResult::Ok) {
+  if (rr == ReadResult::NotFound && rtc_.schedVer == 0) return StoreStatus::Ok;  // 첫 부팅
+  if (rr != ReadResult::Ok && rr != ReadResult::NotFound) {
     if (readFailed != nullptr) *readFailed = true;
     return StoreStatus::StoreFail;
   }
-  if (parseSlots(gFile, static_cast<uint16_t>(len), gWeek, n) != ParseResult::Ok) {
+  if (rr == ReadResult::NotFound ||
+      parseSlots(gFile, static_cast<uint16_t>(len), gWeek, n) != ParseResult::Ok) {
     n = 0;
     (void)kv_.set(kVerSpace, kSchedVerKey, 0);  // best effort — 실패해도 RTC 버전 0 이 STATUS 로 나간다
     rtc_.schedVer = 0;
@@ -210,7 +217,7 @@ StoreStatus NodeStore::applyDayClear(uint8_t newVer, const lc::DayClear& dc) {
 }
 
 StoreStatus NodeStore::applyResvSet(uint8_t newVer, const lc::ResvRec& rec, Date today, bool clockValid) {
-  uint8_t n = rtc_.nResv;
+  uint8_t n = clampCount(rtc_.nResv, kResvMax);
   std::memcpy(gResv, rtc_.resv, sizeof(gResv));
   if (clockValid) n = purgeResv(n, today);  // 정리가 상한 검사보다 먼저
   uint8_t pos = 0;
@@ -225,7 +232,7 @@ StoreStatus NodeStore::applyResvSet(uint8_t newVer, const lc::ResvRec& rec, Date
 
 StoreStatus NodeStore::applyResvDel(uint8_t newVer, const lc::ResvDel& del) {
   uint8_t n = 0;
-  for (uint8_t i = 0; i < rtc_.nResv; ++i) {
+  for (uint8_t i = 0, cnt = clampCount(rtc_.nResv, kResvMax); i < cnt; ++i) {
     if (rtc_.resv[i].resvId == del.resvId) continue;
     std::memcpy(&gResv[n++], &rtc_.resv[i], sizeof(lc::ResvRec));
   }
@@ -233,7 +240,7 @@ StoreStatus NodeStore::applyResvDel(uint8_t newVer, const lc::ResvDel& del) {
 }
 
 StoreStatus NodeStore::applyExamSet(uint8_t newVer, const lc::ExamRec& rec) {
-  uint8_t n = rtc_.nExam;
+  uint8_t n = clampCount(rtc_.nExam, kExamMax);
   std::memcpy(gExam, rtc_.exams, sizeof(gExam));
   uint8_t pos = 0;
   while (pos < n && gExam[pos].examId != rec.examId) ++pos;
@@ -247,7 +254,7 @@ StoreStatus NodeStore::applyExamSet(uint8_t newVer, const lc::ExamRec& rec) {
 
 StoreStatus NodeStore::applyExamDel(uint8_t newVer, const lc::ExamDel& del) {
   uint8_t n = 0;
-  for (uint8_t i = 0; i < rtc_.nExam; ++i) {
+  for (uint8_t i = 0, cnt = clampCount(rtc_.nExam, kExamMax); i < cnt; ++i) {
     if (rtc_.exams[i].examId == del.examId) continue;
     std::memcpy(&gExam[n++], &rtc_.exams[i], sizeof(lc::ExamRec));
   }
@@ -282,8 +289,9 @@ StoreStatus NodeStore::replaceKind(uint8_t kind, uint8_t newVer, const uint8_t* 
 StoreStatus NodeStore::purgePast(Date today, bool clockValid) {
   if (!clockValid) return StoreStatus::Ok;
   std::memcpy(gResv, rtc_.resv, sizeof(gResv));
-  const uint8_t n = purgeResv(rtc_.nResv, today);
-  if (n == rtc_.nResv) return StoreStatus::Ok;  // 지울 것 없음 — 쓰지 않는다
+  const uint8_t cur = clampCount(rtc_.nResv, kResvMax);
+  const uint8_t n = purgeResv(cur, today);
+  if (n == cur) return StoreStatus::Ok;  // 지울 것 없음 — 쓰지 않는다
   const size_t len = writeResv(gResv, n, gFile, sizeof(gFile));
   if (n > 0 && len == 0) return StoreStatus::StoreFail;
   if (!fs_.writeAtomic(kResvPath, gFile, len)) return StoreStatus::StoreFail;
