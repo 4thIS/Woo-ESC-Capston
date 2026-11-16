@@ -54,6 +54,8 @@ class NodeStore {
   StoreStatus applyExamSet(uint8_t newVer, const lc::ExamRec&);
   StoreStatus applyExamDel(uint8_t newVer, const lc::ExamDel&);
   // FILE_END CRC 검증 뒤. body 가 안 풀리면 BadPayload, 상한 초과면 StoreFail. 버전은 무조건 newVer(v2 §3.3)
+  // RESV 는 시계가 유효하면 지난 날짜 예약을 먼저 거르고 남은 개수로 상한을 검사한다(applyResvSet 과 같은
+  // 순서).
   StoreStatus replaceKind(uint8_t kind, uint8_t newVer, const uint8_t* body, uint16_t len, Date today,
                           bool clockValid);
   StoreStatus purgePast(Date today, bool clockValid);  // clockValid 거짓이면 아무것도 안 하고 Ok

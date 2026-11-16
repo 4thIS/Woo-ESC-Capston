@@ -65,6 +65,11 @@ bool isPast(const lc::ResvRec& r, Date today) {
   return r.d < today.d;
 }
 
+// parseResvSkipping 용 거르개 — ctx 는 const Date*.
+bool skipPast(const lc::ResvRec& r, const void* ctx) {
+  return isPast(r, *static_cast<const Date*>(ctx));
+}
+
 // gResv[0, n) 에서 today 이전 날짜를 지운다. 반환 = 남은 개수.
 uint8_t purgeResv(uint8_t n, Date today) {
   uint8_t m = 0;
@@ -272,9 +277,9 @@ StoreStatus NodeStore::replaceKind(uint8_t kind, uint8_t newVer, const uint8_t* 
       sortWeek(n);
       return commitSlots(newVer, n);
     case LP_FILEKIND_RESV:
-      st = toStatus(parseResv(body, len, gResv, n));
+      // 지난 예약은 파싱 중에 거른다 — 정리가 상한 검사보다 먼저(시계 무효면 거르지 않는다)
+      st = toStatus(parseResvSkipping(body, len, gResv, n, clockValid ? skipPast : nullptr, &today));
       if (st != StoreStatus::Ok) return st;
-      if (clockValid) n = purgeResv(n, today);
       return commitResv(newVer, n);
     case LP_FILEKIND_EXAM:
       st = toStatus(parseExams(body, len, gExam, n));

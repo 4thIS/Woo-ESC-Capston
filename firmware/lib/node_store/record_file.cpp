@@ -6,9 +6,10 @@ namespace {
 
 // 레코드 스트림을 순회하며 kind 의 타입만 받아 디코드한다. accept(rec) 가 false 면 OverCapacity.
 // max 는 out 의 용량 — 넘는 레코드는 out 에 쓰지 않는다.
-template <typename Rec, typename Dec, typename Accept>
+// skip(rec) 가 true 인 레코드는 형식 검증만 하고 count·accept·상한에 넣지 않는다.
+template <typename Rec, typename Dec, typename Accept, typename Skip>
 ParseResult parseImpl(const uint8_t* body, uint16_t n, Rec* out, uint8_t& count, uint8_t recType, uint8_t max,
-                      Dec dec, Accept accept) {
+                      Dec dec, Accept accept, Skip skip) {
   count = 0;
   uint16_t pos = 0, before = 0;
   uint8_t t = 0, len = 0;
@@ -17,6 +18,7 @@ ParseResult parseImpl(const uint8_t* body, uint16_t n, Rec* out, uint8_t& count,
     if (t != recType) return ParseResult::Corrupt;
     Rec r{};
     if (!dec(rec, len, r)) return ParseResult::Corrupt;
+    if (skip(r)) continue;
     if (count >= max || !accept(r)) return ParseResult::OverCapacity;
     out[count++] = r;
   }
@@ -44,21 +46,31 @@ size_t writeImpl(const Rec* in, uint8_t count, uint8_t* out, size_t cap, uint8_t
 
 ParseResult parseSlots(const uint8_t* body, uint16_t n, lc::SlotRec* out, uint8_t& count) {
   uint8_t perDay[8] = {};  // 인덱스 = 요일 1..7
-  return parseImpl(body, n, out, count, LP_TYPE_SLOT_SET, LP_SLOT_WEEK_MAX, lc::decSlotBody,
-                   [&perDay](const lc::SlotRec& r) {
-                     if (r.day < 1 || r.day > 7) return false;
-                     return ++perDay[r.day] <= LP_SLOT_DAY_MAX;
-                   });
+  return parseImpl(
+      body, n, out, count, LP_TYPE_SLOT_SET, LP_SLOT_WEEK_MAX, lc::decSlotBody,
+      [&perDay](const lc::SlotRec& r) {
+        if (r.day < 1 || r.day > 7) return false;
+        return ++perDay[r.day] <= LP_SLOT_DAY_MAX;
+      },
+      [](const lc::SlotRec&) { return false; });
+}
+
+ParseResult parseResvSkipping(const uint8_t* body, uint16_t n, lc::ResvRec* out, uint8_t& count,
+                              ResvSkipFn skip, const void* ctx) {
+  return parseImpl(
+      body, n, out, count, LP_TYPE_RESV_SET, kResvMax, lc::decResvBody,
+      [](const lc::ResvRec&) { return true; },
+      [skip, ctx](const lc::ResvRec& r) { return skip != nullptr && skip(r, ctx); });
 }
 
 ParseResult parseResv(const uint8_t* body, uint16_t n, lc::ResvRec* out, uint8_t& count) {
-  return parseImpl(body, n, out, count, LP_TYPE_RESV_SET, kResvMax, lc::decResvBody,
-                   [](const lc::ResvRec&) { return true; });
+  return parseResvSkipping(body, n, out, count, nullptr, nullptr);
 }
 
 ParseResult parseExams(const uint8_t* body, uint16_t n, lc::ExamRec* out, uint8_t& count) {
-  return parseImpl(body, n, out, count, LP_TYPE_EXAM_SET, kExamMax, lc::decExamBody,
-                   [](const lc::ExamRec&) { return true; });
+  return parseImpl(
+      body, n, out, count, LP_TYPE_EXAM_SET, kExamMax, lc::decExamBody,
+      [](const lc::ExamRec&) { return true; }, [](const lc::ExamRec&) { return false; });
 }
 
 size_t writeSlots(const lc::SlotRec* in, uint8_t count, uint8_t* out, size_t cap) {

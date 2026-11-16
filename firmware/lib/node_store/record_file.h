@@ -32,6 +32,12 @@ enum class ParseResult : uint8_t { Ok, Corrupt, OverCapacity };
 // Ok 가 아니면 out·count 내용은 믿지 말 것.
 ParseResult parseSlots(const uint8_t* body, uint16_t n, lc::SlotRec* out, uint8_t& count);
 ParseResult parseResv(const uint8_t* body, uint16_t n, lc::ResvRec* out, uint8_t& count);
+// parseResv 에 거르개를 더한 변형. skip(rec, ctx) 가 true 인 레코드는 형식 검증만 하고 out·count·상한에서
+// 뺀다 — 걸러낸 뒤 남은 개수가 kResvMax 를 넘을 때만 OverCapacity. 형식이 깨진 레코드는 걸러지기 전에
+// Corrupt 다. skip 이 nullptr 이면 parseResv 와 같다.
+using ResvSkipFn = bool (*)(const lc::ResvRec& rec, const void* ctx);
+ParseResult parseResvSkipping(const uint8_t* body, uint16_t n, lc::ResvRec* out, uint8_t& count,
+                              ResvSkipFn skip, const void* ctx);
 ParseResult parseExams(const uint8_t* body, uint16_t n, lc::ExamRec* out, uint8_t& count);
 
 // 반환 = 쓴 바이트 수. cap 부족·인코드 실패·상한 초과 count 면 0 (count 0 도 0 B).

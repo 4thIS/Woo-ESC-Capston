@@ -214,6 +214,68 @@ void test_exam_roundtrip() {
   }
 }
 
+bool skipById(const lc::ResvRec& r, const void* ctx) {
+  return r.resvId == *static_cast<const uint16_t*>(ctx);
+}
+
+// 25개 파일(id 1..25)을 buf 에 만든다. 반환 = 바이트 수.
+size_t build25(uint8_t* buf, size_t cap) {
+  size_t len = 0;
+  for (uint8_t i = 0; i < ns::kResvMax + 1; ++i) {
+    const size_t bl = lc::encResvBody(makeResv(static_cast<uint16_t>(i + 1)), buf + len + 2, cap - len - 2);
+    TEST_ASSERT_GREATER_THAN_UINT(0, bl);
+    buf[len] = LP_TYPE_RESV_SET;
+    buf[len + 1] = static_cast<uint8_t>(bl);
+    len += 2 + bl;
+  }
+  return len;
+}
+
+// 걸러낸 레코드는 상한에 세지 않는다 — 25개 중 1개를 거르면 24개로 Ok.
+void test_resv_skipping_filters_before_cap() {
+  uint8_t buf[ns::kResvFileMax + 64];
+  const size_t len = build25(buf, sizeof(buf));
+  const uint16_t skipId = 7;
+  lc::ResvRec out[ns::kResvMax];
+  uint8_t count = 0;
+  TEST_ASSERT_EQUAL(static_cast<int>(ParseResult::Ok),
+                    static_cast<int>(ns::parseResvSkipping(buf, static_cast<uint16_t>(len), out, count,
+                                                           skipById, &skipId)));
+  TEST_ASSERT_EQUAL_UINT8(ns::kResvMax, count);
+  for (uint8_t i = 0; i < count; ++i) TEST_ASSERT_NOT_EQUAL(7, out[i].resvId);
+}
+
+// 아무것도 안 걸러지면(또는 skip 이 nullptr 이면) 25개 → OverCapacity, parseResv 와 같다.
+void test_resv_skipping_none_filtered_over() {
+  uint8_t buf[ns::kResvFileMax + 64];
+  const size_t len = build25(buf, sizeof(buf));
+  const uint16_t skipId = 999;
+  lc::ResvRec out[ns::kResvMax];
+  uint8_t count = 0;
+  TEST_ASSERT_EQUAL(static_cast<int>(ParseResult::OverCapacity),
+                    static_cast<int>(ns::parseResvSkipping(buf, static_cast<uint16_t>(len), out, count,
+                                                           skipById, &skipId)));
+  TEST_ASSERT_EQUAL(
+      static_cast<int>(ParseResult::OverCapacity),
+      static_cast<int>(ns::parseResvSkipping(buf, static_cast<uint16_t>(len), out, count, nullptr, nullptr)));
+}
+
+// 걸러질 레코드라도 형식이 깨졌거나 뒤에 잘린 레코드가 있으면 Corrupt.
+void test_resv_skipping_corrupt_still_corrupt() {
+  uint8_t buf[ns::kResvFileMax + 64];
+  const size_t len = build25(buf, sizeof(buf));
+  const uint16_t skipId = 1;
+  lc::ResvRec out[ns::kResvMax];
+  uint8_t count = 0;
+  TEST_ASSERT_EQUAL(static_cast<int>(ParseResult::Corrupt),
+                    static_cast<int>(ns::parseResvSkipping(buf, static_cast<uint16_t>(len - 1), out, count,
+                                                           skipById, &skipId)));
+  buf[1] = 1;  // 첫(걸러질) 레코드의 LEN 을 본문 디코드가 못 받는 값으로
+  TEST_ASSERT_EQUAL(static_cast<int>(ParseResult::Corrupt),
+                    static_cast<int>(ns::parseResvSkipping(buf, static_cast<uint16_t>(len), out, count,
+                                                           skipById, &skipId)));
+}
+
 void test_resv_25_over() {
   // writeResv 는 25개를 거부하므로, 24개 파일 뒤에 레코드 하나를 직접 이어 붙여 25개짜리 파일을 만든다.
   lc::ResvRec in[ns::kResvMax];
@@ -305,6 +367,9 @@ int main() {
   RUN_TEST(test_resv_roundtrip);
   RUN_TEST(test_exam_roundtrip);
   RUN_TEST(test_resv_25_over);
+  RUN_TEST(test_resv_skipping_filters_before_cap);
+  RUN_TEST(test_resv_skipping_none_filtered_over);
+  RUN_TEST(test_resv_skipping_corrupt_still_corrupt);
   RUN_TEST(test_full_week_long_subjects_roundtrip);
   RUN_TEST(test_full_resv_long_subjects_roundtrip);
   RUN_TEST(test_write_cap_too_small_zero);

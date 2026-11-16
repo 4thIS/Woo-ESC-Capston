@@ -404,6 +404,66 @@ void test_replace_resv_purges_past() {
   TEST_ASSERT_EQUAL_UINT32(8, kvVer("resvVer"));
 }
 
+// 예약 레코드 n 개(상한 24 초과 가능)를 [type][len][본문] 으로 body 에 쓴다. 반환 = 바이트 수.
+// writeResv 는 상한을 넘는 개수를 거부하므로 FILE 본문을 직접 만든다.
+size_t buildResvBody(const lc::ResvRec* in, size_t n) {
+  size_t len = 0;
+  for (size_t i = 0; i < n; ++i) {
+    const size_t bl = lc::encResvBody(in[i], body + len + 2, sizeof(body) - len - 2);
+    TEST_ASSERT_TRUE(bl > 0);
+    body[len] = LP_TYPE_RESV_SET;
+    body[len + 1] = static_cast<uint8_t>(bl);
+    len += 2 + bl;
+  }
+  return len;
+}
+
+// 어제 1 + 오늘 이후 24 — 정리가 상한 검사보다 먼저면 24개가 남아 들어간다.
+void test_replace_resv_purges_before_cap() {
+  lc::ResvRec in[ns::kResvMax + 1];
+  in[0] = makeResv(1, 26, 10, 12);
+  for (uint16_t i = 0; i < ns::kResvMax; ++i) in[1 + i] = makeResv(static_cast<uint16_t>(10 + i), 26, 10, 14);
+  const size_t len = buildResvBody(in, ns::kResvMax + 1);
+  TEST_ASSERT_EQUAL(StoreStatus::Ok,
+                    store->replaceKind(LP_FILEKIND_RESV, 8, body, static_cast<uint16_t>(len), kToday, true));
+  TEST_ASSERT_EQUAL_UINT8(24, store->state().nResv);
+  for (uint8_t i = 0; i < store->state().nResv; ++i) TEST_ASSERT_NOT_EQUAL(1, store->state().resv[i].resvId);
+  TEST_ASSERT_EQUAL_UINT8(24, readResv(gResv));
+  TEST_ASSERT_EQUAL_UINT8(8, store->state().resvVer);
+  TEST_ASSERT_EQUAL_UINT32(8, kvVer("resvVer"));
+}
+
+// 정리 뒤에도 25개면 StoreFail — 옛 데이터·버전 유지.
+void test_replace_resv_over_cap_after_purge_fails() {
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyResvSet(5, makeResv(500, 26, 10, 14), kToday, true));
+  lc::ResvRec in[ns::kResvMax + 1];
+  for (uint16_t i = 0; i < ns::kResvMax + 1; ++i) in[i] = makeResv(static_cast<uint16_t>(10 + i), 26, 10, 14);
+  const size_t len = buildResvBody(in, ns::kResvMax + 1);
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail,
+                    store->replaceKind(LP_FILEKIND_RESV, 8, body, static_cast<uint16_t>(len), kToday, true));
+  TEST_ASSERT_EQUAL_UINT8(1, store->state().nResv);
+  TEST_ASSERT_EQUAL_UINT16(500, store->state().resv[0].resvId);
+  TEST_ASSERT_EQUAL_UINT8(1, readResv(gResv));
+  TEST_ASSERT_EQUAL_UINT8(5, store->state().resvVer);
+  TEST_ASSERT_EQUAL_UINT32(5, kvVer("resvVer"));
+}
+
+// 시계 무효면 정리하지 않으므로 25개 그대로 — StoreFail, 옛 데이터·버전 유지.
+void test_replace_resv_clock_invalid_no_purge() {
+  TEST_ASSERT_EQUAL(StoreStatus::Ok, store->applyResvSet(5, makeResv(500, 26, 10, 14), kToday, true));
+  lc::ResvRec in[ns::kResvMax + 1];
+  in[0] = makeResv(1, 26, 10, 12);
+  for (uint16_t i = 0; i < ns::kResvMax; ++i) in[1 + i] = makeResv(static_cast<uint16_t>(10 + i), 26, 10, 14);
+  const size_t len = buildResvBody(in, ns::kResvMax + 1);
+  TEST_ASSERT_EQUAL(StoreStatus::StoreFail,
+                    store->replaceKind(LP_FILEKIND_RESV, 8, body, static_cast<uint16_t>(len), kToday, false));
+  TEST_ASSERT_EQUAL_UINT8(1, store->state().nResv);
+  TEST_ASSERT_EQUAL_UINT16(500, store->state().resv[0].resvId);
+  TEST_ASSERT_EQUAL_UINT8(1, readResv(gResv));
+  TEST_ASSERT_EQUAL_UINT8(5, store->state().resvVer);
+  TEST_ASSERT_EQUAL_UINT32(5, kvVer("resvVer"));
+}
+
 // 예약 24개 중 3개가 어제 — 정리가 상한 검사보다 먼저라 새 예약이 들어간다.
 void test_resv_purge_before_cap() {
   for (uint16_t i = 0; i < ns::kResvMax; ++i) {
@@ -897,6 +957,9 @@ int main() {
   RUN_TEST(test_replace_over_capacity_storefail_keeps_old);
   RUN_TEST(test_replace_empty_writes_empty_file);
   RUN_TEST(test_replace_resv_purges_past);
+  RUN_TEST(test_replace_resv_purges_before_cap);
+  RUN_TEST(test_replace_resv_over_cap_after_purge_fails);
+  RUN_TEST(test_replace_resv_clock_invalid_no_purge);
   RUN_TEST(test_resv_purge_before_cap);
   RUN_TEST(test_resv_purge_skipped_when_clock_invalid);
   RUN_TEST(test_resv_set_replace_and_del);
