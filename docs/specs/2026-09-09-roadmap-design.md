@@ -105,7 +105,7 @@ typedef struct {
   struct { char subj[33]; char prof[13];
            uint8_t sH,sM,eH,eM; uint8_t type; uint8_t flags; } cur, next;
                                 // type = lora_proto SlotType(1 수업·2 시험·3 휴강·4 빈강의실·5 특강·6 대여, 0 = 비어 있음)
-                                // flags bit0 = 존재함, bit1 = 변경 배지(휴강·보강·변경)
+                                // flags bit0 = 존재함, bit1 = 쓰지 않음(변경 배지는 2026-11-16 삭제, #124)
   uint8_t  nToday;
   struct { uint8_t sH,sM,eH,eM; char subj[33]; uint8_t type; } today[24];  // 하루 최대 24 동결(S3 spec §2.1). 넘치면 시작 순 앞 24개만. 렌더는 표시 상한 N 개만 그린다
   char     newTag[9];           // "NEW-1A7F" — layout 8 전용, MAC 하위 2 B (2026-09-16 추가, mh 화면 스펙 미결 2)
@@ -288,7 +288,7 @@ GxEPD2와 같은 `drawPixel/print` 인터페이스의 호스트용 프레임버�
 | 4 | S6 파이프라인 + fake 모뎀 테스트 ✔, **계약 7개 동결**, **Pi↔Pi 통합** | 레이아웃 8개 PNG 리뷰 완료 | S5 링크 ✔, `api.py`, **Pi↔Pi 통합**, 토큰·`components/ui` 구현 | 관리자 화면 구현 디자인 QA |
 | 5~7 | P0 SF 실측 → S7 모뎀 펌웨어 → S8 노드 awake | 실제 패널 렌더, S7 지원, S8 저장·`nextChangeAt` | 관리자 웹 구현·실기 연결 | 관리자 웹 완성 시안·스펙(로그인·노드 배정·모니터) + QA |
 | **7~8** | **첫 E2E — 중간점검** (메인Pi → 모뎀Pi → 노드 1대) | | | |
-| 8~10 | S9 WOR·프로비저닝 | 화면 폴리싱·변경 배지 | S10 학생웹 API·대시보드 집계·화면 구현 | S10 화면 시안·스펙 + QA |
+| 8~10 | S9 WOR·프로비저닝 | 화면 폴리싱 | S10 학생웹 API·대시보드 집계·화면 구현 | S10 화면 시안·스펙 + QA |
 | 11 | S11 Pi 이식, 2대 소크, 판넬·보고서 | | | |
 | **12** | **경진대회** | | | |
 | 13~15 | 전력 실측, 케이스, 최종발표 | | | |
