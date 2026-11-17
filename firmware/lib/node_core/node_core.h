@@ -59,8 +59,8 @@ constexpr uint32_t kReqStatusSpreadMs = 300000;   // TIME REQUEST_STATUS → 0~3
 constexpr uint32_t kStaleRetryFirstMs = 30000;    // 보냈는데 시계가 안 오면 30 s 뒤부터 두 배씩(충돌 대비)
 constexpr uint32_t kStaleRetryMs = 600000;        // … 최대 10 min(§9)
 constexpr uint32_t kBusyRetryMs = 5000;           // CAD busy 로 못 보냈으면 5 s 뒤 다시
-constexpr uint32_t kAfterTimeStatusMs =
-    3000;  // CLOCK_STALE 로 알린 뒤 시각을 받으면 이만큼 뒤 STATUS 한 번 더
+// CLOCK_STALE 로 알린 뒤 시각을 받으면 이만큼 뒤 STATUS 한 번 더
+constexpr uint32_t kAfterTimeStatusMs = 3000;
 
 struct LinkInfo {
   int8_t rssiLast;   // 마지막으로 받은 내 프레임의 RSSI(dBm)

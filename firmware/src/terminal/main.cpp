@@ -15,6 +15,7 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <esp_random.h>
+#include <esp_timer.h>
 #include <sys/time.h>
 
 #include "esp_store.h"
@@ -39,7 +40,8 @@
 namespace {
 
 constexpr uint8_t FW_VER = 4;
-// 배터리(Heltec V3.2): GPIO37 로 분압(390 k/100 k)을 켜고 GPIO1 을 잰다. 극성은 Task 3 실기에서 확정
+// 배터리(Heltec V3.2): GPIO37 HIGH 로 분압(390 k/100 k)을 켜고 GPIO1 을 잰다(2026-11-17 실기 확인, 3.5~4.0
+// V). V3.0/3.1 보드는 극성이 반대(LOW)라 이 값으로는 0 근처가 나온다
 constexpr int VBAT_ADC = 1, VBAT_CTRL = 37;
 constexpr uint8_t VBAT_CTRL_ON = HIGH;
 constexpr float VBAT_DIVIDER = 4.9f;
@@ -218,7 +220,7 @@ void sendAck(const lc::Header& req, uint8_t status, uint8_t detail) {
 }
 
 bool sendStatus(uint32_t now, uint8_t& flags) {
-  const uint32_t up = millis() / 3600000UL;
+  const uint64_t up = (uint64_t)esp_timer_get_time() / 3600000000ULL;  // millis 는 49.7 일에 넘어간다
   const lc::Status s =
       nc::buildStatus(g_rtc, now, g_battMv, FW_VER, g_layout,
                       nc::LinkInfo{g_rssiLast, g_snrX4, (uint16_t)(up > 65535 ? 65535 : up)});
@@ -251,11 +253,15 @@ void maybeSendStatus() {
   const uint32_t now = (uint32_t)time(nullptr);
   const bool clk = clockValid();
   if (!g_status.due(ms, clk, now, g_rtc.nextStatusEpoch)) return;
+  if (g_irq)
+    return;  // 받은 프레임이 있으면 먼저 처리 — CAD(standby)가 그 프레임을 버리지 않게, 다음 틱에 보낸다
   uint8_t flags = 0;
   const bool done = sendStatus(now, flags);
   g_status.sent(ms, done, clk, flags);
   if (clk) {
-    g_rtc.nextStatusEpoch = nc::nextDailyStatus(now, nc::kStatusHourUtc, g_spread);
+    // now + 30 min 기준 — 18:00:05 TIME REQUEST_STATUS 로 막 보냈으면 같은 날 18:00+분산 슬롯은 건너뛴다(하루
+    // 2회 방지)
+    g_rtc.nextStatusEpoch = nc::nextDailyStatus(now + nc::kStatusSpreadSec, nc::kStatusHourUtc, g_spread);
     ns::rtcSeal(g_rtc);
   }
 }

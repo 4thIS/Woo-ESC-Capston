@@ -343,7 +343,7 @@ void test_status_plan_request_and_sent() {
   p.sent(3000, false, false);  // CAD busy → 5 s 뒤
   TEST_ASSERT_FALSE(p.due(7999, false, 0, 0));
   TEST_ASSERT_TRUE(p.due(8000, false, 0, 0));
-  p.sent(8000, true, false);  // 보냈지만 시계 없음 → 10 min 뒤
+  p.sent(8000, true, false);  // 보냈지만 시계 없음 → 30 s 뒤(이후 두 배씩)
   TEST_ASSERT_FALSE(p.due(8000 + kStaleRetryFirstMs - 1, false, 0, 0));
   TEST_ASSERT_TRUE(p.due(8000 + kStaleRetryFirstMs, false, 0, 0));
   TEST_ASSERT_FALSE(p.due(8000 + kStaleRetryFirstMs, true, NOW, 0));  // 그 사이 시계가 맞으면 건너뜀
