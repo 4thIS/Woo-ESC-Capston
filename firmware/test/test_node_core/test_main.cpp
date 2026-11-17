@@ -344,10 +344,10 @@ void test_status_plan_request_and_sent() {
   TEST_ASSERT_FALSE(p.due(7999, false, 0, 0));
   TEST_ASSERT_TRUE(p.due(8000, false, 0, 0));
   p.sent(8000, true, false);  // 보냈지만 시계 없음 → 10 min 뒤
-  TEST_ASSERT_FALSE(p.due(8000 + kStaleRetryMs - 1, false, 0, 0));
-  TEST_ASSERT_TRUE(p.due(8000 + kStaleRetryMs, false, 0, 0));
-  TEST_ASSERT_FALSE(p.due(8000 + kStaleRetryMs, true, NOW, 0));  // 그 사이 시계가 맞으면 건너뜀
-  p.request(9000, 300);                                          // 새 요청은 시계 재시도 예약을 대신한다
+  TEST_ASSERT_FALSE(p.due(8000 + kStaleRetryFirstMs - 1, false, 0, 0));
+  TEST_ASSERT_TRUE(p.due(8000 + kStaleRetryFirstMs, false, 0, 0));
+  TEST_ASSERT_FALSE(p.due(8000 + kStaleRetryFirstMs, true, NOW, 0));  // 그 사이 시계가 맞으면 건너뜀
+  p.request(9000, 300);                                               // 새 요청은 시계 재시도 예약을 대신한다
   TEST_ASSERT_TRUE(p.due(9300, true, NOW, 0));
   p.sent(9300, true, true);
   TEST_ASSERT_FALSE(p.due(9300 + kStaleRetryMs, true, NOW, 0));
@@ -374,6 +374,26 @@ void test_status_plan_no_resend_without_stale() {
   p.sent(0, true, true, 0);  // 시계 정상으로 알렸다
   p.onTimeSet(100);
   TEST_ASSERT_FALSE(p.due(100 + kAfterTimeStatusMs, true, NOW, 0));
+}
+
+void test_status_plan_stale_retry_backs_off() {
+  StatusPlan p;
+  uint32_t t = 0;
+  const uint32_t want[] = {30000,  60000,  120000, 240000,
+                           480000, 600000, 600000};  // 30 s 부터 두 배, 최대 10 min
+  for (uint32_t w : want) {
+    p.sent(t, true, false, LP_STATUSFLAG_CLOCK_STALE);
+    TEST_ASSERT_FALSE(p.due(t + w - 1, false, 0, 0));
+    TEST_ASSERT_TRUE(p.due(t + w, false, 0, 0));
+    t += w;
+  }
+  p.sent(t, false, false, LP_STATUSFLAG_CLOCK_STALE);  // 채널 busy 는 단계를 올리지 않는다
+  TEST_ASSERT_TRUE(p.due(t + kBusyRetryMs, false, 0, 0));
+  p.onTimeSet(t);
+  p.sent(t + kAfterTimeStatusMs, true, true, 0);  // 시계 정상으로 알렸다 → 처음부터
+  p.sent(t + 10000, true, false, LP_STATUSFLAG_CLOCK_STALE);
+  TEST_ASSERT_FALSE(p.due(t + 10000 + kStaleRetryFirstMs - 1, false, 0, 0));
+  TEST_ASSERT_TRUE(p.due(t + 10000 + kStaleRetryFirstMs, false, 0, 0));
 }
 
 void test_status_plan_daily_and_wrap() {
@@ -678,6 +698,7 @@ int main() {
   RUN_TEST(test_mac_spread_deterministic);
   RUN_TEST(test_status_plan_request_and_sent);
   RUN_TEST(test_status_plan_daily_and_wrap);
+  RUN_TEST(test_status_plan_stale_retry_backs_off);
   RUN_TEST(test_status_plan_resends_after_time_when_stale_sent);
   RUN_TEST(test_status_plan_no_resend_without_stale);
   return UNITY_END();

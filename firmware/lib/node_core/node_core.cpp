@@ -361,9 +361,12 @@ void StatusPlan::sent(uint32_t nowMs, bool ok, bool clockOk, uint8_t flags) {
   if (!clockOk) {
     pending_ = true;
     onlyIfStale_ = true;
-    dueMs_ = nowMs + kStaleRetryMs;
+    const uint32_t wait = staleTries_ >= 5 ? kStaleRetryMs : kStaleRetryFirstMs << staleTries_;
+    dueMs_ = nowMs + (wait < kStaleRetryMs ? wait : kStaleRetryMs);
+    if (staleTries_ < 5) ++staleTries_;
     return;
   }
+  staleTries_ = 0;
   pending_ = false;
   onlyIfStale_ = false;
 }

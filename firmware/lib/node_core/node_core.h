@@ -56,7 +56,8 @@ constexpr uint16_t kLowBattMv = 3500;             // §3.3 LOW_BATT
 constexpr uint8_t kStatusHourUtc = 18;            // 서버 STATUS_HOUR_UTC 기본(KST 03:00). SET_PARAM 은 2단계
 constexpr uint32_t kStatusSpreadSec = 1800;       // 하루 STATUS 분산 hash(mac) % 1800 (§6.3)
 constexpr uint32_t kReqStatusSpreadMs = 300000;   // TIME REQUEST_STATUS → 0~300 s 임의 지연(§3.3)
-constexpr uint32_t kStaleRetryMs = 600000;        // 보냈는데 시계가 안 오면 10 min 뒤 다시(§9)
+constexpr uint32_t kStaleRetryFirstMs = 30000;    // 보냈는데 시계가 안 오면 30 s 뒤부터 두 배씩(충돌 대비)
+constexpr uint32_t kStaleRetryMs = 600000;        // … 최대 10 min(§9)
 constexpr uint32_t kBusyRetryMs = 5000;           // CAD busy 로 못 보냈으면 5 s 뒤 다시
 constexpr uint32_t kAfterTimeStatusMs =
     3000;  // CLOCK_STALE 로 알린 뒤 시각을 받으면 이만큼 뒤 STATUS 한 번 더
@@ -83,8 +84,9 @@ class StatusPlan {
   // nowMs+delayMs 에 한 번. 더 이른 일반 예약이 있으면 그대로
   void request(uint32_t nowMs, uint32_t delayMs);
   bool due(uint32_t nowMs, bool clockOk, uint32_t nowEpoch, uint32_t nextStatusEpoch) const;
-  // ok=false(채널 사용 중) → kBusyRetryMs 뒤 다시. ok·시계 없음 → kStaleRetryMs 뒤 다시(그 사이 시계가 맞으면
-  // 건너뜀). ok·시계 있음 → 예약을 비운다. flags = 보낸 STATUS 의 플래그(CLOCK_STALE 기억용)
+  // ok=false(채널 사용 중) → kBusyRetryMs 뒤 다시. ok·시계 없음 → 30 s·60 s·… 최대 kStaleRetryMs 뒤 다시(그
+  // 사이 시계가 맞으면 건너뜀). ok·시계 있음 → 예약을 비운다. flags = 보낸 STATUS 의 플래그(CLOCK_STALE
+  // 기억용)
   void sent(uint32_t nowMs, bool ok, bool clockOk, uint8_t flags = 0);
   // TIME 으로 시계를 맞췄다. 마지막으로 보낸 STATUS 가 CLOCK_STALE 이었으면 kAfterTimeStatusMs 뒤 한 번 더 —
   // 서버의 clock_stale 표시는 다음 STATUS 까지 남기 때문(부팅 보고 뒤 하루 내내 "시계 이상"으로 보이지 않게)
@@ -94,6 +96,7 @@ class StatusPlan {
   bool pending_ = false;
   bool onlyIfStale_ = false;
   bool staleSent_ = false;
+  uint8_t staleTries_ = 0;  // 시계 없이 보낸 횟수 — 재시도 간격 두 배씩
   uint32_t dueMs_ = 0;
 };
 
