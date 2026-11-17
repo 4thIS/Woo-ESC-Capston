@@ -14,6 +14,7 @@ import { usePolling } from '@/lib/usePolling'
 import { mmss, useIdleLogout } from './idle'
 import { pendingCount, refreshPending } from './pending'
 import { weekRoom } from './selection'
+import { prefetchViews } from './router'
 
 const router = useRouter()
 const me = computed(() => session.value?.name ?? '')
@@ -35,6 +36,11 @@ const nav = computed(() => [
 const initial = computed(() => me.value.slice(0, 1) || '관')
 
 onMounted(refreshPending)
+// 나머지 화면 청크를 한가할 때 미리 — 첫 메뉴 클릭이 네트워크를 기다리지 않게 (router.ts prefetchViews)
+onMounted(() => {
+  const whenIdle = window.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 200))
+  whenIdle(() => void prefetchViews())
+})
 // 학교는 CLI 에서만 만든다 — 지금 학교를 읽기 전용으로 (admin-master.md). 버튼을 두고 405 를 받게 하지 않는다
 const school = ref<SchoolOut | null>(null)
 onMounted(async () => {
