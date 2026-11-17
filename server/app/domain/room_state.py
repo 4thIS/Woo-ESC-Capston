@@ -157,12 +157,30 @@ def merge_busy(spans: list[Span]) -> list[Span]:
     return [replace(h, label=f"{h.label} 외 {n}건") if n else h for h, n in out]
 
 
+def join_periods(spans: list[Span]) -> list[Span]:
+    """교시마다 따로 온 같은 수업을 쉬는시간까지 한 덩어리로 (student-room §연속 교시). 문 앞 e-Paper 오늘
+    목록과 같은 규칙 — 라벨(분반 포함 과목명) · type 이 같고 틈이 0–BREAK_GAP_MAX_MIN 분이면 앞에 잇는다.
+    내 것 여부 · 상태가 다르면 잇지 않는다(내 신청이 남의 것 속에 묻히지 않게). merge_busy 뒤에 부른다."""
+    out: list[Span] = []
+    for x in spans:
+        a = out[-1] if out else None
+        if (
+            a is not None
+            and 0 <= x.s - a.e <= P.BREAK_GAP_MAX_MIN
+            and (a.label, a.type, a.mine, a.status) == (x.label, x.type, x.mine, x.status)
+        ):
+            out[-1] = replace(a, e=max(a.e, x.e))
+        else:
+            out.append(x)
+    return out
+
+
 _BUSY_STATUSES = ("approved", "requested")  # = reserve._LIVE. reserve 를 import 하면 순환
 
 
 def week_busy(s: Session, room_id: int, start: dt.date, viewer_email: str) -> list[dict]:
     """주간 격자의 요일별 사용 구간 (web A3). 정규 슬롯 · approved · requested(남의 것은 '예약됨')를
-    날짜마다 merge_busy. 시험기간 안의 슬롯은 type 2 — room_state 가 그 구간을 시험으로 그리는 것과 같다.
+    날짜마다 merge_busy → join_periods(연속 교시). 시험기간 안의 슬롯은 type 2 — room_state 가 그 구간을 시험으로 그리는 것과 같다.
     시험기간만 있고 슬롯이 없는 날은 비어 있다(겹침 검사 reserve.overlaps 도 그렇게 본다)."""
     end = start + dt.timedelta(days=6)
     slots: dict[int, list[Span]] = defaultdict(list)
@@ -196,7 +214,7 @@ def week_busy(s: Session, room_id: int, start: dt.date, viewer_email: str) -> li
         day_slots = slots[d.isoweekday()]
         if any(a <= d <= b for a, b in exams):
             day_slots = [replace(x, type=2) for x in day_slots]
-        spans = merge_busy(day_slots + resvs[d])
+        spans = join_periods(merge_busy(day_slots + resvs[d]))
         out.append(
             {
                 "day": d.isoweekday(),
