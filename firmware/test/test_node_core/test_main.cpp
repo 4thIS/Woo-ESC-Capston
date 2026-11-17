@@ -324,18 +324,18 @@ void test_day_cap_file_keeps_old() {
   TEST_ASSERT_EQUAL_UINT8(1, R->nSlots);  // 옛 월요일 슬롯이 그대로
 }
 
-#if 0  // Task 2(buildModel 을 RtcState + sch 판정 위로)에서 되살린다
 // ---------------- 화면 모델 ----------------
 
 void test_model_class_fills_cur_next_today() {
+  R->bld = 'E', R->room = 301, R->unit = 1;
   slotSet(1, 1, slot(4, 9, 0, 10, 50, "자료구조"));
   slotSet(2, 2, slot(4, 13, 0, 14, 50, "임베디드SW"));
   slotSet(3, 3, slot(4, 16, 0, 18, 50, "캡스톤디자인"));
   slotSet(4, 4, slot(3, 13, 0, 14, 50, "다른 요일"));
   RenderModel m;
-  Decision d = buildModel(ME, *R, kstEpoch(2026, 11, 19, 13, 30), m);
+  sch::LayoutDecision d = buildModel(*R, kstEpoch(2026, 11, 19, 13, 30), m);
   TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_CLASS, m.layout);
-  TEST_ASSERT_EQUAL_INT16(14 * 60 + 50, d.until);
+  TEST_ASSERT_EQUAL_UINT16(13 * 60, d.slotStartMin);
   TEST_ASSERT_EQUAL_STRING("임베디드SW", m.cur.subj);
   TEST_ASSERT_EQUAL_STRING("캡스톤디자인", m.next.subj);
   TEST_ASSERT_EQUAL_UINT8(3, m.nToday);
@@ -350,7 +350,7 @@ void test_model_break_cur_is_next() {
   slotSet(1, 1, slot(4, 9, 0, 9, 50, "1블록"));
   slotSet(2, 2, slot(4, 10, 0, 10, 50, "2블록"));
   RenderModel m;
-  buildModel(ME, *R, kstEpoch(2026, 11, 19, 9, 55), m);
+  buildModel(*R, kstEpoch(2026, 11, 19, 9, 55), m);
   TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_BREAK, m.layout);
   TEST_ASSERT_EQUAL_STRING("2블록", m.next.subj);
   TEST_ASSERT_EQUAL_STRING("2블록", m.cur.subj);  // cur = next (#89, 2026-10-28)
@@ -363,10 +363,10 @@ void test_model_resv_today_beats_slot() {
   strcpy(r.subj, "스터디");
   run(hdr(LP_TYPE_RESV_SET, 2), lc::encResvSet(1, r, g_pl, sizeof g_pl));
   RenderModel m;
-  buildModel(ME, *R, kstEpoch(2026, 11, 19, 15, 30), m);
+  buildModel(*R, kstEpoch(2026, 11, 19, 15, 30), m);
   TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_RENTAL, m.layout);
   TEST_ASSERT_EQUAL_STRING("스터디", m.cur.subj);
-  buildModel(ME, *R, kstEpoch(2026, 11, 20, 15, 30), m);  // 다음날(금)은 예약 없음·정규도 없음
+  buildModel(*R, kstEpoch(2026, 11, 20, 15, 30), m);  // 다음날(금)은 예약 없음·정규도 없음
   TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_EMPTY, m.layout);
 }
 
@@ -375,7 +375,7 @@ void test_model_exam_period() {
   lc::ExamRec e{5, 26, 11, 16, 26, 11, 20};
   run(hdr(LP_TYPE_EXAM_SET, 2), lc::encExamSet(1, e, g_pl, sizeof g_pl));
   RenderModel m;
-  buildModel(ME, *R, kstEpoch(2026, 11, 19, 9, 10), m);
+  buildModel(*R, kstEpoch(2026, 11, 19, 9, 10), m);
   TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_EXAM, m.layout);
 }
 
@@ -391,7 +391,7 @@ static void thursdayTwoSections() {
 void test_today_merges_periods_of_same_section_only() {
   thursdayTwoSections();
   RenderModel m;
-  buildModel(ME, *R, kstEpoch(2026, 11, 19, 10, 20), m);
+  buildModel(*R, kstEpoch(2026, 11, 19, 10, 20), m);
   TEST_ASSERT_EQUAL_UINT8(2, m.nToday);
   TEST_ASSERT_EQUAL_STRING("웹실습 102", m.today[0].subj);
   TEST_ASSERT_EQUAL_UINT8(9, m.today[0].sH);
@@ -412,11 +412,11 @@ void test_today_merges_periods_of_same_section_only() {
 void test_today_merge_keeps_break_per_period() {
   thursdayTwoSections();
   RenderModel m;
-  buildModel(ME, *R, kstEpoch(2026, 11, 19, 10, 55), m);  // 102반 2·3교시 사이 쉬는시간
+  buildModel(*R, kstEpoch(2026, 11, 19, 10, 55), m);  // 102반 2·3교시 사이 쉬는시간
   TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_BREAK, m.layout);
   TEST_ASSERT_EQUAL_UINT8(11, m.cur.sH);  // cur = 곧 시작할 교시
   TEST_ASSERT_EQUAL_UINT8(2, m.nToday);
-  buildModel(ME, *R, kstEpoch(2026, 11, 19, 11, 55), m);  // 반이 바뀌는 틈도 쉬는시간(과목·교수 같음)
+  buildModel(*R, kstEpoch(2026, 11, 19, 11, 55), m);  // 반이 바뀌는 틈도 쉬는시간(과목·교수 같음)
   TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_BREAK, m.layout);
   TEST_ASSERT_EQUAL_STRING("웹실습 101", m.cur.subj);
 }
@@ -431,7 +431,7 @@ void test_today_merge_rules_gap_type_and_contiguous() {
   slotSet(7, 7, slot(4, 17, 0, 17, 50, "운영체제"));
   slotSet(8, 8, slot(4, 18, 5, 18, 55, "운영체제"));  // 틈 15분 → 합침(경계 포함)
   RenderModel m;
-  buildModel(ME, *R, kstEpoch(2026, 11, 19, 8, 0), m);
+  buildModel(*R, kstEpoch(2026, 11, 19, 8, 0), m);
   TEST_ASSERT_EQUAL_UINT8(6, m.nToday);
   TEST_ASSERT_EQUAL_UINT8(9, m.today[0].sH);
   TEST_ASSERT_EQUAL_UINT8(10, m.today[1].sH);
@@ -444,7 +444,28 @@ void test_today_merge_rules_gap_type_and_contiguous() {
   TEST_ASSERT_EQUAL_UINT8(55, m.today[5].eM);
 }
 
-#endif
+void test_model_identity_from_rtc() {
+  R->bld = 'E';
+  R->room = 803;
+  R->unit = 1;
+  RenderModel m;
+  buildModel(*R, kstEpoch(2026, 11, 19, 13, 30), m);
+  TEST_ASSERT_EQUAL('E', m.bld);
+  TEST_ASSERT_EQUAL_UINT16(803, m.room);
+  TEST_ASSERT_EQUAL_UINT8(1, m.unit);
+  TEST_ASSERT_EQUAL_STRING("11.19", m.dateStr);
+  TEST_ASSERT_EQUAL_UINT8(4, m.weekday);
+}
+
+void test_model_ignores_stale_rtc_day() {
+  slotSet(1, 1, slot(4, 13, 0, 14, 50, "목요일 수업"));
+  RenderModel m;
+  // 금요일 13:30 — RTC 는 아직 목요일 슬롯(어댑터가 refreshDay 하기 전). 목요일 수업을 금요일에 보이면 안
+  // 된다
+  sch::LayoutDecision d = buildModel(*R, kstEpoch(2026, 11, 20, 13, 30), m);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_EMPTY, d.layout);
+  TEST_ASSERT_EQUAL_UINT8(0, m.nToday);
+}
 
 int main() {
   UNITY_BEGIN();
@@ -467,7 +488,6 @@ int main() {
   RUN_TEST(test_file_bad_crc);
   RUN_TEST(test_day_cap_slot_set);
   RUN_TEST(test_day_cap_file_keeps_old);
-#if 0  // Task 2 에서 되살린다
   RUN_TEST(test_model_class_fills_cur_next_today);
   RUN_TEST(test_model_break_cur_is_next);
   RUN_TEST(test_model_resv_today_beats_slot);
@@ -475,6 +495,7 @@ int main() {
   RUN_TEST(test_today_merges_periods_of_same_section_only);
   RUN_TEST(test_today_merge_keeps_break_per_period);
   RUN_TEST(test_today_merge_rules_gap_type_and_contiguous);
-#endif
+  RUN_TEST(test_model_identity_from_rtc);
+  RUN_TEST(test_model_ignores_stale_rtc_day);
   return UNITY_END();
 }

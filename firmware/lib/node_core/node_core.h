@@ -6,6 +6,8 @@
 
 #include "lora_codec.h"
 #include "node_store.h"
+#include "render_model.h"
+#include "schedule.h"
 
 namespace nc {
 
@@ -42,5 +44,8 @@ bool gap(uint8_t oldVer, uint8_t newVer);       // (new − old) mod 255 ≠ 1 (
 ns::Date todayOf(uint32_t epochUtc);            // KST 날짜, ResvRec 와 같은 표현(y = year-2000)
 // §6.4 dispatch. DUP 판정·버전·lastTxn(결과 OK/GAP 일 때만, #74 10) 까지 한다. nowEpoch = 노드 시계(UTC)
 Outcome handleFrame(ns::NodeStore&, FileRx&, const lc::Header&, const uint8_t* payload, uint32_t nowEpoch);
+
+// r 의 정체성·오늘 슬롯(r.slotsDay 가 오늘 요일과 다르면 슬롯 없음으로 본다)·예약·시험으로 m 을 채운다.
+sch::LayoutDecision buildModel(const ns::RtcState& r, uint32_t epochUtc, RenderModel& m);
 
 }  // namespace nc

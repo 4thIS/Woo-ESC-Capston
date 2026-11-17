@@ -1,8 +1,12 @@
 #include "node_core.h"
 
+#include <stdio.h>
 #include <string.h>
 
+#include <algorithm>
+
 #include "kst_time.h"
+#include "schedule.h"
 
 namespace nc {
 
@@ -162,6 +166,109 @@ Outcome handleFrame(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uin
   const bool wantAck = (h.flags & LP_FLAG_ACK_REQ) && !(h.flags & LP_FLAG_BROADCAST) && h.bld != LP_BLD_ALL;
   o.status = wantAck ? s : kNoAck;
   return o;
+}
+
+namespace {
+
+struct Item {
+  uint16_t s, e;  // 자정부터 분
+  uint8_t type;
+  bool resv;
+  uint8_t idx;  // r.slots / r.resv 위치
+};
+
+void fillSlot(RenderSlot& r, const char* subj, const char* prof, uint16_t s, uint16_t e, uint8_t type) {
+  memset(&r, 0, sizeof r);
+  strncpy(r.subj, subj, sizeof r.subj - 1);
+  strncpy(r.prof, prof, sizeof r.prof - 1);
+  r.sH = (uint8_t)(s / 60), r.sM = (uint8_t)(s % 60), r.eH = (uint8_t)(e / 60), r.eM = (uint8_t)(e % 60);
+  r.type = type;
+  r.flags = 0x01;
+}
+
+}  // namespace
+
+sch::LayoutDecision buildModel(const ns::RtcState& r, uint32_t epochUtc, RenderModel& m) {
+  memset(&m, 0, sizeof m);
+  m.bld = (char)r.bld;
+  m.room = r.room;
+  m.unit = r.unit;
+  const sch::KstTime k = sch::toKst(epochUtc);
+  char ds[12];  // month·day 는 두 자리지만 컴파일러는 u8 전체 범위로 본다
+  snprintf(ds, sizeof ds, "%02u.%02u", k.month, k.day);
+  memcpy(m.dateStr, ds, sizeof m.dateStr - 1);
+  m.weekday = k.weekday;
+  const uint16_t nowMin = sch::minuteOfDay(k);
+
+  // RTC 슬롯이 오늘 요일 것일 때만 쓴다 — 자정 직후 어댑터가 refreshDay 하기 전엔 빈 것으로 본다
+  const uint8_t nSlots = r.slotsDay == k.weekday ? r.nSlots : 0;
+  const sch::ScheduleView v{r.slots, nSlots, r.resv, r.nResv, r.exams, r.nExam};
+  const sch::LayoutDecision d = sch::determineLayout(v, epochUtc);
+  m.layout = d.layout;
+
+  static Item it[LP_SLOT_DAY_MAX + ns::kResvMax];
+  int n = 0;
+  for (uint8_t i = 0; i < nSlots; ++i)
+    it[n++] = {(uint16_t)(r.slots[i].sH * 60 + r.slots[i].sM), (uint16_t)(r.slots[i].eH * 60 + r.slots[i].eM),
+               r.slots[i].type, false, i};
+  const ns::Date today = todayOf(epochUtc);
+  for (uint8_t i = 0; i < r.nResv; ++i)
+    if (r.resv[i].y == today.y && r.resv[i].m == today.m && r.resv[i].d == today.d)
+      it[n++] = {(uint16_t)(r.resv[i].sH * 60 + r.resv[i].sM), (uint16_t)(r.resv[i].eH * 60 + r.resv[i].eM),
+                 r.resv[i].type, true, i};
+  int ord[LP_SLOT_DAY_MAX + ns::kResvMax];
+  for (int i = 0; i < n; ++i) ord[i] = i;
+  std::stable_sort(ord, ord + n, [&](int a, int b) { return it[a].s < it[b].s; });
+  auto subjOf = [&](const Item& x) { return x.resv ? r.resv[x.idx].subj : r.slots[x.idx].subj; };
+  auto profOf = [&](const Item& x) { return x.resv ? r.resv[x.idx].prof : r.slots[x.idx].prof; };
+
+  // 오늘 목록 — 연속 교시 한 행(terminal-epaper.md 「오늘 목록」, #143). 판정은 교시 단위 그대로
+  for (int j = 0; j < n; ++j) {
+    const Item& x = it[ord[j]];
+    if (m.nToday > 0) {
+      TodaySlot& p = m.today[m.nToday - 1];
+      const int pe = p.eH * 60 + p.eM;
+      const int g = (int)x.s - pe;
+      if (p.type == x.type && g >= 0 && g <= LP_BREAK_GAP_MAX_MIN &&
+          strncmp(p.subj, subjOf(x), sizeof p.subj) == 0) {
+        if ((int)x.e > pe) p.eH = (uint8_t)(x.e / 60), p.eM = (uint8_t)(x.e % 60);
+        continue;
+      }
+    }
+    if (m.nToday >= 24) break;
+    TodaySlot& t = m.today[m.nToday++];
+    t.sH = (uint8_t)(x.s / 60), t.sM = (uint8_t)(x.s % 60), t.eH = (uint8_t)(x.e / 60),
+    t.eM = (uint8_t)(x.e % 60);
+    strncpy(t.subj, subjOf(x), sizeof t.subj - 1);
+    t.type = x.type;
+  }
+
+  // cur: 판정한 항목(쉬는시간이면 곧 시작할 수업 — cur = next, #89). next: 그 뒤 처음 시작하는 항목
+  int curIt = -1;
+  for (int i = 0; i < n; ++i) {
+    const bool isResv = d.by == sch::Decider::Resv;
+    const bool isSlot =
+        d.by == sch::Decider::Slot || d.by == sch::Decider::ExamSlot || d.by == sch::Decider::Break;
+    if ((isResv && it[i].resv && it[i].idx == d.index) || (isSlot && !it[i].resv && it[i].idx == d.index)) {
+      curIt = i;
+      break;
+    }
+  }
+  if (curIt >= 0)
+    fillSlot(m.cur, subjOf(it[curIt]), profOf(it[curIt]), it[curIt].s, it[curIt].e, it[curIt].type);
+  if (d.layout == LP_LAYOUT_BREAK) {
+    m.next = m.cur;
+  } else {
+    const uint16_t after = curIt >= 0 ? it[curIt].e : nowMin;
+    for (int j = 0; j < n; ++j) {
+      const Item& x = it[ord[j]];
+      if (ord[j] != curIt && (curIt >= 0 ? x.s >= after : x.s > after)) {
+        fillSlot(m.next, subjOf(x), profOf(x), x.s, x.e, x.type);
+        break;
+      }
+    }
+  }
+  return d;
 }
 
 }  // namespace nc
