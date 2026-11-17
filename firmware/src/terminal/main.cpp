@@ -92,7 +92,8 @@ uint32_t g_lastRxMs = 0;
 uint16_t g_battMv = 0;  // 0 = 아직 못 잼
 int8_t g_rssiLast = 0;  // 마지막으로 받은 내 프레임
 int8_t g_snrX4 = 0;
-uint32_t g_spread = 0;  // 하루 STATUS 분산(초) = hash(mac) % 1800
+uint32_t g_macHash = 0;  // 노드마다 다른 값 — 부팅 직후 esp_random 은 RF 를 안 켜면 노드끼리 같은 값이 나온다
+uint32_t g_spread = 0;   // 하루 STATUS 분산(초) = hash(mac) % 1800
 nc::StatusPlan g_status;
 
 nc::Ident me() {
@@ -297,7 +298,8 @@ void pollRadio() {
         g_rtc.nextStatusEpoch = nc::nextDailyStatus(o.epoch, nc::kStatusHourUtc, g_spread);
     }
     if (o.statusReq)
-      g_status.request(millis(), 300 + (o.statusSpreadMs ? esp_random() % o.statusSpreadMs : 0));
+      g_status.request(millis(),
+                       300 + (o.statusSpreadMs ? (esp_random() ^ g_macHash) % o.statusSpreadMs : 0));
     if (o.changed) g_dirty = true;
     if (o.status != nc::kNoAck) sendAck(h, o.status, o.detail);
     Serial.printf("[node] type=0x%02x txn=%u ACK=%d ver S%u/R%u/E%u today=%u save=%lums RSSI %.0f SNR %.1f\n",
@@ -359,9 +361,11 @@ void setup() {
   const uint64_t efuse = ESP.getEfuseMac();
   uint8_t mac[6];
   for (int i = 0; i < 6; ++i) mac[i] = (uint8_t)(efuse >> (8 * i));
+  g_macHash = nc::macSpread(mac, 0xFFFFFFFFu);
   g_spread = nc::macSpread(mac, nc::kStatusSpreadSec);
   g_battMv = readBattMv();
-  if (g_rtc.provisioned) g_status.request(millis(), 1000 + esp_random() % 3000);  // 부팅 보고(§6.2)
+  if (g_rtc.provisioned)
+    g_status.request(millis(), 1000 + (esp_random() ^ g_macHash) % 3000);  // 부팅 보고(§6.2)
   Serial.printf("[node] %c%u-%u fw=%u radio=%d fs=%d ver S%u/R%u/E%u slots=%u batt=%umV\n", g_rtc.bld,
                 g_rtc.room, g_rtc.unit, FW_VER, st, fs, g_rtc.schedVer, g_rtc.resvVer, g_rtc.examVer,
                 g_rtc.nSlots, g_battMv);
