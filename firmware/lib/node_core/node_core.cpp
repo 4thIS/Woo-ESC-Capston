@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <cstring>
 
 #include "kst_time.h"
 #include "schedule.h"
@@ -375,6 +376,48 @@ void StatusPlan::onTimeSet(uint32_t nowMs) {
   if (!staleSent_) return;
   staleSent_ = false;
   request(nowMs, kAfterTimeStatusMs);
+}
+
+uint32_t StatusPlan::msUntilDue(uint32_t nowMs, bool clockOk) const {
+  if (!pending_ || (onlyIfStale_ && clockOk)) return UINT32_MAX;
+  const int32_t left = (int32_t)(dueMs_ - nowMs);
+  return left <= 0 ? 0 : (uint32_t)left;
+}
+
+namespace {
+bool sameSlot(const RenderSlot& a, const RenderSlot& b) {
+  return std::strcmp(a.subj, b.subj) == 0 && std::strcmp(a.prof, b.prof) == 0 && a.sH == b.sH &&
+         a.sM == b.sM && a.eH == b.eH && a.eM == b.eM && a.type == b.type && a.flags == b.flags;
+}
+}  // namespace
+
+bool sameScreen(const RenderModel& a, const RenderModel& b) {
+  if (a.layout != b.layout || a.bld != b.bld || a.room != b.room || a.unit != b.unit ||
+      a.weekday != b.weekday || a.nToday != b.nToday)
+    return false;
+  if (std::strncmp(a.dateStr, b.dateStr, sizeof a.dateStr) != 0) return false;
+  if (std::strncmp(a.newTag, b.newTag, sizeof a.newTag) != 0) return false;
+  if (!sameSlot(a.cur, b.cur) || !sameSlot(a.next, b.next)) return false;
+  for (uint8_t i = 0; i < a.nToday && i < 24; ++i) {
+    const TodaySlot &x = a.today[i], &y = b.today[i];
+    if (x.sH != y.sH || x.sM != y.sM || x.eH != y.eH || x.eM != y.eM || x.type != y.type ||
+        std::strcmp(x.subj, y.subj) != 0)
+      return false;
+  }
+  return true;
+}
+
+uint32_t sleepMs(uint32_t nowMs, bool clockOk, uint32_t nowEpoch, uint32_t nextChangeEpoch, bool dayReady,
+                 const StatusPlan& p) {
+  uint32_t ms = dayReady ? kSleepCapMs : kSleepCapNoDayMs;
+  if (clockOk) {
+    if (nextChangeEpoch <= nowEpoch) return 0;
+    const uint32_t untilChange = nextChangeEpoch - nowEpoch;
+    if (untilChange < ms / 1000u) ms = untilChange * 1000u;
+  }
+  const uint32_t untilStatus = p.msUntilDue(nowMs, clockOk);
+  if (untilStatus < ms) ms = untilStatus;
+  return ms < kSleepMinMs ? 0 : ms;
 }
 
 }  // namespace nc

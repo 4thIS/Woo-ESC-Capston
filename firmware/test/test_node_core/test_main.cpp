@@ -658,6 +658,68 @@ void test_model_ignores_stale_rtc_day() {
   TEST_ASSERT_EQUAL_UINT8(0, m.nToday);
 }
 
+// ---------------- 같은 화면(절전 3단계) ----------------
+void test_same_screen_ignores_batt_and_unused_today() {
+  RenderModel a{}, b{};
+  R->slotsDay = 4;
+  R->nSlots = 1;
+  R->slots[0] = slot(4, 13, 0, 14, 50, "수업");
+  buildModel(*R, NOW, a);
+  buildModel(*R, NOW, b);
+  TEST_ASSERT_TRUE(sameScreen(a, b));
+  b.battMv = a.battMv + 100;
+  TEST_ASSERT_TRUE(sameScreen(a, b));  // 배터리는 화면에 없다
+  b.today[20].sH = 7;                  // nToday 밖 칸
+  TEST_ASSERT_TRUE(sameScreen(a, b));
+  b = a;
+  b.cur.subj[0] = 'X';
+  TEST_ASSERT_FALSE(sameScreen(a, b));
+  b = a;
+  b.layout = LP_LAYOUT_BREAK;
+  TEST_ASSERT_FALSE(sameScreen(a, b));
+  b = a;
+  b.dateStr[3] = '2';
+  TEST_ASSERT_FALSE(sameScreen(a, b));
+  b = a;
+  b.today[0].eM = 40;
+  TEST_ASSERT_FALSE(sameScreen(a, b));
+  b = a;
+  b.nToday = 0;
+  TEST_ASSERT_FALSE(sameScreen(a, b));
+}
+
+// ---------------- 잘 시간(절전 3단계) ----------------
+void test_status_plan_ms_until_due() {
+  StatusPlan p;
+  TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, p.msUntilDue(0, false));
+  p.request(1000, 4000);
+  TEST_ASSERT_EQUAL_UINT32(4000, p.msUntilDue(1000, false));
+  TEST_ASSERT_EQUAL_UINT32(0, p.msUntilDue(9000, false));  // 지났다
+  p.sent(5000, true, false, LP_STATUSFLAG_CLOCK_STALE);    // 시계 재시도 30 s
+  TEST_ASSERT_EQUAL_UINT32(kStaleRetryFirstMs, p.msUntilDue(5000, false));
+  TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, p.msUntilDue(5000, true));  // 시계가 맞으면 건너뛸 재시도
+}
+
+void test_sleep_ms() {
+  StatusPlan p;
+  // 시계 있음: 다음 변경 10 min 뒤
+  TEST_ASSERT_EQUAL_UINT32(600000, sleepMs(0, true, NOW, NOW + 600, true, p));
+  // 상한 30 min
+  TEST_ASSERT_EQUAL_UINT32(kSleepCapMs, sleepMs(0, true, NOW, NOW + 7200, true, p));
+  // 오늘 슬롯 준비 전 — 60 s
+  TEST_ASSERT_EQUAL_UINT32(kSleepCapNoDayMs, sleepMs(0, true, NOW, NOW + 7200, false, p));
+  // 시계 없음 — 다음 변경은 쓰지 않는다
+  TEST_ASSERT_EQUAL_UINT32(kSleepCapMs, sleepMs(0, false, 1000, 0, true, p));
+  // STATUS 예약이 더 이르면 그때
+  p.request(0, 20000);
+  TEST_ASSERT_EQUAL_UINT32(20000, sleepMs(0, true, NOW, NOW + 600, true, p));
+  // 1 s 미만이면 자지 않는다
+  TEST_ASSERT_EQUAL_UINT32(0, sleepMs(19500, true, NOW, NOW + 600, true, p));
+  StatusPlan q;
+  TEST_ASSERT_EQUAL_UINT32(0, sleepMs(0, true, NOW, NOW, true, q));  // 변경 시각이 지금
+  TEST_ASSERT_EQUAL_UINT32(0, sleepMs(0, true, NOW, NOW - 5, true, q));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_is_for_me);
@@ -701,5 +763,8 @@ int main() {
   RUN_TEST(test_status_plan_stale_retry_backs_off);
   RUN_TEST(test_status_plan_resends_after_time_when_stale_sent);
   RUN_TEST(test_status_plan_no_resend_without_stale);
+  RUN_TEST(test_same_screen_ignores_batt_and_unused_today);
+  RUN_TEST(test_status_plan_ms_until_due);
+  RUN_TEST(test_sleep_ms);
   return UNITY_END();
 }
