@@ -158,8 +158,9 @@ Outcome handleFrame(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uin
   } else {
     s = apply(st, f, h, p, nowEpoch, o);
     // lastTxn 은 저장 결과가 OK(GAP 포함)일 때만(#74 10). TIME 은 건드리지 않는다(§3.5).
-    // setLastTxn 실패는 무시한다 — 데이터는 이미 저장됐고, lastTxn 을 놓치면 같은 프레임이 다시 와도 멱등
-    // 적용될 뿐이다.
+    // setLastTxn 실패는 무시한다 — 데이터는 이미 저장됐다. lastTxn 을 놓치면 같은 프레임이 다시 왔을 때 DUP
+    // 이 아니라 재적용되는데, 버전이 이미 v 라 gap(v, v) → GAP ACK → 서버 FILE 재동기가 된다. 해롭진 않지만
+    // 재동기 한 번이 든다.
     if (h.type != LP_TYPE_TIME && h.txn != 0 && (s == LP_ACK_OK || s == LP_ACK_GAP))
       (void)st.setLastTxn(h.txn);
   }

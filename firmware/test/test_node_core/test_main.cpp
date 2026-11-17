@@ -149,6 +149,20 @@ void test_file_write_failure_is_store_fail() {
   TEST_ASSERT_EQUAL_HEX8(LP_ACK_STORE_FAIL, o.status);
   TEST_ASSERT_FALSE(o.changed);
   TEST_ASSERT_EQUAL_UINT8(0, R->nSlots);
+  TEST_ASSERT_EQUAL_UINT8(0, R->schedVer);
+  TEST_ASSERT_EQUAL_UINT8(0, R->lastTxn);
+}
+
+// 저장 실패 뒤 같은 프레임(같은 txn)을 다시 받으면 DUP 이 아니라 정상 적용돼야 한다
+void test_retry_after_store_fail_is_not_dup() {
+  FS->failWritesAfter = 0;
+  Outcome o = slotSet(7, 1, slot(4, 9, 0, 9, 50, "자료구조"));
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_STORE_FAIL, o.status);
+  FS->failWritesAfter = -1;
+  o = slotSet(7, 1, slot(4, 9, 0, 9, 50, "자료구조"));
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, o.status);
+  TEST_ASSERT_EQUAL_UINT8(7, R->lastTxn);
+  TEST_ASSERT_EQUAL_UINT8(1, R->nSlots);
 }
 
 void test_slot_del_and_day_clear() {
@@ -320,6 +334,7 @@ void test_day_cap_file_keeps_old() {
   fileSession(body, 9, 20, -1, end);
   TEST_ASSERT_EQUAL_HEX8(LP_ACK_STORE_FAIL, end.status);
   TEST_ASSERT_EQUAL_UINT8(1, R->schedVer);
+  TEST_ASSERT_EQUAL_UINT8(23, R->lastTxn);  // 마지막 FILE_DATA(23)까지만 — 실패한 FILE_END(24)는 안 바꾼다
   TEST_ASSERT_EQUAL(ns::StoreStatus::Ok, ST->refreshDay(1));
   TEST_ASSERT_EQUAL_UINT8(1, R->nSlots);  // 옛 월요일 슬롯이 그대로
 }
@@ -477,6 +492,7 @@ int main() {
   RUN_TEST(test_slot_set_same_key_replaces);
   RUN_TEST(test_store_fail_keeps_version_and_last_txn);
   RUN_TEST(test_file_write_failure_is_store_fail);
+  RUN_TEST(test_retry_after_store_fail_is_not_dup);
   RUN_TEST(test_slot_del_and_day_clear);
   RUN_TEST(test_resv_and_exam);
   RUN_TEST(test_time_broadcast_sets_clock_without_ack);

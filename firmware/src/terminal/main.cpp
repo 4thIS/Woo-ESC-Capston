@@ -292,8 +292,11 @@ void loop() {
   lastCheck = millis();
   if (!clockValid()) return;  // 시계 전엔 그리지 않는다 — 마지막 화면 유지
   syncDay();
-  static RenderModel m;
   const uint32_t now = (uint32_t)time(nullptr);
+  // 오늘 슬롯 캐시가 아직 오늘 요일 것이 아니면(refreshDay 실패 중) 그리지 않는다 — 빈 날 화면을 그렸다가 60
+  // s 뒤 다시 그리지 않도록. g_dirty 는 그대로 둔다
+  if (g_rtc.slotsDay != sch::toKst(now).weekday) return;
+  static RenderModel m;
   const sch::LayoutDecision d = nc::buildModel(g_rtc, now, m);
   m.battMv = BATT_MV_USB;
   // 상태키(v2 §6.3) — 레이아웃·요일·상태를 정한 항목의 시작. 다르면 다시 그린다

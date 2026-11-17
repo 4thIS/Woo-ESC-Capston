@@ -643,7 +643,7 @@ Expected: Task 4 전이라 main.cpp 가 아직 `nc::State` 를 써서 실패 —
 
 **Interfaces:**
 - Consumes: Task 1·2 의 `nc::handleFrame`·`nc::buildModel`·`nc::todayOf`, Task 3 의 `EspKv`·`LittleFsFiles`, `ns::NodeStore`·`ns::RtcState`·`ns::Identity`, `sch::toKst`
-- Produces: 동작 — RTC 캐시가 소프트 리셋을 넘어 산다(`RTC_DATA_ATTR`), 날짜가 바뀌면 오늘 슬롯을 다시 채운다, 화면 상태키를 `RtcState.lastLayout/lastDay/lastSlotStartMin` 에 둔다(3단계 딥슬립이 그대로 쓴다)
+- Produces: 동작 — RTC 캐시가 딥슬립 깨어남에서만 산다(`RTC_DATA_ATTR` 는 딥슬립 깨어남을 뺀 모든 리셋에서 지워진다), 날짜가 바뀌면 오늘 슬롯을 다시 채운다, 화면 상태키를 `RtcState.lastLayout/lastDay/lastSlotStartMin` 에 둔다(3단계 딥슬립이 그대로 쓴다)
 
 - [ ] **Step 1: 전역 상태 교체**
 
@@ -654,7 +654,7 @@ Expected: Task 4 전이라 main.cpp 가 아직 `nc::State` 를 써서 실패 —
 #include "kst_time.h"
 #include "node_store.h"
 
-RTC_DATA_ATTR ns::RtcState g_rtc;  // 소프트 리셋·딥슬립을 넘어 산다. 매직·CRC 가 맞지 않으면 load() 가 재구축
+RTC_DATA_ATTR ns::RtcState g_rtc;  // 딥슬립 깨어남에서만 산다(그 밖의 리셋은 지워짐). 매직·CRC 가 맞지 않으면 load() 가 재구축
 EspKv g_kv;
 LittleFsFiles g_fs;
 ns::NodeStore g_store(g_kv, g_fs, g_rtc);
@@ -791,7 +791,7 @@ Expected: 부팅 로그 `[node] 저장 재구축`, `ver S0/R0/E0`(옛 `/state.bi
 
 - [ ] **Step 2: 재동기**
 
-관리자 웹 노드 상태 → 두 방 **재전송**(또는 모뎀Pi 재시작으로 TIME 후 재전송). Expected: FILE 3건씩 첫 시도 `acked`, 부팅 로그 다음에 `요일 N 슬롯 다시 채움`, 화면 렌더
+펌웨어 갱신 뒤에는 재동기가 **필수**다(TIME 에는 ACK 가 없어 재동기를 일으키지 않는다). 먼저 모뎀Pi 서비스를 재시작해 TIME 을 보내 두기를 권한다. 관리자 웹 노드 상태 → 두 방 **재전송**(또는 모뎀Pi 재시작으로 TIME 후 재전송). Expected: FILE 3건씩 첫 시도 `acked`, 부팅 로그 다음에 `요일 N 슬롯 다시 채움`, 화면 렌더
 
 - [ ] **Step 3: 회귀 확인표**
 
@@ -799,7 +799,8 @@ Expected: 부팅 로그 `[node] 저장 재구축`, `ver S0/R0/E0`(옛 `/state.bi
 |---|---|
 | 803 오늘 목록 | 같은 반 연속 교시 한 행, 반이 다르면 두 행 |
 | 수업 중 → 쉬는시간 → 다음 교시 | 화면이 경계마다 바뀜(상태키) |
-| 노드 RST(소프트 리셋) 후 | 로그 `저장 RTC 캐시`, 시각 받기 전 화면 유지, TIME 후 바로 그림 |
+| 노드 RST 버튼(리셋) 후 | 로그 `저장 재구축`, 버전 그대로(파일·NVS), 시계는 사라짐 → 시각 받기 전 화면 유지, TIME(모뎀Pi 재시작) 후 그림 |
+| `저장 RTC 캐시` 경로 | 딥슬립 깨어남에서만 — 3단계에서 확인 |
 | 전원 분리 후 재부팅 | 로그 `저장 재구축`, 버전 그대로(파일·NVS), 재동기 없이 화면 |
 | 시간표 한 칸 바꾸기(웹) | `acked`, 지연 기존과 같은 수준(≈4.5 s) |
 | 저장 시간 | 로그 `save=` 가 수십~수백 ms |
