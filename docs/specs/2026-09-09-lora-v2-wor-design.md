@@ -317,6 +317,7 @@ typedef struct {
 - GAP 판정(`(new − old) mod 255 ≠ 1`, §12 — 버전은 1~255 롤링)은 프로토콜 쪽(cw-14). 저장 계층은 값만 보관한다. (2026-11-03 정정: 전에 `mod 256` 으로 잘못 적었다, #74 12)
 - `lastTxn` 은 저장 결과가 `OK` 일 때만 기록한다(cw-14, #74 10). `STORE_FAIL` 등에서 남기면 워커의 같은 TXN 재송이 `DUP` → acked 가 되어 실패한 변경이 성공으로 남는다.
 - RTC 캐시: `rtc_state_t` 정의·magic/CRC 검증·NVS/LittleFS 에서 재구축·seal 은 dh-08, `RTC_DATA_ATTR` 배치와 잠들기 직전 seal 호출은 cw. 저장 API 가 캐시도 같이 갱신한다(write-through).
+- 노드 펌웨어는 2026-11 부터 lib/node_store(파일·NVS·RTC 캐시)와 lib/schedule(판정)을 쓴다(#119, 절전 0단계). 옛 /state.bin 은 부팅 때 지운다. RTC 캐시는 딥슬립에서 깰 때만 살아남고, 리셋·전원 재투입 때는 파일·NVS 에서 다시 만든다.
 
 ### 5.2 시계
 - `settimeofday`(UTC epoch). 딥슬립 중에도 RTC 타이머가 계속 가므로 `time()`은 유지된다.

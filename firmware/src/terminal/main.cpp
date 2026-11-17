@@ -2,8 +2,7 @@
 // 어댑터만.
 //  - 무선: SX1262 DIO1 인터럽트 송수신(2026-10-21 교훈). ACK 는 저장 직후·렌더 전에(v2 §6.4), 송신 전 CAD
 //  1회(§6.8)
-//  - 저장: LittleFS /state.bin 에 nc::State 통째(원자 교체). dh-08 저장 계층(KvStore·FileStore)이 오면 바꿔
-//  끼운다
+//  - 저장: ns::NodeStore(NVS 버전·LittleFS 레코드·RTC 캐시) + sch:: 판정. 어댑터는 esp_store.h
 //  - 화면: renderLayout(dh, #89) + RenderModel(계약 ④). 패널 리프레시(약 27 s) 동안에도 busy 콜백에서
 //  수신·ACK
 //  - 정체성: 빌드 플래그 NODE_BLD·NODE_ROOM·NODE_UNIT (프로비저닝 SET_ROOM 은 S9)
@@ -17,10 +16,14 @@
 #include <esp_random.h>
 #include <sys/time.h>
 
+#include "esp_store.h"
+#include "kst_time.h"
 #include "lora_codec.h"
 #include "node_core.h"
+#include "node_store.h"
 #include "render.h"
 #include "render_model.h"
+#include "schedule.h"
 
 #ifndef NODE_BLD
 #define NODE_BLD 'E'
@@ -34,8 +37,7 @@
 
 namespace {
 
-constexpr nc::Ident ME{(uint8_t)NODE_BLD, (uint16_t)NODE_ROOM, (uint8_t)NODE_UNIT};
-constexpr uint8_t FW_VER = 2;
+constexpr uint8_t FW_VER = 3;
 constexpr uint32_t QUIET_MS = 8000;  // 마지막 수신 뒤 이만큼 조용하면 그린다(웨이크 프리앰블 3 s 보다 길게)
 constexpr uint16_t BATT_MV_USB = 4000;  // 배터리 측정은 S9(절전) — 시연은 USB 전원
 
@@ -70,41 +72,47 @@ class EpdZ08 : public GxEPD2_750c_Z08 {
 SPIClass epdSpi(HSPI);
 GxEPD2_3C<EpdZ08, EpdZ08::HEIGHT / 2> display(EpdZ08(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
 
-nc::State g_state, g_backup;
+// 딥슬립 깨어남에서만 산다. 0 초기화 RTC_DATA_ATTR 은 .rtc.bss 라 딥슬립 외 리셋(esp_restart·WDT·패닉·전원)
+// 에서는 지워지고, rtcValid 가 거짓이라 load() 가 NVS·LittleFS 에서 재구축한다.
+RTC_DATA_ATTR ns::RtcState g_rtc;
+EspKv g_kv;
+LittleFsFiles g_fs;
+ns::NodeStore g_store(g_kv, g_fs, g_rtc);
 nc::FileRx g_file;
 uint8_t g_layout = LP_LAYOUT_EMPTY;  // 마지막으로 그린 화면(ACK 에 싣는다)
 bool g_dirty = true;
 uint32_t g_lastRxMs = 0;
 
-// ---------------- 저장 (임시 — dh-08 전까지) ----------------
-constexpr uint32_t STATE_MAGIC = 0x57534301;  // 'WSC' + 형식 1 — nc::State 가 바뀌면 올린다
-struct StateFileHead {
-  uint32_t magic;
-  uint32_t size;
-  uint16_t crc;
-};
-
-bool saveState() {
-  StateFileHead h{STATE_MAGIC, sizeof g_state, lc::crc16((const uint8_t*)&g_state, sizeof g_state)};
-  File f = LittleFS.open("/state.tmp", "w");
-  if (!f) return false;
-  bool ok = f.write((const uint8_t*)&h, sizeof h) == sizeof h &&
-            f.write((const uint8_t*)&g_state, sizeof g_state) == sizeof g_state;
-  f.close();
-  return ok && LittleFS.rename("/state.tmp", "/state.bin");  // 원자 교체 — 실패하면 옛 파일 그대로
+nc::Ident me() {
+  return nc::Ident{g_rtc.bld, g_rtc.room, g_rtc.unit};
 }
 
-void loadState() {
-  nc::clear(g_state);
-  File f = LittleFS.open("/state.bin", "r");
-  if (!f) return;
-  StateFileHead h{};
-  static nc::State tmp;
-  bool ok = f.read((uint8_t*)&h, sizeof h) == sizeof h && h.magic == STATE_MAGIC && h.size == sizeof tmp &&
-            f.read((uint8_t*)&tmp, sizeof tmp) == sizeof tmp &&
-            lc::crc16((const uint8_t*)&tmp, sizeof tmp) == h.crc;
-  f.close();
-  if (ok) g_state = tmp;  // 손상되면 비운다 — 버전 0 이라 다음 변경 때 서버가 GAP → FILE 재동기
+bool clockValid() {
+  return (uint32_t)time(nullptr) > nc::kClockValidEpoch;
+}
+
+// 시계가 유효하면 RTC 의 오늘 슬롯이 오늘 요일 것인지 맞추고, 지난 예약을 정리한다. TIME 수신·매초 루프에서
+// 부른다. refreshDay 가 실패하면 60 s 뒤에야 다시 시도하고, 성공했을 때만 다시 그리게 표시한다.
+void syncDay() {
+  if (!clockValid()) return;
+  const uint32_t now = (uint32_t)time(nullptr);
+  const uint8_t wd = sch::toKst(now).weekday;
+  if (g_rtc.slotsDay == wd) return;
+  // 읽기 실패로 slotsDay 가 그대로면 매초 다시 시도하며 패널을 연달아 다시 그리게 된다 — 실패 뒤엔 60 s
+  // 마다만
+  static bool failed = false;
+  static uint32_t failedAtMs = 0;
+  if (failed && millis() - failedAtMs < 60000) return;
+  const ns::StoreStatus s = g_store.refreshDay(wd);
+  Serial.printf("[node] 요일 %u 슬롯 다시 채움 st=%u n=%u\n", wd, (unsigned)s, g_rtc.nSlots);
+  if (s != ns::StoreStatus::Ok) {
+    failed = true;
+    failedAtMs = millis();
+    return;
+  }
+  failed = false;
+  (void)g_store.purgePast(nc::todayOf(now), true);
+  g_dirty = true;
 }
 
 // ---------------- 무선 ----------------
@@ -158,9 +166,9 @@ void sendAck(const lc::Header& req, uint8_t status, uint8_t detail) {
   a.status = status;
   a.detail = detail;
   a.battMv = BATT_MV_USB;
-  a.schedVer = g_state.schedVer;
-  a.resvVer = g_state.resvVer;
-  a.examVer = g_state.examVer;
+  a.schedVer = g_rtc.schedVer;
+  a.resvVer = g_rtc.resvVer;
+  a.examVer = g_rtc.examVer;
   a.fw = FW_VER;
   a.layout = g_layout;
   uint8_t pl[32], out[64];
@@ -201,29 +209,23 @@ void pollRadio() {
   const uint8_t* p = nullptr;
   bool ok = rs == RADIOLIB_ERR_NONE && lc::decodeFrame(buf, len, h, p);
   if (!ok) Serial.printf("[node] 수신 버림 rs=%d len=%u RSSI %.0f\n", rs, (unsigned)len, rssi);
-  if (ok && nc::isForMe(ME, h)) {
+  if (ok && nc::isForMe(me(), h)) {
     g_lastRxMs = millis();
-    g_backup = g_state;
-    nc::Outcome o = nc::handleFrame(g_state, g_file, h, p);
-    bool txnMoved = g_state.lastTxn != g_backup.lastTxn;
-    uint32_t ts = millis();
-    bool saved = !(o.changed || txnMoved) || saveState();
-    uint32_t saveMs = millis() - ts;
-    if (!saved) {
-      g_state = g_backup;  // 저장 실패 — 적용도 되돌리고 STORE_FAIL(재송 1회 후 failed)
-      o.changed = false;
-      if (o.status != nc::kNoAck) o.status = LP_ACK_STORE_FAIL;
-    }
+    const uint32_t ts = millis();
+    nc::Outcome o = nc::handleFrame(g_store, g_file, h, p, (uint32_t)time(nullptr));
+    const uint32_t saveMs = millis() - ts;
     if (o.timeSet) {
       timeval tv{(time_t)o.epoch, 0};
       settimeofday(&tv, nullptr);
+      g_rtc.lastTimeSyncEpoch = o.epoch;
+      syncDay();
       g_dirty = true;
     }
     if (o.changed) g_dirty = true;
     if (o.status != nc::kNoAck) sendAck(h, o.status, o.detail);
-    Serial.printf("[node] type=0x%02x txn=%u ACK=%d ver S%u/R%u/E%u slots=%u save=%lums RSSI %.0f SNR %.1f\n",
-                  h.type, h.txn, o.status == nc::kNoAck ? -1 : o.status, g_state.schedVer, g_state.resvVer,
-                  g_state.examVer, g_state.nSlots, (unsigned long)saveMs, rssi, snr);
+    Serial.printf("[node] type=0x%02x txn=%u ACK=%d ver S%u/R%u/E%u today=%u save=%lums RSSI %.0f SNR %.1f\n",
+                  h.type, h.txn, o.status == nc::kNoAck ? -1 : o.status, g_rtc.schedVer, g_rtc.resvVer,
+                  g_rtc.examVer, g_rtc.nSlots, (unsigned long)saveMs, rssi, snr);
   }
   listen();
 }
@@ -248,10 +250,6 @@ void render(const RenderModel& m) {
   digitalWrite(VEXT_CTRL, HIGH);
 }
 
-bool clockValid() {
-  return (uint32_t)time(nullptr) > nc::kClockValidEpoch;
-}
-
 }  // namespace
 
 void setup() {
@@ -262,13 +260,27 @@ void setup() {
   pinMode(VEXT_CTRL, OUTPUT);
   digitalWrite(VEXT_CTRL, HIGH);
   bool fs = LittleFS.begin(true);
-  loadState();
+  const uint8_t bootWd = clockValid() ? sch::toKst((uint32_t)time(nullptr)).weekday : 0;
+  ns::LoadSource src = g_store.load(bootWd);
+  // 0단계: 정체성은 아직 빌드 플래그(NODE_*). 2단계(프로비저닝)에서 SET_ROOM 으로 바뀐다
+  if (!g_rtc.provisioned || g_rtc.room != NODE_ROOM || g_rtc.bld != NODE_BLD || g_rtc.unit != NODE_UNIT) {
+    if (g_rtc.provisioned) {
+      // 다른 방으로 바뀌었다 — 옛 방의 시간표·예약·버전을 지워 버전 0 으로 서버가 재동기하게 한다.
+      // factoryReset 은 RTC 를 비우고 봉인하지 않으므로 load 로 빈 저장소에서 다시 채운 뒤 정체성을 쓴다.
+      (void)g_store.factoryReset();
+      src = g_store.load(bootWd);
+    }
+    (void)g_store.setIdentity(ns::Identity{NODE_BLD, NODE_ROOM, NODE_UNIT}, 0);
+  }
+  (void)LittleFS.remove("/state.bin");  // 0단계 전(임시 형식) 파일 — 버전 0 으로 시작해 서버가 재동기
+  ns::rtcSeal(g_rtc);
+  Serial.printf("[node] 저장 %s\n", src == ns::LoadSource::RtcCache ? "RTC 캐시" : "재구축");
   epdSpi.begin(EPD_SCK, -1, EPD_MOSI, EPD_CS);
   display.epd2.selectSPI(epdSpi, SPISettings(4000000, MSBFIRST, SPI_MODE0));
   display.epd2.setBusyCallback(onPanelBusy);
   int st = radioBegin();
-  Serial.printf("[node] %c%u-%u fw=%u radio=%d fs=%d ver S%u/R%u/E%u slots=%u\n", ME.bld, ME.room, ME.unit,
-                FW_VER, st, fs, g_state.schedVer, g_state.resvVer, g_state.examVer, g_state.nSlots);
+  Serial.printf("[node] %c%u-%u fw=%u radio=%d fs=%d ver S%u/R%u/E%u slots=%u\n", g_rtc.bld, g_rtc.room,
+                g_rtc.unit, FW_VER, st, fs, g_rtc.schedVer, g_rtc.resvVer, g_rtc.examVer, g_rtc.nSlots);
   g_lastRxMs = millis();
   listen();
 }
@@ -279,20 +291,31 @@ void loop() {
   if (millis() - lastCheck < 1000) return;
   lastCheck = millis();
   if (!clockValid()) return;  // 시계 전엔 그리지 않는다 — 마지막 화면 유지
+  syncDay();
+  const uint32_t now = (uint32_t)time(nullptr);
+  // 오늘 슬롯 캐시가 아직 오늘 요일 것이 아니면(refreshDay 실패 중) 그리지 않는다 — 빈 날 화면을 그렸다가 60
+  // s 뒤 다시 그리지 않도록. g_dirty 는 그대로 둔다
+  if (g_rtc.slotsDay != sch::toKst(now).weekday) return;
   static RenderModel m;
-  nc::Decision d = nc::buildModel(ME, g_state, (uint32_t)time(nullptr), m);
+  const sch::LayoutDecision d = nc::buildModel(g_rtc, now, m);
   m.battMv = BATT_MV_USB;
-  // 상태키(레이아웃·요일·상태를 정한 항목의 시작) — 시각이 경계를 넘으면 다시 그린다
-  static uint32_t lastKey = 0xFFFFFFFF;
-  uint32_t key = (uint32_t)m.layout << 24 | (uint32_t)m.weekday << 16 |
-                 (uint32_t)(m.cur.sH * 60 + m.cur.sM) << 2 | (d.src >= 0 ? 1u : 0u);
-  if (key != lastKey) g_dirty = true;
+  // 상태키(v2 §6.3) — 레이아웃·요일·상태를 정한 항목의 시작. 다르면 다시 그린다
+  const bool keyChanged =
+      d.layout != g_rtc.lastLayout || d.day != g_rtc.lastDay || d.slotStartMin != g_rtc.lastSlotStartMin;
+  if (keyChanged) g_dirty = true;
   if (g_dirty && millis() - g_lastRxMs > QUIET_MS) {
     g_dirty = false;
-    lastKey = key;
+    g_rtc.lastLayout = d.layout;
+    g_rtc.lastDay = d.day;
+    g_rtc.lastSlotStartMin = d.slotStartMin;
+    ns::rtcSeal(g_rtc);
     g_layout = m.layout;
-    Serial.printf("[node] 렌더 layout=%u today=%u until=%d\n", m.layout, m.nToday, d.until);
-    uint32_t t0 = millis();
+    const uint8_t todayN = g_rtc.slotsDay == sch::toKst(now).weekday ? g_rtc.nSlots : 0;
+    Serial.printf("[node] 렌더 layout=%u today=%u next=%lu\n", m.layout, m.nToday,
+                  (unsigned long)sch::nextChangeAt(sch::ScheduleView{g_rtc.slots, todayN, g_rtc.resv,
+                                                                     g_rtc.nResv, g_rtc.exams, g_rtc.nExam},
+                                                   now, g_rtc.nextStatusEpoch));
+    const uint32_t t0 = millis();
     render(m);
     Serial.printf("[node] 렌더 끝 %lu ms\n", (unsigned long)(millis() - t0));
   }
