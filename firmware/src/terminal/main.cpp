@@ -8,7 +8,8 @@
 //  - 정체성: 빌드 플래그 NODE_BLD·NODE_ROOM·NODE_UNIT (프로비저닝 SET_ROOM 은 S9)
 //  - 시계: TIME 으로 맞춘다. 시계가 무효면 그리지 않는다 — e-Paper 는 마지막 화면을 그대로 둔다(§5.2)
 //  - STATUS(부팅·하루 1회·요청)·배터리 실측 — 절전 1단계
-//  - 절전: NODE_SLEEP_MODE=1 이면 할 일이 없을 때 light sleep, 무선은 수신 duty cycle(절전 3단계)
+//  - 절전: NODE_SLEEP_MODE=1 이면 light sleep, 2 면 deep sleep(할 일이 없을 때). 무선은 수신 duty cycle(절전
+//  3단계)
 #include <Arduino.h>
 #include <GxEPD2_3C.h>
 #include <LittleFS.h>
@@ -16,10 +17,14 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <driver/gpio.h>
+#include <driver/rtc_io.h>
+#include <esp_private/esp_clk.h>
 #include <esp_random.h>
 #include <esp_sleep.h>
 #include <esp_timer.h>
 #include <sys/time.h>
+
+#include <type_traits>
 
 #include "esp_store.h"
 #include "kst_time.h"
@@ -40,7 +45,7 @@
 #define NODE_UNIT 1
 #endif
 #ifndef NODE_SLEEP_MODE
-#define NODE_SLEEP_MODE 0  // 0 = 깨어 있음(시연), 1 = LIGHT(v2 §6.7 1단계 검증). DEEP 은 3b
+#define NODE_SLEEP_MODE 0  // 0 = 깨어 있음(시연), 1 = LIGHT(v2 §6.7 1단계 검증), 2 = DEEP(운영)
 #endif
 
 namespace {
@@ -103,6 +108,32 @@ uint32_t g_spread = 0;   // 하루 STATUS 분산(초) = hash(mac) % 1800
 nc::StatusPlan g_status;
 RenderModel g_shown{};  // 마지막으로 그린 화면
 bool g_shownValid = false;
+
+// StatusPlan 의 시간 기준(ms). DEEP 은 깰 때마다 millis 가 0 으로 돌아가므로 딥슬립에도 이어지는 RTC 시간을
+// 쓴다
+uint32_t nowMs() {
+#if NODE_SLEEP_MODE == 2
+  return (uint32_t)(esp_clk_rtc_time() / 1000ULL);
+#else
+  return millis();
+#endif
+}
+
+#if NODE_SLEEP_MODE == 2
+// 딥슬립을 건너 남겨야 하는 런타임 상태(RAM 은 깰 때마다 지워진다). 저장 데이터는 g_rtc(RtcState)에 따로 있다
+struct WakeState {
+  uint32_t magic;
+  nc::StatusPlan status;
+  RenderModel shown;
+  bool shownValid;
+  uint8_t layout;
+  int8_t rssiLast, snrX4;
+};
+constexpr uint32_t kWakeMagic = 0x57414B33u;  // 'WAK3'
+// 원시 바이트로 둔다 — StatusPlan 에 기본 생성자가 있어 객체로 두면 깰 때마다 전역 생성자가 내용을 지운다
+RTC_NOINIT_ATTR alignas(4) uint8_t g_wakeRaw[sizeof(WakeState)];
+static_assert(std::is_trivially_copyable<WakeState>::value, "WakeState 는 memcpy 로 옮긴다");
+#endif
 
 nc::Ident me() {
   return nc::Ident{g_rtc.bld, g_rtc.room, g_rtc.unit};
@@ -229,7 +260,11 @@ void sendAck(const lc::Header& req, uint8_t status, uint8_t detail) {
 }
 
 bool sendStatus(uint32_t now, uint8_t& flags) {
+#if NODE_SLEEP_MODE == 2
+  const uint64_t up = esp_clk_rtc_time() / 3600000000ULL;  // 딥슬립에도 이어진다
+#else
   const uint64_t up = (uint64_t)esp_timer_get_time() / 3600000000ULL;  // millis 는 49.7 일에 넘어간다
+#endif
   const lc::Status s =
       nc::buildStatus(g_rtc, now, g_battMv, FW_VER, g_layout,
                       nc::LinkInfo{g_rssiLast, g_snrX4, (uint16_t)(up > 65535 ? 65535 : up)});
@@ -258,7 +293,7 @@ void maybeMeasureBatt() {
 }
 
 void maybeSendStatus() {
-  const uint32_t ms = millis();
+  const uint32_t ms = nowMs();
   const uint32_t now = (uint32_t)time(nullptr);
   const bool clk = clockValid();
   if (!g_status.due(ms, clk, now, g_rtc.nextStatusEpoch)) return;
@@ -275,15 +310,8 @@ void maybeSendStatus() {
   }
 }
 
-// 수신 프레임 하나를 처리한다. loop 와 패널 BUSY 콜백 양쪽에서 부른다.
-void pollRadio() {
-  if (!g_irq) return;
-  g_irq = false;
-  static uint8_t buf[256];
-  size_t len = radio.getPacketLength();
-  if (len > sizeof buf) len = sizeof buf;
-  int rs = radio.readData(buf, len);
-  float rssi = radio.getRSSI(), snr = radio.getSNR();
+// 받은 프레임 하나를 처리한다(저장·ACK). rs = 수신 결과(RADIOLIB_ERR_NONE 이어야 처리)
+void handleRx(const uint8_t* buf, size_t len, int rs, float rssi, float snr) {
   lc::Header h{};
   const uint8_t* p = nullptr;
   bool ok = rs == RADIOLIB_ERR_NONE && lc::decodeFrame(buf, len, h, p);
@@ -301,19 +329,29 @@ void pollRadio() {
       g_rtc.lastTimeSyncEpoch = o.epoch;
       syncDay();
       g_dirty = true;
-      g_status.onTimeSet(millis());
+      g_status.onTimeSet(nowMs());
       if (g_rtc.nextStatusEpoch == 0)
         g_rtc.nextStatusEpoch = nc::nextDailyStatus(o.epoch, nc::kStatusHourUtc, g_spread);
     }
     if (o.statusReq)
-      g_status.request(millis(),
-                       300 + (o.statusSpreadMs ? (esp_random() ^ g_macHash) % o.statusSpreadMs : 0));
+      g_status.request(nowMs(), 300 + (o.statusSpreadMs ? (esp_random() ^ g_macHash) % o.statusSpreadMs : 0));
     if (o.changed) g_dirty = true;
     if (o.status != nc::kNoAck) sendAck(h, o.status, o.detail);
     Serial.printf("[node] type=0x%02x txn=%u ACK=%d ver S%u/R%u/E%u today=%u save=%lums RSSI %.0f SNR %.1f\n",
                   h.type, h.txn, o.status == nc::kNoAck ? -1 : o.status, g_rtc.schedVer, g_rtc.resvVer,
                   g_rtc.examVer, g_rtc.nSlots, (unsigned long)saveMs, rssi, snr);
   }
+}
+
+// 수신 프레임 하나를 처리한다. loop 와 패널 BUSY 콜백 양쪽에서 부른다.
+void pollRadio() {
+  if (!g_irq) return;
+  g_irq = false;
+  static uint8_t buf[256];
+  size_t len = radio.getPacketLength();
+  if (len > sizeof buf) len = sizeof buf;
+  int rs = radio.readData(buf, len);
+  handleRx(buf, len, rs, radio.getRSSI(), radio.getSNR());
   listen();
 }
 
@@ -336,6 +374,86 @@ void render(const RenderModel& m) {
   display.hibernate();
   digitalWrite(VEXT_CTRL, HIGH);
 }
+
+#if NODE_SLEEP_MODE == 2
+// ---- DEEP (v2 §6.7) ----
+// SX1262 를 수신 duty cycle 로 두고 잔다. 웨이크 프레임을 다 받으면 DIO1(RX_DONE)이 ext0 로 ESP 를 깨우고,
+// 패킷은 칩 버퍼에 남아 있다 — radio.begin() 은 칩을 리셋해 그 패킷을 지우므로, 깬 직후 SPI 명령으로 먼저
+// 읽는다 (SX1262 데이터시트 13.5: GetIrqStatus 0x12, GetRxBufferStatus 0x13, GetPacketStatus 0x14, ReadBuffer
+// 0x1E).
+bool sxCmd(uint8_t op, const uint8_t* tx, size_t ntx, uint8_t* rx, size_t nrx) {
+  const uint32_t t0 = millis();
+  while (digitalRead(LORA_BUSY) == HIGH)
+    if (millis() - t0 > 100) return false;
+  SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+  digitalWrite(LORA_NSS, LOW);
+  SPI.transfer(op);
+  for (size_t i = 0; i < ntx; ++i) SPI.transfer(tx[i]);
+  for (size_t i = 0; i < nrx; ++i) rx[i] = SPI.transfer(0x00);
+  digitalWrite(LORA_NSS, HIGH);
+  SPI.endTransaction();
+  return true;
+}
+
+// 칩 버퍼의 패킷을 읽는다. 반환 = 길이(0 = 없음·CRC 오류)
+size_t readHeldPacket(uint8_t* buf, size_t cap, float& rssi, float& snr) {
+  pinMode(LORA_NSS, OUTPUT);
+  digitalWrite(LORA_NSS, HIGH);
+  pinMode(LORA_BUSY, INPUT);
+  SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_NSS);
+  uint8_t irq[3];  // status, irq[15:8], irq[7:0]
+  if (!sxCmd(0x12, nullptr, 0, irq, 3)) return 0;
+  const uint16_t flags = (uint16_t)(irq[1] << 8 | irq[2]);
+  if (!(flags & 0x0002) || (flags & 0x0040)) {  // RX_DONE 아님 · CRC 오류
+    Serial.printf("[node] 버퍼 패킷 없음 irq=0x%04x\n", flags);
+    return 0;
+  }
+  uint8_t st[3];  // status, payloadLen, rxStartBufferPointer
+  if (!sxCmd(0x13, nullptr, 0, st, 3)) return 0;
+  const size_t n = st[1] < cap ? st[1] : cap;
+  static uint8_t tmp[257];
+  if (!sxCmd(0x1E, &st[2], 1, tmp, n + 1)) return 0;  // 첫 바이트는 status
+  memcpy(buf, tmp + 1, n);
+  uint8_t ps[4];  // status, rssiPkt, snrPkt, signalRssiPkt
+  if (sxCmd(0x14, nullptr, 0, ps, 4)) {
+    rssi = -(float)ps[1] / 2.0f;
+    snr = (float)(int8_t)ps[2] / 4.0f;
+  }
+  return n;
+}
+
+void deepSleep(uint32_t ms) {
+  radio.standby();
+  radio.setPreambleLength(RX_PREAMBLE_SYM);
+  const int st = radio.startReceiveDutyCycleAuto(RX_PREAMBLE_SYM, RP_RX_DUTY_MIN_SYM);
+  if (st != RADIOLIB_ERR_NONE) {
+    Serial.printf("[node] duty cycle 실패 %d — 자지 않음\n", st);
+    listen();
+    return;
+  }
+  WakeState w;
+  w.magic = kWakeMagic;
+  w.status = g_status;
+  w.shown = g_shown;
+  w.shownValid = g_shownValid;
+  w.layout = g_layout;
+  w.rssiLast = g_rssiLast;
+  w.snrX4 = g_snrX4;
+  memcpy(g_wakeRaw, &w, sizeof w);
+  ns::rtcSeal(g_rtc);
+  // 자는 동안 핀이 떠서 무선 칩이 리셋되거나(RST) SPI 로 깨거나(NSS), 패널 전원이 켜지지(Vext) 않게 붙잡는다
+  digitalWrite(VEXT_CTRL, HIGH);
+  gpio_hold_en((gpio_num_t)VEXT_CTRL);
+  gpio_hold_en((gpio_num_t)LORA_NSS);
+  gpio_hold_en((gpio_num_t)LORA_RST);
+  gpio_deep_sleep_hold_en();
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)LORA_DIO1, 1);
+  esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000ULL);
+  Serial.printf("[node] 딥슬립 %lums\n", (unsigned long)ms);
+  Serial.flush();
+  esp_deep_sleep_start();
+}
+#endif
 
 #if NODE_SLEEP_MODE == 1
 // v2 §6.7 LIGHT — RAM·RadioLib 객체·millis 는 그대로. 무선은 수신 duty cycle 로 웨이크 프리앰블을 기다린다
@@ -370,7 +488,9 @@ void lightSleep(uint32_t ms) {
                 fromRadio ? "radio" : (why == ESP_SLEEP_WAKEUP_TIMER ? "timer" : "other"),
                 (unsigned long)(millis() - t0));
 }
+#endif
 
+#if NODE_SLEEP_MODE >= 1
 void maybeSleep() {
   if (g_irq || millis() - g_lastRxMs <= QUIET_MS) return;
   const bool clk = clockValid();
@@ -385,17 +505,34 @@ void maybeSleep() {
   } else if (clk) {
     next = now + nc::kSleepCapNoDayMs / 1000;
   }
-  const uint32_t ms = nc::sleepMs(millis(), clk, now, next, dayReady, g_status);
+  const uint32_t ms = nc::sleepMs(nowMs(), clk, now, next, dayReady, g_status);
   if (ms == 0) return;
+#if NODE_SLEEP_MODE == 2
+  deepSleep(ms);
+#else
   lightSleep(ms);
+#endif
 }
 #endif
 
 }  // namespace
 
 void setup() {
+#if NODE_SLEEP_MODE == 2
+  const bool deepWake = esp_reset_reason() == ESP_RST_DEEPSLEEP;
+  const esp_sleep_wakeup_cause_t wakeCause = esp_sleep_get_wakeup_cause();
+  if (deepWake) {
+    gpio_hold_dis((gpio_num_t)VEXT_CTRL);
+    gpio_hold_dis((gpio_num_t)LORA_NSS);
+    gpio_hold_dis((gpio_num_t)LORA_RST);
+    gpio_deep_sleep_hold_dis();
+    rtc_gpio_deinit((gpio_num_t)LORA_DIO1);
+  }
+#else
+  const bool deepWake = false;
+#endif
   Serial.begin(115200);
-  delay(200);
+  if (!deepWake) delay(200);
   WiFi.mode(WIFI_OFF);
   btStop();
   pinMode(VEXT_CTRL, OUTPUT);
@@ -413,12 +550,21 @@ void setup() {
     }
     (void)g_store.setIdentity(ns::Identity{NODE_BLD, NODE_ROOM, NODE_UNIT}, 0);
   }
-  (void)LittleFS.remove("/state.bin");  // 0단계 전(임시 형식) 파일 — 버전 0 으로 시작해 서버가 재동기
+  if (!deepWake)
+    (void)LittleFS.remove("/state.bin");  // 0단계 전(임시 형식) 파일 — 버전 0 으로 시작해 서버가 재동기
   ns::rtcSeal(g_rtc);
   Serial.printf("[node] 저장 %s\n", src == ns::LoadSource::RtcCache ? "RTC 캐시" : "재구축");
   epdSpi.begin(EPD_SCK, -1, EPD_MOSI, EPD_CS);
   display.epd2.selectSPI(epdSpi, SPISettings(4000000, MSBFIRST, SPI_MODE0));
   display.epd2.setBusyCallback(onPanelBusy);
+#if NODE_SLEEP_MODE == 2
+  // 무선으로 깼으면 radio.begin()(칩 리셋) 전에 버퍼의 패킷부터 읽는다
+  static uint8_t held[256];
+  size_t heldLen = 0;
+  float heldRssi = 0, heldSnr = 0;
+  if (deepWake && wakeCause == ESP_SLEEP_WAKEUP_EXT0)
+    heldLen = readHeldPacket(held, sizeof held, heldRssi, heldSnr);
+#endif
   int st = radioBegin();
   const uint64_t efuse = ESP.getEfuseMac();
   uint8_t mac[6];
@@ -426,13 +572,39 @@ void setup() {
   g_macHash = nc::macSpread(mac, 0xFFFFFFFFu);
   g_spread = nc::macSpread(mac, nc::kStatusSpreadSec);
   g_battMv = readBattMv();
-  if (g_rtc.provisioned)
-    g_status.request(millis(), 1000 + (esp_random() ^ g_macHash) % 3000);  // 부팅 보고(§6.2)
+#if NODE_SLEEP_MODE == 2
+  WakeState w;
+  memcpy(&w, g_wakeRaw, sizeof w);
+  const bool resumed = deepWake && w.magic == kWakeMagic;
+  if (resumed) {
+    g_status = w.status;
+    g_shown = w.shown;
+    g_shownValid = w.shownValid;
+    g_layout = w.layout;
+    g_rssiLast = w.rssiLast;
+    g_snrX4 = w.snrX4;
+    g_dirty = false;  // 잠들기 전에 그릴 것은 다 그렸다 — 바뀌었으면 상태키·수신이 다시 표시한다
+  }
+  memset(g_wakeRaw, 0, sizeof(uint32_t));  // magic 무효화 — 한 번 쓰면 끝, 다음 잠들기가 다시 쓴다
+#else
+  const bool resumed = false;
+#endif
+  if (g_rtc.provisioned && !resumed)
+    g_status.request(nowMs(), 1000 + (esp_random() ^ g_macHash) % 3000);  // 부팅 보고(§6.2)
   Serial.printf("[node] %c%u-%u fw=%u radio=%d fs=%d ver S%u/R%u/E%u slots=%u batt=%umV\n", g_rtc.bld,
                 g_rtc.room, g_rtc.unit, FW_VER, st, fs, g_rtc.schedVer, g_rtc.resvVer, g_rtc.examVer,
                 g_rtc.nSlots, g_battMv);
-  g_lastRxMs = millis();
+  g_lastRxMs = resumed ? millis() - QUIET_MS - 1 : millis();  // 타이머로 깼으면 할 일만 하고 곧 다시 잔다
   listen();
+#if NODE_SLEEP_MODE == 2
+  if (deepWake)
+    Serial.printf("[node] 깸(딥) cause=%s len=%u\n", wakeCause == ESP_SLEEP_WAKEUP_EXT0 ? "radio" : "timer",
+                  (unsigned)heldLen);
+  if (heldLen) {
+    handleRx(held, heldLen, RADIOLIB_ERR_NONE, heldRssi, heldSnr);
+    listen();
+  }
+#endif
 }
 
 static void loopBody() {
@@ -481,7 +653,7 @@ static void loopBody() {
 
 void loop() {
   loopBody();
-#if NODE_SLEEP_MODE == 1
+#if NODE_SLEEP_MODE >= 1
   maybeSleep();
 #endif
 }
