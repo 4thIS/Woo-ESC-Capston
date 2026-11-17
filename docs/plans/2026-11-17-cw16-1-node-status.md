@@ -15,7 +15,7 @@
 - 플래그: `CLOCK_STALE` = 시계 무효(epoch ≤ 1,700,000,000) 또는 TIME 을 받은 적 없음(`lastTimeSyncEpoch == 0`) 또는 마지막 TIME 뒤 25 h 초과(§5.2). `UNPROVISIONED` = `provisioned == 0`. `LOW_BATT` = 0 < batt < 3,500 mV(§3.3, 0 = 측정 못 함).
 - 헤더: TYPE `LP_TYPE_STATUS`, BLD/ROOM/UNIT = 자기 정체성, TXN 0, flags 0, NET_ID `RP_NET_ID`. 송신은 ACK 와 같은 규칙 — normal 프리앰블, 송신 전 CAD 1회·busy 면 30~120 ms 뒤 1회 더(§6.8).
 - 시각: 부팅 보고 = 부팅 1~4 s 뒤 1회(§6.2). 하루 1회 = `nextDailyStatus(now, 18, hash(mac) % 1800)` — 18 = 서버 `STATUS_HOUR_UTC` 기본값(KST 03:00), `SET_PARAM` 은 2단계. TIME `REQUEST_STATUS` = 0~300 s 임의 지연(§3.3). CMD `REQUEST_STATUS` = ACK 뒤 곧바로(0.3 s).
-- 재시도: CAD busy 로 못 보냈으면 5 s 뒤 다시. 보냈는데 시계가 아직 없으면 10 min 뒤 다시(§9 "10 min 마다"), 그 사이 시계가 맞으면 건너뛴다.
+- 재시도: CAD busy 로 못 보냈으면 5 s 뒤 다시. 보냈는데 시계가 아직 없으면 10 min 뒤 다시(§9 "10 min 마다"), 그 사이 시계가 맞으면 건너뛴다. **(실기 뒤 변경, 2026-11-17)** 30 s 부터 두 배씩 최대 10 min — 동시 부팅에서 STATUS 가 모뎀 송신과 충돌해 10 min 을 기다렸다. 또 `CLOCK_STALE` 로 알린 뒤 시각을 받으면 3 s 뒤 STATUS 한 번 더(서버 clock_stale 표시가 하루 남지 않게).
 - 배터리: Heltec V3.2 — GPIO37(ADC_Ctrl)로 분압을 켜고 GPIO1 을 `analogReadMilliVolts` 8회 평균, × 4.9(390 k/100 k). ADC_Ctrl 극성은 Task 3 실기로 정한다. 60 s 마다 다시 잰다.
 - 펌웨어 버전 `FW_VER` 3 → 4.
 - 커밋 형식 `feat(firmware):`. 로컬 `pio test -e native -f test_node_core` 는 setUp/tearDown 을 정의하므로 Windows 에서도 돈다.

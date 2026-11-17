@@ -382,6 +382,7 @@ setup():
 ### 6.2 handleColdBoot
 1. 미설정(`provisioned==false`)이면 layout 8 렌더, `HELLO` 송신, `nextStatusEpoch = now + 10 min`.
 2. 설정됨이면 `STATUS` 송신(부팅 보고) 후 `handleTimer()`와 동일 경로.
+- 깨어 있는 모드(절전 1단계, 2026-11-17)도 부팅 1~4 s 뒤 STATUS 를 보낸다. 시계가 없어 `CLOCK_STALE` 이 서므로 모뎀Pi 가 그 노드에 타겟 TIME 을 보내고, 노드는 모뎀Pi 재시작 없이 몇 초 안에 시계를 맞춘다. 버전이 0 이면(저장 손상·지운 노드) 서버가 이 STATUS 로 FILE 재동기를 건다. 보냈는데 시계가 안 오면 30 s 부터 두 배씩 최대 10 min 간격으로 다시(동시 부팅 충돌 대비), CAD busy 면 5 s 뒤 다시. `CLOCK_STALE` 로 알린 뒤 시각을 받으면 3 s 뒤 STATUS 를 한 번 더 보내 서버의 시계 이상 표시를 지운다. 하루 1회(18:00 UTC + hash(mac)%1800 s)·TIME `REQUEST_STATUS`(0~300 s)·CMD `REQUEST_STATUS` 도 보낸다. ACK·STATUS 의 `batt_mV` 는 실측(V3.2: GPIO37 HIGH 로 분압을 켜고 GPIO1 × 4.9).
 
 ### 6.3 handleTimer
 1. `clockValid` 아니면 goToSleep(다음 시도 10 min).
