@@ -376,14 +376,28 @@ Decision buildModel(const Ident& me, const State& s, uint32_t epochUtc, RenderMo
   Decision d = decide(it, n, inExam, k.min);
   m.layout = d.layout;
 
-  // 오늘 목록 — 시작 순, 앞 24개(RenderModel 동결 #27)
+  // 오늘 목록 — 시작 순, 앞 24개(RenderModel 동결 #27). 연속 교시는 한 행(terminal-epaper.md 「오늘 목록」,
+  // 2026-11-12): 앞 행과 과목명(바이트 일치)·type 이 같고 틈 0–15분이면 끝 시각만 늘린다. 분반은 과목명 뒤에
+  // 붙어 오므로(「웹실습 102」) 반이 다르면 합쳐지지 않는다. 판정(decide)은 교시 단위 그대로 — 쉬는시간이
+  // 남는다.
   int ord[LP_SLOT_WEEK_MAX + kResvMax];
   for (int i = 0; i < n; ++i) ord[i] = i;
   std::stable_sort(ord, ord + n, [&](int a, int b) { return it[a].s < it[b].s; });
   auto subjOf = [&](const Item& x) { return x.resv ? s.resv[x.idx].subj : s.slots[x.idx].subj; };
   auto profOf = [&](const Item& x) { return x.resv ? s.resv[x.idx].prof : s.slots[x.idx].prof; };
-  for (int j = 0; j < n && m.nToday < 24; ++j) {
+  for (int j = 0; j < n; ++j) {
     const Item& x = it[ord[j]];
+    if (m.nToday > 0) {
+      TodaySlot& p = m.today[m.nToday - 1];
+      const int pe = p.eH * 60 + p.eM;
+      const int g = (int)x.s - pe;
+      if (p.type == x.type && g >= 0 && g <= LP_BREAK_GAP_MAX_MIN &&
+          strncmp(p.subj, subjOf(x), sizeof p.subj) == 0) {
+        if ((int)x.e > pe) p.eH = (uint8_t)(x.e / 60), p.eM = (uint8_t)(x.e % 60);
+        continue;
+      }
+    }
+    if (m.nToday >= 24) break;
     TodaySlot& t = m.today[m.nToday++];
     t.sH = (uint8_t)(x.s / 60), t.sM = (uint8_t)(x.s % 60), t.eH = (uint8_t)(x.e / 60),
     t.eM = (uint8_t)(x.e % 60);

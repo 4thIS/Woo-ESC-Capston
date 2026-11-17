@@ -250,9 +250,12 @@ void test_every_vector_payload_decodes_and_reencodes() {
 }
 
 void test_string_over_limit_rejected() {
-  // 구조체 버퍼(LP_SUBJ_MAX+1)에는 21 B 를 담을 수 없으므로 디코더 쪽 한계만 검사: subjLen=21 인 바이트열
-  uint8_t bad[] = {1,   3,   9,   0,   10,  0,   1,   21,  'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a',
-                   'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 1,   'p'};
+  // 구조체 버퍼(LP_SUBJ_MAX+1)에는 한계 + 1 B 를 담을 수 없으므로 디코더 쪽 한계만 검사: subjLen =
+  // LP_SUBJ_MAX + 1
+  uint8_t bad[7 + 1 + LP_SUBJ_MAX + 1 + 2] = {1, 3, 9, 0, 10, 0, 1, LP_SUBJ_MAX + 1};
+  for (int i = 0; i < LP_SUBJ_MAX + 1; ++i) bad[8 + i] = 'a';
+  bad[8 + LP_SUBJ_MAX + 1] = 1;
+  bad[8 + LP_SUBJ_MAX + 2] = 'p';
   uint8_t nv;
   lc::SlotRec d;
   TEST_ASSERT_FALSE(lc::decSlotSet(bad, sizeof bad, nv, d));
@@ -263,9 +266,10 @@ void test_string_over_limit_rejected() {
 }
 
 void test_file_records_iterate() {
-  // file_data_seq0_full_200B 는 file_begin_schedule_3chunks(total_len=504, n_chunks=3)의 첫 청크(200 B,
-  // LP_FILE_CHUNK_MAX 로 잘림)다. 42 B 레코드가 4개(168 B) 온전히 들어가고, 5번째 레코드(day=5)는 헤더(2 B)
-  // + 30 B만 이 청크에 있고 나머지 10 B는 다음 청크(seq1, 본 벡터셋에 없음)에 있다 — 즉 청크 경계에서 잘린다.
+  // file_data_seq0_full_200B 는 file_begin_schedule_3chunks(total_len=486, n_chunks=3)의 첫 청크(200 B,
+  // LP_FILE_CHUNK_MAX 로 잘림)다. 54 B 레코드(머리 2 + 본문 52, SUBJ_MAX 32)가 3개(162 B) 온전히 들어가고,
+  // 4번째 레코드(day=4)는 머리(2 B) + 36 B만 이 청크에 있고 나머지 16 B는 다음 청크(seq1, 본 벡터셋에 없음)에
+  // 있다 — 즉 청크 경계에서 잘린다.
   // nextRecord 는 이 절단을 형식 오류로 보고 false + pos=n 을 반환해야 한다(완전히 재조립된 body에서만
   // 호출하는 것이 정상 사용법이며, 청크 단위 파싱은 지원 대상이 아니다).
   if (g_doc["vectors"].isNull()) TEST_FAIL_MESSAGE("vectors not loaded");
@@ -283,7 +287,7 @@ void test_file_records_iterate() {
     TEST_ASSERT_EQUAL_UINT8(1 + count % 7, s.day);
     ++count;
   }
-  TEST_ASSERT_EQUAL(4, count);
+  TEST_ASSERT_EQUAL(3, count);
   TEST_ASSERT_EQUAL(body.size(), pos);
 }
 

@@ -48,14 +48,14 @@ def build() -> dict:
     T = P.Type
     slot = C.SlotSet(
         3, 3, 9, 0, 10, 50, P.SlotType.CLASS, "임베디드SW", "정필성"
-    )  # 14 B (SUBJ_MAX 20)
-    slot_max = C.SlotSet(255, 7, 23, 59, 23, 59, P.SlotType.RENTAL, "가" * 6 + "ab", "가" * 4)
+    )  # 14 B (SUBJ_MAX 32)
+    slot_max = C.SlotSet(255, 7, 23, 59, 23, 59, P.SlotType.RENTAL, "가" * 10 + "ab", "가" * 4)
     resv = C.ResvSet(2, 0x0102, 2026, 11, 19, 13, 0, 15, 0, P.SlotType.RENTAL, "경진대회", "산학처")
     exam = C.ExamSet(4, 7, 2026, 10, 20, 2026, 10, 24)
     ack = C.Ack(P.AckStatus.OK, 0, 3987, 12, 3, 1, 1, 20, P.Layout.CLASS)
     big_records = [
-        C.SlotSet(0, 1 + i % 7, 9, 0, 10, 0, 1, "가" * 6 + "ab", "가" * 4) for i in range(12)
-    ]  # 40 B × 12 = 480 B → 3 청크
+        C.SlotSet(0, 1 + i % 7, 9, 0, 10, 0, 1, "가" * 10 + "ab", "가" * 4) for i in range(9)
+    ]  # 54 B × 9 = 486 B → 3 청크 (레코드 머리 2 + 본문 52)
     fb, fd0, _fd1, fd2, fe = C.build_file(P.FileKind.SCHEDULE, big_records, new_ver=9)
     assert fd2.seq == 2 and len(fd0.data) == P.FILE_CHUNK_MAX
 

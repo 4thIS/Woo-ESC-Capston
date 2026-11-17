@@ -42,8 +42,8 @@ def test_mixed_kind_records_rejected():
 
 def test_build_file_chunks_and_crc():
     records = [
-        SlotSet(0, 1 + i % 7, 9, 0, 10, 0, 1, "가" * 6 + "ab", "가" * 4) for i in range(30)
-    ]  # 40 B × 30
+        SlotSet(0, 1 + i % 7, 9, 0, 10, 0, 1, "가" * 10 + "ab", "가" * 4) for i in range(30)
+    ]  # 52 B × 30
     body = encode_records(records)
     parts = build_file(P.FileKind.SCHEDULE, records, new_ver=9)
     begin, *datas, end = parts

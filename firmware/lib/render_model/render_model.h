@@ -9,7 +9,7 @@
 #include <cstdint>
 
 struct RenderSlot {
-  char subj[21];
+  char subj[33];  // LP_SUBJ_MAX 32 + 널 — 분반을 과목명 뒤에 붙인다(2026-11-12)
   char prof[13];
   uint8_t sH, sM, eH, eM;
   uint8_t type;   // lora_proto SlotType (위 주석)
@@ -18,8 +18,8 @@ struct RenderSlot {
 
 struct TodaySlot {
   uint8_t sH, sM, eH, eM;
-  char subj[21];
-  uint8_t type;  // lora_proto SlotType
+  char subj[33];  // LP_SUBJ_MAX 32 + 널 — 분반을 과목명 뒤에 붙인다(2026-11-12)
+  uint8_t type;   // lora_proto SlotType
 };
 
 struct RenderModel {

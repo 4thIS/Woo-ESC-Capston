@@ -48,7 +48,7 @@ v2 §8은 웹서버와 모뎀이 한 호스트라는 전제로 쓰였고, 로드
 | `schools` | `id`, `name`, `net_id` u8 UNIQUE | NET_ID는 학교 단위(로드맵 §3) |
 | `buildings` | `id`, `school_id`, `name`, `bld` CHAR(1), `modem_id` → `modems` NULL. UNIQUE(`school_id`,`bld`) | 건물 1 = 모뎀Pi 1. `bld`는 헤더 BLD 바이트(ASCII) |
 | `rooms` | `id`, `building_id`, `room` u16(1~9999), `units` u8 ∈ {1,2}. UNIQUE(`building_id`,`room`) | `units`가 유닛 분해 근거 |
-| `slots` | `id`, `room_id`, `day` 1~7, `s_h`,`s_m`,`e_h`,`e_m`, `type` 1~6, `subject`(UTF-8 ≤ 20 B), `professor`(≤ 12 B). UNIQUE(`room_id`,`day`,`s_h`,`s_m`) | = SLOT_SET 페이로드. 멱등키 = 노드와 동일 |
+| `slots` | `id`, `room_id`, `day` 1~7, `s_h`,`s_m`,`e_h`,`e_m`, `type` 1~6, `subject`(UTF-8 ≤ 32 B, 2026-11-12 — 분반을 뒤에 붙임), `professor`(≤ 12 B). UNIQUE(`room_id`,`day`,`s_h`,`s_m`) | = SLOT_SET 페이로드. 멱등키 = 노드와 동일 |
 | `reservations` | `id`(= resvId, `CHECK(id BETWEEN 1 AND 65535)`), `room_id`, `date`, `s_h`,`s_m`,`e_h`,`e_m`, `type`, `subject`, `professor` | = RESV_SET |
 | `exam_periods` | `id`(= examId, u16), `room_id`, `date_start`, `date_end` | = EXAM_SET, 양끝 포함 |
 
