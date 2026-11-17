@@ -14,7 +14,9 @@ namespace nc {
 bool isForMe(const Ident& me, const lc::Header& h) {
   if (h.flags & LP_FLAG_BROADCAST) return true;
   if (h.bld == LP_BLD_ALL) return true;
-  if (h.bld == LP_BLD_UNPROVISIONED) return false;  // SET_ROOM 은 미설정 노드만(프로비저닝은 S9)
+  if (h.bld == LP_BLD_UNPROVISIONED)
+    return !me.provisioned && h.type == LP_TYPE_SET_ROOM;  // MAC 은 handleFrame
+  if (!me.provisioned) return false;
   return h.bld == me.bld && h.room == me.room && (h.unit == LP_UNIT_ALL || h.unit == me.unit);
 }
 
@@ -44,7 +46,8 @@ uint8_t ackOf(ns::StoreStatus st, uint8_t oldVer, uint8_t newVer) {
 }
 
 // 프레임 하나 적용. 반환 = ACK status. o.changed·o.timeSet·o.detail 을 채운다.
-uint8_t apply(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* p, uint32_t now, Outcome& o) {
+uint8_t apply(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* p, uint32_t now, Outcome& o,
+              const uint8_t* myMac) {
   const ns::RtcState& r = st.state();
   const bool clockOk = now > kClockValidEpoch;
   const ns::Date today = todayOf(now);
@@ -146,14 +149,51 @@ uint8_t apply(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* 
       o.changed = true;
       return LP_ACK_OK;  // FILE 은 전체 교체 — GAP 없음(§3.3)
     }
+    case LP_TYPE_SET_ROOM: {
+      lc::SetRoom sr{};
+      uint8_t nv = 0;
+      if (!lc::decSetRoom(p, h.len, nv, sr)) return LP_ACK_BAD_PAYLOAD;
+      if (!myMac || std::memcmp(sr.mac, myMac, 6) != 0 || r.provisioned) {
+        o.ignored = true;
+        return kNoAck;
+      }
+      const ns::StoreStatus s = st.setIdentity(ns::Identity{sr.bld, sr.room, sr.unit}, nv);
+      if (s != ns::StoreStatus::Ok) return ackOf(s, 0, 1);
+      o.provisionedNow = true;
+      o.changed = true;
+      return LP_ACK_OK;
+    }
     case LP_TYPE_CMD: {
       lc::CmdMsg c{};
       if (!lc::decCmd(p, h.len, c)) return LP_ACK_BAD_PAYLOAD;
-      if (c.cmd != LP_CMD_REQUEST_STATUS) return LP_ACK_UNSUPPORTED;  // 나머지 CMD 는 2단계
-      o.statusReq = true;
-      return LP_ACK_OK;
+      switch (c.cmd) {
+        case LP_CMD_REQUEST_STATUS:
+          o.statusReq = true;
+          return LP_ACK_OK;
+        case LP_CMD_REBOOT:
+          o.reboot = true;
+          return LP_ACK_OK;
+        case LP_CMD_FACTORY_RESET:
+          o.factoryReset = true;
+          return LP_ACK_OK;
+        case LP_CMD_FORCE_RENDER:
+          o.forceRender = true;
+          return LP_ACK_OK;
+        case LP_CMD_TEST_RENDER:
+          if (c.argsLen != 1 || c.args[0] < 1 || c.args[0] > LP_LAYOUT_SETUP) return LP_ACK_BAD_PAYLOAD;
+          o.testLayout = c.args[0];
+          return LP_ACK_OK;
+        case LP_CMD_SET_PARAM: {
+          if (c.argsLen != 5) return LP_ACK_BAD_PAYLOAD;
+          const uint32_t v =
+              (uint32_t)c.args[1] << 24 | (uint32_t)c.args[2] << 16 | (uint32_t)c.args[3] << 8 | c.args[4];
+          return ackOf(st.setParam(c.args[0], v), 0, 1);
+        }
+        default:
+          return LP_ACK_UNSUPPORTED;
+      }
     }
-    default:  // SET_ROOM 은 2단계(프로비저닝)
+    default:  // 그 밖의 TYPE
       return LP_ACK_UNSUPPORTED;
   }
   if (rc == LP_ACK_OK || rc == LP_ACK_GAP) o.changed = true;
@@ -162,13 +202,18 @@ uint8_t apply(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* 
 
 }  // namespace
 
-Outcome handleFrame(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* p, uint32_t nowEpoch) {
+Outcome handleFrame(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* p, uint32_t nowEpoch,
+                    const uint8_t* myMac) {
   Outcome o;
   uint8_t s;
   if (h.type != LP_TYPE_TIME && h.txn != 0 && h.txn == st.state().lastTxn) {
     s = LP_ACK_DUP;  // 재적용 없이 ACK 만(§3.5)
   } else {
-    s = apply(st, f, h, p, nowEpoch, o);
+    s = apply(st, f, h, p, nowEpoch, o, myMac);
+    if (o.ignored) {
+      o.status = kNoAck;  // lastTxn 도 쓰지 않는다
+      return o;
+    }
     // lastTxn 은 저장 결과가 OK(GAP 포함)일 때만(#74 10). TIME 은 건드리지 않는다(§3.5).
     // setLastTxn 실패는 무시한다 — 데이터는 이미 저장됐다. lastTxn 을 놓치면 같은 프레임이 다시 왔을 때 DUP
     // 이 아니라 재적용되는데, 버전이 이미 v 라 gap(v, v) → GAP ACK → 서버 FILE 재동기가 된다. 해롭진 않지만
@@ -179,6 +224,33 @@ Outcome handleFrame(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uin
   const bool wantAck = (h.flags & LP_FLAG_ACK_REQ) && !(h.flags & LP_FLAG_BROADCAST) && h.bld != LP_BLD_ALL;
   o.status = wantAck ? s : kNoAck;
   return o;
+}
+
+void setupModel(const uint8_t mac[6], RenderModel& m) {
+  m = RenderModel{};
+  m.layout = LP_LAYOUT_SETUP;
+  snprintf(m.newTag, sizeof m.newTag, "NEW-%02X%02X", mac[4], mac[5]);
+}
+
+Button::Action Button::update(uint32_t nowMs, bool pressed) {
+  if (pressed) {
+    if (!down_) {
+      down_ = true;
+      longFired_ = false;
+      since_ = nowMs;
+      return kNone;
+    }
+    if (!longFired_ && nowMs - since_ >= kButtonLongMs) {
+      longFired_ = true;
+      return kLong;
+    }
+    return kNone;
+  }
+  if (!down_) return kNone;
+  down_ = false;
+  const uint32_t held = nowMs - since_;
+  if (longFired_ || held < kButtonDebounceMs || held >= kButtonShortMaxMs) return kNone;
+  return kShort;
 }
 
 namespace {

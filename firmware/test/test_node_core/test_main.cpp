@@ -226,8 +226,8 @@ void test_no_ack_without_ack_req() {
 
 void test_bad_payload_and_unsupported() {
   TEST_ASSERT_EQUAL_HEX8(LP_ACK_BAD_PAYLOAD, run(hdr(LP_TYPE_SLOT_SET, 1), 2).status);
-  lc::CmdMsg c{1, nullptr, 0};
-  TEST_ASSERT_EQUAL_HEX8(LP_ACK_UNSUPPORTED,
+  lc::CmdMsg c{0x7F, nullptr, 0};  // 모르는 CMD — decCmd 가 거른다(6종은 모두 처리)
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_BAD_PAYLOAD,
                          run(hdr(LP_TYPE_CMD, 2), lc::encCmd(c, g_pl, sizeof g_pl)).status);
 }
 
@@ -723,6 +723,123 @@ void test_sleep_ms() {
   TEST_ASSERT_EQUAL_UINT32(0, sleepMs(0, true, NOW, NOW - 5, true, q));
 }
 
+// ---------------- 프로비저닝(§6.6·SET_ROOM) ----------------
+static const uint8_t MAC[6] = {0x3c, 0x0f, 0x02, 0xee, 0x47, 0x10};
+
+void test_is_for_me_unprovisioned() {
+  Ident un{0, 0, 0, false, {}};
+  TEST_ASSERT_TRUE(isForMe(un, hdr(LP_TYPE_SET_ROOM, 1, LP_FLAG_ACK_REQ, LP_BLD_UNPROVISIONED, 0, 0)));
+  TEST_ASSERT_FALSE(isForMe(un, hdr(LP_TYPE_SLOT_SET, 1, LP_FLAG_ACK_REQ, LP_BLD_UNPROVISIONED, 0, 0)));
+  TEST_ASSERT_TRUE(isForMe(un, hdr(LP_TYPE_TIME, 0, LP_FLAG_BROADCAST, LP_BLD_ALL, 0xFFFF, 0xFF)));
+  TEST_ASSERT_FALSE(
+      isForMe(ME, hdr(LP_TYPE_SET_ROOM, 1, LP_FLAG_ACK_REQ, LP_BLD_UNPROVISIONED, 0, 0)));  // 설정됨
+}
+
+static Outcome setRoom(uint8_t txn, uint8_t ver, const uint8_t* mac, uint16_t room, const uint8_t* myMac) {
+  lc::SetRoom sr{};
+  std::memcpy(sr.mac, mac, 6);
+  sr.bld = 'E', sr.room = room, sr.unit = 1;
+  lc::Header h = hdr(LP_TYPE_SET_ROOM, txn, LP_FLAG_ACK_REQ, LP_BLD_UNPROVISIONED, 0, 0);
+  h.len = (uint8_t)lc::encSetRoom(ver, sr, g_pl, sizeof g_pl);
+  return handleFrame(*ST, *F, h, g_pl, NOW, myMac);
+}
+
+void test_set_room_provisions_matching_mac() {
+  ST->factoryReset();
+  ST->load(4);
+  TEST_ASSERT_EQUAL_UINT8(0, R->provisioned);
+  Outcome o = setRoom(9, 3, MAC, 803, MAC);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, o.status);
+  TEST_ASSERT_TRUE(o.provisionedNow);
+  TEST_ASSERT_TRUE(o.changed);
+  TEST_ASSERT_EQUAL_UINT8(1, R->provisioned);
+  TEST_ASSERT_EQUAL_UINT8('E', R->bld);
+  TEST_ASSERT_EQUAL_UINT16(803, R->room);
+  TEST_ASSERT_EQUAL_UINT8(1, R->unit);
+  TEST_ASSERT_EQUAL_UINT8(3, R->identVer);
+}
+
+void test_set_room_ignores_other_mac_and_provisioned() {
+  ST->factoryReset();
+  ST->load(4);
+  const uint8_t other[6] = {1, 2, 3, 4, 5, 6};
+  Outcome o = setRoom(9, 3, other, 803, MAC);
+  TEST_ASSERT_EQUAL_HEX8(kNoAck, o.status);  // 응답하지 않는다(§6.6)
+  TEST_ASSERT_TRUE(o.ignored);
+  TEST_ASSERT_EQUAL_UINT8(0, R->provisioned);
+  TEST_ASSERT_EQUAL_UINT8(0, R->lastTxn);
+  Outcome n = setRoom(10, 3, MAC, 803, nullptr);  // 내 MAC 을 모르면 무시
+  TEST_ASSERT_TRUE(n.ignored);
+  setRoom(11, 3, MAC, 803, MAC);  // 설정됨
+  Outcome again = setRoom(12, 4, MAC, 301, MAC);
+  TEST_ASSERT_TRUE(again.ignored);
+  TEST_ASSERT_EQUAL_UINT16(803, R->room);
+}
+
+// ---------------- CMD(§3.3) ----------------
+static Outcome cmd(uint8_t txn, uint8_t c, const uint8_t* args, uint8_t n) {
+  lc::CmdMsg m{c, args, n};
+  return run(hdr(LP_TYPE_CMD, txn), lc::encCmd(m, g_pl, sizeof g_pl));
+}
+
+void test_cmd_actions() {
+  ST->setIdentity(ns::Identity{'E', 301, 1}, 0);
+  Outcome r = cmd(20, LP_CMD_REBOOT, nullptr, 0);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, r.status);
+  TEST_ASSERT_TRUE(r.reboot);
+  Outcome f = cmd(21, LP_CMD_FACTORY_RESET, nullptr, 0);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, f.status);
+  TEST_ASSERT_TRUE(f.factoryReset);
+  TEST_ASSERT_EQUAL_UINT8(1, R->provisioned);  // 초기화는 ACK 뒤 main 이 한다
+  Outcome fr = cmd(22, LP_CMD_FORCE_RENDER, nullptr, 0);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, fr.status);
+  TEST_ASSERT_TRUE(fr.forceRender);
+  const uint8_t lay = LP_LAYOUT_RENTAL;
+  Outcome t = cmd(23, LP_CMD_TEST_RENDER, &lay, 1);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, t.status);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_RENTAL, t.testLayout);
+  const uint8_t bad = 9;
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_BAD_PAYLOAD, cmd(24, LP_CMD_TEST_RENDER, &bad, 1).status);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_BAD_PAYLOAD, cmd(25, LP_CMD_TEST_RENDER, nullptr, 0).status);
+}
+
+void test_cmd_set_param() {
+  const uint8_t a[5] = {1, 0, 0, 0, 20};  // statusHourUtc = 20
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, cmd(30, LP_CMD_SET_PARAM, a, 5).status);
+  uint32_t v = 0;
+  TEST_ASSERT_TRUE(ST->param(1, v));
+  TEST_ASSERT_EQUAL_UINT32(20, v);
+  const uint8_t unk[5] = {99, 0, 0, 0, 1};
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_UNSUPPORTED, cmd(31, LP_CMD_SET_PARAM, unk, 5).status);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_BAD_PAYLOAD, cmd(32, LP_CMD_SET_PARAM, a, 4).status);
+}
+
+// ---------------- 설정 화면·버튼 ----------------
+void test_setup_model() {
+  RenderModel m{};
+  m.layout = 1;
+  setupModel(MAC, m);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_SETUP, m.layout);
+  TEST_ASSERT_EQUAL_STRING("NEW-4710", m.newTag);
+  TEST_ASSERT_EQUAL_UINT8(0, m.nToday);
+}
+
+void test_button_short_long() {
+  Button b;
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(0, false));
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(100, true));
+  TEST_ASSERT_EQUAL(Button::kShort, b.update(400, false));  // 300 ms
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(500, true));
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(520, false));  // 20 ms — 튐
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(1000, true));
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(3000, false));  // 2 s — 아무것도
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(4000, true));
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(8999, true));
+  TEST_ASSERT_EQUAL(Button::kLong, b.update(9000, true));   // 5 s
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(9500, true));   // 한 번만
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(9600, false));  // 떼도 짧게 아님
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_is_for_me);
@@ -769,5 +886,12 @@ int main() {
   RUN_TEST(test_same_screen_ignores_batt_and_unused_today);
   RUN_TEST(test_status_plan_ms_until_due);
   RUN_TEST(test_sleep_ms);
+  RUN_TEST(test_is_for_me_unprovisioned);
+  RUN_TEST(test_set_room_provisions_matching_mac);
+  RUN_TEST(test_set_room_ignores_other_mac_and_provisioned);
+  RUN_TEST(test_cmd_actions);
+  RUN_TEST(test_cmd_set_param);
+  RUN_TEST(test_setup_model);
+  RUN_TEST(test_button_short_long);
   return UNITY_END();
 }

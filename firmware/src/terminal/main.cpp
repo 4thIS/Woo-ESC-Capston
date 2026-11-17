@@ -5,7 +5,9 @@
 //  - 저장: ns::NodeStore(NVS 버전·LittleFS 레코드·RTC 캐시) + sch:: 판정. 어댑터는 esp_store.h
 //  - 화면: renderLayout(dh, #89) + RenderModel(계약 ④). 패널 리프레시(약 27 s) 동안에도 busy 콜백에서
 //  수신·ACK
-//  - 정체성: 빌드 플래그 NODE_BLD·NODE_ROOM·NODE_UNIT (프로비저닝 SET_ROOM 은 S9)
+//  - 정체성: NVS(관리자 웹 배정 → SET_ROOM). 없으면 설정 대기 화면 + HELLO. 빌드 플래그 NODE_ROOM 을 주면 그
+//  방으로 강제
+//  - CMD·PRG 버튼(짧게 = 다시 그리기 + STATUS, 5 s = 공장 초기화) — 절전 2단계
 //  - 시계: TIME 으로 맞춘다. 시계가 무효면 그리지 않는다 — e-Paper 는 마지막 화면을 그대로 둔다(§5.2)
 //  - STATUS(부팅·하루 1회·요청)·배터리 실측 — 절전 1단계
 //  - 절전: NODE_SLEEP_MODE=1 이면 light sleep, 2 면 deep sleep(할 일이 없을 때). 무선은 수신 duty cycle(절전
@@ -38,9 +40,6 @@
 #ifndef NODE_BLD
 #define NODE_BLD 'E'
 #endif
-#ifndef NODE_ROOM
-#define NODE_ROOM 301
-#endif
 #ifndef NODE_UNIT
 #define NODE_UNIT 1
 #endif
@@ -50,14 +49,16 @@
 
 namespace {
 
-constexpr uint8_t FW_VER = 5;
+constexpr uint8_t FW_VER = 6;
 // 배터리(Heltec V3.2): GPIO37 HIGH 로 분압(390 k/100 k)을 켜고 GPIO1 을 잰다(2026-11-17 실기 확인, 3.5~4.0
 // V). V3.0/3.1 보드는 극성이 반대(LOW)라 이 값으로는 0 근처가 나온다
 constexpr int VBAT_ADC = 1, VBAT_CTRL = 37;
 constexpr uint8_t VBAT_CTRL_ON = HIGH;
 constexpr float VBAT_DIVIDER = 4.9f;
 constexpr uint32_t BATT_PERIOD_MS = 60000;
-constexpr uint32_t QUIET_MS = 8000;  // 마지막 수신 뒤 이만큼 조용하면 그린다(웨이크 프리앰블 3 s 보다 길게)
+constexpr uint32_t QUIET_MS_DEFAULT =
+    8000;                      // 마지막 수신 뒤 이만큼 조용하면 그린다(웨이크 프리앰블 3 s 보다 길게)
+constexpr int BUTTON_PIN = 0;  // PRG 버튼, 눌림 LOW
 
 constexpr int LORA_NSS = 8, LORA_SCK = 9, LORA_MOSI = 10, LORA_MISO = 11;
 constexpr int LORA_RST = 12, LORA_BUSY = 13, LORA_DIO1 = 14;
@@ -106,6 +107,16 @@ int8_t g_snrX4 = 0;
 uint32_t g_macHash = 0;  // 노드마다 다른 값 — 부팅 직후 esp_random 은 RF 를 안 켜면 노드끼리 같은 값이 나온다
 uint32_t g_spread = 0;   // 하루 STATUS 분산(초) = hash(mac) % 1800
 nc::StatusPlan g_status;
+uint8_t g_mac[6] = {};
+uint32_t g_quietMs = QUIET_MS_DEFAULT;      // SET_PARAM 2 sessionWindowMs
+uint8_t g_statusHour = nc::kStatusHourUtc;  // SET_PARAM 1 statusHourUtc
+bool g_forceRender = false;                 // CMD FORCE_RENDER·버튼 — 같은 화면이어도 한 번 그린다
+uint8_t g_testLayout = 0;                   // CMD TEST_RENDER — 다음 렌더 한 번 이 레이아웃으로
+nc::Button g_button;
+bool g_wakePress = false;  // 버튼으로 깨어 아직 누르고 있다(DEEP)
+// pollButton 이 마지막으로 본 눌림. 잠들기는 핀을 따로 읽지 않고 이 값을 본다 — 따로 읽으면 뗀 순간을
+// 잠들기가 먼저 보고 자 버려 짧게를 놓친다(2026-11-17 실기)
+bool g_btnDown = false;
 RenderModel g_shown{};  // 마지막으로 그린 화면
 bool g_shownValid = false;
 
@@ -136,7 +147,28 @@ static_assert(std::is_trivially_copyable<WakeState>::value, "WakeState 는 memcp
 #endif
 
 nc::Ident me() {
-  return nc::Ident{g_rtc.bld, g_rtc.room, g_rtc.unit};
+  return nc::Ident(g_rtc.bld, g_rtc.room, g_rtc.unit, g_rtc.provisioned != 0, g_mac);
+}
+
+// SET_PARAM 으로 저장한 값(없으면 기본값)
+void loadParams() {
+  uint32_t v = 0;
+  g_statusHour = g_store.param(1, v) && v < 24 ? (uint8_t)v : nc::kStatusHourUtc;
+  g_quietMs = g_store.param(2, v) && v >= 2000 && v <= 60000 ? v : QUIET_MS_DEFAULT;
+}
+
+// ACK 를 보낸 뒤 실행 — 서버가 결과를 받게
+[[noreturn]] void restartAfterAck(bool reset) {
+  delay(500);
+  if (reset) {
+    Serial.println("[node] 공장 초기화");
+    (void)g_store.factoryReset();
+  }
+  Serial.println("[node] 재시작");
+  Serial.flush();
+  esp_restart();
+  while (true) {
+  }
 }
 
 bool clockValid() {
@@ -292,6 +324,23 @@ void maybeMeasureBatt() {
   g_battMv = readBattMv();
 }
 
+// 미설정 노드의 자기소개(§3.3 HELLO, 헤더 BLD/ROOM/UNIT 0·TXN 0)
+bool sendHello() {
+  lc::Hello hl{};
+  memcpy(hl.mac, g_mac, 6);
+  hl.fw = FW_VER;
+  hl.battMv = g_battMv;
+  uint8_t pl[16];
+  const size_t pn = lc::encHello(hl, pl, sizeof pl);
+  lc::Header h{};
+  h.ver = LP_PROTO_VER;
+  h.netId = RP_NET_ID;
+  h.type = LP_TYPE_HELLO;
+  return txUplink(h, pl, pn, "HELLO");
+}
+
+constexpr uint32_t HELLO_PERIOD_MS = 600000;  // 미설정이면 10 min 마다(§6.2)
+
 void maybeSendStatus() {
   const uint32_t ms = nowMs();
   const uint32_t now = (uint32_t)time(nullptr);
@@ -299,13 +348,23 @@ void maybeSendStatus() {
   if (!g_status.due(ms, clk, now, g_rtc.nextStatusEpoch)) return;
   if (g_irq)
     return;  // 받은 프레임이 있으면 먼저 처리 — CAD(standby)가 그 프레임을 버리지 않게, 다음 틱에 보낸다
+  if (!g_rtc.provisioned) {
+    const bool ok = sendHello();
+    if (ok) {
+      g_status.sent(ms, true, true, 0);  // 예약을 비우고
+      g_status.request(ms, HELLO_PERIOD_MS);
+    } else {
+      g_status.sent(ms, false, false, 0);  // 채널 사용 중 — 5 s 뒤
+    }
+    return;
+  }
   uint8_t flags = 0;
   const bool done = sendStatus(now, flags);
   g_status.sent(ms, done, clk, flags);
   if (clk) {
     // now + 30 min 기준 — 18:00:05 TIME REQUEST_STATUS 로 막 보냈으면 같은 날 18:00+분산 슬롯은 건너뛴다(하루
     // 2회 방지)
-    g_rtc.nextStatusEpoch = nc::nextDailyStatus(now + nc::kStatusSpreadSec, nc::kStatusHourUtc, g_spread);
+    g_rtc.nextStatusEpoch = nc::nextDailyStatus(now + nc::kStatusSpreadSec, g_statusHour, g_spread);
     ns::rtcSeal(g_rtc);
   }
 }
@@ -321,7 +380,8 @@ void handleRx(const uint8_t* buf, size_t len, int rs, float rssi, float snr) {
     g_rssiLast = (int8_t)constrain((int)lroundf(rssi), -128, 127);
     g_snrX4 = (int8_t)constrain((int)lroundf(snr * 4), -128, 127);
     const uint32_t ts = millis();
-    nc::Outcome o = nc::handleFrame(g_store, g_file, h, p, (uint32_t)time(nullptr));
+    nc::Outcome o = nc::handleFrame(g_store, g_file, h, p, (uint32_t)time(nullptr), g_mac);
+    if (o.ignored) return;  // 다른 노드의 SET_ROOM — 응답하지 않는다(§6.6)
     const uint32_t saveMs = millis() - ts;
     if (o.timeSet) {
       timeval tv{(time_t)o.epoch, 0};
@@ -331,12 +391,25 @@ void handleRx(const uint8_t* buf, size_t len, int rs, float rssi, float snr) {
       g_dirty = true;
       g_status.onTimeSet(nowMs());
       if (g_rtc.nextStatusEpoch == 0)
-        g_rtc.nextStatusEpoch = nc::nextDailyStatus(o.epoch, nc::kStatusHourUtc, g_spread);
+        g_rtc.nextStatusEpoch = nc::nextDailyStatus(o.epoch, g_statusHour, g_spread);
     }
     if (o.statusReq)
       g_status.request(nowMs(), 300 + (o.statusSpreadMs ? (esp_random() ^ g_macHash) % o.statusSpreadMs : 0));
     if (o.changed) g_dirty = true;
+    if (o.provisionedNow) {
+      Serial.printf("[node] 정체성 받음 %c%u-%u\n", g_rtc.bld, g_rtc.room, g_rtc.unit);
+      g_shownValid = false;
+      g_status.sent(nowMs(), true, true, 0);  // HELLO 예약을 비우고 STATUS 로
+      g_status.request(nowMs(), 300);
+    }
+    if (o.forceRender || o.testLayout) {
+      g_forceRender = true;
+      g_testLayout = o.testLayout;
+      g_dirty = true;
+    }
+    if (h.type == LP_TYPE_CMD) loadParams();
     if (o.status != nc::kNoAck) sendAck(h, o.status, o.detail);
+    if (o.reboot || o.factoryReset) restartAfterAck(o.factoryReset);
     Serial.printf("[node] type=0x%02x txn=%u ACK=%d ver S%u/R%u/E%u today=%u save=%lums RSSI %.0f SNR %.1f\n",
                   h.type, h.txn, o.status == nc::kNoAck ? -1 : o.status, g_rtc.schedVer, g_rtc.resvVer,
                   g_rtc.examVer, g_rtc.nSlots, (unsigned long)saveMs, rssi, snr);
@@ -448,6 +521,9 @@ void deepSleep(uint32_t ms) {
   gpio_hold_en((gpio_num_t)LORA_RST);
   gpio_deep_sleep_hold_en();
   esp_sleep_enable_ext0_wakeup((gpio_num_t)LORA_DIO1, 1);
+  rtc_gpio_pullup_en((gpio_num_t)BUTTON_PIN);  // 자는 동안 디지털 풀업이 꺼진다
+  rtc_gpio_pulldown_dis((gpio_num_t)BUTTON_PIN);
+  esp_sleep_enable_ext1_wakeup(1ULL << BUTTON_PIN, ESP_EXT1_WAKEUP_ANY_LOW);
   esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000ULL);
   Serial.printf("[node] 딥슬립 %lums\n", (unsigned long)ms);
   Serial.flush();
@@ -470,6 +546,7 @@ void lightSleep(uint32_t ms) {
   radio.clearDio1Action();  // level 깨우기를 쓰는 동안 엣지 인터럽트를 뗀다(붙인 채면 깬 뒤 ISR 이 끝없이
                             // 돈다)
   gpio_wakeup_enable((gpio_num_t)LORA_DIO1, GPIO_INTR_HIGH_LEVEL);
+  gpio_wakeup_enable((gpio_num_t)BUTTON_PIN, GPIO_INTR_LOW_LEVEL);
   esp_sleep_enable_gpio_wakeup();
   esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000ULL);
   Serial.flush();
@@ -477,6 +554,7 @@ void lightSleep(uint32_t ms) {
   esp_light_sleep_start();
   const esp_sleep_wakeup_cause_t why = esp_sleep_get_wakeup_cause();
   gpio_wakeup_disable((gpio_num_t)LORA_DIO1);
+  gpio_wakeup_disable((gpio_num_t)BUTTON_PIN);
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   radio.setDio1Action(onDio1);
   const bool fromRadio = digitalRead(LORA_DIO1) == HIGH;
@@ -485,18 +563,19 @@ void lightSleep(uint32_t ms) {
   else
     listen();
   Serial.printf("[node] 깸 cause=%s slept=%lums\n",
-                fromRadio ? "radio" : (why == ESP_SLEEP_WAKEUP_TIMER ? "timer" : "other"),
+                fromRadio ? "radio" : (why == ESP_SLEEP_WAKEUP_TIMER ? "timer" : "button"),
                 (unsigned long)(millis() - t0));
 }
 #endif
 
 #if NODE_SLEEP_MODE >= 1
 void maybeSleep() {
-  if (g_irq || millis() - g_lastRxMs <= QUIET_MS) return;
+  if (g_irq || millis() - g_lastRxMs <= g_quietMs) return;
+  if (g_btnDown || g_wakePress) return;  // 누르는 중 — 떼야 짧게/길게를 안다
   const bool clk = clockValid();
   const uint32_t now = (uint32_t)time(nullptr);
   const bool dayReady = clk && g_rtc.slotsDay == sch::toKst(now).weekday;
-  if (g_dirty && dayReady) return;  // 그릴 것이 남았다 — 렌더 블록이 먼저
+  if (g_dirty && (dayReady || !g_rtc.provisioned)) return;  // 그릴 것이 남았다 — 렌더 블록이 먼저
   uint32_t next = 0;
   if (dayReady) {
     next = sch::nextChangeAt(
@@ -527,6 +606,7 @@ void setup() {
     gpio_hold_dis((gpio_num_t)LORA_RST);
     gpio_deep_sleep_hold_dis();
     rtc_gpio_deinit((gpio_num_t)LORA_DIO1);
+    rtc_gpio_deinit((gpio_num_t)BUTTON_PIN);
   }
 #else
   const bool deepWake = false;
@@ -537,10 +617,14 @@ void setup() {
   btStop();
   pinMode(VEXT_CTRL, OUTPUT);
   digitalWrite(VEXT_CTRL, HIGH);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  const uint64_t efuse = ESP.getEfuseMac();
+  for (int i = 0; i < 6; ++i) g_mac[i] = (uint8_t)(efuse >> (8 * i));
   bool fs = LittleFS.begin(true);
   const uint8_t bootWd = clockValid() ? sch::toKst((uint32_t)time(nullptr)).weekday : 0;
   ns::LoadSource src = g_store.load(bootWd);
-  // 0단계: 정체성은 아직 빌드 플래그(NODE_*). 2단계(프로비저닝)에서 SET_ROOM 으로 바뀐다
+#ifdef NODE_ROOM
+  // 빌드 플래그로 방을 줬으면 그 정체성을 강제한다(시연·실험용). 안 주면 NVS 정체성(SET_ROOM) 그대로
   if (!g_rtc.provisioned || g_rtc.room != NODE_ROOM || g_rtc.bld != NODE_BLD || g_rtc.unit != NODE_UNIT) {
     if (g_rtc.provisioned) {
       // 다른 방으로 바뀌었다 — 옛 방의 시간표·예약·버전을 지워 버전 0 으로 서버가 재동기하게 한다.
@@ -550,6 +634,8 @@ void setup() {
     }
     (void)g_store.setIdentity(ns::Identity{NODE_BLD, NODE_ROOM, NODE_UNIT}, 0);
   }
+#endif
+  loadParams();
   if (!deepWake)
     (void)LittleFS.remove("/state.bin");  // 0단계 전(임시 형식) 파일 — 버전 0 으로 시작해 서버가 재동기
   ns::rtcSeal(g_rtc);
@@ -566,11 +652,8 @@ void setup() {
     heldLen = readHeldPacket(held, sizeof held, heldRssi, heldSnr);
 #endif
   int st = radioBegin();
-  const uint64_t efuse = ESP.getEfuseMac();
-  uint8_t mac[6];
-  for (int i = 0; i < 6; ++i) mac[i] = (uint8_t)(efuse >> (8 * i));
-  g_macHash = nc::macSpread(mac, 0xFFFFFFFFu);
-  g_spread = nc::macSpread(mac, nc::kStatusSpreadSec);
+  g_macHash = nc::macSpread(g_mac, 0xFFFFFFFFu);
+  g_spread = nc::macSpread(g_mac, nc::kStatusSpreadSec);
   g_battMv = readBattMv();
 #if NODE_SLEEP_MODE == 2
   WakeState w;
@@ -589,31 +672,104 @@ void setup() {
 #else
   const bool resumed = false;
 #endif
-  if (g_rtc.provisioned && !resumed)
-    g_status.request(nowMs(), 1000 + (esp_random() ^ g_macHash) % 3000);  // 부팅 보고(§6.2)
-  Serial.printf("[node] %c%u-%u fw=%u radio=%d fs=%d ver S%u/R%u/E%u slots=%u batt=%umV\n", g_rtc.bld,
-                g_rtc.room, g_rtc.unit, FW_VER, st, fs, g_rtc.schedVer, g_rtc.resvVer, g_rtc.examVer,
-                g_rtc.nSlots, g_battMv);
-  g_lastRxMs = resumed ? millis() - QUIET_MS - 1 : millis();  // 타이머로 깼으면 할 일만 하고 곧 다시 잔다
+  if (!resumed)
+    g_status.request(nowMs(),
+                     1000 + (esp_random() ^ g_macHash) % 3000);  // 부팅 보고(§6.2) — 미설정이면 HELLO
+  if (g_rtc.provisioned)
+    Serial.printf("[node] %c%u-%u fw=%u radio=%d fs=%d ver S%u/R%u/E%u slots=%u batt=%umV\n", g_rtc.bld,
+                  g_rtc.room, g_rtc.unit, FW_VER, st, fs, g_rtc.schedVer, g_rtc.resvVer, g_rtc.examVer,
+                  g_rtc.nSlots, g_battMv);
+  else
+    Serial.printf("[node] 미설정 NEW-%02X%02X mac=%02x%02x%02x%02x%02x%02x fw=%u radio=%d batt=%umV\n",
+                  g_mac[4], g_mac[5], g_mac[0], g_mac[1], g_mac[2], g_mac[3], g_mac[4], g_mac[5], FW_VER, st,
+                  g_battMv);
+  g_lastRxMs = resumed ? millis() - g_quietMs - 1 : millis();  // 타이머로 깼으면 할 일만 하고 곧 다시 잔다
   listen();
 #if NODE_SLEEP_MODE == 2
   if (deepWake)
-    Serial.printf("[node] 깸(딥) cause=%s len=%u\n", wakeCause == ESP_SLEEP_WAKEUP_EXT0 ? "radio" : "timer",
+    Serial.printf("[node] 깸(딥) cause=%s len=%u\n",
+                  wakeCause == ESP_SLEEP_WAKEUP_EXT0   ? "radio"
+                  : wakeCause == ESP_SLEEP_WAKEUP_EXT1 ? "button"
+                                                       : "timer",
                   (unsigned)heldLen);
   if (heldLen) {
     handleRx(held, heldLen, RADIOLIB_ERR_NONE, heldRssi, heldSnr);
     listen();
   }
+  if (deepWake && wakeCause == ESP_SLEEP_WAKEUP_EXT1) {
+    // 버튼으로 깼다. 부팅(≈0.3 s) 사이에 이미 뗐으면 짧게 누른 것이고, 아직 누르고 있으면 부팅 시점부터 잰다
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      g_wakePress =
+          true;  // pollButton 이 뗄 때까지 본다 — 부팅이 ≈1 s 라 Button 의 1 s 상한을 쓰면 짧게가 안 잡힌다
+    } else {
+      Serial.println("[node] 버튼 짧게(깨기) — 다시 그리기 + STATUS");
+      g_forceRender = true;
+      g_dirty = true;
+      g_lastRxMs = millis() - g_quietMs - 1;
+      g_status.request(nowMs(), 300);
+    }
+  }
 #endif
+}
+
+// 설정 대기 화면(layout 8) — 시계와 무관하게 그린다
+void renderSetupIfNeeded() {
+  if (!g_dirty || millis() - g_lastRxMs <= g_quietMs) return;
+  g_dirty = false;
+  static RenderModel m;
+  nc::setupModel(g_mac, m);
+  g_layout = m.layout;
+  if (g_shownValid && !g_forceRender && nc::sameScreen(g_shown, m)) return;
+  g_forceRender = false;
+  Serial.printf("[node] 렌더 설정 대기 %s\n", m.newTag);
+  render(m);
+  g_shown = m;
+  g_shownValid = true;
+}
+
+void pollButton() {
+  const bool pressed = digitalRead(BUTTON_PIN) == LOW;
+  g_btnDown = pressed;
+  nc::Button::Action a = nc::Button::kNone;
+  if (g_wakePress) {
+    // 버튼으로 깼다 — 5 s 전에 떼면 짧게, 누른 채 5 s(부팅부터)면 길게
+    if (!pressed) {
+      a = nc::Button::kShort;
+      g_wakePress = false;
+    } else if (millis() >= nc::kButtonLongMs) {
+      a = nc::Button::kLong;
+      g_wakePress = false;
+    }
+  } else {
+    a = g_button.update(millis(), pressed);
+  }
+  switch (a) {
+    case nc::Button::kShort:
+      Serial.println("[node] 버튼 짧게 — 다시 그리기 + STATUS");
+      g_forceRender = true;
+      g_dirty = true;
+      g_status.request(nowMs(), 300);
+      break;
+    case nc::Button::kLong:
+      Serial.println("[node] 버튼 5 s — 공장 초기화");
+      restartAfterAck(true);
+    default:
+      break;
+  }
 }
 
 static void loopBody() {
   pollRadio();
+  pollButton();
   maybeSendStatus();  // 1 s 틱 밖에서 — 임의 지연이 1 s 단위로 뭉쳐 동시 부팅 노드끼리 겹치지 않게
   static uint32_t lastCheck = 0;
   if (millis() - lastCheck < 1000) return;
   lastCheck = millis();
   maybeMeasureBatt();
+  if (!g_rtc.provisioned) {
+    renderSetupIfNeeded();
+    return;
+  }
   if (!clockValid()) return;  // 시계 전엔 그리지 않는다 — 마지막 화면 유지
   syncDay();
   const uint32_t now = (uint32_t)time(nullptr);
@@ -627,7 +783,7 @@ static void loopBody() {
   const bool keyChanged =
       d.layout != g_rtc.lastLayout || d.day != g_rtc.lastDay || d.slotStartMin != g_rtc.lastSlotStartMin;
   if (keyChanged) g_dirty = true;
-  if (g_dirty && millis() - g_lastRxMs > QUIET_MS) {
+  if (g_dirty && millis() - g_lastRxMs > g_quietMs) {
     g_dirty = false;
     g_rtc.lastLayout = d.layout;
     g_rtc.lastDay = d.day;
@@ -639,10 +795,15 @@ static void loopBody() {
                   (unsigned long)sch::nextChangeAt(sch::ScheduleView{g_rtc.slots, todayN, g_rtc.resv,
                                                                      g_rtc.nResv, g_rtc.exams, g_rtc.nExam},
                                                    now, g_rtc.nextStatusEpoch));
-    if (g_shownValid && nc::sameScreen(g_shown, m)) {
+    if (g_testLayout) {
+      m.layout = g_testLayout;  // CMD TEST_RENDER — 한 번만
+      g_testLayout = 0;
+    }
+    if (g_shownValid && !g_forceRender && nc::sameScreen(g_shown, m)) {
       Serial.printf("[node] 같은 화면 — 다시 그리지 않음 layout=%u\n", m.layout);
       return;
     }
+    g_forceRender = false;
     const uint32_t t0 = millis();
     render(m);
     g_shown = m;

@@ -20,6 +20,14 @@ struct Ident {
   uint8_t bld;
   uint16_t room;
   uint8_t unit;
+  bool provisioned = true;
+  uint8_t mac[6] = {};
+  // terminal env 는 gnu++11 이라 기본 멤버 초기값이 있으면 집합체 초기화가 안 된다 — 생성자로 같은 모양을
+  // 지킨다
+  Ident(uint8_t b, uint16_t r, uint8_t u, bool prov = true, const uint8_t* m = nullptr)
+      : bld(b), room(r), unit(u), provisioned(prov) {
+    for (int i = 0; i < 6; ++i) mac[i] = m ? m[i] : 0;
+  }
 };
 
 // FILE 세션 수신 버퍼 — 영속 아님(재부팅하면 서버가 다시 보낸다).
@@ -39,13 +47,36 @@ struct Outcome {
   uint32_t epoch = 0;           // timeSet 이면 맞출 UTC epoch
   bool statusReq = false;       // STATUS 를 보내라(TIME REQUEST_STATUS·CMD REQUEST_STATUS, §3.3)
   uint32_t statusSpreadMs = 0;  // statusReq 일 때 0~이 값 ms 임의 지연(0 = 곧바로)
+  bool ignored = false;         // 대상이 아니었다(SET_ROOM MAC 불일치·설정된 노드) — ACK 없음
+  bool provisionedNow = false;
+  bool reboot = false;
+  bool factoryReset = false;
+  bool forceRender = false;
+  uint8_t testLayout = 0;  // TEST_RENDER — 0 이면 없음
 };
 
 bool isForMe(const Ident&, const lc::Header&);  // §6.6
 bool gap(uint8_t oldVer, uint8_t newVer);       // (new − old) mod 255 ≠ 1 (§12, #74 12)
 ns::Date todayOf(uint32_t epochUtc);            // KST 날짜, ResvRec 와 같은 표현(y = year-2000)
 // §6.4 dispatch. DUP 판정·버전·lastTxn(결과 OK/GAP 일 때만, #74 10) 까지 한다. nowEpoch = 노드 시계(UTC)
-Outcome handleFrame(ns::NodeStore&, FileRx&, const lc::Header&, const uint8_t* payload, uint32_t nowEpoch);
+// myMac = 내 MAC(SET_ROOM 대조용, 기본 nullptr — SET_ROOM 은 무시됨)
+Outcome handleFrame(ns::NodeStore&, FileRx&, const lc::Header&, const uint8_t* payload, uint32_t nowEpoch,
+                    const uint8_t* myMac = nullptr);
+
+// 미설정 노드 설정 화면(layout 8, "NEW-xxxx" = MAC 하위 2 B)
+void setupModel(const uint8_t mac[6], RenderModel& m);
+
+// 버튼 판단 — 50 ms 이상 1 s 미만 눌렀다 떼면 짧게, 5 s 누르고 있으면 길게(한 번만)
+constexpr uint32_t kButtonDebounceMs = 50, kButtonShortMaxMs = 1000, kButtonLongMs = 5000;
+class Button {
+ public:
+  enum Action : uint8_t { kNone, kShort, kLong };
+  Action update(uint32_t nowMs, bool pressed);
+
+ private:
+  bool down_ = false, longFired_ = false;
+  uint32_t since_ = 0;
+};
 
 // r 의 정체성·오늘 슬롯(r.slotsDay 가 오늘 요일과 다르면 슬롯 없음으로 본다)·예약·시험으로 m 을 채운다.
 sch::LayoutDecision buildModel(const ns::RtcState& r, uint32_t epochUtc, RenderModel& m);
