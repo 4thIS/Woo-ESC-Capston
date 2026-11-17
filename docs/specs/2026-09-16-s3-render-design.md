@@ -17,7 +17,7 @@ v1(`esp32_e-paper_syllabus`, 상위 폴더에서 실물 확인)은 실제 GxEPD2
 
 ### 목표
 - 그리기 인터페이스: **Adafruit_GFX 기반 클래스 계층을 실기·호스트가 그대로 공유**한다. 렌더 함수는 `Adafruit_GFX&`(또는 그 파생 타입) 하나만 받고, GxEPD2 실기 클래스와 호스트 프레임버퍼 클래스가 각각 그 타입을 만족한다.
-- `RenderModel.today[12]` → **`today[24]`** 로 변경 제안 (근거: §2.1).
+- `RenderModel.today[12]` → **`today[24]`** (근거: §2.1). `today[24]` — cw-11 에서 동결(2026-10-12 #27, 최종 확인 2026-11-17). `lora_proto` `LP_SLOT_DAY_MAX=24` 와 같다.
 - 픽스처 JSON 형식을 S1의 관례(JSON은 snake_case, C++ 구조체는 camelCase, `lora_proto/test_vectors.json` 패턴)를 그대로 따라 확정한다.
 - 레이아웃 1~8은 새로 정의하지 않고 v2 §5.3 표를 참조하며, `today[]` 패널이 v1에 없는 신규 UI임을 명시한다.
 - `firmware/lib/host_gfx/host_gfx.{h,cpp}` (호스트 프레임버퍼) + `firmware/tools/render_preview.cpp`(네이티브 실행파일) + `render_preview.py`(오케스트레이션)를 설계한다. (초안은 `host_gfx`도 `tools/`에 뒀으나 링크 제약으로 `lib/`로 옮겼다 — §4.1 각주)
@@ -30,7 +30,7 @@ v1(`esp32_e-paper_syllabus`, 상위 폴더에서 실물 확인)은 실제 GxEPD2
 
 ## 2. 데이터 · 계약
 
-- `RenderModel` 변경: **예** (`today[12]` → `today[24]`). `lora_proto/` 계약이 아니라 firmware 내부의 cw↔dh 계약(로드맵 §4.1)이라 lockstep PR 규칙 대상은 아니지만, 이 spec의 제안은 **초안**이며 최종 동결은 로드맵 일정대로 4주차 `cw-11`(계약 7개 동결 리뷰)에서 확정된다.
+- `RenderModel` 변경: **예** (`today[12]` → `today[24]`). `lora_proto/` 계약이 아니라 firmware 내부의 cw↔dh 계약(로드맵 §4.1)이라 lockstep PR 규칙 대상은 아니지만, `today[24]` 는 cw-11(계약 7개 동결 리뷰)에서 동결됐다(2026-10-12 #27, 최종 확인 2026-11-17).
 - `lora_proto/` 변경: 아니오
 - DB 스키마·응답 스키마 변경: 아니오
 
@@ -46,7 +46,7 @@ v1(`esp32_e-paper_syllabus`, 상위 폴더에서 실물 확인)은 실제 GxEPD2
 
 **주간 0.5 단위는 9개(0.5+1.0을 50분 블록으로 병합)로 줄일 수 없다.** 0.5교시(예: 5.0=13:25-13:50)와 다음 0.5교시(5.5=14:00-14:25) 사이에 10분 휴식이 끼어 있어도, 실제 개설 과목은 이 경계와 무관하게 독립적으로 시작·종료한다 — 예: 1학년 통합전공교과 "딥러닝" 101반은 화요일 **13:25~14:50**(5.0·5.5·6.0에 걸침, 중간 10분 휴식 포함), 수요일 **10:25~11:50**(2.0·2.5·3.0에 걸침)로 개설되어 있다. 병합하면 이런 과목의 시작·종료 시각을 `today[]`에 표현할 수 없으므로 18개 전부를 독립 슬롯으로 유지한다.
 
-한 강의실이 하루에 가질 수 있는 서로 다른 시작 시각(=최악의 경우 서로 다른 과목이 들어갈 수 있는 슬롯 수)의 최댓값이 24이므로, `today[]`는 이 수를 손실 없이 담아야 한다. `RenderModel`은 로드맵 §4.1에 "≈ 550 B, **매 웨이크 재계산**"이라 명시된 임시 구조체로(2026-09-16 QR·battPct 제거 후 갱신된 값) `rtc_state_t`(RTC slow memory 8 KB 제한)에 영속 저장되지 않으므로, 24로 늘려도(약 +312 B) ESP32-S3 SRAM(512 KB)에 실질적 제약이 없다.
+한 강의실이 하루에 가질 수 있는 서로 다른 시작 시각(=최악의 경우 서로 다른 과목이 들어갈 수 있는 슬롯 수)의 최댓값이 24이므로, `today[]`는 이 수를 손실 없이 담아야 한다. `RenderModel`은 로드맵 §4.1에 "1,040 B(과목 32 B 반영, `test_render_model` 이 고정), **매 웨이크 재계산**"이라 명시된 임시 구조체로(2026-09-16 QR·battPct 제거 후 갱신된 값) `rtc_state_t`(RTC slow memory 8 KB 제한)에 영속 저장되지 않으므로, 24로 늘려도(약 +312 B) ESP32-S3 SRAM(512 KB)에 실질적 제약이 없다.
 
 ```c
 struct { uint8_t sH,sM,eH,eM; char subj[33]; uint8_t type; } today[24];  // 09:00~22:55, 주간 18 + 야간 6
@@ -136,8 +136,7 @@ void renderLayout(Adafruit_GFX& gfx, const RenderModel& model);
 {
   "name": "layout1_class_basic",
   "layout": 1, "bld": "E", "room": 301, "unit": 1,
-  "now_str": "09:30", "date_str": "09.16", "weekday": 3,
-  "prev": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "date_str": "09.16", "weekday": 3,
   "cur":  {"subj": "자료구조", "prof": "김교수", "s_h": 9, "s_m": 0, "e_h": 9, "e_m": 50, "type": 1, "flags": 1},
   "next": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
   "n_today": 3,
@@ -161,7 +160,7 @@ void renderLayout(Adafruit_GFX& gfx, const RenderModel& model);
 ## 6. 무회귀 · 롤아웃
 
 - 기존 렌더 코드가 이 리포에 없으므로(v1은 별도 레포) 회귀 대상 없음.
-- `RenderModel.today[24]` 변경은 이 spec에서 제안하는 초안이며, 로드맵 일정상 4주차 `cw-11`에서 cw와 함께 최종 동결한다. 그 전까지 dh-03·dh-04(3주차)는 이 spec을 기준으로 먼저 진행해도 무방하다(로드맵 §6.4).
+- `today[24]` — cw-11 에서 동결(2026-10-12 #27, 최종 확인 2026-11-17). `lora_proto` `LP_SLOT_DAY_MAX=24` 와 같다.
 - `platformio.ini` 변경(`[env:native_preview]` 신설)은 Task 6에서 이미 실제로 반영됐다 — cw 리뷰는 PR 머지 전 필수(§5).
 
 ## 7. 역할 분담
@@ -169,7 +168,7 @@ void renderLayout(Adafruit_GFX& gfx, const RenderModel& model);
 | 영역 | 담당 |
 |------|------|
 | `firmware/lib/render/`, `firmware/src/fonts/`, `firmware/tools/` | dh @Hyeon02-kr |
-| `render_model.h` 필드 최종 동결 | dh 제안 → cw @ssenu 확인 (4주차 `cw-11`) |
+| `render_model.h` 필드 최종 동결 | dh 제안 → cw @ssenu 확인 — **완료**(cw-11, 2026-11-17: 필드·`today[24]`·1,040 B) |
 | `platformio.ini` native env 설정 검토 | cw @ssenu |
 | `determineLayout` 야간 교시 판정 수정 | cw @ssenu (이슈로 별도 요청) |
 
