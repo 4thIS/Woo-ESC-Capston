@@ -350,7 +350,8 @@ bool StatusPlan::due(uint32_t nowMs, bool clockOk, uint32_t nowEpoch, uint32_t n
   return clockOk && nextStatusEpoch != 0 && nowEpoch >= nextStatusEpoch;
 }
 
-void StatusPlan::sent(uint32_t nowMs, bool ok, bool clockOk) {
+void StatusPlan::sent(uint32_t nowMs, bool ok, bool clockOk, uint8_t flags) {
+  if (ok) staleSent_ = (flags & LP_STATUSFLAG_CLOCK_STALE) != 0;
   if (!ok) {
     pending_ = true;
     onlyIfStale_ = false;
@@ -365,6 +366,12 @@ void StatusPlan::sent(uint32_t nowMs, bool ok, bool clockOk) {
   }
   pending_ = false;
   onlyIfStale_ = false;
+}
+
+void StatusPlan::onTimeSet(uint32_t nowMs) {
+  if (!staleSent_) return;
+  staleSent_ = false;
+  request(nowMs, kAfterTimeStatusMs);
 }
 
 }  // namespace nc

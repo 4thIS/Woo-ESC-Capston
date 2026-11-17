@@ -353,6 +353,29 @@ void test_status_plan_request_and_sent() {
   TEST_ASSERT_FALSE(p.due(9300 + kStaleRetryMs, true, NOW, 0));
 }
 
+void test_status_plan_resends_after_time_when_stale_sent() {
+  StatusPlan p;
+  p.request(0, 1000);
+  p.sent(1000, true, false, LP_STATUSFLAG_CLOCK_STALE);  // 부팅 보고 — 시계 없음으로 알렸다
+  p.onTimeSet(4000);  // 시각을 받았다 → 서버의 "시계 이상" 표시를 지우러 한 번 더
+  TEST_ASSERT_FALSE(p.due(4000 + kAfterTimeStatusMs - 1, true, NOW, 0));
+  TEST_ASSERT_TRUE(p.due(4000 + kAfterTimeStatusMs, true, NOW, 0));
+  p.sent(4000 + kAfterTimeStatusMs, true, true, 0);
+  TEST_ASSERT_FALSE(p.due(4000 + kAfterTimeStatusMs + kStaleRetryMs, true, NOW, 0));
+  p.onTimeSet(20000);  // 다음 방송 TIME — 이미 알렸으니 다시 보내지 않는다
+  TEST_ASSERT_FALSE(p.due(20000 + kAfterTimeStatusMs, true, NOW, 0));
+}
+
+void test_status_plan_no_resend_without_stale() {
+  StatusPlan p;
+  p.onTimeSet(0);
+  TEST_ASSERT_FALSE(p.due(kAfterTimeStatusMs, true, NOW, 0));
+  p.request(0, 0);
+  p.sent(0, true, true, 0);  // 시계 정상으로 알렸다
+  p.onTimeSet(100);
+  TEST_ASSERT_FALSE(p.due(100 + kAfterTimeStatusMs, true, NOW, 0));
+}
+
 void test_status_plan_daily_and_wrap() {
   StatusPlan p;
   TEST_ASSERT_FALSE(p.due(0, true, NOW, 0));  // 하루 시각이 아직 없음
@@ -655,5 +678,7 @@ int main() {
   RUN_TEST(test_mac_spread_deterministic);
   RUN_TEST(test_status_plan_request_and_sent);
   RUN_TEST(test_status_plan_daily_and_wrap);
+  RUN_TEST(test_status_plan_resends_after_time_when_stale_sent);
+  RUN_TEST(test_status_plan_no_resend_without_stale);
   return UNITY_END();
 }

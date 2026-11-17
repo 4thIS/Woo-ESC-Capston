@@ -58,6 +58,8 @@ constexpr uint32_t kStatusSpreadSec = 1800;       // 하루 STATUS 분산 hash(m
 constexpr uint32_t kReqStatusSpreadMs = 300000;   // TIME REQUEST_STATUS → 0~300 s 임의 지연(§3.3)
 constexpr uint32_t kStaleRetryMs = 600000;        // 보냈는데 시계가 안 오면 10 min 뒤 다시(§9)
 constexpr uint32_t kBusyRetryMs = 5000;           // CAD busy 로 못 보냈으면 5 s 뒤 다시
+constexpr uint32_t kAfterTimeStatusMs =
+    3000;  // CLOCK_STALE 로 알린 뒤 시각을 받으면 이만큼 뒤 STATUS 한 번 더
 
 struct LinkInfo {
   int8_t rssiLast;   // 마지막으로 받은 내 프레임의 RSSI(dBm)
@@ -78,16 +80,20 @@ uint32_t macSpread(const uint8_t mac[6], uint32_t mod);  // FNV-1a % mod (mod 0 
 // 호출자 몫: 시계가 있을 때 보내기를 시도했으면(성공·실패 모두) nextStatusEpoch 를 nextDailyStatus 로 옮긴다.
 class StatusPlan {
  public:
-  void request(uint32_t nowMs,
-               uint32_t delayMs);  // nowMs+delayMs 에 한 번. 더 이른 일반 예약이 있으면 그대로
+  // nowMs+delayMs 에 한 번. 더 이른 일반 예약이 있으면 그대로
+  void request(uint32_t nowMs, uint32_t delayMs);
   bool due(uint32_t nowMs, bool clockOk, uint32_t nowEpoch, uint32_t nextStatusEpoch) const;
   // ok=false(채널 사용 중) → kBusyRetryMs 뒤 다시. ok·시계 없음 → kStaleRetryMs 뒤 다시(그 사이 시계가 맞으면
-  // 건너뜀). ok·시계 있음 → 예약을 비운다
-  void sent(uint32_t nowMs, bool ok, bool clockOk);
+  // 건너뜀). ok·시계 있음 → 예약을 비운다. flags = 보낸 STATUS 의 플래그(CLOCK_STALE 기억용)
+  void sent(uint32_t nowMs, bool ok, bool clockOk, uint8_t flags = 0);
+  // TIME 으로 시계를 맞췄다. 마지막으로 보낸 STATUS 가 CLOCK_STALE 이었으면 kAfterTimeStatusMs 뒤 한 번 더 —
+  // 서버의 clock_stale 표시는 다음 STATUS 까지 남기 때문(부팅 보고 뒤 하루 내내 "시계 이상"으로 보이지 않게)
+  void onTimeSet(uint32_t nowMs);
 
  private:
   bool pending_ = false;
   bool onlyIfStale_ = false;
+  bool staleSent_ = false;
   uint32_t dueMs_ = 0;
 };
 

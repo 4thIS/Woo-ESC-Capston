@@ -217,7 +217,7 @@ void sendAck(const lc::Header& req, uint8_t status, uint8_t detail) {
   (void)txUplink(h, pl, pn, "ACK");
 }
 
-bool sendStatus(uint32_t now) {
+bool sendStatus(uint32_t now, uint8_t& flags) {
   const uint32_t up = millis() / 3600000UL;
   const lc::Status s =
       nc::buildStatus(g_rtc, now, g_battMv, FW_VER, g_layout,
@@ -232,6 +232,7 @@ bool sendStatus(uint32_t now) {
   h.room = g_rtc.room;
   h.unit = g_rtc.unit;
   h.txn = 0;
+  flags = s.flags;
   const bool done = txUplink(h, pl, pn, "STATUS");
   Serial.printf("[node] STATUS flags=0x%02x batt=%umV ver S%u/R%u/E%u\n", s.flags, g_battMv, g_rtc.schedVer,
                 g_rtc.resvVer, g_rtc.examVer);
@@ -250,8 +251,9 @@ void maybeSendStatus() {
   const uint32_t now = (uint32_t)time(nullptr);
   const bool clk = clockValid();
   if (!g_status.due(ms, clk, now, g_rtc.nextStatusEpoch)) return;
-  const bool done = sendStatus(now);
-  g_status.sent(ms, done, clk);
+  uint8_t flags = 0;
+  const bool done = sendStatus(now, flags);
+  g_status.sent(ms, done, clk, flags);
   if (clk) {
     g_rtc.nextStatusEpoch = nc::nextDailyStatus(now, nc::kStatusHourUtc, g_spread);
     ns::rtcSeal(g_rtc);
@@ -284,6 +286,7 @@ void pollRadio() {
       g_rtc.lastTimeSyncEpoch = o.epoch;
       syncDay();
       g_dirty = true;
+      g_status.onTimeSet(millis());
       if (g_rtc.nextStatusEpoch == 0)
         g_rtc.nextStatusEpoch = nc::nextDailyStatus(o.epoch, nc::kStatusHourUtc, g_spread);
     }
