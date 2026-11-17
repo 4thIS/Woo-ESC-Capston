@@ -16,7 +16,7 @@ S1이 만드는 것에 의존한다: `lora_proto.codec`(프레임·페이로드�
 ### 목표
 - `JobStore`의 `received` 작업을 v2 §8.4 순서로 집어 `acked` 또는 `failed`로 끝낸다. 재시도·TXN·단일 인플라이트·FILE 청킹이 전부 여기 있다.
 - 실물 모뎀(`modem.py`, pyserial)과 fake 모뎀을 **같은 `LineTransport`로** 다룬다. 워커 코드는 어느 쪽인지 모른다.
-- 매시 TIME 브로드캐스트를 **자기 시계**로 낸다. 인터넷·메인Pi 없이도.
+- 30 분마다(매시 :00:05·:30:05) TIME 브로드캐스트를 **자기 시계**로 낸다. 인터넷·메인Pi 없이도.
 - 업링크(STATUS·HELLO)를 파싱해 `JobStore.put_uplink()`에 넣는다. 올리는 것은 링크.
 - 4주차 Pi↔Pi 통합에서 fake 모뎀으로, 5~6주차에 실물 모뎀(S7)으로 같은 코드가 돈다.
 
@@ -62,7 +62,7 @@ modempi/lora/
 ├── modem_client.py   # LineTransport 위의 요청/응답 계층: tx(frame, wake, ack_ms) -> TxResult, rx 이벤트 큐, ping/stats
 ├── preprocess.py     # job(JSON) → 송신 단위 목록: FILE → [BEGIN, DATA…, END] 페이로드, 우선순위
 ├── worker.py         # JobStore 소비 루프: 픽업 → 프레임화(TXN) → 송신 → 결과 판정 → 재시도/완료
-├── time_sched.py     # 매시 :00:05 TIME 행 생성, status_hour_utc 에 REQUEST_STATUS
+├── time_sched.py     # 매시 :00:05·:30:05 TIME 행 생성, status_hour_utc 정시 슬롯에 REQUEST_STATUS
 ├── uplink.py         # rx 프레임 파싱 → STATUS/HELLO → store.put_uplink(); 매칭 안 되는 ACK 는 로그
 └── pipeline.py       # 위를 한 asyncio 태스크 묶음으로 기동/종료. main.py 가 이걸 부른다
 ```
@@ -151,7 +151,7 @@ loop:
 - `cancel_job()`으로 `cancelled`가 된 행은 pick하지 않는다.
 
 ### 4.4 `time_sched.py`
-- 매시 `:00:05`에 `TIME` 행을 `put_job(job_id=f"time-{epoch}", type='TIME', priority=0, payload={"epoch": now, "flags": ...})`로 **스스로** 넣는다. `config.status_hour_utc`의 시각이면 `flags |= REQUEST_STATUS`.
+- 매시 `:00:05`·`:30:05`(30 분 주기, 2026-11-17 — 재부팅으로 시계가 빈 노드가 최대 30 분 안에 화면을 되찾게)에 `TIME` 행을 `put_job(job_id=f"time-{epoch}", type='TIME', priority=0, payload={"epoch": now, "flags": ...})`로 **스스로** 넣는다. `config.status_hour_utc`의 시각 정시 쪽 슬롯(:00:05)이면 `flags |= REQUEST_STATUS`(하루 1회).
 - 시계가 유효하지 않으면(§3) 넣지 않고 경고 로그.
 - 메인Pi의 `time_now` 메시지는 링크가 같은 `put_job`을 부르는 것으로 처리(S5).
 - TIME 행은 `uploaded=1`로 만들어 링크가 메인에 보고하지 않게 한다(메인은 TIME 결과에 관심 없음).
