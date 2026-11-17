@@ -72,7 +72,9 @@ class EpdZ08 : public GxEPD2_750c_Z08 {
 SPIClass epdSpi(HSPI);
 GxEPD2_3C<EpdZ08, EpdZ08::HEIGHT / 2> display(EpdZ08(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
 
-RTC_DATA_ATTR ns::RtcState g_rtc;  // 소프트 리셋·딥슬립을 넘어 산다. 매직·CRC 가 맞지 않으면 load() 가 재구축
+// 딥슬립 깨어남에서만 산다. 0 초기화 RTC_DATA_ATTR 은 .rtc.bss 라 딥슬립 외 리셋(esp_restart·WDT·패닉·전원)
+// 에서는 지워지고, rtcValid 가 거짓이라 load() 가 NVS·LittleFS 에서 재구축한다.
+RTC_DATA_ATTR ns::RtcState g_rtc;
 EspKv g_kv;
 LittleFsFiles g_fs;
 ns::NodeStore g_store(g_kv, g_fs, g_rtc);
@@ -248,10 +250,18 @@ void setup() {
   pinMode(VEXT_CTRL, OUTPUT);
   digitalWrite(VEXT_CTRL, HIGH);
   bool fs = LittleFS.begin(true);
-  const ns::LoadSource src = g_store.load(clockValid() ? sch::toKst((uint32_t)time(nullptr)).weekday : 0);
+  const uint8_t bootWd = clockValid() ? sch::toKst((uint32_t)time(nullptr)).weekday : 0;
+  ns::LoadSource src = g_store.load(bootWd);
   // 0단계: 정체성은 아직 빌드 플래그(NODE_*). 2단계(프로비저닝)에서 SET_ROOM 으로 바뀐다
-  if (!g_rtc.provisioned || g_rtc.room != NODE_ROOM || g_rtc.bld != NODE_BLD || g_rtc.unit != NODE_UNIT)
+  if (!g_rtc.provisioned || g_rtc.room != NODE_ROOM || g_rtc.bld != NODE_BLD || g_rtc.unit != NODE_UNIT) {
+    if (g_rtc.provisioned) {
+      // 다른 방으로 바뀌었다 — 옛 방의 시간표·예약·버전을 지워 버전 0 으로 서버가 재동기하게 한다.
+      // factoryReset 은 RTC 를 비우고 봉인하지 않으므로 load 로 빈 저장소에서 다시 채운 뒤 정체성을 쓴다.
+      (void)g_store.factoryReset();
+      src = g_store.load(bootWd);
+    }
     (void)g_store.setIdentity(ns::Identity{NODE_BLD, NODE_ROOM, NODE_UNIT}, 0);
+  }
   (void)LittleFS.remove("/state.bin");  // 0단계 전(임시 형식) 파일 — 버전 0 으로 시작해 서버가 재동기
   ns::rtcSeal(g_rtc);
   Serial.printf("[node] 저장 %s\n", src == ns::LoadSource::RtcCache ? "RTC 캐시" : "재구축");
