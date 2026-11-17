@@ -4,6 +4,7 @@ import pathlib
 
 import lora_proto
 import pytest
+from lora_proto import proto as P
 
 from app.domain import room_state as RS
 from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
@@ -225,3 +226,54 @@ def test_merge_busy_type_flips_to_in_use_when_head_is_cancelled_or_free_slot():
     # 시험기간 슬롯(2, 이미 실사용) 위 예약은 그대로 2 유지
     out2 = RS.merge_busy([Span(M(10), M(11), 2, "시험"), Span(M(10), M(11), 6, "대여")])
     assert [(x.label, x.type) for x in out2] == [("시험 외 1건", 2)]
+
+
+def test_join_periods_merges_consecutive_same_class_across_breaks():
+    """교시마다 따로 온 슬롯(50분 + 쉬는시간 10분)을 한 덩어리로 — 문 앞 e-Paper 오늘 목록과 같은 규칙
+    (terminal-epaper.md 「연속 교시는 한 행」: 과목명 · type 같고 틈 0–BREAK_GAP_MAX_MIN 분)."""
+    out = RS.join_periods(
+        [
+            Span(M(9), M(9, 50), 1, "인공지능기초 102"),
+            Span(M(10), M(10, 50), 1, "인공지능기초 102"),
+            Span(M(11), M(11, 50), 1, "인공지능기초 102"),
+            Span(M(13), M(13, 50), 1, "인공지능기초 101"),  # 분반이 다르면 따로
+            Span(M(14), M(14, 50), 1, "인공지능기초 101"),
+        ]
+    )
+    assert [(x.s, x.e, x.label) for x in out] == [
+        (M(9), M(11, 50), "인공지능기초 102"),
+        (M(13), M(14, 50), "인공지능기초 101"),
+    ]
+
+
+def test_join_periods_keeps_apart_when_anything_differs():
+    gap = P.BREAK_GAP_MAX_MIN
+    out = RS.join_periods(
+        [
+            Span(M(9), M(10), 1, "A"),
+            Span(M(10) + gap, M(11), 1, "A"),  # 틈 = 상한 — 합친다
+            Span(M(11) + gap + 1, M(12, 30), 1, "A"),  # 틈 > 상한 — 따로
+            Span(M(12, 30), M(13), 2, "A"),  # type 이 다르면 따로 (수업 → 시험)
+            Span(M(13), M(14), 2, "A", mine=True, status="requested"),  # 내 것 여부가 다르면 따로
+        ]
+    )
+    assert [(x.s, x.e, x.type, x.mine) for x in out] == [
+        (M(9), M(11), 1, False),
+        (M(11) + gap + 1, M(12, 30), 1, False),
+        (M(12, 30), M(13), 2, False),
+        (M(13), M(14), 2, True),
+    ]
+    assert RS.join_periods([]) == []
+
+
+def test_week_busy_joins_periods(app, school, students):
+    _, ids = _building(app, 1, "E")
+    rid = ids[101]
+    for h in (9, 10, 11):
+        _slot(app, rid, 2, h, 0, h, 50, subject="인공지능기초 102")  # 화요일 3교시
+    with app.state.Session() as s:
+        tue = RS.week_busy(s, rid, dt.date(2026, 9, 21), "s1@mju.ac.kr")[1]
+    assert tue["day"] == 2
+    assert [(x["from"], x["to"], x["label"]) for x in tue["spans"]] == [
+        ("09:00", "11:50", "인공지능기초 102")
+    ]
