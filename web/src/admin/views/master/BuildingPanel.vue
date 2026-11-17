@@ -12,7 +12,7 @@ import { detailText } from '@/components/domain/rules'
 import { ApiError, MESSAGES } from '@/api/client'
 import { roomsApi } from '@/api/rooms'
 import type { BuildingOut, BuildingPatch, ModemOut, RoomOut } from '@/api/types'
-import { session } from '@/lib/session'
+import { isSuper, session } from '@/lib/session'
 import ConfirmModal from '../../ConfirmModal.vue'
 import {
   BLD_MAX,
@@ -191,7 +191,8 @@ async function remove() {
       <h2 id="master-bld" class="panel__title">건물</h2>
       <!-- 26개가 상한 — 남은 수를 모르면 26번째에서야 안다 -->
       <span class="panel__count num">{{ list.length }} / {{ BLD_MAX }}</span>
-      <span class="panel__tools" :title="full ? '건물은 26개까지입니다' : undefined">
+      <!-- 건물 만들기·고치기·지우기는 최고 관리자만 (이슈 160) — 건물 관리자에게는 버튼을 두지 않는다(누르면 403) -->
+      <span v-if="isSuper" class="panel__tools" :title="full ? '건물은 26개까지입니다' : undefined">
         <Button
           variant="secondary"
           size="sm"
@@ -251,7 +252,7 @@ async function remove() {
         ><span class="num">{{ asB(row).rooms }}</span></template
       >
       <template #cell-actions="{ row }">
-        <div class="panel__actions">
+        <div v-if="isSuper" class="panel__actions">
           <Button variant="ghost" size="sm" @click="openForm(asB(row))">수정</Button>
           <Button
             variant="ghost"
@@ -262,7 +263,7 @@ async function remove() {
           >
         </div>
         <!-- 잠근 이유는 옆에 글로 — 툴팁은 마우스로만 보이고 잠긴 버튼은 포커스도 안 간다 (admin-master.md 「건물 삭제」) -->
-        <small v-if="asB(row).rooms" class="panel__why"
+        <small v-if="isSuper && asB(row).rooms" class="panel__why"
           >강의실을 먼저 지우세요 ({{ asB(row).rooms }}곳)</small
         >
       </template>

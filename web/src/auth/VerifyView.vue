@@ -48,8 +48,9 @@ onMounted(open)
 function validate(): boolean {
   const e: typeof errs.value = {}
   if (!name.value.trim()) e.name = '이름을 입력해 주세요'
-  if (!STUDENT_NO.test(studentNo.value.trim()))
-    e.studentNo = '학번은 영문·숫자·하이픈만 쓸 수 있어요'
+  // 학번은 선택(이슈 160 — 교직원은 없을 수 있다). 적었다면 형식을 본다
+  const no = studentNo.value.trim()
+  if (no && !STUDENT_NO.test(no)) e.studentNo = '학번은 영문·숫자·하이픈만 쓸 수 있어요'
   if (password.value.length < 8) e.password = '8자 이상 입력해 주세요'
   errs.value = e
   return Object.keys(e).length === 0
@@ -63,7 +64,7 @@ async function submit() {
     await authApi.verify({
       token,
       name: name.value.trim(),
-      student_no: studentNo.value.trim(),
+      student_no: studentNo.value.trim() || null,
       password: password.value,
     })
     state.value = 'done'
@@ -130,11 +131,10 @@ async function submit() {
         <Input v-model="name" label="이름" autocomplete="name" :error="errs.name" required />
         <Input
           v-model="studentNo"
-          label="학번"
+          label="학번 (선택)"
           inputmode="text"
           autocomplete="off"
           :error="errs.studentNo"
-          required
         />
         <Input
           v-model="password"

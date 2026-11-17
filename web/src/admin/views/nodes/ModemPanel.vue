@@ -11,6 +11,7 @@ import { loraApi } from '@/api/lora'
 import { ApiError } from '@/api/client'
 import type { BuildingOut, ModemOut, TokenOut } from '@/api/types'
 import { formatKst, relativeKo } from '@/lib/time'
+import { isSuper } from '@/lib/session'
 
 const props = defineProps<{ modems?: ModemOut[]; buildings?: BuildingOut[]; loading: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -112,7 +113,9 @@ async function copy() {
     <EmptyState
       v-else-if="modems && modems.length === 0"
       message="등록된 모뎀Pi가 없습니다"
-      :actions="[{ label: '모뎀Pi 등록', variant: 'primary', onClick: openRegister }]"
+      :actions="
+        isSuper ? [{ label: '모뎀Pi 등록', variant: 'primary', onClick: openRegister }] : []
+      "
     />
     <ul v-else-if="modems" class="modems">
       <li v-for="md in modems" :key="md.modem_id" class="modem">
@@ -139,7 +142,9 @@ async function copy() {
         <div class="modem__foot">
           <Badge v-if="md.connected" variant="solid">연결됨</Badge>
           <Badge v-else variant="outline" tone="danger">끊김</Badge>
-          <Button variant="ghost" size="sm" @click="rotating = md.modem_id">토큰 재발급</Button>
+          <Button v-if="isSuper" variant="ghost" size="sm" @click="rotating = md.modem_id"
+            >토큰 재발급</Button
+          >
         </div>
       </li>
     </ul>

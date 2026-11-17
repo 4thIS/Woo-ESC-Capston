@@ -99,6 +99,18 @@ describe('건물 패널', () => {
     expect(btn(row('공학관'), '공학관').attributes('aria-pressed')).toBe('true')
   })
 
+  it('건물 관리자 — 건물 추가 · 수정 · 삭제 버튼이 없다 (최고 관리자만, 이슈 160)', async () => {
+    setSession({ token: 't', role: 'building_admin', school_id: 1, name: '건물' })
+    await mountView()
+    const labels = w
+      .get('section[aria-labelledby="master-bld"]')
+      .findAll('button')
+      .map((b) => b.text())
+    expect(labels).not.toContain('+ 건물')
+    expect(labels).not.toContain('수정')
+    expect(labels).not.toContain('삭제')
+  })
+
   it('추가 — 친 글자는 대문자로, school_id 는 로그인 응답의 것', async () => {
     await mountView()
     await btn(w, '+ 건물').trigger('click')

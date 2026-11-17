@@ -1,5 +1,5 @@
 import { computed, readonly, ref } from 'vue'
-import type { LoginOut, Role } from '@/api/types'
+import { appOf, type App, type LoginOut } from '@/api/types'
 
 // JWT 는 sessionStorage 에 (auth.md 미결 2) — 새로고침은 살고, 탭을 닫으면 사라진다. localStorage 는 여전히 금지.
 // 앱마다 자기 키라 같은 탭에서 관리자·학생 세션이 섞이지 않는다.
@@ -9,6 +9,8 @@ const current = ref<LoginOut | null>(null)
 export const session = readonly(current)
 /** 로그인 뒤 헤더·사이드바의 이름 — 그 사람의 학교. 학교 이름을 모르는 옛 세션·로그인 전은 'ESC' */
 export const schoolTitle = computed(() => session.value?.school_name || 'ESC')
+/** 최고 관리자 — 건물 관리자에게는 학교·건물 구조, 모뎀, 회원 관리를 숨긴다 (#160) */
+export const isSuper = computed(() => session.value?.role === 'admin')
 export const authNotice = ref<AuthNotice | null>(null)
 let key: string | null = null
 
@@ -28,14 +30,14 @@ function alive(s: LoginOut): boolean {
 }
 
 /** 앱 진입점이 마운트 전에 한 번 — 새로고침한 탭의 세션을 되살린다. 역할이 다르면 버린다 */
-export function restoreSession(app: Role): void {
+export function restoreSession(app: App): void {
   key = `esc.session.${app}`
   try {
     const s = JSON.parse(sessionStorage.getItem(key) ?? 'null') as LoginOut | null
-    if (s && s.role === app && alive(s)) return void (current.value = s)
+    if (s && appOf(s.role) === app && alive(s)) return void (current.value = s)
     sessionStorage.removeItem(key)
     // 이 앱의 토큰이 만료돼 버렸다 — 말없이 로그인 화면이 뜨지 않게 401 과 같은 안내
-    if (s?.role === app) authNotice.value = 'expired'
+    if (s && appOf(s.role) === app) authNotice.value = 'expired'
   } catch {
     // 저장소가 막힌 창(사생활 보호 등) — 메모리 세션으로 동작한다
   }
@@ -45,7 +47,7 @@ export function restoreSession(app: Role): void {
  * 열릴 때 restoreSession 으로 읽는다. ponytail: 저장소가 막힌 창이면 넘어간 앱에서 다시 로그인해야 한다 */
 export function handOffSession(s: LoginOut): void {
   try {
-    sessionStorage.setItem(`esc.session.${s.role}`, JSON.stringify(s))
+    sessionStorage.setItem(`esc.session.${appOf(s.role)}`, JSON.stringify(s))
   } catch {
     // 위 restoreSession 과 같다
   }

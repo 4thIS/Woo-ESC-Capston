@@ -8,7 +8,7 @@ export const authApi = {
     request<{ status: 'sent' }>('POST', '/api/auth/signup', { email }, pub),
   verifyOpen: (token: string) =>
     request<{ email: string }>('POST', '/api/auth/verify/open', { token }, pub),
-  verify: (b: { token: string; name: string; student_no: string; password: string }) =>
+  verify: (b: { token: string; name: string; student_no: string | null; password: string }) =>
     request<{ status: 'pending_approval' }>('POST', '/api/auth/verify', b, pub),
   login: (email: string, password: string) =>
     request<LoginOut>('POST', '/api/auth/login', { email, password }, pub),

@@ -8,7 +8,22 @@ import type { UserOut } from '@/api/types'
 import { toasts, dismissToast } from '@/components/ui/toast'
 
 vi.mock('@/api/users', () => ({
-  usersApi: { list: vi.fn(), approve: vi.fn(), reject: vi.fn(), disable: vi.fn(), enable: vi.fn() },
+  usersApi: {
+    list: vi.fn(),
+    approve: vi.fn(),
+    reject: vi.fn(),
+    disable: vi.fn(),
+    enable: vi.fn(),
+    setRole: vi.fn(),
+  },
+}))
+vi.mock('@/api/rooms', () => ({
+  roomsApi: {
+    buildings: vi.fn(async () => [
+      { id: 1, school_id: 1, name: '공학관', bld: 'E', modem_id: null },
+      { id: 2, school_id: 1, name: '인문관', bld: 'W', modem_id: null },
+    ]),
+  },
 }))
 vi.mock('@/admin/pending', () => ({ refreshPending: vi.fn() }))
 const api = vi.mocked(usersApi)
@@ -22,6 +37,7 @@ const u = (over: Partial<UserOut>): UserOut => ({
   student_no: '20231234',
   created_at: new Date('2026-09-25T00:00:00Z'),
   approved_at: null,
+  building_ids: [],
   ...over,
 })
 const stubs = { teleport: true }
@@ -321,5 +337,56 @@ describe('UsersView', () => {
       expect(api.disable).toHaveBeenCalledTimes(2)
       expect(api.disable).toHaveBeenLastCalledWith(A)
     })
+  })
+})
+
+describe('건물 관리자 지정 (이슈 160)', () => {
+  it('역할 열 — 최고 관리자 · 건물 관리자(맡은 건물) · 학생', async () => {
+    api.list.mockResolvedValue([
+      u({ email: 'a@', role: 'admin', status: 'active' }),
+      u({ email: 'b@', role: 'building_admin', status: 'active', building_ids: [1, 2] }), // 서버가 정렬해 준다
+      u({ email: 'c@', status: 'active' }),
+    ])
+    const w = await mountView()
+    const text = w.get('tbody').text()
+    expect(text).toContain('최고 관리자')
+    expect(text).toContain('건물 관리자')
+    expect(text).toContain('공학관 · 인문관')
+  })
+
+  it('활성 학생 → 지정 Modal 에서 건물을 골라 저장, 건물을 안 고르면 저장 잠금', async () => {
+    api.list.mockResolvedValue([u({ email: 'c@', status: 'active' })])
+    api.setRole.mockResolvedValue(u({ email: 'c@', role: 'building_admin', status: 'active' }))
+    const w = await mountView()
+    await buttonByText(w, '권한').trigger('click')
+    const dialog = w.get('[role="dialog"]')
+    expect(dialog.text()).toContain('다시 로그인')
+    expect(buttonByText(w, '지정').attributes('disabled')).toBeDefined()
+    await dialog.findAll('input[type="checkbox"]')[1].setValue(true)
+    await buttonByText(w, '지정').trigger('click')
+    await flushPromises()
+    expect(api.setRole).toHaveBeenCalledWith('c@', { role: 'building_admin', building_ids: [2] })
+  })
+
+  it('건물 관리자 → 해제는 일반 계정으로', async () => {
+    api.list.mockResolvedValue([
+      u({ email: 'b@', role: 'building_admin', status: 'active', building_ids: [1] }),
+    ])
+    api.setRole.mockResolvedValue(u({ email: 'b@', status: 'active' }))
+    const w = await mountView()
+    await buttonByText(w, '권한').trigger('click')
+    expect(w.get('[role="dialog"]').findAll('input[type="checkbox"]')[0].element).toHaveProperty(
+      'checked',
+      true,
+    )
+    await buttonByText(w, '해제').trigger('click')
+    await flushPromises()
+    expect(api.setRole).toHaveBeenCalledWith('b@', { role: 'student', building_ids: [] })
+  })
+
+  it('최고 관리자 행은 권한 버튼이 없다 — CLI 에서만', async () => {
+    api.list.mockResolvedValue([u({ email: 'a@', role: 'admin', status: 'active' })])
+    const w = await mountView()
+    expect(w.findAll('button').some((b) => b.text() === '권한')).toBe(false)
   })
 })
