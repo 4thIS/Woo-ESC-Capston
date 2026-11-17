@@ -113,6 +113,10 @@ uint8_t g_statusHour = nc::kStatusHourUtc;  // SET_PARAM 1 statusHourUtc
 bool g_forceRender = false;                 // CMD FORCE_RENDER·버튼 — 같은 화면이어도 한 번 그린다
 uint8_t g_testLayout = 0;                   // CMD TEST_RENDER — 다음 렌더 한 번 이 레이아웃으로
 nc::Button g_button;
+bool g_wakePress = false;  // 버튼으로 깨어 아직 누르고 있다(DEEP)
+// pollButton 이 마지막으로 본 눌림. 잠들기는 핀을 따로 읽지 않고 이 값을 본다 — 따로 읽으면 뗀 순간을
+// 잠들기가 먼저 보고 자 버려 짧게를 놓친다(2026-11-17 실기)
+bool g_btnDown = false;
 RenderModel g_shown{};  // 마지막으로 그린 화면
 bool g_shownValid = false;
 
@@ -567,7 +571,7 @@ void lightSleep(uint32_t ms) {
 #if NODE_SLEEP_MODE >= 1
 void maybeSleep() {
   if (g_irq || millis() - g_lastRxMs <= g_quietMs) return;
-  if (digitalRead(BUTTON_PIN) == LOW) return;  // 누르는 중 — 떼야 짧게/길게를 안다
+  if (g_btnDown || g_wakePress) return;  // 누르는 중 — 떼야 짧게/길게를 안다
   const bool clk = clockValid();
   const uint32_t now = (uint32_t)time(nullptr);
   const bool dayReady = clk && g_rtc.slotsDay == sch::toKst(now).weekday;
@@ -692,6 +696,19 @@ void setup() {
     handleRx(held, heldLen, RADIOLIB_ERR_NONE, heldRssi, heldSnr);
     listen();
   }
+  if (deepWake && wakeCause == ESP_SLEEP_WAKEUP_EXT1) {
+    // 버튼으로 깼다. 부팅(≈0.3 s) 사이에 이미 뗐으면 짧게 누른 것이고, 아직 누르고 있으면 부팅 시점부터 잰다
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      g_wakePress =
+          true;  // pollButton 이 뗄 때까지 본다 — 부팅이 ≈1 s 라 Button 의 1 s 상한을 쓰면 짧게가 안 잡힌다
+    } else {
+      Serial.println("[node] 버튼 짧게(깨기) — 다시 그리기 + STATUS");
+      g_forceRender = true;
+      g_dirty = true;
+      g_lastRxMs = millis() - g_quietMs - 1;
+      g_status.request(nowMs(), 300);
+    }
+  }
 #endif
 }
 
@@ -711,7 +728,22 @@ void renderSetupIfNeeded() {
 }
 
 void pollButton() {
-  switch (g_button.update(millis(), digitalRead(BUTTON_PIN) == LOW)) {
+  const bool pressed = digitalRead(BUTTON_PIN) == LOW;
+  g_btnDown = pressed;
+  nc::Button::Action a = nc::Button::kNone;
+  if (g_wakePress) {
+    // 버튼으로 깼다 — 5 s 전에 떼면 짧게, 누른 채 5 s(부팅부터)면 길게
+    if (!pressed) {
+      a = nc::Button::kShort;
+      g_wakePress = false;
+    } else if (millis() >= nc::kButtonLongMs) {
+      a = nc::Button::kLong;
+      g_wakePress = false;
+    }
+  } else {
+    a = g_button.update(millis(), pressed);
+  }
+  switch (a) {
     case nc::Button::kShort:
       Serial.println("[node] 버튼 짧게 — 다시 그리기 + STATUS");
       g_forceRender = true;
