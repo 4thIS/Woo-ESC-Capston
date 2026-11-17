@@ -375,11 +375,11 @@ void setup() {
 
 void loop() {
   pollRadio();
+  maybeSendStatus();  // 1 s 틱 밖에서 — 임의 지연이 1 s 단위로 뭉쳐 동시 부팅 노드끼리 겹치지 않게
   static uint32_t lastCheck = 0;
   if (millis() - lastCheck < 1000) return;
   lastCheck = millis();
   maybeMeasureBatt();
-  maybeSendStatus();
   if (!clockValid()) return;  // 시계 전엔 그리지 않는다 — 마지막 화면 유지
   syncDay();
   const uint32_t now = (uint32_t)time(nullptr);
