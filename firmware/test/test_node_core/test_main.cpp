@@ -709,7 +709,10 @@ void test_sleep_ms() {
   // 오늘 슬롯 준비 전 — 60 s
   TEST_ASSERT_EQUAL_UINT32(kSleepCapNoDayMs, sleepMs(0, true, NOW, NOW + 7200, false, p));
   // 시계 없음 — 다음 변경은 쓰지 않는다
-  TEST_ASSERT_EQUAL_UINT32(kSleepCapMs, sleepMs(0, false, 1000, 0, true, p));
+  TEST_ASSERT_EQUAL_UINT32(
+      kSleepCapNoDayMs,
+      sleepMs(0, false, 1000, 0, false,
+              p));  // 시계 없으면 오늘 슬롯도 준비 전 — 60 s 마다(STATUS 재시도·TIME 깨우기와 함께)
   // STATUS 예약이 더 이르면 그때
   p.request(0, 20000);
   TEST_ASSERT_EQUAL_UINT32(20000, sleepMs(0, true, NOW, NOW + 600, true, p));
