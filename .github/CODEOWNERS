@@ -42,10 +42,8 @@
 /modempi/modempi/store.py           @ssenu @leemonta9482
 /modempi/modempi/main.py            @ssenu @leemonta9482
 
-# ─── web: 코드 전체는 wj. 토큰·디자인시스템 코드는 mh가 디자인 일치 검수(리뷰어) ──
+# ─── web: 코드 전체는 wj. mh 디자인 리뷰는 2026-11-17 철회 — 팀장 확인 후 머지 ──
 /web/                               @leemonta9482
-/web/src/styles/                    @leemonta9482 @jmh7706jmh-ops
-/web/src/components/ui/             @leemonta9482 @jmh7706jmh-ops
 
 # ─── 문서 ─────────────────────────────────────────────────
 /docs/                              @ssenu
