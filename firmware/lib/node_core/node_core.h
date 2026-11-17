@@ -91,6 +91,8 @@ class StatusPlan {
   // TIME 으로 시계를 맞췄다. 마지막으로 보낸 STATUS 가 CLOCK_STALE 이었으면 kAfterTimeStatusMs 뒤 한 번 더 —
   // 서버의 clock_stale 표시는 다음 STATUS 까지 남기 때문(부팅 보고 뒤 하루 내내 "시계 이상"으로 보이지 않게)
   void onTimeSet(uint32_t nowMs);
+  // 한 번짜리 예약까지 남은 ms. 이미 지났으면 0, 없으면(또는 시계가 맞아 건너뛸 재시도면) UINT32_MAX
+  uint32_t msUntilDue(uint32_t nowMs, bool clockOk) const;
 
  private:
   bool pending_ = false;
@@ -99,5 +101,17 @@ class StatusPlan {
   uint8_t staleTries_ = 0;  // 시계 없이 보낸 횟수 — 재시도 간격 두 배씩
   uint32_t dueMs_ = 0;
 };
+
+// ---- 잠들기 판단 (v2 §6.3·6.7, 절전 3단계) ----
+constexpr uint32_t kSleepCapMs = 30u * 60u * 1000u;  // 한 번에 최대 30 min
+constexpr uint32_t kSleepCapNoDayMs = 60000;         // 오늘 슬롯 준비 전(refreshDay 실패 중) 60 s 마다 재시도
+constexpr uint32_t kSleepMinMs = 1000;               // 이보다 짧으면 자지 않는다
+
+// 화면에 그려지는 필드가 같은가(battMv 와 nToday 밖 today 칸은 보지 않는다)
+bool sameScreen(const RenderModel& a, const RenderModel& b);
+// 잘 시간(ms), 0 = 자지 않음. nextChangeEpoch 는 clockOk 일 때만 본다(sch::nextChangeAt 값, +2 s·하루 STATUS
+// 포함)
+uint32_t sleepMs(uint32_t nowMs, bool clockOk, uint32_t nowEpoch, uint32_t nextChangeEpoch, bool dayReady,
+                 const StatusPlan& p);
 
 }  // namespace nc

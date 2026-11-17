@@ -438,6 +438,7 @@ esp_sleep_enable_ext1_wakeup(1ULL<<0, ESP_EXT1_WAKEUP_ANY_LOW)   // 버튼 (S3: 
 esp_deep_sleep_start()
 ```
 - **빌드 플래그 `SLEEP_MODE`**: `LIGHT`(1단계 검증용: `esp_light_sleep_start`, 리부팅 없음, 라디오 객체 유지) / `DEEP`(운영). 상태머신은 동일하고 진입·복귀 함수만 다르다.
+- **LIGHT 구현(2026-11-17, 절전 3a)**: 빌드 플래그 이름은 `NODE_SLEEP_MODE`(ESP SDK 에 `SLEEP_MODE` 타입이 있어 충돌). 마지막 내 프레임 뒤 8 s 조용하고 그릴 것이 없으면 잔다. 잘 시간 = min(`nextChangeAt`, STATUS 예약, 30 min; 오늘 슬롯 준비 전·시계 없음 60 s). 무선은 `startReceiveDutyCycleAuto(웨이크 프리앰블 심볼, 8)`(DIO1 = RX_DONE), 깨면 연속 수신. 실기(E301): 잠든 뒤 보낸 SLOT_SET **100/100 첫 시도 acked**(미수신 0 %, 지연 p50 4.33 s·p95 4.88 s — 깨어 있는 모드와 같음), 잠든 상태 재전송 FILE 3건 첫 시도 acked, 교시 경계 타이머 깨우기 정시(+3 s) 렌더. 모든 모드에서 화면 내용이 같으면 다시 그리지 않는다(TIME·다른 요일 변경).
 - 딥슬립 웨이크 후 라디오는 `begin()`으로 재초기화한다(리셋 포함). 프리앰블 잔여 시간이 §2의 마진 안에 있으므로 본문 수신에 문제없음. 실측에서 미수신률이 5%를 넘으면 `RP_PREAMBLE_WAKE_MS`를 늘린다.
 
 ### 6.8 업링크 송신 규칙

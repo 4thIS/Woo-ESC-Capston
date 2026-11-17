@@ -1,4 +1,4 @@
-// S8 노드 펌웨어 — 깨어 있는 모드(SLEEP_MODE 없음, USB 전원 시연용). 로직은 lib/node_core(nc::*), 여기는
+// S8 노드 펌웨어 — 깨어 있는 모드(NODE_SLEEP_MODE 없음, USB 전원 시연용). 로직은 lib/node_core(nc::*), 여기는
 // 어댑터만.
 //  - 무선: SX1262 DIO1 인터럽트 송수신(2026-10-21 교훈). ACK 는 저장 직후·렌더 전에(v2 §6.4), 송신 전 CAD
 //  1회(§6.8)
@@ -8,13 +8,16 @@
 //  - 정체성: 빌드 플래그 NODE_BLD·NODE_ROOM·NODE_UNIT (프로비저닝 SET_ROOM 은 S9)
 //  - 시계: TIME 으로 맞춘다. 시계가 무효면 그리지 않는다 — e-Paper 는 마지막 화면을 그대로 둔다(§5.2)
 //  - STATUS(부팅·하루 1회·요청)·배터리 실측 — 절전 1단계
+//  - 절전: NODE_SLEEP_MODE=1 이면 할 일이 없을 때 light sleep, 무선은 수신 duty cycle(절전 3단계)
 #include <Arduino.h>
 #include <GxEPD2_3C.h>
 #include <LittleFS.h>
 #include <RadioLib.h>
 #include <SPI.h>
 #include <WiFi.h>
+#include <driver/gpio.h>
 #include <esp_random.h>
+#include <esp_sleep.h>
 #include <esp_timer.h>
 #include <sys/time.h>
 
@@ -36,10 +39,13 @@
 #ifndef NODE_UNIT
 #define NODE_UNIT 1
 #endif
+#ifndef NODE_SLEEP_MODE
+#define NODE_SLEEP_MODE 0  // 0 = 깨어 있음(시연), 1 = LIGHT(v2 §6.7 1단계 검증). DEEP 은 3b
+#endif
 
 namespace {
 
-constexpr uint8_t FW_VER = 4;
+constexpr uint8_t FW_VER = 5;
 // 배터리(Heltec V3.2): GPIO37 HIGH 로 분압(390 k/100 k)을 켜고 GPIO1 을 잰다(2026-11-17 실기 확인, 3.5~4.0
 // V). V3.0/3.1 보드는 극성이 반대(LOW)라 이 값으로는 0 근처가 나온다
 constexpr int VBAT_ADC = 1, VBAT_CTRL = 37;
@@ -95,6 +101,8 @@ int8_t g_snrX4 = 0;
 uint32_t g_macHash = 0;  // 노드마다 다른 값 — 부팅 직후 esp_random 은 RF 를 안 켜면 노드끼리 같은 값이 나온다
 uint32_t g_spread = 0;   // 하루 STATUS 분산(초) = hash(mac) % 1800
 nc::StatusPlan g_status;
+RenderModel g_shown{};  // 마지막으로 그린 화면
+bool g_shownValid = false;
 
 nc::Ident me() {
   return nc::Ident{g_rtc.bld, g_rtc.room, g_rtc.unit};
@@ -329,6 +337,60 @@ void render(const RenderModel& m) {
   digitalWrite(VEXT_CTRL, HIGH);
 }
 
+#if NODE_SLEEP_MODE == 1
+// v2 §6.7 LIGHT — RAM·RadioLib 객체·millis 는 그대로. 무선은 수신 duty cycle 로 웨이크 프리앰블을 기다린다
+void lightSleep(uint32_t ms) {
+  radio.standby();
+  radio.setPreambleLength(RX_PREAMBLE_SYM);
+  g_irq = false;
+  const int st = radio.startReceiveDutyCycleAuto(RX_PREAMBLE_SYM, RP_RX_DUTY_MIN_SYM);
+  if (st != RADIOLIB_ERR_NONE) {
+    Serial.printf("[node] duty cycle 실패 %d — 자지 않음\n", st);
+    listen();
+    return;
+  }
+  radio.clearDio1Action();  // level 깨우기를 쓰는 동안 엣지 인터럽트를 뗀다(붙인 채면 깬 뒤 ISR 이 끝없이
+                            // 돈다)
+  gpio_wakeup_enable((gpio_num_t)LORA_DIO1, GPIO_INTR_HIGH_LEVEL);
+  esp_sleep_enable_gpio_wakeup();
+  esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000ULL);
+  Serial.flush();
+  const uint32_t t0 = millis();
+  esp_light_sleep_start();
+  const esp_sleep_wakeup_cause_t why = esp_sleep_get_wakeup_cause();
+  gpio_wakeup_disable((gpio_num_t)LORA_DIO1);
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+  radio.setDio1Action(onDio1);
+  const bool fromRadio = digitalRead(LORA_DIO1) == HIGH;
+  if (fromRadio)
+    g_irq = true;  // 패킷은 pollRadio 가 읽고 그 뒤 listen() 으로 연속 수신
+  else
+    listen();
+  Serial.printf("[node] 깸 cause=%s slept=%lums\n",
+                fromRadio ? "radio" : (why == ESP_SLEEP_WAKEUP_TIMER ? "timer" : "other"),
+                (unsigned long)(millis() - t0));
+}
+
+void maybeSleep() {
+  if (g_irq || millis() - g_lastRxMs <= QUIET_MS) return;
+  const bool clk = clockValid();
+  const uint32_t now = (uint32_t)time(nullptr);
+  const bool dayReady = clk && g_rtc.slotsDay == sch::toKst(now).weekday;
+  if (g_dirty && dayReady) return;  // 그릴 것이 남았다 — 렌더 블록이 먼저
+  uint32_t next = 0;
+  if (dayReady) {
+    next = sch::nextChangeAt(
+        sch::ScheduleView{g_rtc.slots, g_rtc.nSlots, g_rtc.resv, g_rtc.nResv, g_rtc.exams, g_rtc.nExam}, now,
+        g_rtc.nextStatusEpoch);
+  } else if (clk) {
+    next = now + nc::kSleepCapNoDayMs / 1000;
+  }
+  const uint32_t ms = nc::sleepMs(millis(), clk, now, next, dayReady, g_status);
+  if (ms == 0) return;
+  lightSleep(ms);
+}
+#endif
+
 }  // namespace
 
 void setup() {
@@ -373,7 +435,7 @@ void setup() {
   listen();
 }
 
-void loop() {
+static void loopBody() {
   pollRadio();
   maybeSendStatus();  // 1 s 틱 밖에서 — 임의 지연이 1 s 단위로 뭉쳐 동시 부팅 노드끼리 겹치지 않게
   static uint32_t lastCheck = 0;
@@ -405,8 +467,21 @@ void loop() {
                   (unsigned long)sch::nextChangeAt(sch::ScheduleView{g_rtc.slots, todayN, g_rtc.resv,
                                                                      g_rtc.nResv, g_rtc.exams, g_rtc.nExam},
                                                    now, g_rtc.nextStatusEpoch));
+    if (g_shownValid && nc::sameScreen(g_shown, m)) {
+      Serial.printf("[node] 같은 화면 — 다시 그리지 않음 layout=%u\n", m.layout);
+      return;
+    }
     const uint32_t t0 = millis();
     render(m);
+    g_shown = m;
+    g_shownValid = true;
     Serial.printf("[node] 렌더 끝 %lu ms\n", (unsigned long)(millis() - t0));
   }
+}
+
+void loop() {
+  loopBody();
+#if NODE_SLEEP_MODE == 1
+  maybeSleep();
+#endif
 }
