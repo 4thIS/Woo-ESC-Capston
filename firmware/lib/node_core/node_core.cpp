@@ -54,6 +54,10 @@ uint8_t apply(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* 
       if (!lc::decTime(p, h.len, t)) return LP_ACK_BAD_PAYLOAD;
       o.timeSet = true;
       o.epoch = t.epoch;
+      if (t.flags & LP_TIMEFLAG_REQUEST_STATUS) {
+        o.statusReq = true;
+        o.statusSpreadMs = kReqStatusSpreadMs;
+      }
       return LP_ACK_OK;
     }
     case LP_TYPE_SLOT_SET: {
@@ -141,7 +145,14 @@ uint8_t apply(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* 
       o.changed = true;
       return LP_ACK_OK;  // FILE 은 전체 교체 — GAP 없음(§3.3)
     }
-    default:  // CMD·SET_ROOM·SET_PARAM 은 2단계(프로비저닝)
+    case LP_TYPE_CMD: {
+      lc::CmdMsg c{};
+      if (!lc::decCmd(p, h.len, c)) return LP_ACK_BAD_PAYLOAD;
+      if (c.cmd != LP_CMD_REQUEST_STATUS) return LP_ACK_UNSUPPORTED;  // 나머지 CMD 는 2단계
+      o.statusReq = true;
+      return LP_ACK_OK;
+    }
+    default:  // SET_ROOM 은 2단계(프로비저닝)
       return LP_ACK_UNSUPPORTED;
   }
   if (rc == LP_ACK_OK || rc == LP_ACK_GAP) o.changed = true;
@@ -270,6 +281,90 @@ sch::LayoutDecision buildModel(const ns::RtcState& r, uint32_t epochUtc, RenderM
     }
   }
   return d;
+}
+
+lc::Ack buildAck(const ns::RtcState& r, uint8_t status, uint8_t detail, uint16_t battMv, uint8_t fw,
+                 uint8_t layout) {
+  lc::Ack a{};
+  a.status = status;
+  a.detail = detail;
+  a.battMv = battMv;
+  a.schedVer = r.schedVer;
+  a.resvVer = r.resvVer;
+  a.examVer = r.examVer;
+  a.identVer = r.identVer;
+  a.fw = fw;
+  a.layout = layout;
+  return a;
+}
+
+uint8_t statusFlags(const ns::RtcState& r, uint32_t now, uint16_t battMv) {
+  uint8_t f = 0;
+  const bool clockOk = now > kClockValidEpoch;
+  const bool stale = !clockOk || r.lastTimeSyncEpoch == 0 ||
+                     (now > r.lastTimeSyncEpoch && now - r.lastTimeSyncEpoch > kClockStaleSec);
+  if (stale) f |= LP_STATUSFLAG_CLOCK_STALE;
+  if (!r.provisioned) f |= LP_STATUSFLAG_UNPROVISIONED;
+  if (battMv != 0 && battMv < kLowBattMv) f |= LP_STATUSFLAG_LOW_BATT;
+  return f;
+}
+
+lc::Status buildStatus(const ns::RtcState& r, uint32_t now, uint16_t battMv, uint8_t fw, uint8_t layout,
+                       const LinkInfo& l) {
+  lc::Status s{};
+  s.ack = buildAck(r, LP_ACK_OK, 0, battMv, fw, layout);
+  s.rssiLast = l.rssiLast;
+  s.snrLastX4 = l.snrLastX4;
+  s.flags = statusFlags(r, now, battMv);
+  s.uptimeH = l.uptimeH;
+  return s;
+}
+
+uint32_t nextDailyStatus(uint32_t now, uint8_t hourUtc, uint32_t offsetSec) {
+  const uint32_t at = (hourUtc * 3600u + offsetSec) % 86400u;
+  uint32_t t = now - now % 86400u + at;
+  if (t <= now) t += 86400u;
+  return t;
+}
+
+uint32_t macSpread(const uint8_t mac[6], uint32_t mod) {
+  if (mod == 0) return 0;
+  uint32_t h = 2166136261u;
+  for (int i = 0; i < 6; ++i) {
+    h ^= mac[i];
+    h *= 16777619u;
+  }
+  return h % mod;
+}
+
+void StatusPlan::request(uint32_t nowMs, uint32_t delayMs) {
+  const uint32_t t = nowMs + delayMs;
+  if (pending_ && !onlyIfStale_ && (int32_t)(dueMs_ - t) <= 0) return;
+  pending_ = true;
+  onlyIfStale_ = false;
+  dueMs_ = t;
+}
+
+bool StatusPlan::due(uint32_t nowMs, bool clockOk, uint32_t nowEpoch, uint32_t nextStatusEpoch) const {
+  if (pending_ && (int32_t)(nowMs - dueMs_) >= 0 && !(onlyIfStale_ && clockOk)) return true;
+  return clockOk && nextStatusEpoch != 0 && nowEpoch >= nextStatusEpoch;
+}
+
+void StatusPlan::sent(uint32_t nowMs, bool ok, bool clockOk) {
+  if (!ok) {
+    pending_ = true;
+    onlyIfStale_ = false;
+    dueMs_ = nowMs + kBusyRetryMs;
+    return;
+  }
+  if (!clockOk) {
+    pending_ = true;
+    onlyIfStale_ = true;
+    dueMs_ = nowMs + kStaleRetryMs;
+    return;
+  }
+  pending_ = false;
+  onlyIfStale_ = false;
 }
 
 }  // namespace nc

@@ -231,6 +231,139 @@ void test_bad_payload_and_unsupported() {
                          run(hdr(LP_TYPE_CMD, 2), lc::encCmd(c, g_pl, sizeof g_pl)).status);
 }
 
+// ---------------- STATUS 요청(§3.3 TIME flags·CMD REQUEST_STATUS) ----------------
+void test_time_request_status_flag() {
+  lc::Time t{1793156768, LP_TIMEFLAG_REQUEST_STATUS};
+  Outcome o = run(hdr(LP_TYPE_TIME, 0, LP_FLAG_BROADCAST, LP_BLD_ALL, 0xFFFF, 0xFF),
+                  lc::encTime(t, g_pl, sizeof g_pl));
+  TEST_ASSERT_TRUE(o.timeSet);
+  TEST_ASSERT_TRUE(o.statusReq);
+  TEST_ASSERT_EQUAL_UINT32(kReqStatusSpreadMs, o.statusSpreadMs);
+  lc::Time t0{1793156768, 0};
+  Outcome o0 = run(hdr(LP_TYPE_TIME, 0, LP_FLAG_BROADCAST, LP_BLD_ALL, 0xFFFF, 0xFF),
+                   lc::encTime(t0, g_pl, sizeof g_pl));
+  TEST_ASSERT_FALSE(o0.statusReq);
+}
+
+void test_cmd_request_status_acks_ok() {
+  lc::CmdMsg c{LP_CMD_REQUEST_STATUS, nullptr, 0};
+  Outcome o = run(hdr(LP_TYPE_CMD, 7), lc::encCmd(c, g_pl, sizeof g_pl));
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, o.status);
+  TEST_ASSERT_TRUE(o.statusReq);
+  TEST_ASSERT_EQUAL_UINT32(0, o.statusSpreadMs);
+  TEST_ASSERT_FALSE(o.changed);  // 화면은 그대로
+  // 같은 TXN 재송 = DUP, 다시 요청하지 않는다
+  Outcome d = run(hdr(LP_TYPE_CMD, 7), lc::encCmd(c, g_pl, sizeof g_pl));
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_DUP, d.status);
+  TEST_ASSERT_FALSE(d.statusReq);
+}
+
+// ---------------- STATUS 내용(§3.3·5.2) ----------------
+void test_status_flags() {
+  R->provisioned = 1;
+  R->lastTimeSyncEpoch = NOW - 3600;
+  TEST_ASSERT_EQUAL_HEX8(0, statusFlags(*R, NOW, 4000));
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_CLOCK_STALE, statusFlags(*R, 1000, 4000));  // 시계 무효
+  R->lastTimeSyncEpoch = 0;
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_CLOCK_STALE, statusFlags(*R, NOW, 4000));  // TIME 받은 적 없음
+  R->lastTimeSyncEpoch = NOW - kClockStaleSec;
+  TEST_ASSERT_EQUAL_HEX8(0, statusFlags(*R, NOW, 4000));  // 딱 25 h 는 아직
+  R->lastTimeSyncEpoch = NOW - kClockStaleSec - 1;
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_CLOCK_STALE, statusFlags(*R, NOW, 4000));
+  R->lastTimeSyncEpoch = NOW;
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_LOW_BATT, statusFlags(*R, NOW, 3499));
+  TEST_ASSERT_EQUAL_HEX8(0, statusFlags(*R, NOW, 3500));
+  TEST_ASSERT_EQUAL_HEX8(0, statusFlags(*R, NOW, 0));  // 0 = 측정 못 함
+  R->provisioned = 0;
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_UNPROVISIONED, statusFlags(*R, NOW, 4000));
+}
+
+void test_build_status_fields() {
+  R->provisioned = 1;
+  R->schedVer = 12, R->resvVer = 3, R->examVer = 4, R->identVer = 5;
+  R->lastTimeSyncEpoch = 0;
+  lc::Status s = buildStatus(*R, NOW, 4012, 4, LP_LAYOUT_CLASS, LinkInfo{-56, 44, 7});
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, s.ack.status);
+  TEST_ASSERT_EQUAL_UINT8(0, s.ack.detail);
+  TEST_ASSERT_EQUAL_UINT16(4012, s.ack.battMv);
+  TEST_ASSERT_EQUAL_UINT8(12, s.ack.schedVer);
+  TEST_ASSERT_EQUAL_UINT8(3, s.ack.resvVer);
+  TEST_ASSERT_EQUAL_UINT8(4, s.ack.examVer);
+  TEST_ASSERT_EQUAL_UINT8(5, s.ack.identVer);
+  TEST_ASSERT_EQUAL_UINT8(4, s.ack.fw);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_CLASS, s.ack.layout);
+  TEST_ASSERT_EQUAL_INT8(-56, s.rssiLast);
+  TEST_ASSERT_EQUAL_INT8(44, s.snrLastX4);
+  TEST_ASSERT_EQUAL_UINT16(7, s.uptimeH);
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_CLOCK_STALE, s.flags);
+  uint8_t out[32];
+  TEST_ASSERT_EQUAL(15, lc::encStatus(s, out, sizeof out));  // ACK 10 B + 5 B
+}
+
+void test_build_ack_carries_ident_ver() {
+  R->schedVer = 9, R->identVer = 2;
+  lc::Ack a = buildAck(*R, LP_ACK_GAP, 1, 3900, 4, LP_LAYOUT_EMPTY);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_GAP, a.status);
+  TEST_ASSERT_EQUAL_UINT8(1, a.detail);
+  TEST_ASSERT_EQUAL_UINT16(3900, a.battMv);
+  TEST_ASSERT_EQUAL_UINT8(9, a.schedVer);
+  TEST_ASSERT_EQUAL_UINT8(2, a.identVer);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_EMPTY, a.layout);
+}
+
+// ---------------- STATUS 시각(§6.3) ----------------
+void test_next_daily_status() {
+  const uint32_t day = 1794873600u;  // 2026-11-17 00:00 UTC
+  TEST_ASSERT_EQUAL_UINT32(day + 18 * 3600, nextDailyStatus(day + 4 * 3600, 18, 0));
+  TEST_ASSERT_EQUAL_UINT32(day + 86400 + 18 * 3600,
+                           nextDailyStatus(day + 18 * 3600, 18, 0));  // 같은 초면 다음 날
+  TEST_ASSERT_EQUAL_UINT32(day + 18 * 3600 + 1799, nextDailyStatus(day + 18 * 3600 + 100, 18, 1799));
+  TEST_ASSERT_EQUAL_UINT32(day + 86400 + 1000,
+                           nextDailyStatus(day + 23 * 3600 + 1800, 23, 3600 + 1000));  // 자정 넘김
+}
+
+void test_mac_spread_deterministic() {
+  const uint8_t a[6] = {0x3c, 0x0f, 0x02, 0xee, 0x47, 0x10};
+  const uint8_t b[6] = {0xac, 0xa7, 0x04, 0x3c, 0x3f, 0x80};
+  TEST_ASSERT_EQUAL_UINT32(macSpread(a, 1800), macSpread(a, 1800));
+  TEST_ASSERT_TRUE(macSpread(a, 1800) < 1800);
+  TEST_ASSERT_TRUE(macSpread(b, 1800) < 1800);
+  TEST_ASSERT_NOT_EQUAL(macSpread(a, 1800), macSpread(b, 1800));
+  TEST_ASSERT_EQUAL_UINT32(0, macSpread(a, 0));
+}
+
+void test_status_plan_request_and_sent() {
+  StatusPlan p;
+  TEST_ASSERT_FALSE(p.due(1000, false, 0, 0));
+  p.request(1000, 2000);
+  TEST_ASSERT_FALSE(p.due(2999, false, 0, 0));
+  TEST_ASSERT_TRUE(p.due(3000, false, 0, 0));
+  p.request(1500, 60000);  // 더 늦은 요청은 이른 예약을 밀지 않는다
+  TEST_ASSERT_TRUE(p.due(3000, false, 0, 0));
+  p.sent(3000, false, false);  // CAD busy → 5 s 뒤
+  TEST_ASSERT_FALSE(p.due(7999, false, 0, 0));
+  TEST_ASSERT_TRUE(p.due(8000, false, 0, 0));
+  p.sent(8000, true, false);  // 보냈지만 시계 없음 → 10 min 뒤
+  TEST_ASSERT_FALSE(p.due(8000 + kStaleRetryMs - 1, false, 0, 0));
+  TEST_ASSERT_TRUE(p.due(8000 + kStaleRetryMs, false, 0, 0));
+  TEST_ASSERT_FALSE(p.due(8000 + kStaleRetryMs, true, NOW, 0));  // 그 사이 시계가 맞으면 건너뜀
+  p.request(9000, 300);                                          // 새 요청은 시계 재시도 예약을 대신한다
+  TEST_ASSERT_TRUE(p.due(9300, true, NOW, 0));
+  p.sent(9300, true, true);
+  TEST_ASSERT_FALSE(p.due(9300 + kStaleRetryMs, true, NOW, 0));
+}
+
+void test_status_plan_daily_and_wrap() {
+  StatusPlan p;
+  TEST_ASSERT_FALSE(p.due(0, true, NOW, 0));  // 하루 시각이 아직 없음
+  TEST_ASSERT_FALSE(p.due(0, true, NOW, NOW + 1));
+  TEST_ASSERT_TRUE(p.due(0, true, NOW, NOW));
+  TEST_ASSERT_FALSE(p.due(0, false, NOW, NOW));  // 시계 무효면 하루 STATUS 없음
+  p.request(0xFFFFF000u, 0x2000);                // millis 넘어감
+  TEST_ASSERT_FALSE(p.due(0xFFFFFFFFu, false, 0, 0));
+  TEST_ASSERT_TRUE(p.due(0x1000u, false, 0, 0));
+}
+
 // ---------------- FILE 세션 ----------------
 static std::vector<uint8_t> scheduleBody(int n) {
   std::vector<uint8_t> body;
@@ -513,5 +646,14 @@ int main() {
   RUN_TEST(test_today_merge_rules_gap_type_and_contiguous);
   RUN_TEST(test_model_identity_from_rtc);
   RUN_TEST(test_model_ignores_stale_rtc_day);
+  RUN_TEST(test_time_request_status_flag);
+  RUN_TEST(test_cmd_request_status_acks_ok);
+  RUN_TEST(test_status_flags);
+  RUN_TEST(test_build_status_fields);
+  RUN_TEST(test_build_ack_carries_ident_ver);
+  RUN_TEST(test_next_daily_status);
+  RUN_TEST(test_mac_spread_deterministic);
+  RUN_TEST(test_status_plan_request_and_sent);
+  RUN_TEST(test_status_plan_daily_and_wrap);
   return UNITY_END();
 }
