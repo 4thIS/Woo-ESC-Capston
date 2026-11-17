@@ -1,0 +1,15 @@
+{
+  "name": "layout7_student",
+  "_note": "학생 웹 예약 대여(#124 #128 #139): 서버가 과목 '학생 예약', 교수 빈칸으로 보냄 - 예약자 값 자리에 '학생'",
+  "layout": 7, "bld": "E", "room": 301, "unit": 1,
+  "date_str": "11.19", "weekday": 4,
+  "cur":  {"subj": "학생 예약", "prof": "", "s_h": 17, "s_m": 0, "e_h": 18, "e_m": 30, "type": 6, "flags": 1},
+  "next": {"subj": "", "prof": "", "s_h": 0, "s_m": 0, "e_h": 0, "e_m": 0, "type": 0, "flags": 0},
+  "n_today": 2,
+  "today": [
+    {"s_h": 13, "s_m": 0, "e_h": 13, "e_m": 50, "subj": "캡스톤디자인", "type": 1},
+    {"s_h": 17, "s_m": 0, "e_h": 18, "e_m": 30, "subj": "학생 예약", "type": 6}
+  ],
+  "new_tag": "",
+  "batt_mv": 3900
+}
