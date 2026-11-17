@@ -35,9 +35,8 @@ web/
 |------|------|
 | 시안(Figma 등) + `docs/design/` 디자인 스펙(토큰·컴포넌트·화면) | mh @jmh7706jmh-ops |
 | `web/` 코드 전체 (`styles/`·`components/ui/`·`views/`·`api/`·라우팅·상태) | wj @leemonta9482 |
-| 구현물 디자인 QA | mh — `src/styles/`·`src/components/ui/` PR의 CODEOWNERS 리뷰어 |
 
-이 둘 사이의 내부 계약은 **디자인 스펙 문서**다(형식은 `docs/design/README.md`). 스펙 → 코드 순서(lockstep): 토큰·컴포넌트를 바꾸려면 mh가 스펙 PR을 먼저 머지하고, wj가 코드 PR로 따라간다. wj가 스펙 없이 UI를 먼저 만들지 않고, mh가 스펙 없이 코드 리뷰에서 디자인을 바꾸지 않는다.
+이 둘 사이의 내부 계약은 **디자인 스펙 문서**다(형식은 `docs/design/README.md`). 스펙 → 코드 순서(lockstep): 토큰·컴포넌트를 바꾸려면 mh가 스펙 PR을 먼저 머지하고, wj가 코드 PR로 따라간다. wj가 스펙 없이 UI를 먼저 만들지 않는다. wj 의 코드 PR 은 mh 리뷰 없이 팀장이 확인하고 머지한다(2026-11-17 팀장 결정 — mh 디자인 리뷰 철회).
 
 ## 커밋 scope
 

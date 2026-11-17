@@ -19,7 +19,7 @@
 | cw | @ssenu (Owner) | 전 영역 총괄 + `lora_proto/` + `firmware/` 무선·스케줄링 + `modempi/lora/` | 설계(spec/plan)·계약·인프라·최종 승인. LoRa 파이프라인(전처리→송신) |
 | dh | @Hyeon02-kr | `firmware/src/terminal/render*`, `firmware/src/fonts/`, `firmware/lib/render/`·`lib/bitmap_font/`·`lib/bitmap_image/`·`lib/host_gfx/`·`lib/fixture_parse/`·`lib/adafruit_gfx_vendor/`·`lib/epd_colors/`, `firmware/tools/` (`lib/render_model/` 은 cw 와 공동 — 계약 ④. `lib/node_store/`·`lib/schedule/` 도 cw 와 공동 — 저장 계층·상태 판단, #74) | e-Paper 렌더링·화면 레이아웃 구현, 호스트 렌더 프리뷰 인프라, 노드 저장 계층·상태 판단(dh-08). 모뎀 펌웨어 지원 |
 | wj | @leemonta9482 | `server/`, `web/` **전체**, `modempi/link/` | 메인Pi 서버·관리자/학생 웹 풀스택(디자인 스펙을 Vue 코드로 구현), 메인Pi↔모뎀Pi WebSocket 링크 |
-| mh | @jmh7706jmh-ops | `docs/design/` | 웹 디자인 — 시안 제작 → **디자인 스펙 문서**(토큰·컴포넌트·화면) 작성, 구현물 디자인 QA(리뷰). 코드는 쓰지 않는다 |
+| mh | @jmh7706jmh-ops | `docs/design/` | 웹 디자인 — 시안 제작 → **디자인 스펙 문서**(토큰·컴포넌트·화면) 작성. 코드는 쓰지 않는다 |
 
 ### 계층 규율 (고비용 계층 보호)
 
@@ -31,7 +31,7 @@
 | `firmware/lib/lora_codec/` | 프레임 인코딩/디코딩. 단말·모뎀이 공용으로 링크 | 단말만 보고 고치지 말 것 — 모뎀 쪽 동작을 함께 확인하고 `pio test`의 벡터 테스트를 통과시킨다 |
 | `server/lora_service/` | outbox·버전 벡터·`api.py`·WS 허브(메인Pi ↔ 모뎀Pi 계약 ⑥의 제공 측) | wj가 구현하되 **PM(@ssenu)이 필수 리뷰**. 여기가 웹·모뎀Pi 양쪽 계약의 접점이다. 메시지·시그니처를 바꾸면 로드맵 스펙 §4.2 갱신 + BREAKING CHANGE 명시 |
 | `modempi/store.py` | 모뎀Pi 내부 계약 ⑦ — 링크(wj)와 파이프라인(cw)이 만나는 SQLite 스키마 | 양쪽 협의 + 양쪽 리뷰. 컬럼은 additive만 |
-| `docs/design/` ↔ `web/src/styles/`, `web/src/components/ui/` | 디자인 스펙(문서, mh) ↔ 디자인 토큰·디자인시스템(코드, wj) | **스펙이 원본, 코드는 구현.** 토큰 값·컴포넌트 variant를 바꾸려면 mh가 `docs/design/` PR을 먼저 머지하고 wj가 코드 PR로 따라간다(lockstep). 화면(`views/`)에서 토큰을 우회한 하드코딩 색·간격 금지. mh는 이 두 코드 경로의 CODEOWNERS 리뷰어로 디자인 일치를 검수한다 |
+| `docs/design/` ↔ `web/src/styles/`, `web/src/components/ui/` | 디자인 스펙(문서, mh) ↔ 디자인 토큰·디자인시스템(코드, wj) | **스펙이 원본, 코드는 구현.** 토큰 값·컴포넌트 variant를 바꾸려면 mh가 `docs/design/` PR을 먼저 머지하고 wj가 코드 PR로 따라간다(lockstep). 화면(`views/`)에서 토큰을 우회한 하드코딩 색·간격 금지. wj 의 코드 PR 은 mh 리뷰를 받지 않는다(2026-11-17 철회) |
 
 ## 폴더 구조 요약
 
@@ -96,6 +96,7 @@ docs: ...               # 문서
 4. CI 통과 필수.
 5. 자기 영역만 수정 — 타 영역이 필요하면 코드로 침범하지 말고 이슈로 요청.
 6. **머지는 팀장(cw @ssenu)만 한다.** 영역 담당자의 승인(CODEOWNERS 리뷰)은 "머지해도 된다"는 신호이지 머지 자체가 아니다. 승인이 끝난 PR은 팀장에게 알리고 기다린다. 팀장 본인의 PR도 영역 담당자 승인을 받은 뒤 스스로 머지한다.
+   - **wj 의 PR(`server/`·`web/`·`modempi/link/`)은 다른 담당자 리뷰 없이 팀장이 확인하고 머지한다**(2026-11-17 팀장 결정 — 웹 코드의 mh 디자인 리뷰 철회).
    - 왜: `main`에 무엇이 언제 들어가는지를 한 사람이 알고 있어야 계약(lockstep) 순서와 릴리스 시점을 통제할 수 있다.
    - 강제 수단 없음: 브랜치 보호를 걸지 않으므로(2026-09-26 팀장 결정) 팀장 외에는 **머지 버튼을 누르지 않는 것을 합의로 지킨다.**
 
