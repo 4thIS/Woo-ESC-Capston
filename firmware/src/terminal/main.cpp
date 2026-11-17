@@ -92,17 +92,27 @@ bool clockValid() {
 }
 
 // 시계가 유효하면 RTC 의 오늘 슬롯이 오늘 요일 것인지 맞추고, 지난 예약을 정리한다. TIME 수신·매초 루프에서
-// 부른다.
+// 부른다. refreshDay 가 실패하면 60 s 뒤에야 다시 시도하고, 성공했을 때만 다시 그리게 표시한다.
 void syncDay() {
   if (!clockValid()) return;
   const uint32_t now = (uint32_t)time(nullptr);
   const uint8_t wd = sch::toKst(now).weekday;
-  if (g_rtc.slotsDay != wd) {
-    const ns::StoreStatus s = g_store.refreshDay(wd);
-    Serial.printf("[node] 요일 %u 슬롯 다시 채움 st=%u n=%u\n", wd, (unsigned)s, g_rtc.nSlots);
-    (void)g_store.purgePast(nc::todayOf(now), true);
-    g_dirty = true;
+  if (g_rtc.slotsDay == wd) return;
+  // 읽기 실패로 slotsDay 가 그대로면 매초 다시 시도하며 패널을 연달아 다시 그리게 된다 — 실패 뒤엔 60 s
+  // 마다만
+  static bool failed = false;
+  static uint32_t failedAtMs = 0;
+  if (failed && millis() - failedAtMs < 60000) return;
+  const ns::StoreStatus s = g_store.refreshDay(wd);
+  Serial.printf("[node] 요일 %u 슬롯 다시 채움 st=%u n=%u\n", wd, (unsigned)s, g_rtc.nSlots);
+  if (s != ns::StoreStatus::Ok) {
+    failed = true;
+    failedAtMs = millis();
+    return;
   }
+  failed = false;
+  (void)g_store.purgePast(nc::todayOf(now), true);
+  g_dirty = true;
 }
 
 // ---------------- 무선 ----------------
