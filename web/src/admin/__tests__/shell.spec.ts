@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory } from 'vue-router'
 import AdminApp from '@/admin/AdminApp.vue'
+import * as adminRouter from '@/admin/router'
 import { makeRouter } from '@/admin/router'
 import { usersApi } from '@/api/users'
 import type { UserOut } from '@/api/types'
@@ -52,6 +53,14 @@ beforeEach(() => {
 })
 
 describe('AdminShell', () => {
+  it('셸이 뜨면 한가할 때 나머지 화면 청크를 미리 받는다 — 첫 메뉴 클릭이 네트워크를 기다리지 않게', async () => {
+    const spy = vi.spyOn(adminRouter, 'prefetchViews').mockResolvedValue()
+    const { w } = await mountApp('/dashboard')
+    await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+    w.unmount()
+    spy.mockRestore()
+  })
+
   it('자동 로그아웃 경고 — 첫 포커스는 시간 연장(Enter 한 번에 로그아웃되지 않게), 다른 모달 위', async () => {
     sessionStorage.setItem(
       'esc.admin.idle',
