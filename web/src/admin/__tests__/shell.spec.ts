@@ -11,7 +11,10 @@ import { nightPref, picked, weekMonday, weekRoom, weekendPref } from '@/admin/se
 
 vi.mock('@/api/users', () => ({ usersApi: { list: vi.fn() } }))
 vi.mock('@/api/rooms', () => ({
-  roomsApi: { schools: vi.fn(async () => [{ id: 1, name: '명지전문대학', net_id: 75 }]) },
+  roomsApi: {
+    schools: vi.fn(async () => [{ id: 1, name: '명지전문대학', net_id: 75 }]),
+    buildings: vi.fn(async () => []), // 회원 화면 권한 Modal 의 건물 목록 (이슈 160)
+  },
 }))
 const list = vi.mocked(usersApi.list)
 // 회원 화면(Task 13)이 /users 에서 실제로 그린다 — 정렬에 쓰는 필드까지 채운다
