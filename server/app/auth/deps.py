@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.auth import tokens
+from app.auth import scope, tokens
 from app.auth.models import User
 from app.deps import _DB
 
@@ -35,7 +35,15 @@ CurrentUser = Depends(current_user)
 
 
 def require_admin(user: User = CurrentUser) -> User:
+    """최고 관리자(admin)만 (#160). 건물 관리자는 403 — 범위 검사를 붙인 API 만 ManagerUser 로 연다(fail-closed)."""
     if user.role != "admin":
+        raise HTTPException(403, "최고 관리자만")
+    return user
+
+
+def require_manager(user: User = CurrentUser) -> User:
+    """최고 관리자 · 건물 관리자. 이 가드를 쓰는 API 는 반드시 scope.of 로 건물 범위를 건다 (#160)."""
+    if user.role not in ("admin", "building_admin"):
         raise HTTPException(403, "관리자만")
     return user
 
@@ -47,4 +55,14 @@ def require_student(user: User = CurrentUser) -> User:
 
 
 AdminUser = Depends(require_admin)
+SuperUser = AdminUser  # 최고 관리자 전용 — 이름을 뜻대로 쓰고 싶을 때
+ManagerUser = Depends(require_manager)
 StudentUser = Depends(require_student)
+
+
+def manager_scope(user: User = ManagerUser, s: Session = _DB) -> scope.Scope:
+    """관리 API 의 범위 — 최고 관리자는 학교 전체, 건물 관리자는 맡은 건물 (#160)."""
+    return scope.of(s, user)
+
+
+MgrScope = Depends(manager_scope)

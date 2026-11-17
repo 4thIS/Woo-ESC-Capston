@@ -2,6 +2,7 @@ import datetime as dt
 
 from sqlalchemy import select
 
+from app.auth.scope import Scope
 from app.domain import clock
 from app.domain.models import Building, Reservation, Room
 from app.lora_service.models import Outbox
@@ -206,9 +207,9 @@ def test_summary_pending_uses_injected_now(app, school, students):
         requested_by="s1@mju.ac.kr", requested_at=UTC_NOW,
     )  # fmt: skip
     with app.state.Session() as s:
-        at = admin.summary(s, 1, now=dt.datetime(2030, 1, 1, 3, 59))  # noqa: DTZ001 — KST 12:59
+        at = admin.summary(s, Scope(1), now=dt.datetime(2030, 1, 1, 3, 59))  # noqa: DTZ001 — KST 12:59
         assert at["warnings"]["pending_reservations"]["count"] == 1
-        at = admin.summary(s, 1, now=dt.datetime(2030, 1, 1, 4, 0))  # noqa: DTZ001 — KST 13:00
+        at = admin.summary(s, Scope(1), now=dt.datetime(2030, 1, 1, 4, 0))  # noqa: DTZ001 — KST 13:00
         assert at["warnings"]["pending_reservations"]["count"] == 0
 
 
@@ -265,4 +266,7 @@ def test_list_limit_and_hides_started_requests(client, app, school, students, mo
     with app.state.Session() as s:
         from app.domain import admin
 
-        assert [x["id"] for x in admin.pending_reservations(s, 1, clock.local_now())] == [3, 4]
+        assert [x["id"] for x in admin.pending_reservations(s, Scope(1), clock.local_now())] == [
+            3,
+            4,
+        ]

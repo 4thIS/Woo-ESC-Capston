@@ -1,4 +1,5 @@
-"""관리자 예약 승인·거절·취소 (S10 §4.2). 전부 관리자 + 학교 스코프."""
+"""관리자 예약 승인·거절·취소 (S10 §4.2). 관리자 + 건물 범위(#160 — 학생 예약 승인은 그 건물의 건물 관리자와
+최고 관리자만). 전역 작업(jobs)은 최고 관리자만."""
 
 from __future__ import annotations
 
@@ -9,19 +10,21 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import schemas as S
-from app.auth.deps import AdminUser
-from app.auth.models import User
+from app.auth import scope
+from app.auth.deps import AdminUser, ManagerUser, MgrScope
+from app.auth.scope import Scope
 from app.deps import _DB
 from app.domain import admin, analytics, clock, reserve
 from app.domain.models import Building, JobRun, Reservation, Room
 from app.domain.router import _ID_LOCK, _commit_notify
 
-router = APIRouter(prefix="/api/admin", dependencies=[AdminUser])
+router = APIRouter(prefix="/api/admin", dependencies=[ManagerUser])
 
 
-def _scoped_resv(s: Session, user: User, id: int) -> Reservation:
+def _scoped_resv(s: Session, sc: Scope, id: int) -> Reservation:
     r = s.get(Reservation, id)
-    if r is None or s.get(Building, s.get(Room, r.room_id).building_id).school_id != user.school_id:
+    b = s.get(Building, s.get(Room, r.room_id).building_id) if r is not None else None
+    if b is None or b.school_id != sc.school_id or not sc.has(b.id):
         raise HTTPException(404, "예약 없음")
     return r
 
@@ -33,7 +36,7 @@ def list_reservations(
     date_from: clock.QDate | None = None,
     date_to: clock.QDate | None = None,
     limit: int = Query(500, ge=1, le=1000),
-    user: User = AdminUser,
+    sc: Scope = MgrScope,
     s: Session = _DB,
 ):
     q = (
@@ -41,7 +44,7 @@ def list_reservations(
         .join(Room, Room.id == Reservation.room_id)
         .join(Building, Building.id == Room.building_id)
         .where(
-            Building.school_id == user.school_id,
+            scope.building_clause(sc),
             Reservation.status.in_(reserve.parse_statuses(status)),
             # 시작 지난 신청은 승인 불가(409) — summary 의 pending_reservations 와 같은 규칙 (#49)
             (Reservation.status != "requested") | reserve.not_started(clock.local_now()),
@@ -59,12 +62,12 @@ def list_reservations(
 
 
 @router.post("/reservations/{id}/approve", response_model=S.ResvAdminOut)
-def approve(id: int, user: User = AdminUser, s: Session = _DB):
+def approve(id: int, sc: Scope = MgrScope, s: Session = _DB):
     with (
         _ID_LOCK
     ):  # 겹침 재검사~커밋 — 동시에 들어온 학생 신청과 경합하지 않게 (학생 신청도 같은 락)
-        r = _scoped_resv(s, user, id)
-        reserve.approve(s, r, user.email, clock.local_now())
+        r = _scoped_resv(s, sc, id)
+        reserve.approve(s, r, sc.email, clock.local_now())
         out = admin.resv_admin_out(s, r)
         _commit_notify(
             s, reserve.addr(s, r)[2]
@@ -73,26 +76,26 @@ def approve(id: int, user: User = AdminUser, s: Session = _DB):
 
 
 @router.post("/reservations/{id}/reject", response_model=S.ResvAdminOut)
-def reject(id: int, body: S.RejectIn, user: User = AdminUser, s: Session = _DB):
+def reject(id: int, body: S.RejectIn, sc: Scope = MgrScope, s: Session = _DB):
     with _ID_LOCK:
-        r = _scoped_resv(s, user, id)
-        reserve.reject(s, r, user.email, body.reason, clock.local_now())
+        r = _scoped_resv(s, sc, id)
+        reserve.reject(s, r, sc.email, body.reason, clock.local_now())
         out = admin.resv_admin_out(s, r)
         s.commit()  # 락 안에서 — 응답 뒤 커밋이면 그 사이 승인과 엇갈린다
     return out
 
 
 @router.post("/reservations/{id}/cancel", response_model=S.ResvAdminOut)
-def cancel(id: int, user: User = AdminUser, s: Session = _DB):
+def cancel(id: int, sc: Scope = MgrScope, s: Session = _DB):
     with _ID_LOCK:
-        r = _scoped_resv(s, user, id)
+        r = _scoped_resv(s, sc, id)
         reserve.cancel(s, r, by_admin=True, now_local=clock.local_now())
         out = admin.resv_admin_out(s, r)
         _commit_notify(s, reserve.addr(s, r)[2])
     return out
 
 
-@router.post("/jobs/daily", response_model=S.JobRunOut)
+@router.post("/jobs/daily", response_model=S.JobRunOut, dependencies=[AdminUser])
 def run_daily_now(request: Request):
     """전 학교 대상 전역 작업(학교 스코프 없음) — 결과는 멱등(보낸 예약은 다시 안 보냄)이라 어느 관리자가 눌러도 안전.
     `_DB` 를 쓰지 않는다: run_daily 가 자기 세션들로 쓰고, 조회는 끝난 뒤 새 세션으로."""
@@ -104,7 +107,7 @@ def run_daily_now(request: Request):
         return S.JobRunOut.model_validate(s.get(JobRun, jid))
 
 
-@router.get("/jobs", response_model=list[S.JobRunOut])
+@router.get("/jobs", response_model=list[S.JobRunOut], dependencies=[AdminUser])
 def jobs(name: str = "daily", limit: int = Query(30, ge=1, le=200), s: Session = _DB):
     return s.scalars(
         select(JobRun).where(JobRun.name == name).order_by(JobRun.id.desc()).limit(limit)
@@ -121,21 +124,21 @@ def analytics_allocation(
     to: clock.QDate | None = None,
     building_id: int | None = None,
     group: Literal["room", "building", "weekday"] = "room",
-    user: User = AdminUser,
+    sc: Scope = MgrScope,
     s: Session = _DB,
 ):
     d0, d1 = analytics.parse_range(from_, to, clock.local_today())
-    return analytics.allocation(s, user.school_id, d0, d1, building_id, group)
+    return analytics.allocation(s, sc, d0, d1, building_id, group)
 
 
 @router.get("/analytics/free-slots", response_model=list[S.FreeSlotsOut])
 def analytics_free(
     date: clock.QDate | None = None,
     building_id: int | None = None,
-    user: User = AdminUser,
+    sc: Scope = MgrScope,
     s: Session = _DB,
 ):
-    return analytics.free_slots(s, user.school_id, date or clock.local_today(), building_id)
+    return analytics.free_slots(s, sc, date or clock.local_today(), building_id)
 
 
 @router.get("/analytics/reservations", response_model=S.ResvStatsOut)
@@ -143,11 +146,11 @@ def analytics_resv(
     from_: clock.QDate | None = _FROM,
     to: clock.QDate | None = None,
     group: Literal["day", "week"] = "day",
-    user: User = AdminUser,
+    sc: Scope = MgrScope,
     s: Session = _DB,
 ):
     d0, d1 = analytics.parse_range(from_, to, clock.local_today())
-    return analytics.reservation_stats(s, user.school_id, d0, d1, group, clock.local_now())
+    return analytics.reservation_stats(s, sc, d0, d1, group, clock.local_now())
 
 
 @router.get("/analytics/latency", response_model=S.LatencyOut)
@@ -155,11 +158,11 @@ def analytics_latency(
     from_: clock.QDate | None = _FROM,
     to: clock.QDate | None = None,
     type: _LatencyType = "all",
-    user: User = AdminUser,
+    sc: Scope = MgrScope,
     s: Session = _DB,
 ):
     d0, d1 = analytics.parse_range(from_, to, clock.local_today())
-    return analytics.latency(s, user.school_id, d0, d1, type)
+    return analytics.latency(s, sc, d0, d1, type)
 
 
 @router.get("/analytics/latency/samples", response_model=list[S.LatencySampleOut])
@@ -168,8 +171,8 @@ def analytics_samples(
     to: clock.QDate | None = None,
     type: _LatencyType = "all",
     limit: int = Query(100, ge=1, le=1000),
-    user: User = AdminUser,
+    sc: Scope = MgrScope,
     s: Session = _DB,
 ):
     d0, d1 = analytics.parse_range(from_, to, clock.local_today())
-    return analytics.latency_samples(s, user.school_id, d0, d1, type, limit)
+    return analytics.latency_samples(s, sc, d0, d1, type, limit)

@@ -12,6 +12,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.auth import scope
+from app.auth.scope import Scope
 from app.domain import clock, reserve, room_state
 from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
 from app.lora_service.models import Outbox
@@ -39,11 +40,11 @@ def _days(d_from: dt.date, d_to: dt.date) -> list[dt.date]:
     return [d_from + dt.timedelta(days=i) for i in range((d_to - d_from).days + 1)]
 
 
-def _school_rooms(s: Session, school_id: int, building_id: int | None):
+def _school_rooms(s: Session, sc: Scope, building_id: int | None):
     q = (
         select(Room, Building)
         .join(Building, Room.building_id == Building.id)
-        .where(Building.school_id == school_id)
+        .where(scope.building_clause(sc))
         .order_by(Building.bld, Room.room)
     )
     if building_id is not None:
@@ -117,7 +118,7 @@ def day_segments(s: Session, room_id: int, date: dt.date) -> list[tuple[int, int
 
 def allocation(
     s: Session,
-    school_id: int,
+    sc: Scope,
     d_from: dt.date,
     d_to: dt.date,
     building_id: int | None,
@@ -127,7 +128,7 @@ def allocation(
         lambda: {"label": "", "assigned_min": 0, "unused_min": 0, "total_min": 0}
     )
     days = _days(d_from, d_to)
-    rooms = _school_rooms(s, school_id, building_id)
+    rooms = _school_rooms(s, sc, building_id)
     inputs = _inputs_range(s, [room.id for room, _ in rooms], d_from, d_to)
     for room, b in rooms:
         for d in days:
@@ -151,9 +152,9 @@ def allocation(
     return sorted(rows, key=lambda r: (-r["rate"], r["key"]))
 
 
-def free_slots(s: Session, school_id: int, date: dt.date, building_id: int | None) -> list[dict]:
+def free_slots(s: Session, sc: Scope, date: dt.date, building_id: int | None) -> list[dict]:
     out = []
-    rooms = _school_rooms(s, school_id, building_id)
+    rooms = _school_rooms(s, sc, building_id)
     inputs = _inputs_range(s, [room.id for room, _ in rooms], date, date)
     for room, b in rooms:
         free, cur = [], OPEN_MIN
@@ -169,7 +170,7 @@ def free_slots(s: Session, school_id: int, date: dt.date, building_id: int | Non
 
 def reservation_stats(
     s: Session,
-    school_id: int,
+    sc: Scope,
     d_from: dt.date,
     d_to: dt.date,
     group: str,
@@ -186,7 +187,7 @@ def reservation_stats(
         .join(Room, Room.id == Reservation.room_id)
         .join(Building, Building.id == Room.building_id)
         .where(
-            Building.school_id == school_id,
+            scope.building_clause(sc),
             Reservation.requested_by.is_not(None),
             Reservation.date.between(d_from, d_to),
         )
@@ -211,17 +212,15 @@ def reservation_stats(
     }
 
 
-def _latency_rows(
-    s: Session, school_id: int, d_from: dt.date, d_to: dt.date, type_: str, limit=None
-):
+def _latency_rows(s: Session, sc: Scope, d_from: dt.date, d_to: dt.date, type_: str, limit=None):
     lo = clock.to_utc(dt.datetime.combine(d_from, dt.time()))
     hi = clock.to_utc(dt.datetime.combine(d_to + dt.timedelta(days=1), dt.time()))
     types = LATENCY_TYPES if type_ == "all" else (type_,)
     # bld 재사용 뒤 남은 옛 학교(모뎀 소속) 행은 숨긴다 — admin.building_outbox 와 같은 규칙. NULL 통과.
-    mids = scope.modem_ids(s, school_id)
+    mids = scope.modem_ids(s, sc)
     q = (
         select(Outbox, Room.id)
-        .join(Building, and_(Building.bld == Outbox.bld, Building.school_id == school_id))
+        .join(Building, and_(Building.bld == Outbox.bld, scope.building_clause(sc)))
         .join(Room, and_(Room.building_id == Building.id, Room.room == Outbox.room))
         .where(
             Outbox.state == "acked",
@@ -241,8 +240,8 @@ def _secs(o: Outbox) -> float:
     return max(0.0, (o.finished_at - o.created_at).total_seconds())  # 시계 역행 → 0 (bin 합 = n)
 
 
-def latency(s: Session, school_id: int, d_from: dt.date, d_to: dt.date, type_: str) -> dict:
-    secs = sorted(_secs(o) for o, _ in _latency_rows(s, school_id, d_from, d_to, type_))
+def latency(s: Session, sc: Scope, d_from: dt.date, d_to: dt.date, type_: str) -> dict:
+    secs = sorted(_secs(o) for o, _ in _latency_rows(s, sc, d_from, d_to, type_))
     n = len(secs)
     edges = [*BINS, None]
     bins = [
@@ -272,9 +271,9 @@ def latency(s: Session, school_id: int, d_from: dt.date, d_to: dt.date, type_: s
 
 
 def latency_samples(
-    s: Session, school_id: int, d_from: dt.date, d_to: dt.date, type_: str, limit: int
+    s: Session, sc: Scope, d_from: dt.date, d_to: dt.date, type_: str, limit: int
 ) -> list[dict]:
-    rows = _latency_rows(s, school_id, d_from, d_to, type_, limit)
+    rows = _latency_rows(s, sc, d_from, d_to, type_, limit)
     return [
         {
             "outbox_id": o.id,
