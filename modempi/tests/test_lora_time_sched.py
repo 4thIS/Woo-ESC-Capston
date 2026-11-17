@@ -46,6 +46,14 @@ def test_request_status_flag_on_configured_hour(db):
     assert json.loads(db.get_job(jid).payload)["flags"] & int(P.TimeFlag.REQUEST_STATUS)
 
 
+def test_request_status_only_on_the_hour_slot_not_half_past(db):
+    """30 분 주기(2026-11-17)라 상태 보고 요청 시각에 슬롯이 두 번(:00:05, :30:05) 든다 — 하루 한 번만 요청한다."""
+    db.set_config({"status_hour_utc": 18})
+    clk = FakeClock(start=1_800_036_005.0 + 1800)  # UTC 18:30:05
+    jid = TimeScheduler(db, clock=clk).tick()
+    assert json.loads(db.get_job(jid).payload)["flags"] == 0
+
+
 def test_no_time_row_before_ntp_sync(db):
     assert TimeScheduler(db, clock=lambda: 1_000.0).tick() is None
 
@@ -54,13 +62,13 @@ def _job_ids(db) -> list[str]:
     return [r[0] for r in db._conn.execute("SELECT job_id FROM jobs ORDER BY rowid")]
 
 
-def test_seconds_to_next_lands_on_hh_00_05(db):
+def test_seconds_to_next_lands_on_hh_00_05_and_hh_30_05(db):
     clk = FakeClock(start=1_800_000_000.0)  # :00:00
     assert TimeScheduler(db, clock=clk).seconds_to_next() == 5.0
-    clk.now += 5  # :00:05 — 0 이 아니라 다음 시각까지 한 주기
-    assert TimeScheduler(db, clock=clk).seconds_to_next() == 3600.0
+    clk.now += 5  # :00:05 — 0 이 아니라 다음 슬롯까지 한 주기
+    assert TimeScheduler(db, clock=clk).seconds_to_next() == 1800.0
     clk.now += 1795  # :30:00
-    assert TimeScheduler(db, clock=clk).seconds_to_next() == 1805.0
+    assert TimeScheduler(db, clock=clk).seconds_to_next() == 5.0
     clk.now += 1799.5  # :59:59.5 → 다음 정시 + 5 초까지 5.5 초
     assert TimeScheduler(db, clock=clk).seconds_to_next() == 5.5
 
@@ -76,23 +84,33 @@ def _stop_after(clk: FakeClock, stop: asyncio.Event, n: int):
     return sleep
 
 
-async def test_run_inserts_one_row_per_hour(db):
+async def test_run_inserts_one_row_per_half_hour(db):
     clk = FakeClock(start=1_800_000_005.0)  # :00:05
     stop = asyncio.Event()
     sched = TimeScheduler(db, clock=clk, sleep=_stop_after(clk, stop, 3))
     await asyncio.wait_for(sched.run(stop), 1.0)
     # 기동 직후 1회 + sleep 두 번 뒤 각 1회. 세 번째 sleep 뒤엔 stop 이라 내지 않는다.
-    assert clk.sleeps == [3600.0, 3600.0, 3600.0]
-    assert _job_ids(db) == [f"time-{1_800_000_005 + 3600 * i}" for i in range(3)]
+    assert clk.sleeps == [1800.0, 1800.0, 1800.0]
+    assert _job_ids(db) == [f"time-{1_800_000_005 + 1800 * i}" for i in range(3)]
     assert all(db.get_job(j).type == "TIME" for j in _job_ids(db))
 
 
-async def test_run_boot_mid_hour_then_aligns_to_hh_00_05(db):
-    clk = FakeClock(start=1_800_001_800.0)  # :30:00 에 기동
+async def test_run_boot_mid_slot_then_aligns_to_slot(db):
+    clk = FakeClock(start=1_800_000_900.0)  # :15:00 에 기동
     stop = asyncio.Event()
     sched = TimeScheduler(db, clock=clk, sleep=_stop_after(clk, stop, 2))
     await asyncio.wait_for(sched.run(stop), 1.0)
-    assert clk.sleeps == [1805.0, 3600.0]
+    assert clk.sleeps == [905.0, 1800.0]
+    assert _job_ids(db) == ["time-1800000900", "time-1800001805"]
+
+
+async def test_run_boot_just_before_slot_skips_that_slot(db):
+    """:30:00 기동이면 기동 직후 1 회 뒤 5 초 만에 또 내지 않는다 — 웨이크 방송이 노드를 연달아 깨운다."""
+    clk = FakeClock(start=1_800_001_800.0)  # :30:00
+    stop = asyncio.Event()
+    sched = TimeScheduler(db, clock=clk, sleep=_stop_after(clk, stop, 2))
+    await asyncio.wait_for(sched.run(stop), 1.0)
+    assert clk.sleeps == [1805.0, 1800.0]
     assert _job_ids(db) == ["time-1800001800", "time-1800003605"]
 
 
@@ -107,8 +125,8 @@ async def test_run_early_wake_does_not_double_tick(db):
             stop.set()
 
     await asyncio.wait_for(TimeScheduler(db, clock=clk, sleep=early_sleep).run(stop), 1.0)
-    assert clk.sleeps[1] > 3599.0
-    assert _job_ids(db) == ["time-1800000005", "time-1800003604"]
+    assert clk.sleeps[1] > 1799.0
+    assert _job_ids(db) == ["time-1800000005", "time-1800001804"]
 
 
 async def test_run_without_valid_clock_inserts_nothing(db):
@@ -136,5 +154,5 @@ async def test_boot_before_ntp_sync_retries_every_minute_until_trusted(db):
         db, clock=clk, sleep=_stop_after(clk, stop, 4), clock_ok=lambda now: now >= synced_at
     )
     await asyncio.wait_for(sched.run(stop), 1.0)
-    assert clk.sleeps == [60.0, 60.0, 1685.0, 3600.0]
+    assert clk.sleeps == [60.0, 60.0, 1685.0, 1800.0]
     assert _job_ids(db) == ["time-1800001920", "time-1800003605"]
