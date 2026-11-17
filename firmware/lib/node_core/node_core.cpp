@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <cstring>
 
 #include "kst_time.h"
 #include "schedule.h"
@@ -13,7 +14,9 @@ namespace nc {
 bool isForMe(const Ident& me, const lc::Header& h) {
   if (h.flags & LP_FLAG_BROADCAST) return true;
   if (h.bld == LP_BLD_ALL) return true;
-  if (h.bld == LP_BLD_UNPROVISIONED) return false;  // SET_ROOM 은 미설정 노드만(프로비저닝은 S9)
+  if (h.bld == LP_BLD_UNPROVISIONED)
+    return !me.provisioned && h.type == LP_TYPE_SET_ROOM;  // MAC 은 handleFrame
+  if (!me.provisioned) return false;
   return h.bld == me.bld && h.room == me.room && (h.unit == LP_UNIT_ALL || h.unit == me.unit);
 }
 
@@ -43,7 +46,8 @@ uint8_t ackOf(ns::StoreStatus st, uint8_t oldVer, uint8_t newVer) {
 }
 
 // 프레임 하나 적용. 반환 = ACK status. o.changed·o.timeSet·o.detail 을 채운다.
-uint8_t apply(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* p, uint32_t now, Outcome& o) {
+uint8_t apply(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* p, uint32_t now, Outcome& o,
+              const uint8_t* myMac) {
   const ns::RtcState& r = st.state();
   const bool clockOk = now > kClockValidEpoch;
   const ns::Date today = todayOf(now);
@@ -54,6 +58,10 @@ uint8_t apply(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* 
       if (!lc::decTime(p, h.len, t)) return LP_ACK_BAD_PAYLOAD;
       o.timeSet = true;
       o.epoch = t.epoch;
+      if (t.flags & LP_TIMEFLAG_REQUEST_STATUS) {
+        o.statusReq = true;
+        o.statusSpreadMs = kReqStatusSpreadMs;
+      }
       return LP_ACK_OK;
     }
     case LP_TYPE_SLOT_SET: {
@@ -141,7 +149,51 @@ uint8_t apply(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* 
       o.changed = true;
       return LP_ACK_OK;  // FILE 은 전체 교체 — GAP 없음(§3.3)
     }
-    default:  // CMD·SET_ROOM·SET_PARAM 은 2단계(프로비저닝)
+    case LP_TYPE_SET_ROOM: {
+      lc::SetRoom sr{};
+      uint8_t nv = 0;
+      if (!lc::decSetRoom(p, h.len, nv, sr)) return LP_ACK_BAD_PAYLOAD;
+      if (!myMac || std::memcmp(sr.mac, myMac, 6) != 0 || r.provisioned) {
+        o.ignored = true;
+        return kNoAck;
+      }
+      const ns::StoreStatus s = st.setIdentity(ns::Identity{sr.bld, sr.room, sr.unit}, nv);
+      if (s != ns::StoreStatus::Ok) return ackOf(s, 0, 1);
+      o.provisionedNow = true;
+      o.changed = true;
+      return LP_ACK_OK;
+    }
+    case LP_TYPE_CMD: {
+      lc::CmdMsg c{};
+      if (!lc::decCmd(p, h.len, c)) return LP_ACK_BAD_PAYLOAD;
+      switch (c.cmd) {
+        case LP_CMD_REQUEST_STATUS:
+          o.statusReq = true;
+          return LP_ACK_OK;
+        case LP_CMD_REBOOT:
+          o.reboot = true;
+          return LP_ACK_OK;
+        case LP_CMD_FACTORY_RESET:
+          o.factoryReset = true;
+          return LP_ACK_OK;
+        case LP_CMD_FORCE_RENDER:
+          o.forceRender = true;
+          return LP_ACK_OK;
+        case LP_CMD_TEST_RENDER:
+          if (c.argsLen != 1 || c.args[0] < 1 || c.args[0] > LP_LAYOUT_SETUP) return LP_ACK_BAD_PAYLOAD;
+          o.testLayout = c.args[0];
+          return LP_ACK_OK;
+        case LP_CMD_SET_PARAM: {
+          if (c.argsLen != 5) return LP_ACK_BAD_PAYLOAD;
+          const uint32_t v =
+              (uint32_t)c.args[1] << 24 | (uint32_t)c.args[2] << 16 | (uint32_t)c.args[3] << 8 | c.args[4];
+          return ackOf(st.setParam(c.args[0], v), 0, 1);
+        }
+        default:
+          return LP_ACK_UNSUPPORTED;
+      }
+    }
+    default:  // 그 밖의 TYPE
       return LP_ACK_UNSUPPORTED;
   }
   if (rc == LP_ACK_OK || rc == LP_ACK_GAP) o.changed = true;
@@ -150,13 +202,18 @@ uint8_t apply(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* 
 
 }  // namespace
 
-Outcome handleFrame(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* p, uint32_t nowEpoch) {
+Outcome handleFrame(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uint8_t* p, uint32_t nowEpoch,
+                    const uint8_t* myMac) {
   Outcome o;
   uint8_t s;
   if (h.type != LP_TYPE_TIME && h.txn != 0 && h.txn == st.state().lastTxn) {
     s = LP_ACK_DUP;  // 재적용 없이 ACK 만(§3.5)
   } else {
-    s = apply(st, f, h, p, nowEpoch, o);
+    s = apply(st, f, h, p, nowEpoch, o, myMac);
+    if (o.ignored) {
+      o.status = kNoAck;  // lastTxn 도 쓰지 않는다
+      return o;
+    }
     // lastTxn 은 저장 결과가 OK(GAP 포함)일 때만(#74 10). TIME 은 건드리지 않는다(§3.5).
     // setLastTxn 실패는 무시한다 — 데이터는 이미 저장됐다. lastTxn 을 놓치면 같은 프레임이 다시 왔을 때 DUP
     // 이 아니라 재적용되는데, 버전이 이미 v 라 gap(v, v) → GAP ACK → 서버 FILE 재동기가 된다. 해롭진 않지만
@@ -167,6 +224,33 @@ Outcome handleFrame(ns::NodeStore& st, FileRx& f, const lc::Header& h, const uin
   const bool wantAck = (h.flags & LP_FLAG_ACK_REQ) && !(h.flags & LP_FLAG_BROADCAST) && h.bld != LP_BLD_ALL;
   o.status = wantAck ? s : kNoAck;
   return o;
+}
+
+void setupModel(const uint8_t mac[6], RenderModel& m) {
+  m = RenderModel{};
+  m.layout = LP_LAYOUT_SETUP;
+  snprintf(m.newTag, sizeof m.newTag, "NEW-%02X%02X", mac[4], mac[5]);
+}
+
+Button::Action Button::update(uint32_t nowMs, bool pressed) {
+  if (pressed) {
+    if (!down_) {
+      down_ = true;
+      longFired_ = false;
+      since_ = nowMs;
+      return kNone;
+    }
+    if (!longFired_ && nowMs - since_ >= kButtonLongMs) {
+      longFired_ = true;
+      return kLong;
+    }
+    return kNone;
+  }
+  if (!down_) return kNone;
+  down_ = false;
+  const uint32_t held = nowMs - since_;
+  if (longFired_ || held < kButtonDebounceMs || held >= kButtonShortMaxMs) return kNone;
+  return kShort;
 }
 
 namespace {
@@ -270,6 +354,142 @@ sch::LayoutDecision buildModel(const ns::RtcState& r, uint32_t epochUtc, RenderM
     }
   }
   return d;
+}
+
+lc::Ack buildAck(const ns::RtcState& r, uint8_t status, uint8_t detail, uint16_t battMv, uint8_t fw,
+                 uint8_t layout) {
+  lc::Ack a{};
+  a.status = status;
+  a.detail = detail;
+  a.battMv = battMv;
+  a.schedVer = r.schedVer;
+  a.resvVer = r.resvVer;
+  a.examVer = r.examVer;
+  a.identVer = r.identVer;
+  a.fw = fw;
+  a.layout = layout;
+  return a;
+}
+
+uint8_t statusFlags(const ns::RtcState& r, uint32_t now, uint16_t battMv) {
+  uint8_t f = 0;
+  const bool clockOk = now > kClockValidEpoch;
+  const bool stale = !clockOk || r.lastTimeSyncEpoch == 0 ||
+                     (now > r.lastTimeSyncEpoch && now - r.lastTimeSyncEpoch > kClockStaleSec);
+  if (stale) f |= LP_STATUSFLAG_CLOCK_STALE;
+  if (!r.provisioned) f |= LP_STATUSFLAG_UNPROVISIONED;
+  if (battMv != 0 && battMv < kLowBattMv) f |= LP_STATUSFLAG_LOW_BATT;
+  return f;
+}
+
+lc::Status buildStatus(const ns::RtcState& r, uint32_t now, uint16_t battMv, uint8_t fw, uint8_t layout,
+                       const LinkInfo& l) {
+  lc::Status s{};
+  s.ack = buildAck(r, LP_ACK_OK, 0, battMv, fw, layout);
+  s.rssiLast = l.rssiLast;
+  s.snrLastX4 = l.snrLastX4;
+  s.flags = statusFlags(r, now, battMv);
+  s.uptimeH = l.uptimeH;
+  return s;
+}
+
+uint32_t nextDailyStatus(uint32_t now, uint8_t hourUtc, uint32_t offsetSec) {
+  const uint32_t at = (hourUtc * 3600u + offsetSec) % 86400u;
+  uint32_t t = now - now % 86400u + at;
+  if (t <= now) t += 86400u;
+  return t;
+}
+
+uint32_t macSpread(const uint8_t mac[6], uint32_t mod) {
+  if (mod == 0) return 0;
+  uint32_t h = 2166136261u;
+  for (int i = 0; i < 6; ++i) {
+    h ^= mac[i];
+    h *= 16777619u;
+  }
+  return h % mod;
+}
+
+void StatusPlan::request(uint32_t nowMs, uint32_t delayMs) {
+  const uint32_t t = nowMs + delayMs;
+  if (pending_ && !onlyIfStale_ && (int32_t)(dueMs_ - t) <= 0) return;
+  pending_ = true;
+  onlyIfStale_ = false;
+  dueMs_ = t;
+}
+
+bool StatusPlan::due(uint32_t nowMs, bool clockOk, uint32_t nowEpoch, uint32_t nextStatusEpoch) const {
+  if (pending_ && (int32_t)(nowMs - dueMs_) >= 0 && !(onlyIfStale_ && clockOk)) return true;
+  return clockOk && nextStatusEpoch != 0 && nowEpoch >= nextStatusEpoch;
+}
+
+void StatusPlan::sent(uint32_t nowMs, bool ok, bool clockOk, uint8_t flags) {
+  if (ok) staleSent_ = (flags & LP_STATUSFLAG_CLOCK_STALE) != 0;
+  if (!ok) {
+    pending_ = true;
+    onlyIfStale_ = false;
+    dueMs_ = nowMs + kBusyRetryMs;
+    return;
+  }
+  if (!clockOk) {
+    pending_ = true;
+    onlyIfStale_ = true;
+    const uint32_t wait = staleTries_ >= 5 ? kStaleRetryMs : kStaleRetryFirstMs << staleTries_;
+    dueMs_ = nowMs + (wait < kStaleRetryMs ? wait : kStaleRetryMs);
+    if (staleTries_ < 5) ++staleTries_;
+    return;
+  }
+  staleTries_ = 0;
+  pending_ = false;
+  onlyIfStale_ = false;
+}
+
+void StatusPlan::onTimeSet(uint32_t nowMs) {
+  if (!staleSent_) return;
+  staleSent_ = false;
+  request(nowMs, kAfterTimeStatusMs);
+}
+
+uint32_t StatusPlan::msUntilDue(uint32_t nowMs, bool clockOk) const {
+  if (!pending_ || (onlyIfStale_ && clockOk)) return UINT32_MAX;
+  const int32_t left = (int32_t)(dueMs_ - nowMs);
+  return left <= 0 ? 0 : (uint32_t)left;
+}
+
+namespace {
+bool sameSlot(const RenderSlot& a, const RenderSlot& b) {
+  return std::strcmp(a.subj, b.subj) == 0 && std::strcmp(a.prof, b.prof) == 0 && a.sH == b.sH &&
+         a.sM == b.sM && a.eH == b.eH && a.eM == b.eM && a.type == b.type && a.flags == b.flags;
+}
+}  // namespace
+
+bool sameScreen(const RenderModel& a, const RenderModel& b) {
+  if (a.layout != b.layout || a.bld != b.bld || a.room != b.room || a.unit != b.unit ||
+      a.weekday != b.weekday || a.nToday != b.nToday)
+    return false;
+  if (std::strncmp(a.dateStr, b.dateStr, sizeof a.dateStr) != 0) return false;
+  if (std::strncmp(a.newTag, b.newTag, sizeof a.newTag) != 0) return false;
+  if (!sameSlot(a.cur, b.cur) || !sameSlot(a.next, b.next)) return false;
+  for (uint8_t i = 0; i < a.nToday && i < 24; ++i) {
+    const TodaySlot &x = a.today[i], &y = b.today[i];
+    if (x.sH != y.sH || x.sM != y.sM || x.eH != y.eH || x.eM != y.eM || x.type != y.type ||
+        std::strcmp(x.subj, y.subj) != 0)
+      return false;
+  }
+  return true;
+}
+
+uint32_t sleepMs(uint32_t nowMs, bool clockOk, uint32_t nowEpoch, uint32_t nextChangeEpoch, bool dayReady,
+                 const StatusPlan& p) {
+  uint32_t ms = dayReady ? kSleepCapMs : kSleepCapNoDayMs;
+  if (clockOk) {
+    if (nextChangeEpoch <= nowEpoch) return 0;
+    const uint32_t untilChange = nextChangeEpoch - nowEpoch;
+    if (untilChange < ms / 1000u) ms = untilChange * 1000u;
+  }
+  const uint32_t untilStatus = p.msUntilDue(nowMs, clockOk);
+  if (untilStatus < ms) ms = untilStatus;
+  return ms < kSleepMinMs ? 0 : ms;
 }
 
 }  // namespace nc

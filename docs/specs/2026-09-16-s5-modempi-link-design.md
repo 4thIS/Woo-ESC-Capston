@@ -22,7 +22,7 @@
 - `server/tests/fake_hub.py`를 상대로 하드웨어·서버 없이 pytest로 검증한다. 4주차 Pi↔Pi 통합에서 실제 허브에 붙는다.
 
 ### 비목표 (이번엔 안 함 / 후속)
-- 프레임 검증·TXN·재시도·TIME 매시 스케줄 — 파이프라인(S6). 링크는 `job.payload`를 검증 없이 저장한다(modempi/CLAUDE.md).
+- 프레임 검증·TXN·재시도·TIME 30 분 스케줄(#148) — 파이프라인(S6). 링크는 `job.payload`를 검증 없이 저장한다(modempi/CLAUDE.md).
 - 시간표 사본 보관(로드맵 §1). 받은 작업만.
 - 자체서명 TLS·인증서 옵션 — S11 배포 시. 지금은 URL이 `ws://`든 `wss://`든 라이브러리 기본.
 - 메트릭·대시보드 — 로그로 충분.
@@ -120,6 +120,7 @@ class JobStore(Protocol):
     def set_config(self, config: dict) -> None: ...
     def pending_uplinks(self, limit: int = 100) -> list[UplinkRow]: ...
     def mark_uplinks_uploaded(self, ids: list[int]) -> None: ...
+    def get_meta(self, key: str) -> str | None: ...  # 파이프라인이 set_meta 로 쓴 값 (modem_fw)
 ```
 
 - 이 시그니처는 로드맵 §4.3 링크 행의 함수명을 그대로 쓴다. 인자 순서·타입은 이 spec이 처음 고정하는 것이라 **cw-08과 맞춘다**(§9).
@@ -187,6 +188,6 @@ class LinkClient:
 ## 9. 열린 결정 (plan 단계에서 확정)
 
 - **store 동기/비동기 — 결정(2026-09-16): 동기.** 링크는 store 함수를 이벤트 루프에서 직접 부른다(서버 `hub.py`와 같은 전례, 연결 1개 공유, ms 단위 SQLite). `aiosqlite` 안 씀. cw-08이 다르게 가려면 이 spec §4.2와 링크 호출부(`_hello`, `_on_message`, `Uploader.flush_once`)를 함께 바꾼다.
-- `put_job`의 `uploaded` 인자 vs `put_job` 뒤 `mark_uploaded` 호출 — 전자가 원자적이라 제안. cw-08과 협의.
-- `pending_results`가 `cancelled` 행을 포함하려면 `cancel_job`이 `finished_at`을 세워야 한다 — cw-08 확인.
+- `put_job`의 `uploaded` 인자 vs `put_job` 뒤 `mark_uploaded` 호출 — 전자가 원자적이라 제안. cw-08과 협의. → 확정(cw-08): `put_job(..., uploaded=)` 인자.
+- `pending_results`가 `cancelled` 행을 포함하려면 `cancel_job`이 `finished_at`을 세워야 한다 — cw-08 확인. → 확정(cw-08): `cancel_job` 이 `finished_at` 을 세운다.
 - 재접속 직후 몰아 보내기 상한(100건/1 s)이 충분한지 — 4주차 "끊고 붙이기"에서 확인.

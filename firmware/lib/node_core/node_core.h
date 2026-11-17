@@ -20,6 +20,14 @@ struct Ident {
   uint8_t bld;
   uint16_t room;
   uint8_t unit;
+  bool provisioned = true;
+  uint8_t mac[6] = {};
+  // terminal env 는 gnu++11 이라 기본 멤버 초기값이 있으면 집합체 초기화가 안 된다 — 생성자로 같은 모양을
+  // 지킨다
+  Ident(uint8_t b, uint16_t r, uint8_t u, bool prov = true, const uint8_t* m = nullptr)
+      : bld(b), room(r), unit(u), provisioned(prov) {
+    for (int i = 0; i < 6; ++i) mac[i] = m ? m[i] : 0;
+  }
 };
 
 // FILE 세션 수신 버퍼 — 영속 아님(재부팅하면 서버가 다시 보낸다).
@@ -36,16 +44,105 @@ struct Outcome {
   uint8_t detail = 0;
   bool changed = false;  // 저장 상태가 바뀌었다(다시 그리기 필요)
   bool timeSet = false;
-  uint32_t epoch = 0;  // timeSet 이면 맞출 UTC epoch
+  uint32_t epoch = 0;           // timeSet 이면 맞출 UTC epoch
+  bool statusReq = false;       // STATUS 를 보내라(TIME REQUEST_STATUS·CMD REQUEST_STATUS, §3.3)
+  uint32_t statusSpreadMs = 0;  // statusReq 일 때 0~이 값 ms 임의 지연(0 = 곧바로)
+  bool ignored = false;         // 대상이 아니었다(SET_ROOM MAC 불일치·설정된 노드) — ACK 없음
+  bool provisionedNow = false;
+  bool reboot = false;
+  bool factoryReset = false;
+  bool forceRender = false;
+  uint8_t testLayout = 0;  // TEST_RENDER — 0 이면 없음
 };
 
 bool isForMe(const Ident&, const lc::Header&);  // §6.6
 bool gap(uint8_t oldVer, uint8_t newVer);       // (new − old) mod 255 ≠ 1 (§12, #74 12)
 ns::Date todayOf(uint32_t epochUtc);            // KST 날짜, ResvRec 와 같은 표현(y = year-2000)
 // §6.4 dispatch. DUP 판정·버전·lastTxn(결과 OK/GAP 일 때만, #74 10) 까지 한다. nowEpoch = 노드 시계(UTC)
-Outcome handleFrame(ns::NodeStore&, FileRx&, const lc::Header&, const uint8_t* payload, uint32_t nowEpoch);
+// myMac = 내 MAC(SET_ROOM 대조용, 기본 nullptr — SET_ROOM 은 무시됨)
+Outcome handleFrame(ns::NodeStore&, FileRx&, const lc::Header&, const uint8_t* payload, uint32_t nowEpoch,
+                    const uint8_t* myMac = nullptr);
+
+// 미설정 노드 설정 화면(layout 8, "NEW-xxxx" = MAC 하위 2 B)
+void setupModel(const uint8_t mac[6], RenderModel& m);
+
+// 버튼 판단 — 50 ms 이상 1 s 미만 눌렀다 떼면 짧게, 5 s 누르고 있으면 길게(한 번만)
+constexpr uint32_t kButtonDebounceMs = 50, kButtonShortMaxMs = 1000, kButtonLongMs = 5000;
+class Button {
+ public:
+  enum Action : uint8_t { kNone, kShort, kLong };
+  Action update(uint32_t nowMs, bool pressed);
+
+ private:
+  bool down_ = false, longFired_ = false;
+  uint32_t since_ = 0;
+};
 
 // r 의 정체성·오늘 슬롯(r.slotsDay 가 오늘 요일과 다르면 슬롯 없음으로 본다)·예약·시험으로 m 을 채운다.
 sch::LayoutDecision buildModel(const ns::RtcState& r, uint32_t epochUtc, RenderModel& m);
+
+// ---- STATUS 업링크 (v2 §3.3·5.2·6.2·6.3, 절전 1단계) ----
+constexpr uint32_t kClockStaleSec = 25u * 3600u;  // §5.2 — 마지막 TIME 뒤 이보다 길면 CLOCK_STALE
+constexpr uint16_t kLowBattMv = 3500;             // §3.3 LOW_BATT
+constexpr uint8_t kStatusHourUtc = 18;            // 서버 STATUS_HOUR_UTC 기본(KST 03:00). SET_PARAM 은 2단계
+constexpr uint32_t kStatusSpreadSec = 1800;       // 하루 STATUS 분산 hash(mac) % 1800 (§6.3)
+constexpr uint32_t kReqStatusSpreadMs = 300000;   // TIME REQUEST_STATUS → 0~300 s 임의 지연(§3.3)
+constexpr uint32_t kStaleRetryFirstMs = 30000;    // 보냈는데 시계가 안 오면 30 s 뒤부터 두 배씩(충돌 대비)
+constexpr uint32_t kStaleRetryMs = 600000;        // … 최대 10 min(§9)
+constexpr uint32_t kBusyRetryMs = 5000;           // CAD busy 로 못 보냈으면 5 s 뒤 다시
+// CLOCK_STALE 로 알린 뒤 시각을 받으면 이만큼 뒤 STATUS 한 번 더
+constexpr uint32_t kAfterTimeStatusMs = 3000;
+
+struct LinkInfo {
+  int8_t rssiLast;   // 마지막으로 받은 내 프레임의 RSSI(dBm)
+  int8_t snrLastX4;  // 같은 프레임의 SNR × 4
+  uint16_t uptimeH;
+};
+
+lc::Ack buildAck(const ns::RtcState& r, uint8_t status, uint8_t detail, uint16_t battMv, uint8_t fw,
+                 uint8_t layout);
+uint8_t statusFlags(const ns::RtcState& r, uint32_t nowEpoch, uint16_t battMv);
+lc::Status buildStatus(const ns::RtcState& r, uint32_t nowEpoch, uint16_t battMv, uint8_t fw, uint8_t layout,
+                       const LinkInfo& l);
+// now 보다 뒤인 가장 이른 (hourUtc:00 + offsetSec) UTC 시각
+uint32_t nextDailyStatus(uint32_t nowEpoch, uint8_t hourUtc, uint32_t offsetSec);
+uint32_t macSpread(const uint8_t mac[6], uint32_t mod);  // FNV-1a % mod (mod 0 → 0)
+
+// 깨어 있는 모드의 STATUS 예약. 한 번짜리 예약(millis)과 하루 1회(epoch, RtcState.nextStatusEpoch) 둘을 본다.
+// 호출자 몫: 시계가 있을 때 보내기를 시도했으면(성공·실패 모두) nextStatusEpoch 를 nextDailyStatus 로 옮긴다.
+class StatusPlan {
+ public:
+  // nowMs+delayMs 에 한 번. 더 이른 일반 예약이 있으면 그대로
+  void request(uint32_t nowMs, uint32_t delayMs);
+  bool due(uint32_t nowMs, bool clockOk, uint32_t nowEpoch, uint32_t nextStatusEpoch) const;
+  // ok=false(채널 사용 중) → kBusyRetryMs 뒤 다시. ok·시계 없음 → 30 s·60 s·… 최대 kStaleRetryMs 뒤 다시(그
+  // 사이 시계가 맞으면 건너뜀). ok·시계 있음 → 예약을 비운다. flags = 보낸 STATUS 의 플래그(CLOCK_STALE
+  // 기억용)
+  void sent(uint32_t nowMs, bool ok, bool clockOk, uint8_t flags = 0);
+  // TIME 으로 시계를 맞췄다. 마지막으로 보낸 STATUS 가 CLOCK_STALE 이었으면 kAfterTimeStatusMs 뒤 한 번 더 —
+  // 서버의 clock_stale 표시는 다음 STATUS 까지 남기 때문(부팅 보고 뒤 하루 내내 "시계 이상"으로 보이지 않게)
+  void onTimeSet(uint32_t nowMs);
+  // 한 번짜리 예약까지 남은 ms. 이미 지났으면 0, 없으면(또는 시계가 맞아 건너뛸 재시도면) UINT32_MAX
+  uint32_t msUntilDue(uint32_t nowMs, bool clockOk) const;
+
+ private:
+  bool pending_ = false;
+  bool onlyIfStale_ = false;
+  bool staleSent_ = false;
+  uint8_t staleTries_ = 0;  // 시계 없이 보낸 횟수 — 재시도 간격 두 배씩
+  uint32_t dueMs_ = 0;
+};
+
+// ---- 잠들기 판단 (v2 §6.3·6.7, 절전 3단계) ----
+constexpr uint32_t kSleepCapMs = 30u * 60u * 1000u;  // 한 번에 최대 30 min
+constexpr uint32_t kSleepCapNoDayMs = 60000;         // 오늘 슬롯 준비 전(refreshDay 실패 중) 60 s 마다 재시도
+constexpr uint32_t kSleepMinMs = 1000;               // 이보다 짧으면 자지 않는다
+
+// 화면에 그려지는 필드가 같은가(battMv 와 nToday 밖 today 칸은 보지 않는다)
+bool sameScreen(const RenderModel& a, const RenderModel& b);
+// 잘 시간(ms), 0 = 자지 않음. nextChangeEpoch 는 clockOk 일 때만 본다(sch::nextChangeAt 값, +2 s·하루 STATUS
+// 포함)
+uint32_t sleepMs(uint32_t nowMs, bool clockOk, uint32_t nowEpoch, uint32_t nextChangeEpoch, bool dayReady,
+                 const StatusPlan& p);
 
 }  // namespace nc

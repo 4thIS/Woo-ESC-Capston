@@ -382,6 +382,9 @@ setup():
 ### 6.2 handleColdBoot
 1. 미설정(`provisioned==false`)이면 layout 8 렌더, `HELLO` 송신, `nextStatusEpoch = now + 10 min`.
 2. 설정됨이면 `STATUS` 송신(부팅 보고) 후 `handleTimer()`와 동일 경로.
+- 깨어 있는 모드(절전 1단계, 2026-11-17)도 부팅 1~4 s 뒤 STATUS 를 보낸다. 시계가 없어 `CLOCK_STALE` 이 서므로 모뎀Pi 가 그 노드에 타겟 TIME 을 보내고, 노드는 모뎀Pi 재시작 없이 몇 초 안에 시계를 맞춘다. 버전이 0 이면(저장 손상·지운 노드) 서버가 이 STATUS 로 FILE 재동기를 건다. 보냈는데 시계가 안 오면 30 s 부터 두 배씩 최대 10 min 간격으로 다시(동시 부팅 충돌 대비), CAD busy 면 5 s 뒤 다시. `CLOCK_STALE` 로 알린 뒤 시각을 받으면 3 s 뒤 STATUS 를 한 번 더 보내 서버의 시계 이상 표시를 지운다. 하루 1회(18:00 UTC + hash(mac)%1800 s)·TIME `REQUEST_STATUS`(0~300 s)·CMD `REQUEST_STATUS` 도 보낸다. ACK·STATUS 의 `batt_mV` 는 실측(V3.2: GPIO37 HIGH 로 분압을 켜고 GPIO1 × 4.9).
+
+- 프로비저닝 구현(2026-11-17, 절전 2단계, FW 6): 정체성은 NVS(SET_ROOM)에서 온다. 빌드 플래그 `NODE_ROOM` 을 줬을 때만 그 방으로 강제(시연·실험용). 미설정이면 layout 8(`NEW-` + MAC 마지막 2 바이트 대문자)을 시계와 무관하게 그리고 HELLO 를 부팅 1~4 s 뒤·이후 10 min 마다 보낸다(STATUS 대신). SET_ROOM 은 MAC 이 맞는 미설정 노드만 적용하고, 아니면 응답하지 않는다. 적용 ACK 의 버전 0 을 보고 서버가 FILE 재동기를 건다. 실기(E301): CMD FACTORY_RESET → 대기 화면·HELLO → 대기 노드 목록 → 배정 → SET_ROOM·FILE 3건 첫 시도 acked → 정규 화면.
 
 ### 6.3 handleTimer
 1. `clockValid` 아니면 goToSleep(다음 시도 10 min).
@@ -415,6 +418,7 @@ loop (세션 창 sessionWindowMs, 기본 10 s, 프레임 수신 시마다 연장
 
 ### 6.5 handleButton (GPIO0)
 - 짧게(<1 s): `FORCE_RENDER` + STATUS 송신 (현장 확인용).
+- (2026-11-17 구현: 50 ms~1 s 떼면 짧게, 누른 채 5 s 면 길게 한 번. 카운트다운 화면은 생략 — 3색 리프레시 18~27 s 라 의미가 없다. LIGHT·DEEP 모두 버튼으로 깬다)
 - 길게(≥5 s): `FACTORY_RESET` (정체성 삭제 → 미설정 상태). e-Paper에 카운트다운 표시.
 - BLE 설정모드는 **v2에서 제거**. (필요 시 v2.1에서 옵션 빌드로 복원 가능하도록 `#ifdef FEATURE_BLE_SETUP` 자리만 남긴다.)
 
@@ -437,6 +441,8 @@ esp_sleep_enable_ext1_wakeup(1ULL<<0, ESP_EXT1_WAKEUP_ANY_LOW)   // 버튼 (S3: 
 esp_deep_sleep_start()
 ```
 - **빌드 플래그 `SLEEP_MODE`**: `LIGHT`(1단계 검증용: `esp_light_sleep_start`, 리부팅 없음, 라디오 객체 유지) / `DEEP`(운영). 상태머신은 동일하고 진입·복귀 함수만 다르다.
+- **LIGHT 구현(2026-11-17, 절전 3a)**: 빌드 플래그 이름은 `NODE_SLEEP_MODE`(ESP SDK 에 `SLEEP_MODE` 타입이 있어 충돌). 마지막 내 프레임 뒤 8 s 조용하고 그릴 것이 없으면 잔다. 잘 시간 = min(`nextChangeAt`, STATUS 예약, 30 min; 오늘 슬롯 준비 전·시계 없음 60 s). 무선은 `startReceiveDutyCycleAuto(웨이크 프리앰블 심볼, 8)`(DIO1 = RX_DONE), 깨면 연속 수신. 실기(E301): 잠든 뒤 보낸 SLOT_SET **100/100 첫 시도 acked**(미수신 0 %, 지연 p50 4.33 s·p95 4.88 s — 깨어 있는 모드와 같음), 잠든 상태 재전송 FILE 3건 첫 시도 acked, 교시 경계 타이머 깨우기 정시(+3 s) 렌더. 모든 모드에서 화면 내용이 같으면 다시 그리지 않는다(TIME·다른 요일 변경).
+- **DEEP 구현(2026-11-17, 절전 3b, `NODE_SLEEP_MODE=2`)**: 잠들기 조건·잘 시간은 LIGHT 와 같다. ext0(DIO1 = RX_DONE)·타이머로 깬다. 깨면 웨이크 프레임은 이미 SX1262 버퍼에 있으므로 `begin()`(칩 리셋) **전에** SPI 명령(GetIrqStatus·GetRxBufferStatus·ReadBuffer·GetPacketStatus)으로 읽고, 그다음 재초기화·ACK 한다 — 아래 "begin 으로 재초기화" 만으로는 그 프레임을 잃는다. 자는 동안 LoRa NSS·RST 와 Vext 핀을 `gpio_hold` 로 붙잡는다. STATUS 예약·마지막 화면은 `RTC_NOINIT` 원시 바이트로, 시간 기준은 `esp_clk_rtc_time`(딥슬립에도 이어짐). 실기(E301): 잠든 뒤 SLOT_SET **100/100 첫 시도 acked**(p50 4.51 s·p95 5.14 s·최대 5.92 s), 깬 뒤 ACK 까지 약 1 s.
 - 딥슬립 웨이크 후 라디오는 `begin()`으로 재초기화한다(리셋 포함). 프리앰블 잔여 시간이 §2의 마진 안에 있으므로 본문 수신에 문제없음. 실측에서 미수신률이 5%를 넘으면 `RP_PREAMBLE_WAKE_MS`를 늘린다.
 
 ### 6.8 업링크 송신 규칙

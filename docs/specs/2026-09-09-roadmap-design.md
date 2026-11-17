@@ -73,7 +73,7 @@ Heltec V3에 올라가는 두 펌웨어는 각각 **모뎀 펌웨어**(모뎀Pi�
 | 장비 | 책임 | 갖는 것 | 갖지 않는 것 |
 |---|---|---|---|
 | **메인Pi** | 관리자·학생 웹, 회원, 시간표·예약·시험기간 CRUD, CSV 임포트, **버전 부여(NEW_VER)**, 작업 생성(outbox), 모뎀Pi 등록·인증·노드 배정, 노드 상태 집계, 대시보드 | DB 원본, `room_versions`, `outbox`, `terminal_status`, `pending_devices`, 모뎀Pi 레지스트리 | 무선 파라미터 실행, TXN, 재시도, 프레임 바이트 |
-| **모뎀Pi** | 메인Pi에 WS 접속(인증·재접속), 받은 작업 로컬 보관, **전처리**(FILE 청킹·우선순위 — 유닛 분해는 메인Pi `api._insert`), **LoRa 워커**(TXN·재시도·FIFO·단일 인플라이트·CAD), 모뎀 펌웨어 제어, **매시 TIME(자기 NTP 시계)**, 업링크 전달 | 로컬 `jobs` 큐(SQLite), 노드 목록(메인이 내려줌), codec | 시간표 원본, 버전 부여, 사용자 |
+| **모뎀Pi** | 메인Pi에 WS 접속(인증·재접속), 받은 작업 로컬 보관, **전처리**(FILE 청킹·우선순위 — 유닛 분해는 메인Pi `api._insert`), **LoRa 워커**(TXN·재시도·FIFO·단일 인플라이트·CAD), 모뎀 펌웨어 제어, **30 분마다 TIME(:00:05·:30:05, 자기 NTP 시계 — #148)**, 업링크 전달 | 로컬 `jobs` 큐(SQLite), 노드 목록(메인이 내려줌), codec | 시간표 원본, 버전 부여, 사용자 |
 | **ESP노드** | v2 §5~7 그대로 | — | — |
 
 **버전은 메인Pi, TXN은 모뎀Pi.** NEW_VER는 "무엇이 최신인가"라 원본 옆에 있어야 하고, TXN은 "이 프레임을 재수신했는가"라 실제 송신·재시도가 일어나는 곳에 있어야 한다.
@@ -87,10 +87,10 @@ Heltec V3에 올라가는 두 펌웨어는 각각 **모뎀 펌웨어**(모뎀Pi�
 | ① 공중 프레임 규격 | 모뎀·노드 펌웨어 ↔ 모뎀Pi 파이프라인 | ◎ v2 §3 | `lora_proto/proto.h` + `proto.py` + `test_vectors.json` |
 | ② 모뎀 시리얼 프로토콜 (JSON lines) | 모뎀 펌웨어 ↔ `modem.py` / fake 모뎀 | ◎ v2 §4.2·4.3 | S1 |
 | ③ `lora_service/api.py` 시그니처 + `RecordProvider` | 메인Pi 웹 도메인 ↔ 메인Pi LoRa 계층 | ◎ v2 §8.6·8.7 (호출 측·구현 측 모두 wj, cw 리뷰) | S2 |
-| ④ `RenderModel` | 노드 상태 판단(cw) → 렌더(dh) | ○ §4.1 | S3 |
+| ④ `RenderModel` | 노드 상태 판단(cw) → 렌더(dh) | ◎ 동결(cw-11, 2026-11-17) §4.1 | S3 |
 | ⑤ CSV 포맷 + 웹 REST 윤곽 | 관리자·학생 웹 ↔ 메인Pi | ◎ CSV = `2026-09-16-s2b-csv-import-design.md` §2.1 (PR #21) / REST = FastAPI OpenAPI | S2·S2b |
-| **⑥ 메인Pi ↔ 모뎀Pi 백홀 (WebSocket)** | 메인Pi WS 허브(wj) ↔ 모뎀Pi 링크(wj) | ○ §4.2 | S2·S5 |
-| **⑦ 모뎀Pi 내부 `JobStore`** | 링크(wj) ↔ LoRa 파이프라인(cw) | ○ §4.3 | S5·S6 |
+| **⑥ 메인Pi ↔ 모뎀Pi 백홀 (WebSocket)** | 메인Pi WS 허브(wj) ↔ 모뎀Pi 링크(wj) | ◎ 동결(cw-11, 2026-11-17) §4.2 | S2·S5 |
+| **⑦ 모뎀Pi 내부 `JobStore`** | 링크(wj) ↔ LoRa 파이프라인(cw) | ◎ 동결(cw-11, 2026-11-17) §4.3 | S5·S6 |
 
 ### 4.1 `RenderModel` (동결 — cw-11, 2026-10-12, 이슈 #27)
 
@@ -186,15 +186,15 @@ CREATE INDEX ix_jobs_upload ON jobs(uploaded, finished_at);
 
 | 누가 | 하는 일 | 인터페이스 (`modempi/store.py`, 공용) |
 |---|---|---|
-| 링크(wj) | `job` 수신 → `received` 행 삽입(같은 `job_id`면 무시) 후 `job_accepted` 송신. `cancel` → `received`면 `cancelled`. 주기적으로 `finished_at IS NOT NULL AND uploaded=0` 행을 `job_result`로 올리고 `uploaded=1`. `config` 수신 → `config` 테이블 갱신 + 파이프라인에 이벤트 | `put_job(...)`, `cancel_job(id)`, `pending_results()`, `mark_uploaded(ids)`, `set_config(dict)` |
-| 파이프라인(cw) | 기동 시 `recover()`. `received`를 순서(노드 안은 메인 `job_id` 순 FIFO, 노드끼리는 priority·received_at — 아래 "계약 ⑦ 구현")로 집어 `sending` → 전처리·송신·재시도 → `acked`/`failed` + 결과 필드 + `finished_at`. TIME은 파이프라인이 스스로 `TIME` 행을 만든다(매시 `:00:05`, `config.status_hour_utc`에 REQUEST_STATUS) | `recover()`, `pick_next()`, `update(id, **fields)`, `next_txn(...)`, `get_config()`, `on_config_changed(cb)`, `prune(...)` |
+| 링크(wj) | `job` 수신 → `received` 행 삽입(같은 `job_id`면 무시) 후 `job_accepted` 송신. `cancel` → `received`면 `cancelled`. 주기적으로 `finished_at IS NOT NULL AND uploaded=0` 행을 `job_result`로 올리고 `uploaded=1`. `config` 수신 → `config` 테이블 갱신 + 파이프라인에 이벤트 | `put_job(...)`, `cancel_job(id)`, `pending_results()`, `mark_uploaded(ids)`, `set_config(dict)`, `get_meta(key)` |
+| 파이프라인(cw) | 기동 시 `recover()`. `received`를 순서(노드 안은 메인 `job_id` 순 FIFO, 노드끼리는 priority·received_at — 아래 "계약 ⑦ 구현")로 집어 `sending` → 전처리·송신·재시도 → `acked`/`failed` + 결과 필드 + `finished_at`. TIME은 파이프라인이 스스로 `TIME` 행을 만든다(매시 `:00:05`·`:30:05` 30 분 주기 — 2026-11-17 #148, `config.status_hour_utc` 정시 슬롯(:00:05)에만 REQUEST_STATUS) | `recover()`, `pick_next()`, `get_job(id)`, `newer_pending(job)`, `update(id, **fields)`, `next_txn(...)`, `put_job(...)`(TIME 행, `uploaded=1`), `put_uplink(dict)`, `set_meta(k,v)`, `get_config()`, `on_config_changed(cb)`, `prune(...)` |
 | 링크(wj) | `uplink`: 파이프라인이 `uplinks` 테이블에 넣은 STATUS/HELLO 행을 올리고 `uploaded=1` | `put_uplink(dict)` / `pending_uplinks()` / `mark_uplinks_uploaded(ids)` |
 
 **계약 ⑦ 확정 사항 (2026-09-16, S5 PR #17 · S6 spec 반영)**
 
-- **공식 시그니처는 `modempi/link/store_port.py`의 `JobStore` Protocol**(링크 측 7함수 + `JobRow`/`UplinkRow`)이다. `modempi/store.py`(cw-08)는 그 Protocol을 그대로 구현하고, 파이프라인 측 함수를 더한다.
+- **공식 시그니처는 `modempi/link/store_port.py`의 `JobStore` Protocol**(링크 측 8함수(7 + `get_meta`) + `JobRow`/`UplinkRow`)이다. `modempi/store.py`(cw-08)는 그 Protocol을 그대로 구현하고, 파이프라인 측 함수를 더한다.
 - **store는 동기(`sqlite3`)** — 이벤트 루프에서 직접 호출. 연결 1개 공유, ms 단위. `aiosqlite` 안 쓴다.
-- `put_job(..., uploaded=0)` — TIME 행(`time_now`, 매시 스케줄)은 `uploaded=1`로 넣어 메인에 보고하지 않는다.
+- `put_job(..., uploaded=0)` — TIME 행(`time_now`, 30 분 스케줄)은 `uploaded=1`로 넣어 메인에 보고하지 않는다.
 - `cancel_job`은 `state='cancelled'` + `finished_at`을 세운다 → 링크가 `job_result(state="failed", last_error="cancelled")`로 보고.
 - ~~유닛 분해: 파이프라인이 `unit=0` 행을 `split`으로 닫고 sub-row를 만든다~~ → **r6(2026-09-17)에서 삭제**. 아래 "계약 ⑦ 구현" 참고.
 - 파이프라인 측 추가: `next_txn(bld, room, unit) -> int` (테이블 `node_txn`, 1..255 롤링·0 건너뜀·즉시 커밋), `set_meta(key, value)` / `get_meta(key) -> str | None` (테이블 `meta`; 파이프라인이 모뎀 `ready.fw`를 `meta["modem_fw"]`에 쓰고 링크가 hello에서 읽는다).
@@ -215,13 +215,13 @@ CREATE INDEX ix_jobs_upload ON jobs(uploaded, finished_at);
 - `put_uplink(body)`: JSON으로 저장 — bytes 불가, MAC은 소문자 hex 문자열(§4.2 인코딩 규칙).
 - `get_job(id)`, `prune(older_than=초)`(보고까지 끝난 행·업링크 정리 — 모뎀Pi는 원본을 갖지 않는다, §1), `close()` 추가.
 - **TIME은 `txn=0`** (2026-09-23, cw-09 구현 중 확정): 브로드캐스트든 타겟이든 TIME은 TXN을 소비하지 않고 노드도 DUP 판정을 하지 않는다. 타겟 TIME이 노드 TXN을 먹으면 위 "재송은 같은 TXN" 규칙이 깨져 재송이 GAP을 부른다.
-- **S6(cw-09)로 넘기는 것**: 쌓인 TIME 행(모뎀 분리·파이프라인 중단 시 매시 1개씩)은 가장 새 것 하나만 보내고 나머지는 `acked(last_error="superseded")`로 닫는다. epoch는 송신 직전에 찍는다. CLOCK_STALE 타겟 TIME이 노드 TXN을 소비하면 위 "같은 TXN 재송" 가정이 깨지므로 타겟 TIME은 `txn=0`으로 보낼지 S6 plan에서 확정한다.
+- **S6(cw-09)로 넘기는 것**: 쌓인 TIME 행(모뎀 분리·파이프라인 중단 시 30 분마다 1개씩)은 가장 새 것 하나만 보내고 나머지는 `acked(last_error="superseded")`로 닫는다. epoch는 송신 직전에 찍는다. CLOCK_STALE 타겟 TIME이 노드 TXN을 소비하면 위 "같은 TXN 재송" 가정이 깨지므로 타겟 TIME은 `txn=0`으로 보낼지 S6 plan에서 확정한다. → 확정: 타겟 TIME도 `txn=0`(바로 위 항목).
 
 이 분할의 효과: **wj는 fake 허브(pytest 안의 WS 서버)로, cw는 fake 모뎀 + `put_job()`으로** 각자 하드웨어·상대방 없이 테스트한다. 4주차 통합은 Pi 2대에 실제로 올려 `job → 로컬 큐 → fake 모뎀 → job_result`가 도는지 확인한다.
 
 ### 4.4 오프라인 동작 (모뎀Pi)
 
-- 인터넷 단절 시: 로컬 큐의 `received`를 계속 송신하고, **TIME은 자기 NTP 시계(마지막 동기)로 매시 계속 송출**한다. 결과는 쌓아두고 재접속 시 보고.
+- 인터넷 단절 시: 로컬 큐의 `received`를 계속 송신하고, **TIME은 자기 NTP 시계(마지막 동기)로 30 분마다(:00:05·:30:05) 계속 송출**한다. 결과는 쌓아두고 재접속 시 보고.
 - 시간표 사본은 갖지 않으므로 단절 중 새 변경·GAP 재동기는 불가 — ESP노드는 자기 시계·자기 데이터로 올바른 화면을 유지하므로(v2 원칙 3) 허용한다.
 - NTP도 안 되는 장기 단절: 모뎀Pi RTC 없음 → 부팅 후 NTP 동기 전엔 TIME 송출 중지(`CLOCK_STALE`로 노드가 알린다).
 

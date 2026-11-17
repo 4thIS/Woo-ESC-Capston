@@ -226,9 +226,185 @@ void test_no_ack_without_ack_req() {
 
 void test_bad_payload_and_unsupported() {
   TEST_ASSERT_EQUAL_HEX8(LP_ACK_BAD_PAYLOAD, run(hdr(LP_TYPE_SLOT_SET, 1), 2).status);
-  lc::CmdMsg c{1, nullptr, 0};
-  TEST_ASSERT_EQUAL_HEX8(LP_ACK_UNSUPPORTED,
+  lc::CmdMsg c{0x7F, nullptr, 0};  // 모르는 CMD — decCmd 가 거른다(6종은 모두 처리)
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_BAD_PAYLOAD,
                          run(hdr(LP_TYPE_CMD, 2), lc::encCmd(c, g_pl, sizeof g_pl)).status);
+}
+
+// ---------------- STATUS 요청(§3.3 TIME flags·CMD REQUEST_STATUS) ----------------
+void test_time_request_status_flag() {
+  lc::Time t{1793156768, LP_TIMEFLAG_REQUEST_STATUS};
+  Outcome o = run(hdr(LP_TYPE_TIME, 0, LP_FLAG_BROADCAST, LP_BLD_ALL, 0xFFFF, 0xFF),
+                  lc::encTime(t, g_pl, sizeof g_pl));
+  TEST_ASSERT_TRUE(o.timeSet);
+  TEST_ASSERT_TRUE(o.statusReq);
+  TEST_ASSERT_EQUAL_UINT32(kReqStatusSpreadMs, o.statusSpreadMs);
+  lc::Time t0{1793156768, 0};
+  Outcome o0 = run(hdr(LP_TYPE_TIME, 0, LP_FLAG_BROADCAST, LP_BLD_ALL, 0xFFFF, 0xFF),
+                   lc::encTime(t0, g_pl, sizeof g_pl));
+  TEST_ASSERT_FALSE(o0.statusReq);
+}
+
+void test_cmd_request_status_acks_ok() {
+  lc::CmdMsg c{LP_CMD_REQUEST_STATUS, nullptr, 0};
+  Outcome o = run(hdr(LP_TYPE_CMD, 7), lc::encCmd(c, g_pl, sizeof g_pl));
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, o.status);
+  TEST_ASSERT_TRUE(o.statusReq);
+  TEST_ASSERT_EQUAL_UINT32(0, o.statusSpreadMs);
+  TEST_ASSERT_FALSE(o.changed);  // 화면은 그대로
+  // 같은 TXN 재송 = DUP, 다시 요청하지 않는다
+  Outcome d = run(hdr(LP_TYPE_CMD, 7), lc::encCmd(c, g_pl, sizeof g_pl));
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_DUP, d.status);
+  TEST_ASSERT_FALSE(d.statusReq);
+}
+
+// ---------------- STATUS 내용(§3.3·5.2) ----------------
+void test_status_flags() {
+  R->provisioned = 1;
+  R->lastTimeSyncEpoch = NOW - 3600;
+  TEST_ASSERT_EQUAL_HEX8(0, statusFlags(*R, NOW, 4000));
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_CLOCK_STALE, statusFlags(*R, 1000, 4000));  // 시계 무효
+  R->lastTimeSyncEpoch = 0;
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_CLOCK_STALE, statusFlags(*R, NOW, 4000));  // TIME 받은 적 없음
+  R->lastTimeSyncEpoch = NOW - kClockStaleSec;
+  TEST_ASSERT_EQUAL_HEX8(0, statusFlags(*R, NOW, 4000));  // 딱 25 h 는 아직
+  R->lastTimeSyncEpoch = NOW - kClockStaleSec - 1;
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_CLOCK_STALE, statusFlags(*R, NOW, 4000));
+  R->lastTimeSyncEpoch = NOW;
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_LOW_BATT, statusFlags(*R, NOW, 3499));
+  TEST_ASSERT_EQUAL_HEX8(0, statusFlags(*R, NOW, 3500));
+  TEST_ASSERT_EQUAL_HEX8(0, statusFlags(*R, NOW, 0));  // 0 = 측정 못 함
+  R->provisioned = 0;
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_UNPROVISIONED, statusFlags(*R, NOW, 4000));
+}
+
+void test_build_status_fields() {
+  R->provisioned = 1;
+  R->schedVer = 12, R->resvVer = 3, R->examVer = 4, R->identVer = 5;
+  R->lastTimeSyncEpoch = 0;
+  lc::Status s = buildStatus(*R, NOW, 4012, 4, LP_LAYOUT_CLASS, LinkInfo{-56, 44, 7});
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, s.ack.status);
+  TEST_ASSERT_EQUAL_UINT8(0, s.ack.detail);
+  TEST_ASSERT_EQUAL_UINT16(4012, s.ack.battMv);
+  TEST_ASSERT_EQUAL_UINT8(12, s.ack.schedVer);
+  TEST_ASSERT_EQUAL_UINT8(3, s.ack.resvVer);
+  TEST_ASSERT_EQUAL_UINT8(4, s.ack.examVer);
+  TEST_ASSERT_EQUAL_UINT8(5, s.ack.identVer);
+  TEST_ASSERT_EQUAL_UINT8(4, s.ack.fw);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_CLASS, s.ack.layout);
+  TEST_ASSERT_EQUAL_INT8(-56, s.rssiLast);
+  TEST_ASSERT_EQUAL_INT8(44, s.snrLastX4);
+  TEST_ASSERT_EQUAL_UINT16(7, s.uptimeH);
+  TEST_ASSERT_EQUAL_HEX8(LP_STATUSFLAG_CLOCK_STALE, s.flags);
+  uint8_t out[32];
+  TEST_ASSERT_EQUAL(15, lc::encStatus(s, out, sizeof out));  // ACK 10 B + 5 B
+}
+
+void test_build_ack_carries_ident_ver() {
+  R->schedVer = 9, R->identVer = 2;
+  lc::Ack a = buildAck(*R, LP_ACK_GAP, 1, 3900, 4, LP_LAYOUT_EMPTY);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_GAP, a.status);
+  TEST_ASSERT_EQUAL_UINT8(1, a.detail);
+  TEST_ASSERT_EQUAL_UINT16(3900, a.battMv);
+  TEST_ASSERT_EQUAL_UINT8(9, a.schedVer);
+  TEST_ASSERT_EQUAL_UINT8(2, a.identVer);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_EMPTY, a.layout);
+}
+
+// ---------------- STATUS 시각(§6.3) ----------------
+void test_next_daily_status() {
+  const uint32_t day = 1794873600u;  // 2026-11-17 00:00 UTC
+  TEST_ASSERT_EQUAL_UINT32(day + 18 * 3600, nextDailyStatus(day + 4 * 3600, 18, 0));
+  TEST_ASSERT_EQUAL_UINT32(day + 86400 + 18 * 3600,
+                           nextDailyStatus(day + 18 * 3600, 18, 0));  // 같은 초면 다음 날
+  TEST_ASSERT_EQUAL_UINT32(day + 18 * 3600 + 1799, nextDailyStatus(day + 18 * 3600 + 100, 18, 1799));
+  TEST_ASSERT_EQUAL_UINT32(day + 86400 + 1000,
+                           nextDailyStatus(day + 23 * 3600 + 1800, 23, 3600 + 1000));  // 자정 넘김
+}
+
+void test_mac_spread_deterministic() {
+  const uint8_t a[6] = {0x3c, 0x0f, 0x02, 0xee, 0x47, 0x10};
+  const uint8_t b[6] = {0xac, 0xa7, 0x04, 0x3c, 0x3f, 0x80};
+  TEST_ASSERT_EQUAL_UINT32(macSpread(a, 1800), macSpread(a, 1800));
+  TEST_ASSERT_TRUE(macSpread(a, 1800) < 1800);
+  TEST_ASSERT_TRUE(macSpread(b, 1800) < 1800);
+  TEST_ASSERT_NOT_EQUAL(macSpread(a, 1800), macSpread(b, 1800));
+  TEST_ASSERT_EQUAL_UINT32(0, macSpread(a, 0));
+}
+
+void test_status_plan_request_and_sent() {
+  StatusPlan p;
+  TEST_ASSERT_FALSE(p.due(1000, false, 0, 0));
+  p.request(1000, 2000);
+  TEST_ASSERT_FALSE(p.due(2999, false, 0, 0));
+  TEST_ASSERT_TRUE(p.due(3000, false, 0, 0));
+  p.request(1500, 60000);  // 더 늦은 요청은 이른 예약을 밀지 않는다
+  TEST_ASSERT_TRUE(p.due(3000, false, 0, 0));
+  p.sent(3000, false, false);  // CAD busy → 5 s 뒤
+  TEST_ASSERT_FALSE(p.due(7999, false, 0, 0));
+  TEST_ASSERT_TRUE(p.due(8000, false, 0, 0));
+  p.sent(8000, true, false);  // 보냈지만 시계 없음 → 30 s 뒤(이후 두 배씩)
+  TEST_ASSERT_FALSE(p.due(8000 + kStaleRetryFirstMs - 1, false, 0, 0));
+  TEST_ASSERT_TRUE(p.due(8000 + kStaleRetryFirstMs, false, 0, 0));
+  TEST_ASSERT_FALSE(p.due(8000 + kStaleRetryFirstMs, true, NOW, 0));  // 그 사이 시계가 맞으면 건너뜀
+  p.request(9000, 300);                                               // 새 요청은 시계 재시도 예약을 대신한다
+  TEST_ASSERT_TRUE(p.due(9300, true, NOW, 0));
+  p.sent(9300, true, true);
+  TEST_ASSERT_FALSE(p.due(9300 + kStaleRetryMs, true, NOW, 0));
+}
+
+void test_status_plan_resends_after_time_when_stale_sent() {
+  StatusPlan p;
+  p.request(0, 1000);
+  p.sent(1000, true, false, LP_STATUSFLAG_CLOCK_STALE);  // 부팅 보고 — 시계 없음으로 알렸다
+  p.onTimeSet(4000);  // 시각을 받았다 → 서버의 "시계 이상" 표시를 지우러 한 번 더
+  TEST_ASSERT_FALSE(p.due(4000 + kAfterTimeStatusMs - 1, true, NOW, 0));
+  TEST_ASSERT_TRUE(p.due(4000 + kAfterTimeStatusMs, true, NOW, 0));
+  p.sent(4000 + kAfterTimeStatusMs, true, true, 0);
+  TEST_ASSERT_FALSE(p.due(4000 + kAfterTimeStatusMs + kStaleRetryMs, true, NOW, 0));
+  p.onTimeSet(20000);  // 다음 방송 TIME — 이미 알렸으니 다시 보내지 않는다
+  TEST_ASSERT_FALSE(p.due(20000 + kAfterTimeStatusMs, true, NOW, 0));
+}
+
+void test_status_plan_no_resend_without_stale() {
+  StatusPlan p;
+  p.onTimeSet(0);
+  TEST_ASSERT_FALSE(p.due(kAfterTimeStatusMs, true, NOW, 0));
+  p.request(0, 0);
+  p.sent(0, true, true, 0);  // 시계 정상으로 알렸다
+  p.onTimeSet(100);
+  TEST_ASSERT_FALSE(p.due(100 + kAfterTimeStatusMs, true, NOW, 0));
+}
+
+void test_status_plan_stale_retry_backs_off() {
+  StatusPlan p;
+  uint32_t t = 0;
+  const uint32_t want[] = {30000,  60000,  120000, 240000,
+                           480000, 600000, 600000};  // 30 s 부터 두 배, 최대 10 min
+  for (uint32_t w : want) {
+    p.sent(t, true, false, LP_STATUSFLAG_CLOCK_STALE);
+    TEST_ASSERT_FALSE(p.due(t + w - 1, false, 0, 0));
+    TEST_ASSERT_TRUE(p.due(t + w, false, 0, 0));
+    t += w;
+  }
+  p.sent(t, false, false, LP_STATUSFLAG_CLOCK_STALE);  // 채널 busy 는 단계를 올리지 않는다
+  TEST_ASSERT_TRUE(p.due(t + kBusyRetryMs, false, 0, 0));
+  p.onTimeSet(t);
+  p.sent(t + kAfterTimeStatusMs, true, true, 0);  // 시계 정상으로 알렸다 → 처음부터
+  p.sent(t + 10000, true, false, LP_STATUSFLAG_CLOCK_STALE);
+  TEST_ASSERT_FALSE(p.due(t + 10000 + kStaleRetryFirstMs - 1, false, 0, 0));
+  TEST_ASSERT_TRUE(p.due(t + 10000 + kStaleRetryFirstMs, false, 0, 0));
+}
+
+void test_status_plan_daily_and_wrap() {
+  StatusPlan p;
+  TEST_ASSERT_FALSE(p.due(0, true, NOW, 0));  // 하루 시각이 아직 없음
+  TEST_ASSERT_FALSE(p.due(0, true, NOW, NOW + 1));
+  TEST_ASSERT_TRUE(p.due(0, true, NOW, NOW));
+  TEST_ASSERT_FALSE(p.due(0, false, NOW, NOW));  // 시계 무효면 하루 STATUS 없음
+  p.request(0xFFFFF000u, 0x2000);                // millis 넘어감
+  TEST_ASSERT_FALSE(p.due(0xFFFFFFFFu, false, 0, 0));
+  TEST_ASSERT_TRUE(p.due(0x1000u, false, 0, 0));
 }
 
 // ---------------- FILE 세션 ----------------
@@ -482,6 +658,188 @@ void test_model_ignores_stale_rtc_day() {
   TEST_ASSERT_EQUAL_UINT8(0, m.nToday);
 }
 
+// ---------------- 같은 화면(절전 3단계) ----------------
+void test_same_screen_ignores_batt_and_unused_today() {
+  RenderModel a{}, b{};
+  R->slotsDay = 4;
+  R->nSlots = 1;
+  R->slots[0] = slot(4, 13, 0, 14, 50, "수업");
+  buildModel(*R, NOW, a);
+  buildModel(*R, NOW, b);
+  TEST_ASSERT_TRUE(sameScreen(a, b));
+  b.battMv = a.battMv + 100;
+  TEST_ASSERT_TRUE(sameScreen(a, b));  // 배터리는 화면에 없다
+  b.today[20].sH = 7;                  // nToday 밖 칸
+  TEST_ASSERT_TRUE(sameScreen(a, b));
+  b = a;
+  b.cur.subj[0] = 'X';
+  TEST_ASSERT_FALSE(sameScreen(a, b));
+  b = a;
+  b.layout = LP_LAYOUT_BREAK;
+  TEST_ASSERT_FALSE(sameScreen(a, b));
+  b = a;
+  b.dateStr[3] = '2';
+  TEST_ASSERT_FALSE(sameScreen(a, b));
+  b = a;
+  b.today[0].eM = 40;
+  TEST_ASSERT_FALSE(sameScreen(a, b));
+  b = a;
+  b.nToday = 0;
+  TEST_ASSERT_FALSE(sameScreen(a, b));
+}
+
+// ---------------- 잘 시간(절전 3단계) ----------------
+void test_status_plan_ms_until_due() {
+  StatusPlan p;
+  TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, p.msUntilDue(0, false));
+  p.request(1000, 4000);
+  TEST_ASSERT_EQUAL_UINT32(4000, p.msUntilDue(1000, false));
+  TEST_ASSERT_EQUAL_UINT32(0, p.msUntilDue(9000, false));  // 지났다
+  p.sent(5000, true, false, LP_STATUSFLAG_CLOCK_STALE);    // 시계 재시도 30 s
+  TEST_ASSERT_EQUAL_UINT32(kStaleRetryFirstMs, p.msUntilDue(5000, false));
+  TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, p.msUntilDue(5000, true));  // 시계가 맞으면 건너뛸 재시도
+}
+
+void test_sleep_ms() {
+  StatusPlan p;
+  // 시계 있음: 다음 변경 10 min 뒤
+  TEST_ASSERT_EQUAL_UINT32(600000, sleepMs(0, true, NOW, NOW + 600, true, p));
+  // 상한 30 min
+  TEST_ASSERT_EQUAL_UINT32(kSleepCapMs, sleepMs(0, true, NOW, NOW + 7200, true, p));
+  // 오늘 슬롯 준비 전 — 60 s
+  TEST_ASSERT_EQUAL_UINT32(kSleepCapNoDayMs, sleepMs(0, true, NOW, NOW + 7200, false, p));
+  // 시계 없음 — 다음 변경은 쓰지 않는다
+  TEST_ASSERT_EQUAL_UINT32(
+      kSleepCapNoDayMs,
+      sleepMs(0, false, 1000, 0, false,
+              p));  // 시계 없으면 오늘 슬롯도 준비 전 — 60 s 마다(STATUS 재시도·TIME 깨우기와 함께)
+  // STATUS 예약이 더 이르면 그때
+  p.request(0, 20000);
+  TEST_ASSERT_EQUAL_UINT32(20000, sleepMs(0, true, NOW, NOW + 600, true, p));
+  // 1 s 미만이면 자지 않는다
+  TEST_ASSERT_EQUAL_UINT32(0, sleepMs(19500, true, NOW, NOW + 600, true, p));
+  StatusPlan q;
+  TEST_ASSERT_EQUAL_UINT32(0, sleepMs(0, true, NOW, NOW, true, q));  // 변경 시각이 지금
+  TEST_ASSERT_EQUAL_UINT32(0, sleepMs(0, true, NOW, NOW - 5, true, q));
+}
+
+// ---------------- 프로비저닝(§6.6·SET_ROOM) ----------------
+static const uint8_t MAC[6] = {0x3c, 0x0f, 0x02, 0xee, 0x47, 0x10};
+
+void test_is_for_me_unprovisioned() {
+  Ident un{0, 0, 0, false, {}};
+  TEST_ASSERT_TRUE(isForMe(un, hdr(LP_TYPE_SET_ROOM, 1, LP_FLAG_ACK_REQ, LP_BLD_UNPROVISIONED, 0, 0)));
+  TEST_ASSERT_FALSE(isForMe(un, hdr(LP_TYPE_SLOT_SET, 1, LP_FLAG_ACK_REQ, LP_BLD_UNPROVISIONED, 0, 0)));
+  TEST_ASSERT_TRUE(isForMe(un, hdr(LP_TYPE_TIME, 0, LP_FLAG_BROADCAST, LP_BLD_ALL, 0xFFFF, 0xFF)));
+  TEST_ASSERT_FALSE(
+      isForMe(ME, hdr(LP_TYPE_SET_ROOM, 1, LP_FLAG_ACK_REQ, LP_BLD_UNPROVISIONED, 0, 0)));  // 설정됨
+}
+
+static Outcome setRoom(uint8_t txn, uint8_t ver, const uint8_t* mac, uint16_t room, const uint8_t* myMac) {
+  lc::SetRoom sr{};
+  std::memcpy(sr.mac, mac, 6);
+  sr.bld = 'E', sr.room = room, sr.unit = 1;
+  lc::Header h = hdr(LP_TYPE_SET_ROOM, txn, LP_FLAG_ACK_REQ, LP_BLD_UNPROVISIONED, 0, 0);
+  h.len = (uint8_t)lc::encSetRoom(ver, sr, g_pl, sizeof g_pl);
+  return handleFrame(*ST, *F, h, g_pl, NOW, myMac);
+}
+
+void test_set_room_provisions_matching_mac() {
+  ST->factoryReset();
+  ST->load(4);
+  TEST_ASSERT_EQUAL_UINT8(0, R->provisioned);
+  Outcome o = setRoom(9, 3, MAC, 803, MAC);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, o.status);
+  TEST_ASSERT_TRUE(o.provisionedNow);
+  TEST_ASSERT_TRUE(o.changed);
+  TEST_ASSERT_EQUAL_UINT8(1, R->provisioned);
+  TEST_ASSERT_EQUAL_UINT8('E', R->bld);
+  TEST_ASSERT_EQUAL_UINT16(803, R->room);
+  TEST_ASSERT_EQUAL_UINT8(1, R->unit);
+  TEST_ASSERT_EQUAL_UINT8(3, R->identVer);
+}
+
+void test_set_room_ignores_other_mac_and_provisioned() {
+  ST->factoryReset();
+  ST->load(4);
+  const uint8_t other[6] = {1, 2, 3, 4, 5, 6};
+  Outcome o = setRoom(9, 3, other, 803, MAC);
+  TEST_ASSERT_EQUAL_HEX8(kNoAck, o.status);  // 응답하지 않는다(§6.6)
+  TEST_ASSERT_TRUE(o.ignored);
+  TEST_ASSERT_EQUAL_UINT8(0, R->provisioned);
+  TEST_ASSERT_EQUAL_UINT8(0, R->lastTxn);
+  Outcome n = setRoom(10, 3, MAC, 803, nullptr);  // 내 MAC 을 모르면 무시
+  TEST_ASSERT_TRUE(n.ignored);
+  setRoom(11, 3, MAC, 803, MAC);  // 설정됨
+  Outcome again = setRoom(12, 4, MAC, 301, MAC);
+  TEST_ASSERT_TRUE(again.ignored);
+  TEST_ASSERT_EQUAL_UINT16(803, R->room);
+}
+
+// ---------------- CMD(§3.3) ----------------
+static Outcome cmd(uint8_t txn, uint8_t c, const uint8_t* args, uint8_t n) {
+  lc::CmdMsg m{c, args, n};
+  return run(hdr(LP_TYPE_CMD, txn), lc::encCmd(m, g_pl, sizeof g_pl));
+}
+
+void test_cmd_actions() {
+  ST->setIdentity(ns::Identity{'E', 301, 1}, 0);
+  Outcome r = cmd(20, LP_CMD_REBOOT, nullptr, 0);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, r.status);
+  TEST_ASSERT_TRUE(r.reboot);
+  Outcome f = cmd(21, LP_CMD_FACTORY_RESET, nullptr, 0);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, f.status);
+  TEST_ASSERT_TRUE(f.factoryReset);
+  TEST_ASSERT_EQUAL_UINT8(1, R->provisioned);  // 초기화는 ACK 뒤 main 이 한다
+  Outcome fr = cmd(22, LP_CMD_FORCE_RENDER, nullptr, 0);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, fr.status);
+  TEST_ASSERT_TRUE(fr.forceRender);
+  const uint8_t lay = LP_LAYOUT_RENTAL;
+  Outcome t = cmd(23, LP_CMD_TEST_RENDER, &lay, 1);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, t.status);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_RENTAL, t.testLayout);
+  const uint8_t bad = 9;
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_BAD_PAYLOAD, cmd(24, LP_CMD_TEST_RENDER, &bad, 1).status);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_BAD_PAYLOAD, cmd(25, LP_CMD_TEST_RENDER, nullptr, 0).status);
+}
+
+void test_cmd_set_param() {
+  const uint8_t a[5] = {1, 0, 0, 0, 20};  // statusHourUtc = 20
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_OK, cmd(30, LP_CMD_SET_PARAM, a, 5).status);
+  uint32_t v = 0;
+  TEST_ASSERT_TRUE(ST->param(1, v));
+  TEST_ASSERT_EQUAL_UINT32(20, v);
+  const uint8_t unk[5] = {99, 0, 0, 0, 1};
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_UNSUPPORTED, cmd(31, LP_CMD_SET_PARAM, unk, 5).status);
+  TEST_ASSERT_EQUAL_HEX8(LP_ACK_BAD_PAYLOAD, cmd(32, LP_CMD_SET_PARAM, a, 4).status);
+}
+
+// ---------------- 설정 화면·버튼 ----------------
+void test_setup_model() {
+  RenderModel m{};
+  m.layout = 1;
+  setupModel(MAC, m);
+  TEST_ASSERT_EQUAL_UINT8(LP_LAYOUT_SETUP, m.layout);
+  TEST_ASSERT_EQUAL_STRING("NEW-4710", m.newTag);
+  TEST_ASSERT_EQUAL_UINT8(0, m.nToday);
+}
+
+void test_button_short_long() {
+  Button b;
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(0, false));
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(100, true));
+  TEST_ASSERT_EQUAL(Button::kShort, b.update(400, false));  // 300 ms
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(500, true));
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(520, false));  // 20 ms — 튐
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(1000, true));
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(3000, false));  // 2 s — 아무것도
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(4000, true));
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(8999, true));
+  TEST_ASSERT_EQUAL(Button::kLong, b.update(9000, true));   // 5 s
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(9500, true));   // 한 번만
+  TEST_ASSERT_EQUAL(Button::kNone, b.update(9600, false));  // 떼도 짧게 아님
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_is_for_me);
@@ -513,5 +871,27 @@ int main() {
   RUN_TEST(test_today_merge_rules_gap_type_and_contiguous);
   RUN_TEST(test_model_identity_from_rtc);
   RUN_TEST(test_model_ignores_stale_rtc_day);
+  RUN_TEST(test_time_request_status_flag);
+  RUN_TEST(test_cmd_request_status_acks_ok);
+  RUN_TEST(test_status_flags);
+  RUN_TEST(test_build_status_fields);
+  RUN_TEST(test_build_ack_carries_ident_ver);
+  RUN_TEST(test_next_daily_status);
+  RUN_TEST(test_mac_spread_deterministic);
+  RUN_TEST(test_status_plan_request_and_sent);
+  RUN_TEST(test_status_plan_daily_and_wrap);
+  RUN_TEST(test_status_plan_stale_retry_backs_off);
+  RUN_TEST(test_status_plan_resends_after_time_when_stale_sent);
+  RUN_TEST(test_status_plan_no_resend_without_stale);
+  RUN_TEST(test_same_screen_ignores_batt_and_unused_today);
+  RUN_TEST(test_status_plan_ms_until_due);
+  RUN_TEST(test_sleep_ms);
+  RUN_TEST(test_is_for_me_unprovisioned);
+  RUN_TEST(test_set_room_provisions_matching_mac);
+  RUN_TEST(test_set_room_ignores_other_mac_and_provisioned);
+  RUN_TEST(test_cmd_actions);
+  RUN_TEST(test_cmd_set_param);
+  RUN_TEST(test_setup_model);
+  RUN_TEST(test_button_short_long);
   return UNITY_END();
 }
