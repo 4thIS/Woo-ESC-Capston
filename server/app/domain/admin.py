@@ -1,4 +1,5 @@
-"""관리자 집계·조인 조회 (S4b). 세션과 school_id 를 받아 dict 목록을 돌려준다 — 라우터가 얇게 감싼다.
+"""관리자 집계·조인 조회 (S4b). 세션과 범위(scope.Scope — 학교 + 건물 관리자면 맡은 건물, #160)를 받아
+dict 목록을 돌려준다 — 라우터가 얇게 감싼다.
 terminal_status·outbox·modems·pending_devices 는 여기서 ORM 읽기만 한다. lora_service.api 는 부르지 않는다."""
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from app import schemas as S
 from app.auth import scope
 from app.auth.models import User
+from app.auth.scope import Scope
 from app.db import utcnow
 from app.domain import clock, reserve
 from app.domain.models import Building, Reservation, Room
@@ -26,11 +28,11 @@ def _outbox_rows(s: Session, q) -> list[dict]:
 
 
 def building_outbox(
-    s: Session, building_id: int, school_id: int, state: str | None = None, limit: int = 200
+    s: Session, building_id: int, sc: Scope, state: str | None = None, limit: int = 200
 ) -> list[dict]:
     # bld 재사용(건물 삭제 뒤 같은 글자로 재생성) 뒤 남은 옛 학교(모뎀 소속)의 행을 숨긴다 —
     # /api/lora/outbox 와 같은 규칙(S4a 리뷰 🟡). NULL 은 통과.
-    mids = scope.modem_ids(s, school_id)
+    mids = scope.modem_ids(s, sc)
     q = (
         select(Outbox, Room.id, Building.name)
         .join(Building, and_(Building.bld == Outbox.bld, Building.id == building_id))
@@ -67,22 +69,22 @@ _TS_FIELDS = (
 
 
 def expected_nodes(
-    s: Session, school_id: int, building_id: int | None = None, now: dt.datetime | None = None
+    s: Session, sc: Scope, building_id: int | None = None, now: dt.datetime | None = None
 ) -> list[dict]:
-    """학교의 기대 노드(rooms × units) 에 terminal_status 를 LEFT JOIN 하고 경고를 판정한다."""
+    """범위 안의 기대 노드(rooms × units) 에 terminal_status 를 LEFT JOIN 하고 경고를 판정한다."""
     now = now or utcnow()
     cutoff = now - dt.timedelta(hours=UNSEEN_HOURS)
     q = (
         select(Room, Building)
         .join(Building, Room.building_id == Building.id)
-        .where(Building.school_id == school_id)
+        .where(scope.building_clause(sc))
         .order_by(Building.bld, Room.room)
     )
     if building_id is not None:
         q = q.where(Building.id == building_id)
     pairs = s.execute(q).all()
     blds = {b.bld for _, b in pairs}
-    mids = scope.modem_ids(s, school_id)
+    mids = scope.modem_ids(s, sc)
     status = {
         (t.bld, t.room, t.unit): t
         for t in s.scalars(
@@ -123,17 +125,17 @@ def expected_nodes(
 
 def failed_outbox(
     s: Session,
-    school_id: int,
+    sc: Scope,
     days: int = FAILED_DAYS_DEFAULT,
     limit: int | None = None,
     now: dt.datetime | None = None,
 ) -> list[dict]:
     """최근 days 일 failed outbox 에 방·건물 조인. 방을 못 찾는 행(삭제된 방)은 빠진다."""
     cutoff = (now or utcnow()) - dt.timedelta(days=days)
-    mids = scope.modem_ids(s, school_id)
+    mids = scope.modem_ids(s, sc)
     q = (
         select(Outbox, Room.id, Building.name)
-        .join(Building, and_(Building.bld == Outbox.bld, Building.school_id == school_id))
+        .join(Building, and_(Building.bld == Outbox.bld, scope.building_clause(sc)))
         .join(Room, and_(Room.building_id == Building.id, Room.room == Outbox.room))
         .where(Outbox.state == "failed", Outbox.finished_at >= cutoff)
         .where(
@@ -204,13 +206,13 @@ def resv_with_room_rows(s: Session, q) -> list[dict]:
     ]
 
 
-def pending_reservations(s: Session, school_id: int, now_local: dt.datetime) -> list[dict]:
+def pending_reservations(s: Session, sc: Scope, now_local: dt.datetime) -> list[dict]:
     q = (
         select(Reservation)
         .join(Room, Room.id == Reservation.room_id)
         .join(Building, Building.id == Room.building_id)
         .where(
-            Building.school_id == school_id,
+            scope.building_clause(sc),
             Reservation.status == "requested",
             # 시작 지난 신청은 승인할 수 없다(409) — 04:00 만료 전까지 경고에 남기지 않는다
             reserve.not_started(now_local),
@@ -223,20 +225,20 @@ def pending_reservations(s: Session, school_id: int, now_local: dt.datetime) -> 
 
 
 def summary(
-    s: Session, school_id: int, preview: int = PREVIEW_DEFAULT, now: dt.datetime | None = None
+    s: Session, sc: Scope, preview: int = PREVIEW_DEFAULT, now: dt.datetime | None = None
 ) -> dict:
     """S4b §2.3 — 경고 8종 카운트 + 미리보기, 총계. 요청마다 계산(캐시 없음)."""
     # 예약은 KST·clock 기준 — 주입된 now 가 있으면 그것을 쓴다
     now_local = clock.to_local(now) if now else clock.local_now()
     now = now or utcnow()
-    nodes = expected_nodes(s, school_id, now=now)
+    nodes = expected_nodes(s, sc, now=now)
     by_seen = sorted(nodes, key=lambda n: n["last_seen_at"] or _MIN)  # 보고 없음(None) 먼저
     modems = s.scalars(
-        select(Modem).where(Modem.school_id == school_id).order_by(Modem.modem_id)
+        select(Modem).where(Modem.modem_id.in_(scope.modem_ids(s, sc))).order_by(Modem.modem_id)
     ).all()
     bnames: dict[str, list[str]] = {}
     for mid, bname in s.execute(
-        select(Building.modem_id, Building.name).where(Building.school_id == school_id)
+        select(Building.modem_id, Building.name).where(scope.building_clause(sc))
     ).all():
         bnames.setdefault(mid, []).append(bname)
     for names in bnames.values():
@@ -250,7 +252,7 @@ def summary(
         for m in modems
         if not m.connected
     ]
-    failed = failed_outbox(s, school_id, FAILED_DAYS_DEFAULT, None, now)
+    failed = failed_outbox(s, sc, FAILED_DAYS_DEFAULT, None, now)
     mids = {m.modem_id for m in modems}
     pending = [
         S.PendingOut.model_validate(p).model_dump()
@@ -260,19 +262,24 @@ def summary(
             .order_by(PendingDevice.first_seen_at, PendingDevice.mac)
         )
     ]
-    approvals = [
-        S.UserOut.model_validate(u).model_dump()
-        for u in s.scalars(
-            select(User)
-            .where(User.school_id == school_id, User.status == "pending_approval")
-            .order_by(User.created_at, User.email)
-        )
-    ]
+    # 가입 승인은 최고 관리자의 일 — 건물 관리자에게는 비운다 (#160 §3.3)
+    approvals = (
+        [
+            S.UserOut.model_validate(u).model_dump()
+            for u in s.scalars(
+                select(User)
+                .where(User.school_id == sc.school_id, User.status == "pending_approval")
+                .order_by(User.created_at, User.email)
+            )
+        ]
+        if sc.buildings is None
+        else []
+    )
     return {
         "as_of": now,
         "totals": {
             "buildings": s.scalar(
-                select(func.count()).select_from(Building).where(Building.school_id == school_id)
+                select(func.count()).select_from(Building).where(scope.building_clause(sc))
             ),
             "rooms": len({n["room_id"] for n in nodes}),
             "nodes": len(nodes),
@@ -287,6 +294,6 @@ def summary(
             "failed": _bucket(failed, preview),
             "pending_devices": _bucket(pending, preview),
             "pending_approval": _bucket(approvals, preview),
-            "pending_reservations": _bucket(pending_reservations(s, school_id, now_local), preview),
+            "pending_reservations": _bucket(pending_reservations(s, sc, now_local), preview),
         },
     }

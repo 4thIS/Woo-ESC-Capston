@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouteRecordRaw, type RouterHistory } from 'vue-router'
 import { installAuth } from '@/auth/guard'
+import { isSuper } from '@/lib/session'
 
 // 셸 안의 화면 청크 — 라우트와 미리 받기(prefetchViews)가 같은 import 를 쓴다
 export const views = {
@@ -32,7 +33,8 @@ export const routes: RouteRecordRaw[] = [
       { path: 'rooms/:roomId(\\d+)/week', component: views.week, props: true },
       { path: 'nodes', component: views.nodes },
       { path: 'dashboard', component: views.dashboard },
-      { path: 'users', component: views.users },
+      // 회원은 최고 관리자만 (#160) — 건물 관리자가 주소로 와도 화면을 열지 않는다(열면 403 으로 로그아웃된다)
+      { path: 'users', component: views.users, beforeEnter: () => isSuper.value || '/dashboard' },
       { path: ':pathMatch(.*)*', component: views.notFound },
     ],
   },

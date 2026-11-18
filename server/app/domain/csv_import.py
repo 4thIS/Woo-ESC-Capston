@@ -70,16 +70,23 @@ def _bytes(s: str) -> int:
 
 class _Lookup:
     """학교 이름 → bld → room 번호 → (room_id, bld, room). 한 번 읽어 dict 로.
-    school_id 가 있으면 세 조회를 School.id 로 한정 — 이름은 유일하지 않고 PATCH 로 바뀐다 (S4a 🔴4d)."""
+    school_id 가 있으면 세 조회를 School.id 로 한정 — 이름은 유일하지 않고 PATCH 로 바뀐다 (S4a 🔴4d).
+    buildings 가 있으면(건물 관리자, #160) 그 건물만 — 밖의 건물은 'building 없음' 으로 보인다(존재를 숨긴다)."""
 
-    def __init__(self, s: Session, school_id: int | None = None):
+    def __init__(
+        self, s: Session, school_id: int | None = None, buildings: frozenset[int] | None = None
+    ):
         self.rooms: dict[tuple[str, str, int], int] = {}
         self.schools: set[str] = set()
         self.blds: set[tuple[str, str]] = set()
         self.all_school_names = set(s.scalars(select(School.name)))
 
-        def own(q):
-            return q if school_id is None else q.where(School.id == school_id)
+        def own(q, with_building=True):
+            if school_id is not None:
+                q = q.where(School.id == school_id)
+            if buildings is not None and with_building:
+                q = q.where(Building.id.in_(buildings))
+            return q
 
         q = (
             select(School.name, Building.bld, Room.room, Room.id)
@@ -91,7 +98,7 @@ class _Lookup:
         for name, bld in s.execute(own(select(School.name, Building.bld).join(Building))):
             self.schools.add(name)
             self.blds.add((name, bld))
-        for name in s.scalars(own(select(School.name))):
+        for name in s.scalars(own(select(School.name), with_building=False)):
             self.schools.add(name)
 
 
@@ -131,7 +138,9 @@ def _row(n: int, rec: dict[str, str], lk: _Lookup) -> Row | RowError:
     return Row(n, rid, bld, room, day, *start, *end, type_, subject, professor)
 
 
-def parse(text: str, s: Session, school_id: int | None = None) -> tuple[list[Row], list[RowError]]:
+def parse(
+    text: str, s: Session, school_id: int | None = None, buildings: frozenset[int] | None = None
+) -> tuple[list[Row], list[RowError]]:
     """CSV 텍스트 → Row 목록. errors 가 비어 있지 않으면 rows 는 쓰지 않는다 (all-or-nothing)."""
     reader = csv.reader(io.StringIO(text.lstrip("﻿")))
     header = [h.strip().lower() for h in next(reader, [])]
@@ -139,7 +148,7 @@ def parse(text: str, s: Session, school_id: int | None = None) -> tuple[list[Row
     if missing:
         return [], [RowError(0, f"헤더에 없는 컬럼: {', '.join(missing)}")]
     idx = {c: header.index(c) for c in COLUMNS}
-    lk = _Lookup(s, school_id)
+    lk = _Lookup(s, school_id, buildings)
     rows: list[Row] = []
     errors: list[RowError] = []
     seen: dict[tuple[int, int, int, int], int] = {}  # (room_id, day, s_h, s_m) → row

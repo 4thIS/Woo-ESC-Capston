@@ -391,19 +391,38 @@ class TokenIn(BaseModel):
 class VerifyIn(BaseModel):
     token: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=50)
-    # ASCII 영숫자·하이픈만 — 공백·전각 숫자로 같은 학번을 두 번 만들어 유일성을 피하지 못하게 (자체 점검 🟡)
-    student_no: str = Field(min_length=1, max_length=20, pattern=r"^[0-9A-Za-z-]+$")
+    # ASCII 영숫자·하이픈만 — 공백·전각 숫자로 같은 학번을 두 번 만들어 유일성을 피하지 못하게 (자체 점검 🟡).
+    # 선택(#160) — 교직원은 학번이 없을 수 있다. 비우면 NULL(부분 유일 인덱스가 NULL 을 세지 않는다)
+    student_no: str | None = Field(None, min_length=1, max_length=20, pattern=r"^[0-9A-Za-z-]+$")
     password: str = Field(min_length=8, max_length=128)
 
     @field_validator("name", "student_no", mode="before")
     @classmethod
     def _strip(cls, v):
-        return v.strip() if isinstance(v, str) else v  # strip 뒤 빈 문자열은 min_length 로 422
+        return v.strip() if isinstance(v, str) else v  # strip 뒤 빈 이름은 min_length 로 422
+
+    @field_validator("student_no", mode="before")
+    @classmethod
+    def _blank_no(cls, v):
+        return None if isinstance(v, str) and not v.strip() else v  # 빈 학번 = 없음
 
     @field_validator("student_no")
     @classmethod
-    def _upper(cls, v: str) -> str:
-        return v.upper()  # ab123·AB123 이 같은 학번으로 잡히게 (PR #42 🟡)
+    def _upper(cls, v: str | None) -> str | None:
+        return v.upper() if v else v  # ab123·AB123 이 같은 학번으로 잡히게 (PR #42 🟡)
+
+
+class RoleIn(BaseModel):
+    """#160 역할 지정 — 최고 관리자(admin)는 웹에서 만들 수 없다(CLI 만)."""
+
+    role: Literal["building_admin", "student"]
+    building_ids: list[int] = []
+
+    @model_validator(mode="after")
+    def _needs_buildings(self):
+        if self.role == "building_admin" and not self.building_ids:
+            raise ValueError("건물 관리자는 건물을 1개 이상 맡는다")
+        return self
 
 
 class LoginIn(EmailIn):
@@ -437,6 +456,7 @@ class UserOut(Out):
     student_no: str | None
     created_at: dt.datetime
     approved_at: dt.datetime | None
+    building_ids: list[int] = []  # #160 — 건물 관리자가 맡은 건물(그 밖의 역할은 빈 목록)
     # web A1 — 관리자 회원 목록의 거절 사유. 값은 status=rejected 행에만 있다: 재신청(verify)이 행을
     # 교체하고 /api/auth/me 는 active 만 통과하므로 학생 본인 응답에서는 구조적으로 null
     reject_reason: str | None = None

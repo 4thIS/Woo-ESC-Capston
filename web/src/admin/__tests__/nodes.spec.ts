@@ -16,6 +16,7 @@ import { roomsApi } from '@/api/rooms'
 import { ApiError, MESSAGES } from '@/api/client'
 import type { Enqueued, NodeOut } from '@/api/types'
 import { dismissToast, toasts } from '@/components/ui/toast'
+import { setSession } from '@/lib/session'
 
 vi.mock('@/api/admin', () => ({ adminApi: { nodes: vi.fn() } }))
 vi.mock('@/api/rooms', () => ({ roomsApi: { buildings: vi.fn() } }))
@@ -81,6 +82,8 @@ const never = (over: Partial<NodeOut> = {}) =>
 
 let visibility: DocumentVisibilityState = 'visible'
 beforeEach(() => {
+  // 최고 관리자 — 모뎀 등록·토큰·시각 방송 버튼이 보인다 (이슈 160)
+  setSession({ token: 't', role: 'admin', school_id: 1, name: '관리' })
   visibility = 'visible'
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
   toasts.value.forEach((t) => dismissToast(t.id))
@@ -327,6 +330,14 @@ describe('NodesView', () => {
     await flushPromises()
     expect(toasts.value.at(-1)?.message).toBe('공학관 401호 재전송을 요청했습니다.')
     w.unmount()
+  })
+
+  it('건물 관리자 — 시각 브로드캐스트 · 모뎀Pi 등록 버튼이 없다 (최고 관리자만, 이슈 160)', async () => {
+    setSession({ token: 't', role: 'building_admin', school_id: 1, name: '건물' })
+    const w = await mountView()
+    const labels = w.findAll('button').map((b) => b.text())
+    expect(labels).not.toContain('시각 브로드캐스트')
+    expect(labels).not.toContain('+ 모뎀Pi 등록')
   })
 
   it('시각 브로드캐스트 — 0대 · 429 · 성공 문구', async () => {

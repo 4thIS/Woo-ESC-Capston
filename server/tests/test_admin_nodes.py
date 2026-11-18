@@ -1,5 +1,6 @@
 import datetime as dt
 
+from app.auth.scope import Scope
 from app.domain import admin
 from app.domain.models import Building, Room
 from app.lora_service.models import Modem, Outbox, TerminalStatus
@@ -79,7 +80,7 @@ def _outbox(
 
 def _nodes(app, school_id=1, **kw):
     with app.state.Session() as s:
-        return admin.expected_nodes(s, school_id, now=NOW, **kw)
+        return admin.expected_nodes(s, Scope(school_id), now=NOW, **kw)
 
 
 def test_expected_nodes_left_join_and_warnings(app, school):
@@ -137,15 +138,17 @@ def test_failed_outbox_window_join_and_limit(app, school):
     _outbox(app, "E", 102, finished_at=NOW, last_error="cancelled")  # 관리자 취소 → 제외
     newest = _outbox(app, "E", 102, finished_at=NOW)
     with app.state.Session() as s:
-        rows = admin.failed_outbox(s, 1, days=7, now=NOW)
+        rows = admin.failed_outbox(s, Scope(1), days=7, now=NOW)
         assert [r["id"] for r in rows] == [newest, recent] and old not in [r["id"] for r in rows]
         assert (
             rows[1]["room_id"] == ids[101]
             and rows[1]["building"] == "E동"
             and rows[1]["last_error"] == "no_ack"
         )
-        assert [r["id"] for r in admin.failed_outbox(s, 1, days=7, limit=1, now=NOW)] == [newest]
-        assert admin.failed_outbox(s, 1, days=8, now=NOW)[-1]["id"] == old
+        assert [r["id"] for r in admin.failed_outbox(s, Scope(1), days=7, limit=1, now=NOW)] == [
+            newest
+        ]
+        assert admin.failed_outbox(s, Scope(1), days=8, now=NOW)[-1]["id"] == old
 
 
 def test_failed_outbox_excludes_other_school_modem_on_bld_reuse(app, school):
@@ -157,7 +160,7 @@ def test_failed_outbox_excludes_other_school_modem_on_bld_reuse(app, school):
     stale = _outbox(app, "E", 101, modem_id="m2", finished_at=NOW)  # 학교 2 소유 모뎀의 옛 행
     mine = _outbox(app, "E", 101, modem_id=None, finished_at=NOW)
     with app.state.Session() as s:
-        rows = admin.failed_outbox(s, 1, days=7, now=NOW)
+        rows = admin.failed_outbox(s, Scope(1), days=7, now=NOW)
     assert [r["id"] for r in rows] == [mine]
     assert stale not in [r["id"] for r in rows]
 
