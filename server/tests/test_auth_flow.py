@@ -537,3 +537,18 @@ def test_address_mail_cap_is_per_kind():
     assert all(auth_router._mail_allowed("a@mju.ac.kr", "verify") for _ in range(3))
     assert not auth_router._mail_allowed("a@mju.ac.kr", "verify")
     assert auth_router._mail_allowed("a@mju.ac.kr", "reset")
+
+
+def test_student_no_is_optional_and_staff_without_it_do_not_collide(
+    client_raw, app, schools, mails
+):
+    """#160 — 교직원은 학번이 없을 수 있다. 비우면 NULL, 학번 없는 사람끼리는 부딪치지 않는다."""
+    c = client_raw
+    for email, no in [("t1@mju.ac.kr", None), ("t2@mju.ac.kr", "  ")]:
+        assert c.post("/api/auth/signup", json={"email": email}).status_code == 202
+        body = {"token": _token(mails, "verify"), "name": "교직원", "password": "password1"}
+        if no is not None:
+            body["student_no"] = no
+        r = c.post("/api/auth/verify", json=body)
+        assert r.status_code == 200, r.text
+        assert _user(app, email).student_no is None

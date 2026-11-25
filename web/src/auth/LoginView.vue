@@ -8,7 +8,7 @@ import Input from '@/components/ui/Input.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import { authApi } from '@/api/auth'
 import { ApiError } from '@/api/client'
-import type { Role } from '@/api/types'
+import { appOf, type App } from '@/api/types'
 import { authNotice, handOffSession, setSession } from '@/lib/session'
 import { useCooldown } from '@/lib/useCooldown'
 import { safeNext } from './next'
@@ -38,9 +38,9 @@ const TABS = [
   { value: 'student', label: '학생' },
   { value: 'admin', label: '관리자' },
 ]
-const role = ref<Role>(props.app)
+const role = ref<App>(props.app)
 function pickRole(r: string) {
-  role.value = r as Role
+  role.value = r as App
   error.value = '' // 앞 탭의 '…계정입니다' 가 남으면 고른 탭과 어긋난다
 }
 
@@ -53,14 +53,16 @@ async function submit() {
   submitting.value = true
   try {
     const out = await authApi.login(email.value.trim(), password.value)
-    if (out.role !== role.value) {
+    // 건물 관리자도 '관리자' 탭 — 앱으로 비교한다 (이슈 160)
+    const app = appOf(out.role)
+    if (app !== role.value) {
       error.value = ROLE_MISMATCH[role.value] // 토큰은 저장하지 않고 버린다
       return
     }
-    if (out.role !== props.app) {
+    if (app !== props.app) {
       // 다른 앱(같은 주소의 /admin 또는 /)이 할 일 — ?next= 는 이 앱 주소라 옮기지 않는다
       handOffSession(out)
-      window.location.assign(out.role === 'admin' ? '/admin/' : '/')
+      window.location.assign(app === 'admin' ? '/admin/' : '/')
       return
     }
     setSession(out)

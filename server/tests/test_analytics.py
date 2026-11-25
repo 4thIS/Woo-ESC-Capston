@@ -1,5 +1,6 @@
 import datetime as dt
 
+from app.auth.scope import Scope
 from app.domain import analytics as A
 from app.domain import clock
 from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
@@ -113,15 +114,19 @@ def test_day_segments_and_allocation(app, school, monkeypatch):
             (780, 840, 7),
             (1200, 1260, 1),
         ]
-        rows = A.allocation(s, 1, dt.date(2026, 9, 23), dt.date(2026, 9, 23), None, "room")
+        rows = A.allocation(s, Scope(1), dt.date(2026, 9, 23), dt.date(2026, 9, 23), None, "room")
         r101 = next(r for r in rows if r["key"] == rid)
         assert (r101["assigned_min"], r101["unused_min"], r101["total_min"]) == (290, 60, 720)
         assert r101["rate"] == round(290 / 720, 4) and r101["label"] == "E동 101"
         assert next(r for r in rows if r["key"] == ids[102])["assigned_min"] == 0
-        by_b = A.allocation(s, 1, dt.date(2026, 9, 23), dt.date(2026, 9, 23), None, "building")
+        by_b = A.allocation(
+            s, Scope(1), dt.date(2026, 9, 23), dt.date(2026, 9, 23), None, "building"
+        )
         assert by_b[0]["key"] == bid and by_b[0]["total_min"] == 1440
         assert by_b[0]["assigned_min"] == 290
-        by_w = A.allocation(s, 1, dt.date(2026, 9, 21), dt.date(2026, 9, 27), None, "weekday")
+        by_w = A.allocation(
+            s, Scope(1), dt.date(2026, 9, 21), dt.date(2026, 9, 27), None, "weekday"
+        )
         assert by_w[0]["key"] == 3 and by_w[0]["label"] == "수"  # rate desc — 수요일만 배정
 
 
@@ -152,7 +157,7 @@ def test_free_slots_merge(app, school, monkeypatch):
     _slot(app, rid, 3, 10, 0, 11, 0)  # 연속 → 빈 구간 없음
     _slot(app, rid, 3, 15, 0, 16, 0)
     with app.state.Session() as s:
-        out = A.free_slots(s, 1, dt.date(2026, 9, 23), None)
+        out = A.free_slots(s, Scope(1), dt.date(2026, 9, 23), None)
         assert out[0]["room"] == 101
         assert out[0]["free"] == [
             {"from": "11:00", "to": "15:00"},
@@ -210,7 +215,7 @@ def test_reservation_stats_and_no_show(app, school, students, monkeypatch):
         app, rid, dt.date(2026, 9, 24), 13, 0, 14, 0, id_=6, status="requested", requested_by=s1
     )
     with app.state.Session() as s:
-        st = A.reservation_stats(s, 1, d, dt.date(2026, 9, 24), "day", clock.local_now())
+        st = A.reservation_stats(s, Scope(1), d, dt.date(2026, 9, 24), "day", clock.local_now())
         assert st["totals"] == {
             "requested": 5,
             "approved": 3,
@@ -239,13 +244,13 @@ def test_latency_bins_and_samples(app, school, monkeypatch):
     _acked(app, "E", 101, "SLOT_SET", UTC_NOW - dt.timedelta(days=40), 1)  # 창 밖
     with app.state.Session() as s:
         d0, d1 = dt.date(2026, 8, 25), dt.date(2026, 9, 23)
-        lat = A.latency(s, 1, d0, d1, "all")
+        lat = A.latency(s, Scope(1), d0, d1, "all")
         assert lat["n"] == 8 and lat["max"] == 130 and lat["p50"] == 25 and lat["p95"] == 130
         assert [b["count"] for b in lat["bins"]] == [2, 1, 1, 1, 1, 0, 1, 1]
         assert lat["bins"][-1] == {"ge": 120, "lt": None, "count": 1}
         assert lat["within_30s"] == round(4 / 8, 4) and lat["within_90s"] == round(6 / 8, 4)
-        assert A.latency(s, 1, d0, d1, "RESV_SET")["n"] == 1
-        smp = A.latency_samples(s, 1, d0, d1, "all", 3)
+        assert A.latency(s, Scope(1), d0, d1, "RESV_SET")["n"] == 1
+        smp = A.latency_samples(s, Scope(1), d0, d1, "all", 3)
         assert len(smp) == 3 and smp[0]["seconds"] in (5, 12, 25, 31, 50, 95, 130, 8)
         assert smp[0]["room"] == 101
 
@@ -260,7 +265,7 @@ def test_latency_nearest_rank_and_boundary_agree_with_bins(app, school, monkeypa
     for secs in samples:
         _acked(app, "E", 101, "SLOT_SET", day_ago, secs)
     with app.state.Session() as s:
-        lat = A.latency(s, 1, dt.date(2026, 9, 1), dt.date(2026, 9, 23), "all")
+        lat = A.latency(s, Scope(1), dt.date(2026, 9, 1), dt.date(2026, 9, 23), "all")
     # nearest-rank: p50 → rank 5 = 30, p95 → rank ceil(9.5)=10 = 100
     assert lat["p50"] == 30 and lat["p95"] == 100
     below = lambda hi: sum(b["count"] for b in lat["bins"] if b["lt"] is not None and b["lt"] <= hi)
@@ -279,9 +284,12 @@ def test_latency_excludes_other_school_modem_on_bld_reuse(app, school, monkeypat
     _acked(app, "E", 101, "SLOT_SET", day_ago, -3)  # 시계 역행 → 0 s 로 첫 bin
     with app.state.Session() as s:
         d0, d1 = dt.date(2026, 8, 25), dt.date(2026, 9, 23)
-        lat = A.latency(s, 1, d0, d1, "all")
+        lat = A.latency(s, Scope(1), d0, d1, "all")
         assert lat["n"] == 2 and sum(b["count"] for b in lat["bins"]) == 2
-        assert sorted(x["seconds"] for x in A.latency_samples(s, 1, d0, d1, "all", 10)) == [0, 9]
+        assert sorted(x["seconds"] for x in A.latency_samples(s, Scope(1), d0, d1, "all", 10)) == [
+            0,
+            9,
+        ]
 
 
 def test_parse_range_and_endpoints(client, app, school, student_hdr, monkeypatch):

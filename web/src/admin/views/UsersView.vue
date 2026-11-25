@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
+import Checkbox from '@/components/ui/Checkbox.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
@@ -10,8 +11,9 @@ import Table from '@/components/ui/Table.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 import { showToast } from '@/components/ui/toast'
 import { usersApi } from '@/api/users'
+import { roomsApi } from '@/api/rooms'
 import { ApiError } from '@/api/client'
-import type { UserOut, UserStatus } from '@/api/types'
+import type { Role, UserOut, UserStatus } from '@/api/types'
 import { useResource } from '@/lib/useResource'
 import { formatKst, relativeKo } from '@/lib/time'
 import { refreshPending } from '../pending'
@@ -34,11 +36,11 @@ const COLUMNS = [
   { key: 'name', label: '이름', width: '96px' },
   { key: 'student_no', label: '학번', width: '104px' },
   { key: 'email', label: '웹메일' },
-  { key: 'role', label: '역할', width: '72px' },
+  { key: 'role', label: '역할', width: '120px' },
   { key: 'status', label: '상태', width: '88px' },
   { key: 'created_at', label: '신청', width: '96px' },
   { key: 'approved_at', label: '승인', width: '96px' },
-  { key: 'actions', label: '작업', width: '136px' },
+  { key: 'actions', label: '작업', width: '176px' },
 ]
 
 const emptyMessage = computed(() => {
@@ -55,19 +57,21 @@ watch(error, (e) => {
     showToast({ tone: 'danger', message: e.message, action: { label: '재시도', onClick: reload } })
 })
 
-type Kind = 'approve' | 'reject' | 'disable' | 'enable'
+type Kind = 'approve' | 'reject' | 'disable' | 'enable' | 'role'
 const OK: Record<Kind, string> = {
   // 메일은 응답을 기다리지 않는다 — 발송을 보장하는 문구로 쓰지 않는다
   approve: '승인했습니다. 학생에게 메일이 갑니다.',
   reject: '거절했습니다. 학생에게 메일이 갑니다.',
   disable: '정지했습니다.',
   enable: '해제했습니다.',
+  role: '권한을 바꿨습니다. 이 사람은 다시 로그인해야 합니다.',
 }
 const CHANGED: Record<Kind, string> = {
   approve: '이미 처리된 신청입니다',
   reject: '이미 처리된 신청입니다',
   disable: '상태가 이미 바뀌었습니다. 목록을 새로 불러옵니다.',
   enable: '상태가 이미 바뀌었습니다. 목록을 새로 불러옵니다.',
+  role: '상태가 이미 바뀌었습니다. 목록을 새로 불러옵니다.',
 }
 const busy = ref<string | null>(null) // 처리 중인 행 — 연타 방지
 
@@ -134,6 +138,39 @@ async function submitDisable() {
   if (await act(user, 'disable', call, retry)) disabling.value = null
 }
 
+// 역할 (이슈 160) — 최고 관리자는 CLI 에서만. 건물 관리자는 맡은 건물 이름을 함께
+const ROLE_LABEL: Record<Role, string> = {
+  admin: '최고 관리자',
+  building_admin: '건물 관리자',
+  student: '학생',
+}
+const buildings = useResource(() => roomsApi.buildings())
+const buildingName = computed(
+  () => new Map((buildings.data.value ?? []).map((b) => [b.id, b.name] as const)),
+)
+const buildingsOf = (user: UserOut) =>
+  user.building_ids
+    .map((id) => buildingName.value.get(id))
+    .filter(Boolean)
+    .join(' · ')
+
+// 권한 — 건물 관리자 지정·건물 바꾸기·해제. 바뀌면 그 사람의 로그인이 끊긴다(token_version)
+const roleOf = ref<UserOut | null>(null)
+const picked = ref<number[]>([])
+function openRole(user: UserOut) {
+  picked.value = [...user.building_ids]
+  roleOf.value = user
+}
+async function submitRole(role: 'building_admin' | 'student') {
+  const user = roleOf.value
+  if (!user) return
+  const body = { role, building_ids: role === 'building_admin' ? [...picked.value].sort() : [] }
+  const call = () => usersApi.setRole(user.email, body)
+  const retry = () =>
+    roleOf.value?.email === user.email ? submitRole(role) : act(user, 'role', call)
+  if (await act(user, 'role', call, retry)) roleOf.value = null
+}
+
 // 필터를 바꿔 옛 행이 남아 있는 동안에도 잠근다
 const locked = computed(() => !!busy.value || loading.value)
 const asUser = (row: Record<string, unknown>) => row as unknown as UserOut
@@ -164,7 +201,10 @@ const asUser = (row: Record<string, unknown>) => row as unknown as UserOut
       </template>
       <template #cell-student_no="{ row }">{{ asUser(row).student_no ?? '—' }}</template>
       <template #cell-role="{ row }">
-        <Badge variant="outline">{{ asUser(row).role === 'admin' ? '관리자' : '학생' }}</Badge>
+        <Badge variant="outline">{{ ROLE_LABEL[asUser(row).role] }}</Badge>
+        <small v-if="asUser(row).role === 'building_admin'" class="users__blds">{{
+          buildingsOf(asUser(row))
+        }}</small>
       </template>
       <template #cell-status="{ row }">
         <Badge
@@ -200,14 +240,14 @@ const asUser = (row: Record<string, unknown>) => row as unknown as UserOut
               >거절</Button
             >
           </template>
-          <Button
-            v-else-if="asUser(row).status === 'active'"
-            variant="ghost"
-            size="sm"
-            :disabled="locked"
-            @click="disabling = asUser(row)"
-            >정지</Button
-          >
+          <template v-else-if="asUser(row).status === 'active'">
+            <Button variant="ghost" size="sm" :disabled="locked" @click="openRole(asUser(row))"
+              >권한</Button
+            >
+            <Button variant="ghost" size="sm" :disabled="locked" @click="disabling = asUser(row)"
+              >정지</Button
+            >
+          </template>
           <Button
             v-else-if="asUser(row).status === 'disabled'"
             variant="ghost"
@@ -264,6 +304,43 @@ const asUser = (row: Record<string, unknown>) => row as unknown as UserOut
         >
       </template>
     </Modal>
+
+    <Modal
+      :open="!!roleOf"
+      :title="roleOf?.role === 'building_admin' ? '건물 관리자 — 맡은 건물' : '건물 관리자 지정'"
+      size="sm"
+      @close="roleOf = null"
+    >
+      <p class="users__modal-text">
+        {{ roleOf?.name }} ({{ roleOf?.email }}) 이 고른 건물만 관리합니다. 바꾸면 이 사람은 다시
+        로그인해야 합니다.
+      </p>
+      <div class="users__picks" role="group" aria-label="맡을 건물">
+        <Checkbox
+          v-for="b in buildings.data.value ?? []"
+          :key="b.id"
+          v-model="picked"
+          :value="b.id"
+          :label="`${b.name} (${b.bld})`"
+        />
+      </div>
+      <template #footer>
+        <Button
+          v-if="roleOf?.role === 'building_admin'"
+          variant="ghost"
+          :loading="busy === roleOf?.email"
+          @click="submitRole('student')"
+          >해제</Button
+        >
+        <Button variant="secondary" @click="roleOf = null">취소</Button>
+        <Button
+          :loading="busy === roleOf?.email"
+          :disabled="!picked.length"
+          @click="submitRole('building_admin')"
+          >{{ roleOf?.role === 'building_admin' ? '저장' : '지정' }}</Button
+        >
+      </template>
+    </Modal>
   </main>
 </template>
 
@@ -296,5 +373,15 @@ const asUser = (row: Record<string, unknown>) => row as unknown as UserOut
 }
 .users__modal-text {
   margin: 0 0 var(--space-4);
+}
+.users__blds {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--text-3);
+}
+.users__picks {
+  display: grid;
+  gap: var(--space-2);
 }
 </style>

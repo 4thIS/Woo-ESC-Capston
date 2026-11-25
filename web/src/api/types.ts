@@ -1,5 +1,9 @@
 // 서버 응답 타입 — 서버 스키마 이름 그대로, 여기에 한 번만 (web/CLAUDE.md). Date 필드는 *_DATES 에 적는다.
-export type Role = 'admin' | 'student'
+/** #160 — admin 최고 관리자(CLI), building_admin 건물 관리자(웹 지정), student 일반 계정 */
+export type Role = 'admin' | 'building_admin' | 'student'
+/** 로그인한 사람이 쓰는 앱 — 건물 관리자도 관리자 앱 */
+export type App = 'admin' | 'student'
+export const appOf = (r: Role): App => (r === 'student' ? 'student' : 'admin')
 export type UserStatus = 'pending_approval' | 'active' | 'rejected' | 'disabled'
 
 export interface UserOut {
@@ -11,6 +15,13 @@ export interface UserOut {
   student_no: string | null
   created_at: Date
   approved_at: Date | null
+  /** #160 — 건물 관리자가 맡은 건물 id (그 밖의 역할은 빈 목록) */
+  building_ids: number[]
+}
+/** #160 역할 지정 — 최고 관리자(admin)는 웹에서 만들 수 없다 */
+export interface RoleIn {
+  role: 'building_admin' | 'student'
+  building_ids: number[]
 }
 export const USER_DATES = ['created_at', 'approved_at'] as const
 

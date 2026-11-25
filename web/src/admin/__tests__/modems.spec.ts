@@ -6,6 +6,7 @@ import { loraApi } from '@/api/lora'
 import { ApiError, MESSAGES } from '@/api/client'
 import type { BuildingOut, ModemOut } from '@/api/types'
 import { dismissToast, toasts } from '@/components/ui/toast'
+import { setSession } from '@/lib/session'
 
 vi.mock('@/api/lora', () => ({ loraApi: { registerModem: vi.fn(), rotateToken: vi.fn() } }))
 const lora = vi.mocked(loraApi, true)
@@ -42,6 +43,8 @@ async function issueToken(w: VueWrapper) {
 }
 
 beforeEach(() => {
+  // 최고 관리자 — 모뎀 등록·토큰·시각 방송 버튼이 보인다 (이슈 160)
+  setSession({ token: 't', role: 'admin', school_id: 1, name: '관리' })
   toasts.value.forEach((t) => dismissToast(t.id))
   lora.registerModem.mockReset()
   lora.rotateToken.mockReset()
@@ -87,6 +90,20 @@ describe('ModemPanel', () => {
     expect(cards[1].text()).not.toContain('fw')
     // 아무 건물에도 배정되지 않은 모뎀Pi 는 ID 만
     expect(cards[2].get('.modem__id').text()).toBe('spare')
+  })
+
+  it('건물 관리자 — 토큰 재발급 · 빈 상태의 등록 버튼이 없다 (최고 관리자만, 이슈 160)', () => {
+    setSession({ token: 't', role: 'building_admin', school_id: 1, name: '건물' })
+    expect(
+      mountPanel([m()])
+        .findAll('button')
+        .some((b) => b.text() === '토큰 재발급'),
+    ).toBe(false)
+    expect(
+      mountPanel([])
+        .findAll('button')
+        .some((b) => b.text() === '모뎀Pi 등록'),
+    ).toBe(false)
   })
 
   it('로딩 중 첫 조회 — Skeleton 2개', () => {

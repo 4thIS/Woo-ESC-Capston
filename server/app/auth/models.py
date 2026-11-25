@@ -10,6 +10,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base, utcnow
 
 STATUSES = ("pending_approval", "active", "rejected", "disabled")
+# #160 — admin = 최고 관리자(CLI), building_admin = 건물 관리자(웹 지정, user_buildings 범위), student = 일반 계정
+ROLES = ("student", "admin", "building_admin")
+ROLE_CHECK = "role IN ('student', 'admin', 'building_admin')"
 HOLDS_STUDENT_NO = (
     "status IN ('pending_approval', 'active', 'disabled')"  # 거절 행은 학번을 잡지 않는다
 )
@@ -38,12 +41,37 @@ class User(Base):
             unique=True,
             sqlite_where=text(HOLDS_STUDENT_NO),
         ),
-        CheckConstraint("role IN ('student', 'admin')", name="ck_users_role"),
+        CheckConstraint(ROLE_CHECK, name="ck_users_role"),
         CheckConstraint(
             "status IN ('pending_approval', 'active', 'rejected', 'disabled')",
             name="ck_users_status",
         ),
     )
+
+
+class UserBuilding(Base):
+    """건물 관리자가 맡은 건물 (#160, N:M). 사용자·건물을 지우면 함께 지워진다."""
+
+    __tablename__ = "user_buildings"
+    email: Mapped[str] = mapped_column(
+        ForeignKey("users.email", ondelete="CASCADE"), primary_key=True
+    )
+    building_id: Mapped[int] = mapped_column(
+        ForeignKey("buildings.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class RoleChange(Base):
+    """역할·건물 지정 기록 (#160) — 누가 언제 무엇으로 바꿨는지. 지우지 않는다."""
+
+    __tablename__ = "role_changes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String)
+    changed_by: Mapped[str] = mapped_column(String)
+    changed_at: Mapped[dt.datetime] = mapped_column(default=utcnow)
+    from_role: Mapped[str] = mapped_column(String)
+    to_role: Mapped[str] = mapped_column(String)
+    building_ids: Mapped[str] = mapped_column(String)  # 바뀐 뒤 건물 id JSON 배열
 
 
 class EmailToken(Base):

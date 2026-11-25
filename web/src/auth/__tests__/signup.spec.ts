@@ -155,6 +155,25 @@ describe('VerifyView', () => {
     })
   })
 
+  it('학번은 선택 — 비우면 null 로 보낸다(교직원, 이슈 160)', async () => {
+    setHash('#token=tok1')
+    api.verifyOpen.mockResolvedValue({ email: 't1@mjc.ac.kr' })
+    api.verify.mockResolvedValue({ status: 'pending_approval' })
+    const { w } = await mountView(VerifyView)
+    expect(w.text()).toContain('학번 (선택)')
+    const [name, , pw] = w.findAll('input')
+    await name.setValue('교직원')
+    await pw.setValue('password1')
+    await w.get('form').trigger('submit')
+    await flushPromises()
+    expect(api.verify).toHaveBeenCalledWith({
+      token: 'tok1',
+      name: '교직원',
+      student_no: null,
+      password: 'password1',
+    })
+  })
+
   it('학번 형식·비밀번호 길이는 보내기 전에 막는다', async () => {
     setHash('#token=tok1')
     api.verifyOpen.mockResolvedValue({ email: 's1@mjc.ac.kr' })

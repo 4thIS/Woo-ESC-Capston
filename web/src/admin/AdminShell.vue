@@ -5,7 +5,7 @@ import SidebarNav from '@/components/ui/SidebarNav.vue'
 import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
-import { clearSession, schoolTitle, session } from '@/lib/session'
+import { clearSession, isSuper, schoolTitle, session } from '@/lib/session'
 import faviconE from '@/assets/logo/favicon-16.svg'
 import { ApiError } from '@/api/client'
 import { roomsApi } from '@/api/rooms'
@@ -31,8 +31,21 @@ const nav = computed(() => [
   },
   { to: '/nodes', label: '노드 상태', group: '모니터링', icon: 'node' as const },
   { to: '/dashboard', label: '전송 현황', group: '모니터링', icon: 'send' as const },
-  { to: '/users', label: '회원', group: '사람', icon: 'users' as const, badge: pendingCount.value },
+  // 회원 관리는 최고 관리자만 (이슈 160)
+  ...(isSuper.value
+    ? [
+        {
+          to: '/users',
+          label: '회원',
+          group: '사람',
+          icon: 'users' as const,
+          badge: pendingCount.value,
+        },
+      ]
+    : []),
 ])
+/** 사이드바 내 정보 칸의 등급 (이슈 160) */
+const grade = computed(() => (isSuper.value ? '최고 관리자' : '건물 관리자'))
 const initial = computed(() => me.value.slice(0, 1) || '관')
 
 onMounted(refreshPending)
@@ -102,7 +115,7 @@ const left = computed(() => mmss(idle.remaining.value))
           <span class="shell__avatar" aria-hidden="true">{{ initial }}</span>
           <p class="shell__user">
             <b>{{ me }}</b
-            ><span>관리자</span>
+            ><span>{{ grade }}</span>
           </p>
           <button
             type="button"

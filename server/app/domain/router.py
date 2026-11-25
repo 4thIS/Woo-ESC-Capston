@@ -14,19 +14,22 @@ from sqlalchemy.orm import Session
 
 from app import schemas as S
 from app.auth import scope
-from app.auth.deps import AdminUser
+from app.auth.deps import AdminUser, ManagerUser, MgrScope
 from app.auth.models import User
+from app.auth.scope import Scope
 from app.deps import _DB
 from app.domain import admin, clock, csv_import, reserve
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
 from app.lora_service import api
 
-router = APIRouter(prefix="/api", dependencies=[AdminUser])  # 전부 관리자 전용 (S4a §3.3)
+router = APIRouter(prefix="/api", dependencies=[ManagerUser])
+# 관리자 전용 (S4a §3.3). #160 — 건물 단위로 나눌 수 있는 API 는 MgrScope(건물 범위), 학교·건물 구조를 바꾸는
+# API 는 AdminUser(최고 관리자). 범위 밖은 404
 log = logging.getLogger(__name__)
 
 
-def _addr(s: Session, room_id: int, user: User) -> tuple[str, int, str | None]:
-    r = scope.get_scoped(s, Room, room_id, user.school_id)
+def _addr(s: Session, room_id: int, sc: Scope) -> tuple[str, int, str | None]:
+    r = scope.get_scoped(s, Room, room_id, sc)
     b = s.get(Building, r.building_id)
     return b.bld, r.room, b.modem_id
 
@@ -39,7 +42,7 @@ def _commit_notify(s: Session, modem_id: str | None) -> None:
 
 def _check_building(s: Session, user: User, bld: str | None, modem_id: str | None) -> None:
     """modem_id 는 자기 학교 모뎀만, bld 는 다른 학교가 쓰면 409 (S4a §3.3 🔴4b·4c)."""
-    if modem_id is not None and modem_id not in scope.modem_ids(s, user.school_id):
+    if modem_id is not None and modem_id not in scope.modem_ids(s, scope.of(s, user)):
         raise HTTPException(404, f"modems {modem_id} 없음")
     if bld is not None:
         other = s.scalar(
@@ -83,14 +86,14 @@ def _existing_same_room(s: Session, model, obj_id: int, room_id: int):
 
 
 @router.get("/schools", response_model=list[S.SchoolOut])
-def list_schools(user: User = AdminUser, s: Session = _DB):
-    return s.scalars(select(School).where(School.id == user.school_id)).all()
+def list_schools(sc: Scope = MgrScope, s: Session = _DB):
+    return s.scalars(select(School).where(School.id == sc.school_id)).all()
 
 
 # 학교 생성·삭제는 CLI 전용 (S4a §3.3). PATCH 는 name 만.
 @router.patch("/schools/{id}", response_model=S.SchoolOut)
 def update_school(id: int, body: S.SchoolPatch, user: User = AdminUser, s: Session = _DB):
-    obj = scope.get_scoped(s, School, id, user.school_id)
+    obj = scope.get_scoped(s, School, id, scope.of(s, user))
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(obj, k, v)
     s.flush()
@@ -98,10 +101,8 @@ def update_school(id: int, body: S.SchoolPatch, user: User = AdminUser, s: Sessi
 
 
 @router.get("/buildings", response_model=list[S.BuildingOut])
-def list_buildings(user: User = AdminUser, s: Session = _DB):
-    return s.scalars(
-        select(Building).where(Building.school_id == user.school_id).order_by(Building.id)
-    ).all()
+def list_buildings(sc: Scope = MgrScope, s: Session = _DB):
+    return s.scalars(select(Building).where(scope.building_clause(sc)).order_by(Building.id)).all()
 
 
 @router.post("/buildings", response_model=S.BuildingOut)
@@ -120,7 +121,7 @@ def create_building(body: S.BuildingIn, user: User = AdminUser, s: Session = _DB
 def update_building(
     id: int, body: S.BuildingPatch, bg: BackgroundTasks, user: User = AdminUser, s: Session = _DB
 ):
-    obj = scope.get_scoped(s, Building, id, user.school_id)
+    obj = scope.get_scoped(s, Building, id, scope.of(s, user))
     data = body.model_dump(exclude_unset=True)
     _check_building(s, user, data.get("bld"), data.get("modem_id"))
     before = obj.modem_id
@@ -141,7 +142,7 @@ def update_building(
 
 @router.delete("/buildings/{id}")
 def delete_building(id: int, bg: BackgroundTasks, user: User = AdminUser, s: Session = _DB):
-    obj = scope.get_scoped(s, Building, id, user.school_id)
+    obj = scope.get_scoped(s, Building, id, scope.of(s, user))
     mid = obj.modem_id
     s.delete(obj)
     s.commit()
@@ -153,35 +154,35 @@ def delete_building(id: int, bg: BackgroundTasks, user: User = AdminUser, s: Ses
 # ---- 건물 단위 조회 (S4b §2.6, 이슈 #36) — 쓰기는 /rooms/{id}/… 그대로 ----
 
 
-def _rooms_of(s: Session, building_id: int, user: User):
-    scope.get_scoped(s, Building, building_id, user.school_id)
+def _rooms_of(s: Session, building_id: int, sc: Scope):
+    scope.get_scoped(s, Building, building_id, sc)
     return select(Room.id).where(Room.building_id == building_id)
 
 
 @router.get("/buildings/{id}/slots", response_model=list[S.SlotWithRoom])
-def building_slots(id: int, user: User = AdminUser, s: Session = _DB):
+def building_slots(id: int, sc: Scope = MgrScope, s: Session = _DB):
     return s.scalars(
         select(Slot)
-        .where(Slot.room_id.in_(_rooms_of(s, id, user)))
+        .where(Slot.room_id.in_(_rooms_of(s, id, sc)))
         .order_by(Slot.room_id, Slot.day, Slot.s_h, Slot.s_m)
     ).all()
 
 
 @router.get("/buildings/{id}/reservations", response_model=list[S.ResvWithRoom])
-def building_reservations(id: int, user: User = AdminUser, s: Session = _DB):
+def building_reservations(id: int, sc: Scope = MgrScope, s: Session = _DB):
     return admin.resv_with_room_rows(
         s,
         select(Reservation)
-        .where(Reservation.room_id.in_(_rooms_of(s, id, user)))
+        .where(Reservation.room_id.in_(_rooms_of(s, id, sc)))
         .order_by(Reservation.room_id, Reservation.date, Reservation.s_h, Reservation.s_m),
     )
 
 
 @router.get("/buildings/{id}/exams", response_model=list[S.ExamWithRoom])
-def building_exams(id: int, user: User = AdminUser, s: Session = _DB):
+def building_exams(id: int, sc: Scope = MgrScope, s: Session = _DB):
     return s.scalars(
         select(ExamPeriod)
-        .where(ExamPeriod.room_id.in_(_rooms_of(s, id, user)))
+        .where(ExamPeriod.room_id.in_(_rooms_of(s, id, sc)))
         .order_by(ExamPeriod.room_id, ExamPeriod.date_start)
     ).all()
 
@@ -191,23 +192,23 @@ def building_outbox(
     id: int,
     state: Literal["queued", "dispatched", "acked", "failed", "cancelled"] | None = None,
     limit: int = Query(200, ge=1, le=500),
-    user: User = AdminUser,
+    sc: Scope = MgrScope,
     s: Session = _DB,
 ):
-    scope.get_scoped(s, Building, id, user.school_id)
-    return admin.building_outbox(s, id, user.school_id, state, limit)
+    scope.get_scoped(s, Building, id, sc)
+    return admin.building_outbox(s, id, sc, state, limit)
 
 
 @router.get("/rooms", response_model=list[S.RoomOut])
-def list_rooms(user: User = AdminUser, s: Session = _DB):
+def list_rooms(sc: Scope = MgrScope, s: Session = _DB):
     return s.scalars(
-        select(Room).join(Building).where(Building.school_id == user.school_id).order_by(Room.id)
+        select(Room).join(Building).where(scope.building_clause(sc)).order_by(Room.id)
     ).all()
 
 
 @router.post("/rooms", response_model=S.RoomOut)
-def create_room(body: S.RoomIn, bg: BackgroundTasks, user: User = AdminUser, s: Session = _DB):
-    scope.get_scoped(s, Building, body.building_id, user.school_id)
+def create_room(body: S.RoomIn, bg: BackgroundTasks, sc: Scope = MgrScope, s: Session = _DB):
+    scope.get_scoped(s, Building, body.building_id, sc)
     obj = Room(**body.model_dump())
     s.add(obj)
     s.flush()
@@ -220,9 +221,9 @@ def create_room(body: S.RoomIn, bg: BackgroundTasks, user: User = AdminUser, s: 
 
 @router.patch("/rooms/{id}", response_model=S.RoomOut)
 def update_room(
-    id: int, body: S.RoomPatch, bg: BackgroundTasks, user: User = AdminUser, s: Session = _DB
+    id: int, body: S.RoomPatch, bg: BackgroundTasks, sc: Scope = MgrScope, s: Session = _DB
 ):
-    obj = scope.get_scoped(s, Room, id, user.school_id)
+    obj = scope.get_scoped(s, Room, id, sc)
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(obj, k, v)
     s.flush()
@@ -234,8 +235,8 @@ def update_room(
 
 
 @router.delete("/rooms/{id}")
-def delete_room(id: int, bg: BackgroundTasks, user: User = AdminUser, s: Session = _DB):
-    obj = scope.get_scoped(s, Room, id, user.school_id)
+def delete_room(id: int, bg: BackgroundTasks, sc: Scope = MgrScope, s: Session = _DB):
+    obj = scope.get_scoped(s, Room, id, sc)
     mid = _modem_of(s, obj.building_id)
     bld = s.get(Building, obj.building_id).bld
     # 아직 안 나간 작업도 같은 트랜잭션에서 — 남으면 같은 (bld, room) 재생성 때 새 모뎀으로 간다 (#50)
@@ -251,8 +252,8 @@ def delete_room(id: int, bg: BackgroundTasks, user: User = AdminUser, s: Session
 
 
 @router.get("/rooms/{id}/slots", response_model=list[S.SlotOut])
-def list_slots(id: int, user: User = AdminUser, s: Session = _DB):
-    scope.get_scoped(s, Room, id, user.school_id)
+def list_slots(id: int, sc: Scope = MgrScope, s: Session = _DB):
+    scope.get_scoped(s, Room, id, sc)
     return s.scalars(
         select(Slot).where(Slot.room_id == id).order_by(Slot.day, Slot.s_h, Slot.s_m)
     ).all()
@@ -260,8 +261,8 @@ def list_slots(id: int, user: User = AdminUser, s: Session = _DB):
 
 # 버전·outbox·도메인 write 는 같은 세션(#9). 핸들러가 커밋한 뒤 허브에 알린다.
 @router.put("/rooms/{id}/slots", response_model=S.Enqueued)
-def put_slot(id: int, body: S.SlotIn, user: User = AdminUser, s: Session = _DB):
-    bld, room, mid = _addr(s, id, user)
+def put_slot(id: int, body: S.SlotIn, sc: Scope = MgrScope, s: Session = _DB):
+    bld, room, mid = _addr(s, id, sc)
     obj = s.scalar(
         select(Slot).where(
             Slot.room_id == id, Slot.day == body.day, Slot.s_h == body.s_h, Slot.s_m == body.s_m
@@ -290,8 +291,8 @@ def put_slot(id: int, body: S.SlotIn, user: User = AdminUser, s: Session = _DB):
 
 
 @router.delete("/rooms/{id}/slots/{day}/{s_h}/{s_m}", response_model=S.Enqueued)
-def delete_slot(id: int, day: int, s_h: int, s_m: int, user: User = AdminUser, s: Session = _DB):
-    bld, room, mid = _addr(s, id, user)
+def delete_slot(id: int, day: int, s_h: int, s_m: int, sc: Scope = MgrScope, s: Session = _DB):
+    bld, room, mid = _addr(s, id, sc)
     s.execute(
         delete(Slot).where(Slot.room_id == id, Slot.day == day, Slot.s_h == s_h, Slot.s_m == s_m)
     )
@@ -301,8 +302,8 @@ def delete_slot(id: int, day: int, s_h: int, s_m: int, user: User = AdminUser, s
 
 
 @router.delete("/rooms/{id}/slots", response_model=S.Enqueued)
-def clear_day(id: int, day: int, user: User = AdminUser, s: Session = _DB):
-    bld, room, mid = _addr(s, id, user)
+def clear_day(id: int, day: int, sc: Scope = MgrScope, s: Session = _DB):
+    bld, room, mid = _addr(s, id, sc)
     s.execute(delete(Slot).where(Slot.room_id == id, Slot.day == day))
     ids = api.enqueue_day_clear(bld, room, day, session=s)
     _commit_notify(s, mid)
@@ -310,8 +311,8 @@ def clear_day(id: int, day: int, user: User = AdminUser, s: Session = _DB):
 
 
 @router.get("/rooms/{id}/reservations", response_model=list[S.ResvWithRoom])
-def list_resv(id: int, user: User = AdminUser, s: Session = _DB):
-    scope.get_scoped(s, Room, id, user.school_id)
+def list_resv(id: int, sc: Scope = MgrScope, s: Session = _DB):
+    scope.get_scoped(s, Room, id, sc)
     return admin.resv_with_room_rows(
         s,
         select(Reservation)
@@ -321,8 +322,8 @@ def list_resv(id: int, user: User = AdminUser, s: Session = _DB):
 
 
 @router.post("/rooms/{id}/reservations", response_model=S.Enqueued)
-def put_resv(id: int, body: S.ResvIn, user: User = AdminUser, s: Session = _DB):
-    bld, room, mid = _addr(s, id, user)
+def put_resv(id: int, body: S.ResvIn, sc: Scope = MgrScope, s: Session = _DB):
+    bld, room, mid = _addr(s, id, sc)
     with (
         _ID_LOCK
     ):  # 확인(채번·같은 방 검사) → insert → 커밋까지 한 덩어리 (다음 요청은 커밋된 행을 본다)
@@ -361,8 +362,8 @@ def _write_resv(
 
 
 @router.delete("/rooms/{id}/reservations/{resv_id}", response_model=S.Enqueued)
-def delete_resv(id: int, resv_id: int, user: User = AdminUser, s: Session = _DB):
-    *_, mid = _addr(s, id, user)
+def delete_resv(id: int, resv_id: int, sc: Scope = MgrScope, s: Session = _DB):
+    *_, mid = _addr(s, id, sc)
     with _ID_LOCK:  # 예약 쓰기는 읽기~커밋 전부 같은 락 — 동시 승인·승격과 엇갈리지 않게
         r = s.get(Reservation, resv_id)
         if r is None or r.room_id != id:  # 멱등 — 없는 id 에 RESV_DEL 을 보내지 않는다
@@ -375,16 +376,16 @@ def delete_resv(id: int, resv_id: int, user: User = AdminUser, s: Session = _DB)
 
 
 @router.get("/rooms/{id}/exams", response_model=list[S.ExamOut])
-def list_exams(id: int, user: User = AdminUser, s: Session = _DB):
-    scope.get_scoped(s, Room, id, user.school_id)
+def list_exams(id: int, sc: Scope = MgrScope, s: Session = _DB):
+    scope.get_scoped(s, Room, id, sc)
     return s.scalars(
         select(ExamPeriod).where(ExamPeriod.room_id == id).order_by(ExamPeriod.date_start)
     ).all()
 
 
 @router.post("/rooms/{id}/exams", response_model=S.Enqueued)
-def put_exam(id: int, body: S.ExamIn, user: User = AdminUser, s: Session = _DB):
-    bld, room, mid = _addr(s, id, user)
+def put_exam(id: int, body: S.ExamIn, sc: Scope = MgrScope, s: Session = _DB):
+    bld, room, mid = _addr(s, id, sc)
     with _ID_LOCK:
         if body.id is not None:
             return _write_exam(
@@ -412,8 +413,8 @@ def _write_exam(
 
 
 @router.delete("/rooms/{id}/exams/{exam_id}", response_model=S.Enqueued)
-def delete_exam(id: int, exam_id: int, user: User = AdminUser, s: Session = _DB):
-    bld, room, mid = _addr(s, id, user)
+def delete_exam(id: int, exam_id: int, sc: Scope = MgrScope, s: Session = _DB):
+    bld, room, mid = _addr(s, id, sc)
     with _ID_LOCK:  # 같은 id 수정(put_exam)의 읽기~커밋 사이에 끼어들면 StaleDataError (#48 🟡2)
         s.execute(delete(ExamPeriod).where(ExamPeriod.id == exam_id, ExamPeriod.room_id == id))
         ids = api.enqueue_exam_del(bld, room, exam_id, session=s)
@@ -422,14 +423,14 @@ def delete_exam(id: int, exam_id: int, user: User = AdminUser, s: Session = _DB)
 
 
 @router.post("/rooms/{id}/sync", response_model=S.Enqueued)
-def sync_room(id: int, body: S.SyncIn, user: User = AdminUser, s: Session = _DB):
-    bld, room, _mid = _addr(s, id, user)
+def sync_room(id: int, body: S.SyncIn, sc: Scope = MgrScope, s: Session = _DB):
+    bld, room, _mid = _addr(s, id, sc)
     return {"outbox_ids": api.enqueue_full_sync(bld, room, tuple(body.kinds))}
 
 
 @router.post("/rooms/{id}/cmd", response_model=S.Enqueued)
-def cmd_room(id: int, body: S.CmdIn, user: User = AdminUser, s: Session = _DB):
-    bld, room, mid = _addr(s, id, user)
+def cmd_room(id: int, body: S.CmdIn, sc: Scope = MgrScope, s: Session = _DB):
+    bld, room, mid = _addr(s, id, sc)
     ids = api.enqueue_cmd(bld, room, body.cmd, bytes.fromhex(body.args_hex), session=s)
     _commit_notify(s, mid)
     return {"outbox_ids": ids}
@@ -446,7 +447,7 @@ IMPORT_MAX_BYTES = 1024 * 1024
 def import_slots(
     raw: bytes = Body(..., media_type="text/csv"),
     dry_run: bool = False,
-    user: User = AdminUser,
+    sc: Scope = MgrScope,
     s: Session = _DB,
 ):
     """시간표 CSV (S2b §4). 본문 = CSV 텍스트(text/csv). 전체 검증 → 적용 → commit → 방마다 콘텐츠 FILE.
@@ -457,7 +458,7 @@ def import_slots(
         text = raw.decode("utf-8")
     except UnicodeDecodeError as e:
         raise HTTPException(400, "UTF-8 로 저장하세요 (엑셀: CSV UTF-8)") from e
-    rows, errors = csv_import.parse(text, s, school_id=user.school_id)
+    rows, errors = csv_import.parse(text, s, school_id=sc.school_id, buildings=sc.buildings)
     if errors:
         return JSONResponse(status_code=400, content={"errors": [asdict(e) for e in errors]})
     sm = csv_import.apply(rows, s, dry_run=dry_run)

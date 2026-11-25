@@ -191,3 +191,78 @@ def test_resv_checkout_column(tmp_path):
     # batch 재생성이 기존 CHECK 를 잃지 않았다 — 상태·id 범위 제약이 그대로
     checks = {c["name"] for c in inspect(eng).get_check_constraints("reservations")}
     assert {"ck_resv_id", "ck_resv_status"} <= checks
+
+
+def test_roles_migration_keeps_users_and_adds_building_admin(tmp_path):
+    """#160 — role CHECK 에 building_admin, user_buildings · role_changes 표. 기존 행·학번 유일성은 그대로."""
+    import sqlite3
+
+    db = tmp_path / "r.db"
+    cfg = Config(str(SERVER / "alembic.ini"))
+    cfg.set_main_option("script_location", str(SERVER / "alembic"))
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db}")
+    command.upgrade(cfg, "4c0a9f71e19d")  # #160 직전
+    c = sqlite3.connect(db)
+    c.execute(
+        "INSERT INTO schools (id, name, net_id, email_domain) VALUES (1, '명지', 75, 'mju.ac.kr')"
+    )
+    for email, role, no in [("a@mju.ac.kr", "admin", None), ("s@mju.ac.kr", "student", "S1")]:
+        c.execute(
+            "INSERT INTO users (email, school_id, role, status, name, student_no, pw_hash,"
+            " token_version, created_at) VALUES (?, 1, ?, 'active', 'n', ?, 'x', 0, '2026-11-17')",
+            (email, role, no),
+        )
+    c.commit()
+    c.close()
+
+    command.upgrade(cfg, "head")
+    names = set(inspect(create_engine(f"sqlite:///{db}")).get_table_names())
+    assert {"user_buildings", "role_changes"} <= names
+    c = sqlite3.connect(db)
+    assert c.execute("SELECT email, role FROM users ORDER BY email").fetchall() == [
+        ("a@mju.ac.kr", "admin"),
+        ("s@mju.ac.kr", "student"),
+    ]
+    c.execute("UPDATE users SET role = 'building_admin' WHERE email = 's@mju.ac.kr'")
+    try:
+        c.execute("UPDATE users SET role = 'root' WHERE email = 's@mju.ac.kr'")
+        raise AssertionError("role CHECK 가 사라졌다")
+    except sqlite3.IntegrityError:
+        pass
+    # 학번 부분 유일 인덱스가 남아 있다
+    c.execute(
+        "INSERT INTO users (email, school_id, role, status, name, student_no, pw_hash,"
+        " token_version, created_at) VALUES ('t@mju.ac.kr', 1, 'student', 'active', 'n', 'S2', 'x', 0, '2026-11-17')"
+    )
+    try:
+        c.execute("UPDATE users SET student_no = 'S1' WHERE email = 't@mju.ac.kr'")
+        raise AssertionError("학번 유일 인덱스가 사라졌다")
+    except sqlite3.IntegrityError:
+        pass
+    try:
+        c.execute("UPDATE users SET status = 'weird' WHERE email = 't@mju.ac.kr'")
+        raise AssertionError("status CHECK 가 사라졌다")
+    except sqlite3.IntegrityError:
+        pass
+    c.close()
+
+
+def test_roles_migration_downgrade_round_trip(tmp_path):
+    import sqlite3
+
+    db = tmp_path / "d.db"
+    cfg = Config(str(SERVER / "alembic.ini"))
+    cfg.set_main_option("script_location", str(SERVER / "alembic"))
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db}")
+    command.upgrade(cfg, "head")
+    command.downgrade(cfg, "4c0a9f71e19d")
+    names = set(inspect(create_engine(f"sqlite:///{db}")).get_table_names())
+    assert "user_buildings" not in names and "role_changes" not in names
+    command.upgrade(cfg, "head")
+    sql = (
+        sqlite3.connect(db)
+        .execute("SELECT sql FROM sqlite_master WHERE name='users'")
+        .fetchone()[0]
+    )
+    assert sql.count("ck_users_role") == 1 and "building_admin" in sql
+    assert sql.count("ck_users_status") == 1

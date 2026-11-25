@@ -16,6 +16,7 @@ import { roomsApi } from '@/api/rooms'
 import { ApiError } from '@/api/client'
 import type { NodeOut } from '@/api/types'
 import { useResource } from '@/lib/useResource'
+import { isSuper } from '@/lib/session'
 import { usePolling } from '@/lib/usePolling'
 import { formatKst, relativeKo } from '@/lib/time'
 import LastRefreshed from '../LastRefreshed.vue'
@@ -175,10 +176,13 @@ async function broadcast() {
           <Select v-model="buildingId" :options="buildingOpts" size="sm" />
         </label>
         <Button variant="ghost" size="sm" :loading="manual" @click="refresh">새로고침</Button>
-        <Button variant="secondary" size="sm" :loading="broadcasting" @click="broadcast"
-          >시각 브로드캐스트</Button
-        >
-        <Button size="sm" @click="modemPanel?.openRegister()">+ 모뎀Pi 등록</Button>
+        <!-- 시각 방송(모든 모뎀)·모뎀Pi 등록은 최고 관리자만 (이슈 160) -->
+        <template v-if="isSuper">
+          <Button variant="secondary" size="sm" :loading="broadcasting" @click="broadcast"
+            >시각 브로드캐스트</Button
+          >
+          <Button size="sm" @click="modemPanel?.openRegister()">+ 모뎀Pi 등록</Button>
+        </template>
       </div>
     </header>
 

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
@@ -12,10 +13,10 @@ from sqlalchemy.orm import Session
 from app import schemas as S
 from app.auth import mailer, password, ratelimit, tokens
 from app.auth.deps import AdminUser, CurrentUser
-from app.auth.models import HOLDS_STUDENT_NO, User
+from app.auth.models import HOLDS_STUDENT_NO, RoleChange, User, UserBuilding
 from app.db import utcnow
 from app.deps import _DB
-from app.domain.models import School
+from app.domain.models import Building, School
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth")
@@ -97,12 +98,15 @@ def verify(body: S.VerifyIn, request: Request):
             raise HTTPException(400, LINK_INVALID)
         # 409 는 토큰을 소비하지 않는다(학번 오타를 고쳐 재제출) — 대신 학번 존재 조회 남용을 막는다
         _limit(f"verify:{email}")
-        taken = s.scalar(
-            select(User.email).where(
-                User.school_id == school.id,
-                User.student_no == body.student_no,
-                User.email != email,
-                text(HOLDS_STUDENT_NO),
+        taken = (
+            body.student_no is not None
+            and s.scalar(  # 학번 없는(교직원) 가입은 검사하지 않는다 (#160)
+                select(User.email).where(
+                    User.school_id == school.id,
+                    User.student_no == body.student_no,
+                    User.email != email,
+                    text(HOLDS_STUDENT_NO),
+                )
             )
         )
         if taken:
@@ -199,9 +203,19 @@ def reset(body: S.ResetIn, request: Request):
     return {"status": "ok"}
 
 
+def _buildings_of(s: Session, email: str) -> list[int]:
+    return sorted(s.scalars(select(UserBuilding.building_id).where(UserBuilding.email == email)))
+
+
+def _user_out(s: Session, u: User) -> S.UserOut:
+    return S.UserOut.model_validate(u).model_copy(
+        update={"building_ids": _buildings_of(s, u.email)}
+    )
+
+
 @router.get("/me", response_model=S.UserOut)
-def me(user: User = CurrentUser):
-    return user
+def me(user: User = CurrentUser, s: Session = _DB):
+    return _user_out(s, user)
 
 
 # ---- §4.2 관리자 회원 관리 (자기 학교만) ----
@@ -225,7 +239,57 @@ def list_users(status: str | None = None, admin_user: User = AdminUser, s: Sessi
     q = select(User).where(User.school_id == admin_user.school_id).order_by(User.created_at)
     if status is not None:
         q = q.where(User.status == status)
-    return s.scalars(q).all()
+    users = s.scalars(q).all()
+    by: dict[str, list[int]] = {}
+    for email, bid in s.execute(
+        select(UserBuilding.email, UserBuilding.building_id).order_by(UserBuilding.building_id)
+    ):
+        by.setdefault(email, []).append(bid)
+    return [
+        S.UserOut.model_validate(u).model_copy(update={"building_ids": by.get(u.email, [])})
+        for u in users
+    ]
+
+
+@admin.put("/users/{email}/role", response_model=S.UserOut)
+def set_role(email: str, body: S.RoleIn, admin_user: User = AdminUser, s: Session = _DB):
+    """#160 — 건물 관리자 지정·해제(최고 관리자 전용). 역할이나 건물이 실제로 바뀌면 token_version 을 올려
+    기존 로그인을 끊고 role_changes 에 남긴다. 같은 값이면 아무것도 바꾸지 않는다."""
+    u = _scoped_user(s, email, admin_user)
+    if u.role == "admin":
+        raise HTTPException(400, "관리자 계정은 CLI 로")
+    if u.status != "active":
+        raise HTTPException(409, f"{u.status} 상태에서는 불가")
+    want = sorted(set(body.building_ids)) if body.role == "building_admin" else []
+    if want:
+        own = set(
+            s.scalars(
+                select(Building.id).where(
+                    Building.id.in_(want), Building.school_id == admin_user.school_id
+                )
+            )
+        )
+        if own != set(want):
+            raise HTTPException(404, "건물 없음")  # 다른 학교 건물은 존재를 숨긴다
+    have = _buildings_of(s, u.email)
+    if (u.role, have) == (body.role, want):
+        return _user_out(s, u)
+    s.query(UserBuilding).filter(UserBuilding.email == u.email).delete()
+    s.add_all(UserBuilding(email=u.email, building_id=b) for b in want)
+    s.add(
+        RoleChange(
+            email=u.email,
+            changed_by=admin_user.email,
+            from_role=u.role,
+            to_role=body.role,
+            building_ids=json.dumps(want),
+        )
+    )
+    u.role = body.role
+    u.token_version += 1  # 정지와 같은 방식 — 옛 권한으로 발급된 토큰이 남지 않게
+    s.flush()  # 응답 전에 쓰기 — 커밋 실패를 성공으로 보이지 않게
+    log.info("role %s → %s %s by %s", u.email, body.role, want, admin_user.email)
+    return _user_out(s, u)
 
 
 @admin.post("/users/{email}/approve", response_model=S.UserOut)

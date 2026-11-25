@@ -11,7 +11,10 @@ import { nightPref, picked, weekMonday, weekRoom, weekendPref } from '@/admin/se
 
 vi.mock('@/api/users', () => ({ usersApi: { list: vi.fn() } }))
 vi.mock('@/api/rooms', () => ({
-  roomsApi: { schools: vi.fn(async () => [{ id: 1, name: '명지전문대학', net_id: 75 }]) },
+  roomsApi: {
+    schools: vi.fn(async () => [{ id: 1, name: '명지전문대학', net_id: 75 }]),
+    buildings: vi.fn(async () => []), // 회원 화면 권한 Modal 의 건물 목록 (이슈 160)
+  },
 }))
 const list = vi.mocked(usersApi.list)
 // 회원 화면(Task 13)이 /users 에서 실제로 그린다 — 정렬에 쓰는 필드까지 채운다
@@ -24,6 +27,7 @@ const user = (email: string): UserOut => ({
   student_no: null,
   created_at: new Date(),
   approved_at: null,
+  building_ids: [],
 })
 
 function mockWidth(narrow: boolean) {
@@ -113,6 +117,27 @@ describe('AdminShell', () => {
     a.w.unmount()
     const b = await mountApp()
     expect(b.w.find('.banner').exists()).toBe(false)
+  })
+
+  it('최고 관리자 — 내 정보에 등급, 회원 메뉴가 있다 (이슈 160)', async () => {
+    const { w } = await mountApp('/dashboard')
+    expect(w.get('.shell__user span').text()).toBe('최고 관리자')
+    expect(w.findAll('nav a').some((a) => a.text().includes('회원'))).toBe(true)
+  })
+
+  it('건물 관리자 — 등급 표시, 회원 메뉴 없음, 회원 대기 수를 부르지 않는다, /users 는 대시보드로 (이슈 160)', async () => {
+    setSession({ token: 't', role: 'building_admin', school_id: 1, name: '건물관리' })
+    list.mockClear()
+    const { w, router } = await mountApp('/users')
+    expect(router.currentRoute.value.path).toBe('/dashboard')
+    expect(w.get('.shell__user span').text()).toBe('건물 관리자')
+    expect(
+      w
+        .findAll('nav a')
+        .map((a) => a.text())
+        .some((t) => t.includes('회원')),
+    ).toBe(false)
+    expect(list).not.toHaveBeenCalled() // 부르면 403 → client 가 세션을 지운다
   })
 
   it('사이드바 머리는 로그인한 학교 — 로고는 첫 글자, 학교 이름을 모르는 옛 세션은 ESC + 파비콘 E (#70, logo.md)', async () => {

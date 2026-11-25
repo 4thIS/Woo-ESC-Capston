@@ -1,4 +1,5 @@
-"""lora_service HTTP/WS 라우트. 계약 ⑥ 엔드포인트 + 관리자 조회 (S4a §3.3 — 관리자 전용 + 학교 스코프)."""
+"""lora_service HTTP/WS 라우트. 계약 ⑥ 엔드포인트 + 관리자 조회 (S4a §3.3 — 관리자 전용 + 학교 스코프).
+#160 — 조회·취소·대기 노드 배정은 건물 범위(건물 관리자는 맡은 건물만), 모뎀 등록·토큰·시각 방송은 최고 관리자만."""
 
 from __future__ import annotations
 
@@ -8,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app import schemas as S
 from app.auth import ratelimit, scope
-from app.auth.deps import AdminUser
+from app.auth.deps import AdminUser, ManagerUser, MgrScope
 from app.auth.models import User
+from app.auth.scope import Scope
 from app.deps import _DB
 from app.lora_service import api
 from app.lora_service.models import Modem, Outbox, PendingDevice
@@ -22,12 +24,13 @@ async def ws_modem(ws: WebSocket) -> None:
     await ws.app.state.hub.handle(ws)
 
 
-rest = APIRouter(prefix="/api/lora", dependencies=[AdminUser])
+rest = APIRouter(prefix="/api/lora", dependencies=[ManagerUser])
 
 
 @rest.get("/modems", response_model=list[S.ModemOut])
-def list_modems(user: User = AdminUser):
-    return [m for m in api.get_modems() if m.school_id == user.school_id]
+def list_modems(sc: Scope = MgrScope, s: Session = _DB):
+    mids = scope.modem_ids(s, sc)
+    return [m for m in api.get_modems() if m.modem_id in mids]
 
 
 @rest.post("/modems", response_model=S.TokenOut)
@@ -41,7 +44,7 @@ def register_modem(body: S.ModemIn, user: User = AdminUser, s: Session = _DB):
 
 @rest.post("/modems/{modem_id}/token", response_model=S.TokenOut)
 def rotate(modem_id: str, user: User = AdminUser, s: Session = _DB):
-    scope.get_scoped(s, Modem, modem_id, user.school_id)
+    scope.get_scoped(s, Modem, modem_id, scope.of(s, user))
     return {"modem_id": modem_id, "token": api.rotate_token(modem_id)}
 
 
@@ -51,14 +54,14 @@ def outbox(
     bld: str | None = None,
     room: int | None = None,
     limit: int = 100,
-    user: User = AdminUser,
+    sc: Scope = MgrScope,
     s: Session = _DB,
 ):
     """학교 필터를 limit *전에* 건다 — 먼저 자르면 다른 학교의 최신 행에 내 행이 밀려 사라진다 (S4a 리뷰 🟡)."""
-    keys = scope.room_keys(s, user.school_id)
+    keys = scope.room_keys(s, sc)
     if not keys:
         return []
-    mids = scope.modem_ids(s, user.school_id)
+    mids = scope.modem_ids(s, sc)
     q = select(Outbox).where(tuple_(Outbox.bld, Outbox.room).in_(keys))
     # bld 재사용(B 건물 삭제 → A 가 같은 bld 로 재생성) 뒤 남은 옛 학교의 행을 숨긴다 — NULL 은 통과.
     q = q.where(Outbox.modem_id.is_(None) | Outbox.modem_id.in_(mids))
@@ -73,12 +76,12 @@ def outbox(
 
 
 @rest.post("/outbox/{id}/cancel")
-def cancel(id: int, user: User = AdminUser, s: Session = _DB):
+def cancel(id: int, sc: Scope = MgrScope, s: Session = _DB):
     row = s.get(Outbox, id)
     if (
         row is None
-        or (row.bld, row.room) not in scope.room_keys(s, user.school_id)
-        or (row.modem_id is not None and row.modem_id not in scope.modem_ids(s, user.school_id))
+        or (row.bld, row.room) not in scope.room_keys(s, sc)
+        or (row.modem_id is not None and row.modem_id not in scope.modem_ids(s, sc))
     ):  # 목록과 같은 규칙 — bld 재사용 뒤 옛 학교의 행은 보이지도 취소되지도 않는다
         raise HTTPException(404, "취소할 수 없는 작업")
     if not api.cancel(id):
@@ -87,11 +90,9 @@ def cancel(id: int, user: User = AdminUser, s: Session = _DB):
 
 
 @rest.get("/status", response_model=list[S.StatusOut])
-def status(
-    bld: str | None = None, room: int | None = None, user: User = AdminUser, s: Session = _DB
-):
-    keys = scope.room_keys(s, user.school_id)
-    mids = scope.modem_ids(s, user.school_id)
+def status(bld: str | None = None, room: int | None = None, sc: Scope = MgrScope, s: Session = _DB):
+    keys = scope.room_keys(s, sc)
+    mids = scope.modem_ids(s, sc)
     return [
         t
         for t in api.get_status(bld, room)
@@ -100,22 +101,23 @@ def status(
 
 
 @rest.get("/pending", response_model=list[S.PendingOut])
-def pending(user: User = AdminUser, s: Session = _DB):
-    mids = scope.modem_ids(s, user.school_id)
+def pending(sc: Scope = MgrScope, s: Session = _DB):
+    mids = scope.modem_ids(s, sc)
     return [p for p in api.get_pending_devices() if p.modem_id in mids]
 
 
 @rest.post("/pending/{mac}/provision", response_model=S.Enqueued)
-def provision(mac: str, body: S.ProvisionIn, user: User = AdminUser, s: Session = _DB):
+def provision(mac: str, body: S.ProvisionIn, sc: Scope = MgrScope, s: Session = _DB):
+    # 자기 건물 모뎀이 본 노드를, 자기 건물 강의실로만 (#160)
     p = s.get(PendingDevice, mac)
-    if p is None or p.modem_id not in scope.modem_ids(s, user.school_id):
+    if p is None or p.modem_id not in scope.modem_ids(s, sc):
         raise HTTPException(404, "pending 없음")
-    if (body.bld, body.room) not in scope.room_keys(s, user.school_id):
+    if (body.bld, body.room) not in scope.room_keys(s, sc):
         raise HTTPException(404, "rooms 없음")
     return {"outbox_ids": [api.provision(mac, body.bld, body.room, body.unit)]}
 
 
-@rest.post("/time")
+@rest.post("/time", dependencies=[AdminUser])
 def time_now():
     """TIME 방송은 api 가 모든 모뎀에 보낸다(학교 개념 없음). 반복 호출로 전 노드를 깨우지 않게 전역 10분 1회 —
     TIME 은 원래 매시 1회라 수동 방송은 드물다 (S4a §3.3)."""
