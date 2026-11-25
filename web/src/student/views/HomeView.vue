@@ -2,10 +2,8 @@
 import { computed, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { studentApi } from '@/api/student'
-import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
-import { clearSession } from '@/lib/session'
 import { useResource } from '@/lib/useResource'
 import StudentHeader from '../StudentHeader.vue'
 import { lastBld } from '../favorites'
@@ -28,16 +26,12 @@ watch(
   { once: true },
 )
 const retry = () => void reload()
-// 건물 안에서는 사이드바 바닥에 — 건물을 고르기 전 화면에도 나갈 길을 둔다
-function logout() {
-  clearSession()
-  void router.replace('/login')
-}
+// 로그아웃 · 내 예약은 메뉴(StudentNav — 내 정보 · 내 예약)로 옮겼다 (student-room.md 「학생 앱 메뉴」)
 </script>
 
 <template>
   <div class="home">
-    <StudentHeader :title="schoolTitle" show-me />
+    <StudentHeader :title="schoolTitle" />
     <main class="home__body">
       <h2 class="home__h">건물을 고르세요</h2>
       <Skeleton v-if="!data && !error" :rows="5" />
@@ -62,7 +56,6 @@ function logout() {
           </RouterLink>
         </li>
       </ul>
-      <Button variant="ghost" size="sm" class="home__logout" @click="logout">로그아웃</Button>
     </main>
   </div>
 </template>
@@ -75,9 +68,6 @@ function logout() {
   max-width: 640px;
   margin: 0 auto;
   padding: var(--space-4);
-}
-.home__logout {
-  align-self: center;
 }
 .home__h {
   margin: 0;

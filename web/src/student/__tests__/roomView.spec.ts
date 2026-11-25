@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { BusySpan, RoomStateOut } from '@/api/types'
-import { buildingsOf, nextFree, todayRows } from '@/student/roomView'
+import {
+  buildingsOf,
+  byFloor,
+  defaultRoom,
+  nextFree,
+  roomStats,
+  topic,
+  todayRows,
+} from '@/student/roomView'
 
 const room = (over: Partial<RoomStateOut>): RoomStateOut => ({
   room_id: 1,
@@ -86,5 +94,50 @@ describe('roomView', () => {
     })
     expect(nextFree([{ date: '2026-10-23', spans: [] }])).toBeNull()
     expect(nextFree([])).toBeNull()
+  })
+
+  it('숫자 칸 — 빈 곳은 layout 4, 사용중은 RED, 곧 비는 곳은 사용중이고 60분 안에 바뀌는 것', () => {
+    const now = 10 * 60 + 51
+    const out = roomStats(
+      [
+        room({ room: 401, layout: 1, until: '12:00' }),
+        room({ room: 402, layout: 4, until: '13:00' }),
+        room({ room: 403, layout: 4 }),
+        room({ room: 404, layout: 1, until: '11:00' }),
+        room({ room: 405, layout: 7, until: '11:51' }),
+        room({ room: 406, layout: 2, until: '11:00' }),
+        room({ room: 407, layout: 5, until: null }),
+      ],
+      now,
+    )
+    expect(out).toEqual({ free: 2, busy: 4, soon: 2 })
+  })
+
+  it('넓은 폭 오른쪽 칸 — 즐겨찾기 순서의 첫 방 → 빈 첫 방 → 첫 방, 없으면 null', () => {
+    const rooms = [room({ room: 401, layout: 1 }), room({ room: 402 }), room({ room: 403 })]
+    expect(defaultRoom(rooms, ['K-101', 'E-403', 'E-402'])?.room).toBe(403)
+    expect(defaultRoom(rooms, ['K-101'])?.room).toBe(402)
+    expect(defaultRoom([room({ room: 401, layout: 1 })], [])?.room).toBe(401)
+    expect(defaultRoom([], ['E-401'])).toBeNull()
+  })
+
+  it('층 묶음 — 백의 자리, 층 · 호수 순', () => {
+    const out = byFloor([
+      room({ room: 502 }),
+      room({ room: 401 }),
+      room({ room: 1203 }),
+      room({ room: 403 }),
+    ])
+    expect(out.map((g) => [g.floor, g.rooms.map((r) => r.room)])).toEqual([
+      [4, [401, 403]],
+      [5, [502]],
+      [12, [1203]],
+    ])
+  })
+
+  it('인사 줄 조사 — 받침이 있으면 은, 없거나 한글이 아니면 는', () => {
+    expect(topic('공학관')).toBe('공학관은')
+    expect(topic('본부')).toBe('본부는')
+    expect(topic('Bldg A')).toBe('Bldg A는')
   })
 })
