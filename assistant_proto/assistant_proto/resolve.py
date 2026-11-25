@@ -106,6 +106,9 @@ def _range_end(tok: str, start: date) -> date | None:
         got = _mk(start.year, start.month, d)
         if got is not None and got >= start:
             return got
+        # 달을 넘기는 건 월말→월초("28일부터 3일까지")만 — 그 밖에 거꾸로면 잘못 쓴 것
+        if start.day < 20 or d > 10:
+            return None
         return _mk(*_next_month(start), d)
     if m := _MD.match(tok):
         y, mo, d = m.groups()
@@ -119,6 +122,19 @@ def _range_end(tok: str, start: date) -> date | None:
         # 같은 달 안에서 거꾸로 가면("12/19~12/15") 내년이 아니라 잘못 쓴 것 — 해를 넘기는 건 달이 바뀔 때만
         return None if int(mo) == start.month else _mk(start.year + 1, int(mo), int(d))
     return None
+
+
+def _range_start_this_year(tok: str, today: date) -> date | None:
+    """기간의 시작 후보 — 연도 없는 날짜는 지났어도 올해(이번 달) 그대로. 진행 중 기간 판정용."""
+    if m := _MD.match(tok):
+        y, mo, d = m.groups()
+        return _mk(int(y or today.year), int(mo), int(d))
+    if m := _DAY.match(tok):
+        return _mk(today.year, today.month, int(m.group(1)))
+    return _one_date(tok, today)
+
+
+_MAX_RANGE_DAYS = 92
 
 
 def _split_range(t: str) -> tuple[str, str] | None:
@@ -155,9 +171,13 @@ def resolve_when(expr: str, now: datetime) -> When | None:
             if not da or not db or len(da) != 1 or len(db) != 1 or db[0] < da[0]:
                 return None
             return When("range", start=da[0], end=db[0])
-        start = _one_date(a, today)
+        start = _range_start_this_year(a, today)
         end = _range_end(b, start) if start else None
-        if start is None or end is None or end < start:
+        if start is not None and start < today and (end is None or end < today):
+            # 시작도 끝도 지났다 — 다음 해(달)로 민다. 시작만 지났고 끝이 오늘 이후면 진행 중 기간이라 그대로.
+            start = _one_date(a, today)
+            end = _range_end(b, start) if start else None
+        if start is None or end is None or not 0 <= (end - start).days <= _MAX_RANGE_DAYS:
             return None
         return When("range", start=start, end=end)
     dates: list[date] = []
@@ -195,6 +215,8 @@ def _clock(tok: str, *, bare_ok: bool) -> time | None:
     if not bare_ok and ":" not in tok and "시" not in tok:
         return None
     h, mi = int(hh), int(mm1 or mm2 or 0)
+    if ap and (h > 12 or h == 0 or (ap == "밤" and h == 12)):  # 24시간제와 모순·모호
+        return None
     if tok.endswith("반"):
         mi = 30
     if h > 23 or mi > 59:
@@ -239,7 +261,7 @@ def resolve_time(expr: str) -> TimeSpan | None:
 def normalize_room(expr: str) -> str:
     """공백·'호' 정리. 범위·층·건물 표현은 그대로 둔다 — 방으로 푸는 일은 서버(DB)가 한다."""
     t = re.sub(r"\s+", " ", expr.strip())
-    t = re.sub(r"(\d)\s*호", r"\1", t)
+    t = re.sub(r"(\d)\s*호(?:실)?(?!관)", r"\1", t)
     t = re.sub(r"\s*([~\-])\s*", r"\1", t)
     t = re.sub(r"(\d)\s+층", r"\1층", t)
     return t.strip()
