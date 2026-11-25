@@ -68,6 +68,7 @@ describe('StudentNav — 메뉴 넷 (student-room.md 「학생 앱 메뉴」)', 
     expect(links(w, '.nav__top')).toEqual(expected)
     expect(w.get('.nav__tabs .nav__badge').text()).toBe('2')
     expect(w.get('.nav__top').text()).toContain('명지전문대학')
+    expect(w.get('.nav__brand img').attributes('alt')).toBe('ESC')
   })
 
   it('건물 밖 — 마지막 건물로, 없으면 / · /me. 건수 0 이면 배지 없음', async () => {

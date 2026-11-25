@@ -9,6 +9,8 @@ const mountGuide = async () => (await mountAt(GuideView, '/guide', '/guide')).w
 type W = Awaited<ReturnType<typeof mountGuide>>
 const stepButtons = (w: W) => w.findAll('.gd__steps button')
 const btn = (w: W, text: string) => w.findAll('button').find((b) => b.text() === text)!
+// 지금 장 — 다섯 장이 같은 칸에 겹쳐 있고 지금 장만 보인다
+const title = (w: W) => w.get('.gd__slide--on .gd__title').text()
 
 describe('이용 안내 — /guide (student-room.md 「학생 앱 메뉴 · 이용 안내」)', () => {
   it('다섯 장 — 사진 · 제목 · 설명 · 팁 둘, 단계 목록, 첫 장은 이전 잠금', async () => {
@@ -21,22 +23,34 @@ describe('이용 안내 — /guide (student-room.md 「학생 앱 메뉴 · 이�
       '4승인 · 체크인',
       '5문 앞 화면',
     ])
-    expect(w.get('.gd__title').text()).toBe('지금 비어 있는 곳부터')
+    expect(title(w)).toBe('지금 비어 있는 곳부터')
     expect(w.get('.gd__count').text()).toBe('1 / 5 · 강의실 탭')
-    expect(w.findAll('.gd__tips li')).toHaveLength(2)
-    expect(w.get('.gd__img').attributes('alt')).toContain('강의실 목록')
+    expect(w.findAll('.gd__slide--on .gd__tips li')).toHaveLength(2)
+    expect(w.get('.gd__shot--on img').attributes('alt')).toContain('강의실 목록')
     expect(stepButtons(w)[0].attributes('aria-current')).toBe('step')
     expect(btn(w, '이전').attributes('disabled')).toBeDefined()
-    expect(w.get('.gd__text').attributes('aria-live')).toBe('polite')
+    expect(w.get('.gd__live').attributes('aria-live')).toBe('polite')
+    expect(w.get('.gd__live').text()).toBe('1단계, 지금 비어 있는 곳부터')
+  })
+
+  it('넘겨도 칸이 출렁이지 않는다 — 다섯 장의 사진 · 글이 늘 같은 칸에 있고 지금 장만 보인다', async () => {
+    const w = await mountGuide()
+    expect(w.findAll('.gd__stage .gd__shot')).toHaveLength(5)
+    expect(w.findAll('.gd__slides .gd__slide')).toHaveLength(5)
+    await btn(w, '다음').trigger('click')
+    expect(w.findAll('.gd__shot')).toHaveLength(5)
+    expect(w.findAll('.gd__shot--on')).toHaveLength(1)
+    expect(w.findAll('.gd__slide--on')).toHaveLength(1)
   })
 
   it('다음 · 단계 목록 · 점으로 넘기고, 마지막 장의 처음으로는 1장으로', async () => {
     const w = await mountGuide()
     await btn(w, '다음').trigger('click')
-    expect(w.get('.gd__title').text()).toBe('들어가 보면, 오늘 하루가 한눈에')
+    expect(title(w)).toBe('들어가 보면, 오늘 하루가 한눈에')
+    expect(w.get('.gd__live').text()).toBe('2단계, 들어가 보면, 오늘 하루가 한눈에')
     expect(stepButtons(w)[1].attributes('aria-current')).toBe('step')
     await stepButtons(w)[4].trigger('click')
-    expect(w.find('.gd__frame--door').exists()).toBe(true)
+    expect(w.find('.gd__shot--on .gd__frame--door').exists()).toBe(true)
     expect(btn(w, '처음으로')).toBeTruthy()
     await btn(w, '처음으로').trigger('click')
     expect(w.get('.gd__count').text()).toBe('1 / 5 · 강의실 탭')

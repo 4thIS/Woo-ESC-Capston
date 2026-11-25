@@ -119,7 +119,7 @@ describe('BuildingLayout — /:bld 강의실 목록', () => {
       name: '김민준',
     })
     const { w } = await mountAt(BuildingLayout, '/E', '/:bld')
-    expect(w.get('.top').text()).toContain('ESC')
+    expect(w.get('.top img').attributes('alt')).toBe('ESC') // 로고 (logo.md)
     expect(w.get('.top').text()).toContain('명지전문대학')
     expect(w.find('.top select').exists()).toBe(true)
     expect(w.get('.hello').text()).toContain('10월 23일 금요일')

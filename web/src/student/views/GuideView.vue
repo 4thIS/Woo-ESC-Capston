@@ -45,15 +45,26 @@ function up(e: PointerEvent) {
 
       <!-- 사진을 옆으로 밀면 넘긴다 — 세로 스크롤은 그대로(touch-action: pan-y) -->
       <figure class="gd__figure" @pointerdown="down" @pointerup="up" @pointercancel="start = null">
-        <div class="gd__frame" :class="`gd__frame--${step.frame}`">
-          <img
-            class="gd__img"
-            :src="step.img"
-            :alt="step.alt"
-            :width="step.frame === 'door' ? 800 : 390"
-            :height="step.frame === 'door' ? 480 : 844"
-            draggable="false"
-          />
+        <!-- 다섯 장을 한 칸에 겹쳐 두고 지금 장만 보인다 — 칸 높이가 가장 큰 사진에 맞춰 고정돼 넘겨도 출렁이지 않는다
+             (사진도 미리 받아 두어 넘길 때 깜빡이지 않는다) -->
+        <div class="gd__stage">
+          <div
+            v-for="(s, i) in GUIDE_STEPS"
+            :key="s.short"
+            class="gd__shot"
+            :class="{ 'gd__shot--on': i === cur }"
+          >
+            <div class="gd__frame" :class="`gd__frame--${s.frame}`">
+              <img
+                class="gd__img"
+                :src="s.img"
+                :alt="s.alt"
+                :width="s.frame === 'door' ? 800 : 390"
+                :height="s.frame === 'door' ? 480 : 844"
+                draggable="false"
+              />
+            </div>
+          </div>
         </div>
         <div class="gd__dots">
           <button
@@ -70,15 +81,28 @@ function up(e: PointerEvent) {
         <figcaption class="gd__swipe">옆으로 밀면 다음 장</figcaption>
       </figure>
 
-      <section class="gd__text" aria-live="polite">
+      <section class="gd__text">
         <p class="gd__count num">{{ cur + 1 }} / {{ GUIDE_STEPS.length }} · {{ step.chapter }}</p>
-        <h2 class="gd__title">{{ step.title }}</h2>
-        <p class="gd__desc">{{ step.desc }}</p>
-        <ul class="gd__tips">
-          <li v-for="t in step.tips" :key="t">
-            <svg aria-hidden="true" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" /></svg>{{ t }}
-          </li>
-        </ul>
+        <!-- 글도 다섯 장을 겹친다 — 가장 긴 글의 높이로 고정돼 이전 · 다음 버튼이 움직이지 않는다 -->
+        <div class="gd__slides">
+          <div
+            v-for="(s, i) in GUIDE_STEPS"
+            :key="s.short"
+            class="gd__slide"
+            :class="{ 'gd__slide--on': i === cur }"
+          >
+            <h2 class="gd__title">{{ s.title }}</h2>
+            <p class="gd__desc">{{ s.desc }}</p>
+            <ul class="gd__tips">
+              <li v-for="t in s.tips" :key="t">
+                <svg aria-hidden="true" viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-7" /></svg
+                >{{ t }}
+              </li>
+            </ul>
+          </div>
+        </div>
+        <!-- 숨은 장은 읽히지 않는다(visibility) — 넘길 때 바뀐 장을 이 한 줄로 알린다 -->
+        <p class="gd__live" aria-live="polite">{{ cur + 1 }}단계, {{ step.title }}</p>
         <div class="gd__nav">
           <Button variant="secondary" :disabled="cur === 0" @click="go(cur - 1)">이전</Button>
           <Button class="gd__next" @click="next">{{ cur === last ? '처음으로' : '다음' }}</Button>
@@ -197,6 +221,39 @@ function up(e: PointerEvent) {
   display: block;
   width: 100%;
   height: auto;
+}
+/* 겹친 칸 — 모든 장이 같은 격자 칸(1/1)에 있고 지금 장만 visible */
+.gd__stage,
+.gd__slides {
+  display: grid;
+  width: 100%;
+}
+.gd__shot,
+.gd__slide {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+.gd__shot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gd__slide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.gd__shot--on,
+.gd__slide--on {
+  visibility: visible;
+}
+.gd__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .gd__dots {
   display: flex;

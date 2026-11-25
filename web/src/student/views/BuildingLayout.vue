@@ -17,6 +17,7 @@ import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Select from '@/components/ui/Select.vue'
+import logo from '@/assets/logo/esc-logo.svg'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { session } from '@/lib/session'
 import { formatHm, kstDateStr, kstMinutes } from '@/lib/time'
@@ -126,7 +127,9 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
     <section class="split__list" aria-label="강의실 목록">
       <header v-if="!wide" class="top">
         <span class="top__brand"
-          ><b>ESC</b><template v-if="school !== 'ESC'">{{ school }}</template></span
+          ><img :src="logo" alt="ESC" width="55" height="20" /><template v-if="school !== 'ESC'">{{
+            school
+          }}</template></span
         >
         <Select
           v-if="options.length > 1"
@@ -286,7 +289,7 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
   box-sizing: border-box;
   background: var(--surface);
 }
-/* 폰 머리말 — ESC · 학교 · 건물 선택 */
+/* 폰 머리말 — ESC 로고 · 학교 · 건물 선택 */
 .top {
   display: flex;
   align-items: center;
@@ -299,17 +302,18 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: baseline;
+  /* 학교명은 로고 바닥선에 붙인다 */
+  align-items: flex-end;
+  line-height: 1;
+  font-size: var(--font-size-xs);
   gap: var(--space-2);
   overflow: hidden;
   color: var(--text-2);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.top__brand b {
-  font-size: var(--font-size-lg);
-  letter-spacing: 0.04em;
-  color: var(--brand);
+.top__brand img {
+  flex: none;
 }
 .top__bld {
   flex: none;

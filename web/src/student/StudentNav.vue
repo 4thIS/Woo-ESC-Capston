@@ -2,6 +2,7 @@
 import { computed, inject } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { activeCount } from '@/components/student/rules'
+import logo from '@/assets/logo/esc-logo.svg'
 import { schoolTitle } from '@/lib/session'
 import { MINE } from './building'
 import { useNow } from './composables'
@@ -41,7 +42,11 @@ const items = computed(() => [
 <template>
   <!-- 넓은 폭 위 막대 — 오른쪽 끝 자리(#esc-nav-bld)에 건물 안 화면이 건물 선택을 보낸다 -->
   <header class="nav__top">
-    <span class="nav__brand"><b>ESC</b>{{ schoolTitle === 'ESC' ? '' : schoolTitle }}</span>
+    <span class="nav__brand"
+      ><img :src="logo" alt="ESC" width="55" height="20" />{{
+        schoolTitle === 'ESC' ? '' : schoolTitle
+      }}</span
+    >
     <nav aria-label="학생 메뉴" class="nav__toplinks">
       <RouterLink
         v-for="i in items"
@@ -106,15 +111,16 @@ const items = computed(() => [
 }
 .nav__brand {
   display: flex;
-  align-items: baseline;
+  /* 학교명은 로고 바닥선에 붙인다 */
+  align-items: flex-end;
+  line-height: 1;
+  font-size: var(--font-size-xs);
   gap: var(--space-2);
   color: var(--text-2);
   white-space: nowrap;
 }
-.nav__brand b {
-  font-size: var(--font-size-lg);
-  letter-spacing: 0.04em;
-  color: var(--brand);
+.nav__brand img {
+  flex: none;
 }
 .nav__toplinks {
   display: flex;
