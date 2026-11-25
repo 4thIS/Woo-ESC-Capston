@@ -20,6 +20,7 @@ vi.mock('@/api/rooms', () => ({
     buildingOutbox: vi.fn(),
     putSlot: vi.fn(),
     deleteSlot: vi.fn(),
+    replaceSlots: vi.fn(),
     saveResv: vi.fn(),
   },
 }))
@@ -229,6 +230,29 @@ describe('주간 시간표', () => {
     await btn(dialog('슬롯 수정')!, '삭제').trigger('click')
     const c = dialog('슬롯 삭제')!
     expect(c.text()).toContain('401호 월 10:00 캡스톤디자인')
+  })
+
+  it('연속 교시는 한 블록 — 누르면 수정 범위 토글, 묶음 삭제는 교시 전부를 한 번에', async () => {
+    const p = (h: number) => S({ id: h, day: 2, s_h: h, e_h: h, e_m: 50, subject: 'AI' })
+    api.slots.mockResolvedValue([p(9), p(10), p(11)])
+    api.replaceSlots.mockResolvedValue({ outbox_ids: [], id: null })
+    await mountAt('/rooms/11/week')
+    const blocks = w.findAll('.wk__block').filter((b) => b.text().includes('AI'))
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].get('.wk__label').text()).toBe('수업중 · 3교시')
+    expect(blocks[0].attributes('aria-label')).toBe('화 09:00–11:50 수업중 · 3교시 AI')
+    await blocks[0].trigger('click')
+    const d = dialog('시간표 수정')!
+    expect(d.get('[role=radiogroup][aria-label="수정 범위"]').text()).toContain('한 교시만')
+    await btn(d, '묶음 삭제').trigger('click')
+    const c = dialog('슬롯 삭제')!
+    expect(c.text()).toContain('401호 화 AI — 3교시 09:00–11:50')
+    await btn(c, '삭제').trigger('click')
+    await flushPromises()
+    expect(api.replaceSlots).toHaveBeenCalledWith(11, {
+      remove: [9, 10, 11].map((h) => ({ day: 2, s_h: h, s_m: 0 })),
+      put: [],
+    })
   })
 
   it('첫 불러오기 실패 — 빈 시간표로 보이지 않고 오류 안내 + 다시 불러오기', async () => {

@@ -28,9 +28,9 @@ const PERIODS = [slot(9), slot(10), slot(11)]
 const group = groupSlots(PERIODS)[0]
 
 let w: VueWrapper
-async function mountForm(existing: SlotWithRoom[] = PERIODS) {
+async function mountForm(existing: SlotWithRoom[] = PERIODS, scopes = false) {
   w = mount(SlotGroupForm, {
-    props: { open: true, group, roomLabel: 'E 803호', existing },
+    props: { open: true, group, roomLabel: 'E 803호', existing, scopes },
     global: { stubs: { teleport: true } },
     attachTo: document.body,
   })
@@ -135,5 +135,80 @@ describe('SlotGroupForm — 교시 묶음 수정 (admin-rooms.md)', () => {
     expect(w.emitted('close')).toBeUndefined()
     await button('묶음 삭제')!.trigger('click')
     expect(w.emitted('remove')).toHaveLength(1)
+  })
+
+  it('목록(scopes 없음)에는 수정 범위 토글이 없다 — 지금 묶음 폼 그대로', async () => {
+    await mountForm()
+    expect(w.find('[role=radiogroup]').exists()).toBe(false)
+  })
+})
+
+describe('SlotGroupForm scopes — 주간 시간표 블록 수정 (admin-schedule.md)', () => {
+  const radio = (group: string, text: string) =>
+    w
+      .get(`[role=radiogroup][aria-label="${group}"]`)
+      .findAll('label')
+      .find((l) => l.text() === text)!
+      .get('input')
+  async function pickOne(n: number) {
+    await radio('수정 범위', '한 교시만').setValue(true)
+    await radio('고칠 교시', `${n}교시`).setValue(true)
+  }
+
+  it('묶음 전체가 기본 — 시간 상자와 묶음 저장, 제목은 시간표 수정', async () => {
+    await mountForm(PERIODS, true)
+    expect(w.get('h2').text()).toBe('시간표 수정')
+    expect(w.text()).toContain('인공지능기초 102 · 3교시')
+    expect((radio('수정 범위', '묶음 전체').element as HTMLInputElement).checked).toBe(true)
+    expect(w.findAll('.pf__chip')).toHaveLength(3)
+    expect(button('3교시 저장')).toBeTruthy()
+  })
+
+  it('한 교시만 — 고른 교시로 채우고 그 교시만 한 번에 바꾼다(옛 키 지우고 새로 넣기)', async () => {
+    await mountForm(PERIODS, true)
+    await pickOne(2)
+    expect(w.find('.pf').exists()).toBe(false)
+    expect((control('시작').element as HTMLInputElement).value).toBe('10:00')
+    expect((control('종료').element as HTMLInputElement).value).toBe('10:50')
+    await control('유형').setValue('3')
+    await control('시작').setValue('10:10')
+    await button('저장')!.trigger('click')
+    await flushPromises()
+    expect(api.replaceSlots).toHaveBeenCalledWith(1, {
+      remove: [{ day: 2, s_h: 10, s_m: 0 }],
+      put: [
+        {
+          day: 2,
+          s_h: 10,
+          s_m: 10,
+          e_h: 10,
+          e_m: 50,
+          type: 3,
+          subject: '인공지능기초 102',
+          professor: '정필성',
+          source: 2,
+        },
+      ],
+    })
+    expect(w.emitted('saved')![0][0]).toMatchObject({ roomId: 1, key: 's1-2-10-10' })
+    expect(w.emitted('close')).toHaveLength(1)
+  })
+
+  it('한 교시만 — 옆 교시와 겹치면 저장하지 않는다, 삭제는 그 교시만 부모에게', async () => {
+    await mountForm(PERIODS, true)
+    await pickOne(2)
+    await control('종료').setValue('11:30')
+    await button('저장')!.trigger('click')
+    await flushPromises()
+    expect(api.replaceSlots).not.toHaveBeenCalled()
+    expect(w.text()).toContain('겹칩니다: 11:00–11:50')
+    await button('삭제')!.trigger('click')
+    expect(w.emitted('remove')![0][0]).toEqual([PERIODS[1]])
+  })
+
+  it('묶음 삭제는 묶음의 교시 전부를 부모에게', async () => {
+    await mountForm(PERIODS, true)
+    await button('묶음 삭제')!.trigger('click')
+    expect(w.emitted('remove')![0][0]).toEqual(PERIODS)
   })
 })

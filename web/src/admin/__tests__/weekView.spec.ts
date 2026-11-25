@@ -47,6 +47,19 @@ const V = (o: Partial<ResvWithRoom>): ResvWithRoom => ({
 const monday = '2026-09-21'
 
 describe('weekBlocks', () => {
+  it('같은 수업이 쉬는시간(15분 이하)으로 이어지면 한 블록 — 학생 주간표 · 목록과 같은 규칙', () => {
+    const p = (h: number, o: Partial<SlotWithRoom> = {}) =>
+      S({ id: h, s_h: h, e_h: h, e_m: 50, ...o })
+    const b = weekBlocks([p(9), p(10), p(11), p(13, { subject: '다른 수업' }), p(14)], [], monday)
+    expect(b.map((x) => [x.s, x.e, x.group?.slots.length])).toEqual([
+      [540, 710, 3],
+      [780, 830, 1],
+      [840, 890, 1],
+    ])
+    expect(b[0].key).toBe(b[0].group!.key)
+    expect(b[0].slot).toBe(b[0].group!.slots[0])
+  })
+
   it('빈강의실(4)·거절·다른 주는 그리지 않는다 — 예약은 날짜의 요일, 점유는 사용중 슬롯·승인만', () => {
     const b = weekBlocks(
       [S({}), S({ id: 2, type: 4, day: 2 }), S({ id: 3, type: 3, day: 3 })],
@@ -85,7 +98,11 @@ describe('layoutDay', () => {
     expect(side({ s_h: 10, e_h: 12 }, { s_h: 10, s_m: 30, e_h: 11, e_m: 30 })).toBe('right')
   })
   it('맞닿으면 한 줄, 휴강·신청과의 겹침은 나란히만 (막대 없음)', () => {
-    const touch = weekBlocks([S({ e_h: 11 }), S({ id: 2, s_h: 11, e_h: 12 })], [], monday)
+    const touch = weekBlocks(
+      [S({ e_h: 11 }), S({ id: 2, s_h: 11, e_h: 12, subject: '다른 수업' })],
+      [],
+      monday,
+    )
     expect(layoutDay(touch).placed.map((p) => p.lanes)).toEqual([1, 1])
     const soft = layoutDay(
       weekBlocks(
