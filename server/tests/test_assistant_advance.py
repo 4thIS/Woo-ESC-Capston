@@ -1,5 +1,6 @@
 import datetime as dt
 
+from app.assistant import changes
 from app.assistant import dialog as D
 from tests.assistant_util import ALL, NOW, campus, resv
 
@@ -330,3 +331,28 @@ def test_states_serialize(app, school):
     d = ok_json(adv(app, st("event.add", set_={**SPECIAL, "subject": "x"})))
     ok_json(adv(app, D.choose(d.state, f"room:{ids['E803']}", "공학관 803")))
     _ = UTC_NOW
+
+
+def test_exam_candidates_skip_finished_periods(app, school):
+    ids = campus(app)
+    with app.state.Session() as s, s.begin():
+        s.add_all(
+            [
+                ExamPeriod(
+                    room_id=ids["E803"],
+                    date_start=dt.date(2026, 11, 1),
+                    date_end=dt.date(2026, 11, 5),
+                ),
+                ExamPeriod(
+                    id=9,
+                    room_id=ids["E803"],
+                    date_start=dt.date(2026, 11, 30),
+                    date_end=dt.date(2026, 12, 4),
+                ),
+            ]
+        )
+    d = ok_json(adv(app, st("exam.remove", target={"rooms": ["공학관 803"]})))
+    assert isinstance(d, D.Ready)
+    with app.state.Session() as s:
+        c = changes.find_candidates(s, ALL, d.draft, NOW)
+    assert [x["key"] for x in c[ids["E803"]]] == ["e9"]

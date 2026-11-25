@@ -193,7 +193,13 @@ def _class_cands(s: Session, rid: int, tg: dict, now_local: dt.datetime) -> list
 
 
 def _exam_cands(s: Session, rid: int, tg: dict, now_local: dt.datetime) -> list[dict]:
-    q = select(ExamPeriod).where(ExamPeriod.room_id == rid).order_by(ExamPeriod.date_start)
+    q = (
+        select(ExamPeriod)
+        .where(
+            ExamPeriod.room_id == rid, ExamPeriod.date_end >= now_local.date()
+        )  # 끝난 기간은 대상이 아니다
+        .order_by(ExamPeriod.date_start)
+    )
     if "range" in tg:
         a, z = d_(tg["range"][0]), d_(tg["range"][1])
         q = q.where(ExamPeriod.date_start <= z, ExamPeriod.date_end >= a)
@@ -287,6 +293,12 @@ def not_found_message(intent: str) -> str:
 WEEKS_MAX = 6  # 한 방에 그리는 주 수 (시험기간이 길어도) — 세는 건 영향받는 주 전부
 SRC_AI = 2  # AI 비서가 쓰는 슬롯 source — 이보다 큰 source(3=긴급)는 지우거나 옮기지 않는다 (포털=1 은 수동 수정이 덮을 수 있는 기존 규칙 그대로)
 PROTECTED = "긴급 수업은 AI 비서로 지우거나 옮길 수 없습니다"
+OPS_MAX = 150  # 한 미리보기에서 바꿀 수 있는 항목 수
+MOVE_ROOM = (
+    "강의실을 옮기는 변경은 지원하지 않습니다 — 새 강의실에 등록하고 기존 일정을 지워 주세요"
+)
+NOOP = "바뀌는 내용이 없습니다"
+TOO_MANY = f"한 번에 바꾸는 항목이 너무 많습니다 ({OPS_MAX}개 이하로 나눠 주세요)"
 
 
 @dataclass
@@ -495,6 +507,9 @@ def _slot_clash(s, b: Built, rid: int, day: int, sp, skip_id: int | None) -> Non
             continue
         where = f"{WD[day - 1]} {span(x.s_h, x.s_m, x.e_h, x.e_m)}"
         if (x.s_h, x.s_m) == (sh, sm):
+            if x.source > SRC_AI:  # put_slot 이 거부할 덮어쓰기 — 날것 409 대신 안내
+                b.blockers.append(f"{label} {where} {x.subject}: {PROTECTED}")
+                continue
             b.warnings.append(f'{label} 기존 수업 "{x.subject}"({where})을 바꿉니다.')
             b.summary.append(f"− 매주 {where} {x.subject} ({label})")
         if _hit(x, sh * 60 + sm, eh * 60 + em):
@@ -508,6 +523,10 @@ def _class_add(s, b: Built, st: dict, now_local) -> None:
         b.blockers.append("시작이 끝보다 늦습니다.")
     for rid in st["rooms"]:
         for wd in st["weekdays"]:
+            n = len(b.blockers)
+            _slot_clash(s, b, rid, wd, (sh, sm, eh, em), None)
+            if len(b.blockers) > n:  # 긴급 수업을 덮어쓰려 함 — put 은 하지 않는다
+                continue
             b.ops.append(
                 {
                     "op": "slot.put",
@@ -529,7 +548,6 @@ def _class_add(s, b: Built, st: dict, now_local) -> None:
             b.summary.append(
                 f'+ 매주 {WD[wd - 1]} {span(sh, sm, eh, em)} {TYPE[type_]} "{st["subject"]}" ({b.labels[rid]})'
             )
-            _slot_clash(s, b, rid, wd, (sh, sm, eh, em), None)
 
 
 def _class_change(s, b: Built, ch: dict, st: dict, now_local) -> None:
@@ -560,7 +578,7 @@ def _class_change(s, b: Built, ch: dict, st: dict, now_local) -> None:
             "source": 2,
         }
         moving = (day, sh, sm) != (x.day, x.s_h, x.s_m)
-        if moving and x.source > SRC_AI:
+        if x.source > SRC_AI:
             b.blockers.append(f"{b.labels[rid]} {c['label']}: {PROTECTED}")
             continue
         if moving:
@@ -632,7 +650,9 @@ def plan(s: Session, sc: Scope, draft: dict, now_local: dt.datetime) -> Built:
     for rid, lst in cands.items():
         if rid and not lst:
             b.notices.append(f"{b.labels[rid]}: 해당 항목이 없어 건너뜁니다.")
-    if it == "event.add":
+    if it.endswith(".change") and "rooms" in st:
+        b.blockers.append(MOVE_ROOM)
+    elif it == "event.add":
         _event_add(s, b, st, now_local)
     elif it == "exam.add":
         _exam_add(s, b, st, now_local)
@@ -642,6 +662,10 @@ def plan(s: Session, sc: Scope, draft: dict, now_local: dt.datetime) -> Built:
         _request(b, ch, st, it == "request.approve")
     else:
         _BUILD[it](s, b, ch, st, now_local)
+    if not b.blockers and not b.ops:
+        b.blockers.append(NOOP)
+    if len(b.ops) > OPS_MAX:
+        b.blockers.append(TOO_MANY)
     rooms_now = set(b.room_ids)
     for n in admin.expected_nodes(s, sc):
         if n["room_id"] in rooms_now and "unseen" in n["warnings"]:

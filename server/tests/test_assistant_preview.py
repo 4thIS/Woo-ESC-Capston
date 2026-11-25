@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.assistant import preview as P
-from app.assistant.models import AssistantPreview
+from app.assistant.models import AssistantChange, AssistantPreview
 from app.auth.scope import Scope
 from app.domain.models import Building, ExamPeriod, Reservation, Slot
 from app.lora_service import api
@@ -113,8 +113,10 @@ def test_op_error_becomes_blocker(client, app, monkeypatch):
         set_={"subject": "새과목"},
     )
     pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
-    assert any("source 3" in b for b in pv["blockers"])
-    assert pv["rooms"][0]["weeks"][0]["changes"] == []  # 실패하면 바뀐 뒤 = 바뀌기 전
+    assert any("긴급 수업은 AI 비서로 지우거나 옮길 수 없습니다" in b for b in pv["blockers"])
+    assert not any(
+        "source 3" in b for b in pv["blockers"]
+    )  # ops 의 날것 409 문구가 아니라 안내 문구
 
 
 def test_class_change_moves_slot(client, app, monkeypatch):
@@ -374,3 +376,108 @@ def test_preview_expires_at_event_start(client, app, monkeypatch):
         app.state.Session, ALL, pv["preview_id"], NOW + dt.timedelta(minutes=6)
     )
     assert code == 410
+
+
+def _sem(app, ids):
+    return resv(app, ids["E803"], dt.date(2026, 11, 27), (17, 0), (18, 0), id_=7, subject="세미나")
+
+
+def test_event_change_rooms_is_blocked(client, app, monkeypatch):
+    """'803 금요일 세미나 801로 옮겨' — 강의실 이동은 지원하지 않는다(조용한 무변경 금지)."""
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    _sem(app, ids)
+    d = _draft(
+        "event.change",
+        target={"rooms": [ids["E803"]], "dates": ["2026-11-27"], "subject": "세미나"},
+        set_={"rooms": [ids["E801"]]},
+    )
+    pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
+    assert any("강의실을 옮기는 변경은 지원하지 않습니다" in b for b in pv["blockers"])
+    code, body = P.apply_preview(app.state.Session, ALL, pv["preview_id"], NOW)
+    assert code == 422 and body["detail"] == "blocked"
+
+
+@pytest.mark.parametrize("intent", ["class.change", "exam.change"])
+def test_change_rooms_is_blocked_for_class_and_exam(client, app, monkeypatch, intent):
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    with app.state.Session() as s, s.begin():
+        s.add(
+            ExamPeriod(
+                room_id=ids["E803"], date_start=dt.date(2026, 12, 1), date_end=dt.date(2026, 12, 5)
+            )
+        )
+    tg = {"rooms": [ids["E803"]]} | ({"weekdays": [1]} if intent == "class.change" else {})
+    st = {"rooms": [ids["E801"]]} | (
+        {"range": ["2026-12-1", "2026-12-5"]} if intent == "exam.change" else {}
+    )
+    pv = P.make_preview(app.state.Session, ALL, "c_t", _draft(intent, tg, st), NOW)
+    assert any("강의실을 옮기는 변경은 지원하지 않습니다" in b for b in pv["blockers"])
+
+
+def test_noop_change_is_blocked_and_leaves_no_record(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    _sem(app, ids)
+    d = _draft(  # 이름·시각이 이미 그대로 — 바뀌는 게 없다
+        "event.change",
+        target={"rooms": [ids["E803"]], "dates": ["2026-11-27"], "subject": "세미나"},
+        set_={"subject": "세미나"},
+    )
+    pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
+    assert "바뀌는 내용이 없습니다" in pv["blockers"]
+    code, body = P.apply_preview(app.state.Session, ALL, pv["preview_id"], NOW)
+    assert code == 422 and body["detail"] == "blocked"
+    with app.state.Session() as s:
+        assert s.scalar(select(func.count()).select_from(AssistantChange)) == 0
+
+
+def test_empty_ops_is_noop_blocker(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    d = _draft("event.remove", target={"rooms": [ids["E803"]], "dates": ["2026-11-27"]})
+    pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
+    assert "바뀌는 내용이 없습니다" in pv["blockers"]
+
+
+def test_emergency_slot_in_place_edit_and_overwrite_use_protected_wording(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    with app.state.Session() as s, s.begin():
+        s.scalar(select(Slot).where(Slot.room_id == ids["E803"], Slot.day == 1)).source = 3
+    d = _class(
+        "class.change", ids, {"weekdays": [1], "subject": "알고리즘"}, {"time": ["09:00", "10:00"]}
+    )
+    pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
+    assert any("긴급 수업은 AI 비서로 지우거나 옮길 수 없습니다" in b for b in pv["blockers"])
+    assert not any("source" in b for b in pv["blockers"])
+    d = _draft(
+        "class.add",
+        set_={"rooms": [ids["E803"]], "weekdays": [1], "time": ["09:00", "10:00"], "subject": "새"},
+    )
+    pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
+    assert any("긴급 수업은 AI 비서로 지우거나 옮길 수 없습니다" in b for b in pv["blockers"])
+    assert not any("source" in b for b in pv["blockers"])
+
+
+def test_too_many_ops_is_blocked(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    base = dt.date(2027, 1, 1)
+    dates = [(base + dt.timedelta(days=i)).isoformat() for i in range(151)]
+    d = _draft(
+        "event.add",
+        set_={
+            "rooms": [ids["E803"]],
+            "dates": dates,
+            "time": ["15:00", "16:00"],
+            "type": 5,
+            "subject": "많",
+        },
+    )
+    pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
+    assert "한 번에 바꾸는 항목이 너무 많습니다 (150개 이하로 나눠 주세요)" in pv["blockers"]
+    d["set"]["dates"] = dates[:150]
+    pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
+    assert not any("너무 많습니다" in b for b in pv["blockers"])

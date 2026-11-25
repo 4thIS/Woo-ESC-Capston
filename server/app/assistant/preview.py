@@ -296,8 +296,14 @@ def make_preview(
             keys = [(rid, wk) for rid in built.room_ids for wk in built.weeks[rid]]
             before = {k: week_data(s, *k) for k in keys}
             try:
+                if (
+                    len(built.ops) > changes.OPS_MAX
+                ):  # 너무 많으면 돌려 보지 않는다(막음이 이미 있다)
+                    raise ValueError(changes.TOO_MANY)
                 run_ops(s, sc, built.ops, sc.email, now_local)
                 after = {k: week_data(s, *k) for k in keys}
+            except ValueError:
+                after = before
             except _OP_ERRORS as e:
                 blockers.append(_message(e))
                 after = before
@@ -310,6 +316,10 @@ def make_preview(
             s.rollback()  # 미리보기는 아무것도 남기지 않는다 — 도메인 행·outbox·버전 모두
     rooms_out = []
     notices = list(built.notices)
+    if not blockers and not any(
+        marks(before[k], after[k]) for k in keys
+    ):  # 실행해 보니 아무것도 안 바뀐다 — 변경 기록을 남길 이유가 없다
+        blockers.append(changes.NOOP)
     for rid in built.room_ids:
         seen = set()
         for wk in built.weeks[rid]:  # 센 값은 영향받는 주 전부
