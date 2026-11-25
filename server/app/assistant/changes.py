@@ -6,6 +6,7 @@ R 의 키는 plan 01 Task 10 Interfaces 표 그대로."""
 from __future__ import annotations
 
 import datetime as dt
+from dataclasses import dataclass, field
 
 from assistant_proto import TYPE_LABELS
 from sqlalchemy import select
@@ -14,8 +15,9 @@ from sqlalchemy.orm import Session
 from app.auth import scope
 from app.auth.models import User
 from app.auth.scope import Scope
-from app.domain import clock, reserve
+from app.domain import admin, clock, reserve
 from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
+from app.domain.topology import RESV_HORIZON_DAYS
 
 WD = "월화수목금토일"
 TYPE = dict(enumerate(TYPE_LABELS, start=1))
@@ -280,3 +282,338 @@ def not_found_message(intent: str) -> str:
         "exam": "시험기간을 찾지 못했습니다.",
         "request": "대기 중인 신청을 찾지 못했습니다.",
     }[intent.split(".")[0]]
+
+
+WEEKS_MAX = 3  # 한 방에 그리는 주 수 (시험기간이 길어도)
+
+
+@dataclass
+class Built:
+    ops: list[dict] = field(default_factory=list)
+    weeks: dict[int, list[str | None]] = field(
+        default_factory=dict
+    )  # 방 → 그릴 주(월요일 iso, None=정규)
+    labels: dict[int, str] = field(default_factory=dict)
+    summary: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    notices: list[str] = field(default_factory=list)
+    blockers: list[str] = field(default_factory=list)
+
+    def week(self, room_id: int, wk: str | None) -> None:
+        lst = self.weeks.setdefault(room_id, [])
+        if wk not in lst and len(lst) < WEEKS_MAX:
+            lst.append(wk)
+
+    @property
+    def room_ids(self) -> list[int]:
+        return sorted(self.weeks)
+
+
+def _checks(s, b: Built, rid, d, s_min, e_min, exclude_id, type_, now_local) -> None:
+    label = b.labels[rid]
+    if clock.local_dt(d, s_min // 60, s_min % 60) <= now_local:
+        b.blockers.append(
+            f"{label} {md(d)} {s_min // 60:02d}:{s_min % 60:02d} 은 이미 지난 시각입니다."
+        )
+    if e_min <= s_min:
+        b.blockers.append(f"{label} {md(d)}: 시작이 끝보다 늦습니다.")
+    if type_ != 3:  # 휴강은 정규 수업과 겹치는 게 정상
+        q = select(Slot).where(Slot.room_id == rid, Slot.day == d.isoweekday(), Slot.type != 4)
+        for x in s.scalars(q):
+            if _hit(x, s_min, e_min):
+                b.warnings.append(
+                    f'{label} 기존 수업 "{x.subject}"({WD[x.day - 1]} {span(x.s_h, x.s_m, x.e_h, x.e_m)})와 겹칩니다.'
+                )
+        q = select(Reservation).where(
+            Reservation.room_id == rid,
+            Reservation.date == d,
+            Reservation.status.in_(("approved", "requested")),
+        )
+        if exclude_id is not None:
+            q = q.where(Reservation.id != exclude_id)
+        for r in s.scalars(q):
+            if _hit(r, s_min, e_min):
+                what = "대기 중인 학생 신청" if r.status == "requested" else "기존 일정"
+                b.warnings.append(
+                    f'{label} {what} "{r.subject}"({md(r.date)} {span(r.s_h, r.s_m, r.e_h, r.e_m)})와 겹칩니다.'
+                )
+    if d > now_local.date() + dt.timedelta(days=RESV_HORIZON_DAYS):
+        b.notices.append(
+            f"{md(d)} 일정은 저장해 두고 {md(d - dt.timedelta(days=RESV_HORIZON_DAYS))}부터 문 앞 화면에 보냅니다."
+        )
+
+
+def _new_span(old: tuple[int, int, int, int], st: dict) -> tuple[int, int, int, int] | None:
+    """set.time 반영. 시작만 말했으면 원래 길이 유지. 자정을 넘으면 None."""
+    if "time" not in st:
+        return old
+    sh, sm, eh, em = old
+    nsh, nsm = hm(st["time"][0])
+    if st["time"][1]:
+        neh, nem = hm(st["time"][1])
+    else:
+        end = nsh * 60 + nsm + (eh * 60 + em) - (sh * 60 + sm)
+        if end >= 24 * 60:
+            return None
+        neh, nem = divmod(end, 60)
+    return nsh, nsm, neh, nem
+
+
+def _resv_op(rid, id_, d, sp, type_, subj, prof) -> dict:
+    sh, sm, eh, em = sp
+    return {
+        "op": "resv.put",
+        "room_id": rid,
+        "id": id_,
+        "resv": {
+            "date": d.isoformat(),
+            "s_h": sh,
+            "s_m": sm,
+            "e_h": eh,
+            "e_m": em,
+            "type": type_,
+            "subject": subj,
+            "professor": prof,
+        },
+    }
+
+
+def _event_add(s, b: Built, st: dict, now_local) -> None:
+    if "entries" in st:  # 휴강 — 정규 수업마다 하나
+        items = [
+            (
+                e["room_id"],
+                d_(e["date"]),
+                (*hm(e["start"]), *hm(e["end"])),
+                e["subject"],
+                e["professor"],
+            )
+            for e in st["entries"]
+        ]
+    else:
+        sp = (*hm(st["time"][0]), *hm(st["time"][1]))
+        items = [
+            (rid, d_(iso), sp, st.get("subject", ""), st.get("professor", ""))
+            for rid in st["rooms"]
+            for iso in st["dates"]
+        ]
+    for rid, d, sp, subj, prof in items:
+        sh, sm, eh, em = sp
+        b.ops.append(_resv_op(rid, None, d, sp, st["type"], subj, prof))
+        b.week(rid, week_of(d))
+        b.summary.append(f'+ {md(d)} {span(*sp)} {TYPE[st["type"]]} "{subj}" ({b.labels[rid]})')
+        _checks(s, b, rid, d, sh * 60 + sm, eh * 60 + em, None, st["type"], now_local)
+
+
+def _event_change(s, b: Built, ch: dict, st: dict, now_local) -> None:
+    for rid, c in ch.items():
+        r = s.get(Reservation, c["id"])
+        d = d_(st["dates"][0]) if "dates" in st else r.date
+        sp = _new_span((r.s_h, r.s_m, r.e_h, r.e_m), st)
+        if sp is None:
+            b.blockers.append(f"{b.labels[rid]} {c['label']}: 끝 시각이 자정을 넘습니다.")
+            continue
+        type_ = st.get("type", r.type)
+        subj, prof = st.get("subject", r.subject), st.get("professor", r.professor)
+        b.ops.append(_resv_op(rid, r.id, d, sp, type_, subj, prof))
+        b.week(rid, week_of(r.date))
+        b.week(rid, week_of(d))
+        b.summary.append(
+            f'~ {c["label"]} → {md(d)} {span(*sp)} {TYPE[type_]} "{subj}" ({b.labels[rid]})'
+        )
+        _checks(s, b, rid, d, sp[0] * 60 + sp[1], sp[2] * 60 + sp[3], r.id, type_, now_local)
+
+
+def _event_remove(s, b: Built, ch: dict, st: dict, now_local) -> None:
+    for rid, c in ch.items():
+        b.ops.append({"op": "resv.del", "room_id": rid, "id": c["id"]})
+        b.week(rid, week_of(d_(c["date"])))
+        b.summary.append(f"− {c['label']} ({b.labels[rid]})")
+
+
+def _exam_weeks(b: Built, rid: int, a: dt.date, z: dt.date) -> None:
+    mon = clock.week_start(a)
+    while mon <= z:
+        b.week(rid, mon.isoformat())
+        mon += dt.timedelta(days=7)
+
+
+def _exam_add(s, b: Built, st: dict, now_local) -> None:
+    a, z = d_(st["range"][0]), d_(st["range"][1])
+    if z < now_local.date():
+        b.blockers.append(f"{md(a)}~{md(z)} 은 이미 지난 기간입니다.")
+    for rid in st["rooms"]:
+        b.ops.append(
+            {
+                "op": "exam.put",
+                "room_id": rid,
+                "id": None,
+                "exam": {"date_start": a.isoformat(), "date_end": z.isoformat()},
+            }
+        )
+        _exam_weeks(b, rid, a, z)
+        b.summary.append(f"+ 시험기간 {md(a)}~{md(z)} ({b.labels[rid]})")
+
+
+def _exam_change(s, b: Built, ch: dict, st: dict, now_local) -> None:
+    a, z = d_(st["range"][0]), d_(st["range"][1])
+    for rid, c in ch.items():
+        b.ops.append(
+            {
+                "op": "exam.put",
+                "room_id": rid,
+                "id": c["id"],
+                "exam": {"date_start": a.isoformat(), "date_end": z.isoformat()},
+            }
+        )
+        _exam_weeks(b, rid, d_(c["start"]), d_(c["end"]))
+        _exam_weeks(b, rid, a, z)
+        b.summary.append(f"~ 시험기간 {c['label']} → {md(a)}~{md(z)} ({b.labels[rid]})")
+
+
+def _exam_remove(s, b: Built, ch: dict, st: dict, now_local) -> None:
+    for rid, c in ch.items():
+        b.ops.append({"op": "exam.del", "room_id": rid, "id": c["id"]})
+        _exam_weeks(b, rid, d_(c["start"]), d_(c["end"]))
+        b.summary.append(f"− 시험기간 {c['label']} ({b.labels[rid]})")
+
+
+def _class_add(s, b: Built, st: dict, now_local) -> None:
+    sh, sm, eh, em = (*hm(st["time"][0]), *hm(st["time"][1]))
+    type_ = st.get("type", 1)
+    if eh * 60 + em <= sh * 60 + sm:
+        b.blockers.append("시작이 끝보다 늦습니다.")
+    for rid in st["rooms"]:
+        for wd in st["weekdays"]:
+            b.ops.append(
+                {
+                    "op": "slot.put",
+                    "room_id": rid,
+                    "slot": {
+                        "day": wd,
+                        "s_h": sh,
+                        "s_m": sm,
+                        "e_h": eh,
+                        "e_m": em,
+                        "type": type_,
+                        "subject": st["subject"],
+                        "professor": st.get("professor", ""),
+                        "source": 2,
+                    },
+                }
+            )
+            b.week(rid, None)
+            b.summary.append(
+                f'+ 매주 {WD[wd - 1]} {span(sh, sm, eh, em)} {TYPE[type_]} "{st["subject"]}" ({b.labels[rid]})'
+            )
+            for x in s.scalars(select(Slot).where(Slot.room_id == rid, Slot.day == wd)):
+                if (x.s_h, x.s_m) != (sh, sm) and _hit(x, sh * 60 + sm, eh * 60 + em):
+                    b.warnings.append(
+                        f'{b.labels[rid]} 기존 수업 "{x.subject}"({WD[wd - 1]} {span(x.s_h, x.s_m, x.e_h, x.e_m)})와 겹칩니다.'
+                    )
+
+
+def _class_change(s, b: Built, ch: dict, st: dict, now_local) -> None:
+    for rid, c in ch.items():
+        x = s.scalar(
+            select(Slot).where(
+                Slot.room_id == rid,
+                Slot.day == c["day"],
+                Slot.s_h == c["s_h"],
+                Slot.s_m == c["s_m"],
+            )
+        )
+        day = st["weekdays"][0] if "weekdays" in st else x.day
+        sp = _new_span((x.s_h, x.s_m, x.e_h, x.e_m), st)
+        if sp is None:
+            b.blockers.append(f"{b.labels[rid]} {c['label']}: 끝 시각이 자정을 넘습니다.")
+            continue
+        sh, sm, eh, em = sp
+        new = {
+            "day": day,
+            "s_h": sh,
+            "s_m": sm,
+            "e_h": eh,
+            "e_m": em,
+            "type": st.get("type", x.type),
+            "subject": st.get("subject", x.subject),
+            "professor": st.get("professor", x.professor),
+            "source": 2,
+        }
+        if (day, sh, sm) != (x.day, x.s_h, x.s_m):
+            b.ops.append(
+                {"op": "slot.del", "room_id": rid, "day": x.day, "s_h": x.s_h, "s_m": x.s_m}
+            )
+        b.ops.append({"op": "slot.put", "room_id": rid, "slot": new})
+        b.week(rid, None)
+        b.summary.append(
+            f"~ 매주 {c['label']} → {WD[day - 1]} {span(*sp)} {new['subject']} {new['professor']} ({b.labels[rid]})".rstrip()
+        )
+
+
+def _class_remove(s, b: Built, ch: dict, st: dict, now_local) -> None:
+    for rid, c in ch.items():
+        b.ops.append(
+            {"op": "slot.del", "room_id": rid, "day": c["day"], "s_h": c["s_h"], "s_m": c["s_m"]}
+        )
+        b.week(rid, None)
+        b.summary.append(f"− 매주 {c['label']} ({b.labels[rid]})")
+
+
+def _request(b: Built, ch: dict, st: dict, approve: bool) -> None:
+    for c in ch.values():
+        rid = c["room_id"]
+        if approve:
+            b.ops.append({"op": "request.approve", "room_id": rid, "id": c["id"]})
+            b.summary.append(f"✓ 승인 {c['label']}")
+        else:
+            reason = st.get("reason", "관리자 거절")
+            b.ops.append({"op": "request.reject", "room_id": rid, "id": c["id"], "reason": reason})
+            b.summary.append(f"✗ 거절 {c['label']} — {reason}")
+        b.week(rid, week_of(d_(c["date"])))
+
+
+_BUILD = {
+    "event.change": _event_change,
+    "event.remove": _event_remove,
+    "exam.change": _exam_change,
+    "exam.remove": _exam_remove,
+    "class.change": _class_change,
+    "class.remove": _class_remove,
+}
+
+
+def plan(s: Session, sc: Scope, draft: dict, now_local: dt.datetime) -> Built:
+    it, tg, st = draft["intent"], draft["target"], draft["set"]
+    b = Built()
+    cands: dict[int, list[dict]] = {}
+    ch: dict[int, dict] = {}
+    if not it.endswith(".add"):
+        cands = find_candidates(s, sc, draft, now_local)
+        ch = chosen(cands, draft["pick"])
+    ids = set(st.get("rooms", [])) | set(tg.get("rooms", []))
+    ids |= {c["room_id"] for c in ch.values() if "room_id" in c}
+    b.labels = room_labels(s, ids)
+    for rid, lst in cands.items():
+        if rid and not lst:
+            b.notices.append(f"{b.labels[rid]}: 해당 항목이 없어 건너뜁니다.")
+    if it == "event.add":
+        _event_add(s, b, st, now_local)
+    elif it == "exam.add":
+        _exam_add(s, b, st, now_local)
+    elif it == "class.add":
+        _class_add(s, b, st, now_local)
+    elif it in ("request.approve", "request.reject"):
+        _request(b, ch, st, it == "request.approve")
+    else:
+        _BUILD[it](s, b, ch, st, now_local)
+    rooms_now = set(b.room_ids)
+    for n in admin.expected_nodes(s, sc):
+        if n["room_id"] in rooms_now and "unseen" in n["warnings"]:
+            b.warnings.append(
+                f"{b.labels[n['room_id']]} 노드가 응답하지 않습니다 — 연결되면 전송됩니다."
+            )
+    b.warnings = list(dict.fromkeys(b.warnings))
+    b.notices = list(dict.fromkeys(b.notices))
+    b.blockers = list(dict.fromkeys(b.blockers))
+    return b
