@@ -105,3 +105,46 @@ def test_digit_building_whole_range_floor(app, school):
     assert [r.id for r in got.rooms] == [rid[201], rid[202]]
     got = _resolve(app, "5호관 5")  # 건물 5호관의 5호, 건물 이름의 5 가 아니다
     assert [r.id for r in got.rooms] == [rid[5]]
+
+
+def _annex(app):
+    from app.domain.models import Building, Room
+
+    with app.state.Session() as s, s.begin():
+        b = Building(school_id=1, name="공학관별관", bld="G")
+        s.add(b)
+        s.flush()
+        r = Room(building_id=b.id, room=803, units=1)
+        s.add(r)
+        s.flush()
+        return b.id, r.id
+
+
+def test_exact_building_name_beats_prefix(app, school):
+    ids = campus(app)
+    _, annex803 = _annex(app)
+    got = _resolve(app, "공학관 803")
+    assert [r.id for r in got.rooms] == [ids["E803"]]
+    got = _resolve(app, "공학관")
+    assert {r.building_id for r in got.rooms} == {ids["E"]}
+    got = _resolve(app, "공학관 8층")
+    assert [r.id for r in got.rooms] == [ids[k] for k in ("E801", "E802", "E803", "E805")]
+    got = _resolve(app, "공학관별관 803")
+    assert [r.id for r in got.rooms] == [annex803]
+    got = _resolve(app, "공학 803")  # 정확한 이름이 없으면 앞부분 일치
+    assert isinstance(got, R.Ambiguous)
+
+
+@pytest.mark.parametrize("expr", ["", "   ", "\t"])
+def test_blank_is_missing(app, school, expr):
+    campus(app)
+    assert _resolve(app, expr) == R.Missing(expr)
+
+
+def test_only_building_with_building_name(app, school):
+    ids = campus(app)
+    got = _resolve(app, "공학관 803", only_building=ids["E"])
+    assert [r.id for r in got.rooms] == [ids["E803"]]
+    assert _resolve(app, "인문관 803", only_building=ids["E"]) == R.Missing("인문관 803")
+    got = _resolve(app, "공학관", only_building=ids["E"])
+    assert len(got.rooms) == 5

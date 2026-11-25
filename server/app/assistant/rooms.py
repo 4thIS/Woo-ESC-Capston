@@ -76,16 +76,13 @@ def resolve_room_expr(
         refs = [r for r in refs if r.building_id == only_building]
     if bexpr:
         k = _bkey(bexpr)
-        refs = [
-            r
-            for r in refs
-            if k
-            and (
-                k == _bkey("".join(r.building.split()))
-                or k == r.bld.casefold()
-                or _bkey("".join(r.building.split())).startswith(k)
-            )
-        ]
+        if k:
+            # 이름·건물 글자가 정확히 같은 건물이 있으면 그것만 — "공학관" 이 "공학관별관" 을 끌어오지 않게.
+            # 정확히 같은 것이 없을 때만 앞부분 일치("공학" → 공학관)로 넓힌다.
+            exact = [r for r in refs if k in (_bkey("".join(r.building.split())), r.bld.casefold())]
+            refs = exact or [r for r in refs if _bkey("".join(r.building.split())).startswith(k)]
+        else:
+            refs = []
     label = ""
     if m is None:  # 건물 이름만 — 그 건물 전체
         hits, many = (refs if bexpr else []), True
@@ -94,7 +91,7 @@ def resolve_room_expr(
     elif m.group("a"):
         a, b = sorted((int(m.group("a")), int(m.group("b"))))
         label = f"{a}~{b}"
-        # 범위는 한 건물 안에서 읽는다 — 양 끝 호수가 다 있는 건물이 있으면 그 건물들만.
+        # 범위는 한 건물 안에서 읽는다 — 양 끝 호수가 다 있는 건물이 있으면 그 건물들만 (컨트롤러 승인된 규칙).
         full = {
             bid
             for bid in {r.building_id for r in refs}
