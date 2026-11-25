@@ -14,7 +14,7 @@
 | `assistant_proto/form.py` | `parse_form` · `form_to_dict` · `canonical_json` · `json_schema` · `type_code` |
 | `assistant_proto/resolve.py` | `resolve_when` · `resolve_weekdays` · `resolve_time` · `normalize_room` |
 | `assistant_proto/prompt.py` | `SYSTEM_PROMPT` · `FIRST_PREFIX` · `render_prefix` |
-| `assistant_proto/rules.py` | `PRIMARY` · `PREVIEW_QUESTION` · `missing` · `question` · `state_items` — 서버와 ml 이 같은 접두어를 만든다 |
+| `assistant_proto/rules.py` | `PRIMARY` · `PREVIEW_QUESTION` · `PICK_QUESTION` · `missing` · `question` · `state_items` — 서버와 ml 이 같은 접두어를 만든다 |
 
 ## 해석 규칙 (원본은 `vectors/resolve.v1.jsonl`)
 
@@ -46,6 +46,7 @@
 
 - `fill`(질문에 대한 답) 의 `set.rooms` 는 지금 상태의 강의실을 **바꾸지 않고 더한다**(spec §3.4). 다른 칸은 답에 나온 것만 덮어쓴다.
 - 미리보기를 띄운 뒤 다음 접두어의 질문은 `rules.PREVIEW_QUESTION` 이다 — 서버와 ml 이 같은 글자로 만든다.
+- 여러 항목 중 고르게 할 때는 `rules.PICK_QUESTION`, 바꾸거나 지울 대상을 못 찾아 다시 물을 때는 `rules.question(intent, "target.any")` 이다. 서버의 접두어 질문 줄은 언제나 `rules` 에서 나온다(해석 실패 등 자세한 안내는 화면 메시지에만 쓴다).
 - 칸 값에서 끝에 붙은 조사·어미(을·를·은·는·이·가·도·로·으로·에·에서·이요·요)는 뺀다. `exam.*` 에는 `type` 을 넣지 않는다.
 
 ## 바꾸는 절차 (lockstep — 루트 CLAUDE.md 계층 규율)
