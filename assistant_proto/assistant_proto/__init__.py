@@ -15,6 +15,14 @@ from assistant_proto.form import (
     parse_form,
     type_code,
 )
+from assistant_proto.resolve import (
+    TimeSpan,
+    When,
+    normalize_room,
+    resolve_time,
+    resolve_weekdays,
+    resolve_when,
+)
 
 __all__ = [
     "FIELD_ORDER",
@@ -24,9 +32,15 @@ __all__ = [
     "Fields",
     "Form",
     "FormError",
+    "TimeSpan",
+    "When",
     "canonical_json",
     "form_to_dict",
     "json_schema",
+    "normalize_room",
     "parse_form",
+    "resolve_time",
+    "resolve_weekdays",
+    "resolve_when",
     "type_code",
 ]
