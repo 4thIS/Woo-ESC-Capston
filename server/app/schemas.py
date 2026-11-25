@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+from itertools import pairwise
 from typing import Any, ClassVar, Literal
 
 from lora_proto import proto as P
@@ -118,6 +119,29 @@ class _Span(BaseModel):
 class SlotIn(_Span):
     day: int = Field(ge=1, le=7)
     source: int = Field(2, ge=1, le=3)  # 1=포털 2=수동 3=긴급 (S2b §2.2)
+
+
+class SlotKeyIn(BaseModel):
+    """슬롯 키 — 방 안에서 (요일, 시작)이 유일하다."""
+
+    day: int = Field(ge=1, le=7)
+    s_h: int = Field(ge=0, le=23)
+    s_m: int = Field(ge=0, le=59)
+
+
+class SlotReplaceIn(BaseModel):
+    """교시 묶음 수정·삭제 (admin-rooms.md 「연속 교시 묶음」) — 지울 교시 + 새 교시를 한 번에."""
+
+    remove: list[SlotKeyIn] = Field(default_factory=list, max_length=24)
+    put: list[SlotIn] = Field(default_factory=list, max_length=24)
+
+    @model_validator(mode="after")
+    def _no_overlap(self):
+        spans = sorted((p.day, p.s_h * 60 + p.s_m, p.e_h * 60 + p.e_m) for p in self.put)
+        for (d1, s1, e1), (d2, s2, _e2) in pairwise(spans):
+            if d1 == d2 and (s2 == s1 or s2 < e1):
+                raise ValueError("새 교시끼리 겹칩니다")
+        return self
 
 
 class SlotOut(SlotIn, Out):

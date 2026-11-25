@@ -19,6 +19,7 @@ vi.mock('@/api/rooms', () => ({
     buildingExams: vi.fn(),
     buildingOutbox: vi.fn(),
     putSlot: vi.fn(),
+    replaceSlots: vi.fn(),
     deleteSlot: vi.fn(),
     saveResv: vi.fn(),
     deleteResv: vi.fn(),
@@ -132,7 +133,8 @@ describe('강의실 설정 — 트리와 시간표', () => {
     picked.value = [11, 21]
     await flushPromises()
     expect(api.buildingSlots.mock.calls.slice(1)).toEqual([[1], [2]])
-    expect(slotRows().map((r) => r.find('td').text())).toEqual(['E 401', 'S 101'])
+    // 첫 칸은 교시 펼치기 — 호수는 둘째 칸
+    expect(slotRows().map((r) => r.findAll('td')[1].text())).toEqual(['E 401', 'S 101'])
   })
 
   it('다 해제하면 "위에서 강의실을 고르세요"', async () => {
@@ -327,6 +329,38 @@ describe('강의실 설정 — 트리와 시간표', () => {
     await flushPromises()
     expect(row('자료구조').get('.dot').attributes('title')).toBe('대기')
     expect(row('운영체제').get('.dot').attributes('title')).toBe('대기')
+  })
+
+  it('연속 교시는 한 줄 — 시간 칸에 교시 구성, 펼치면 교시별, 수정은 묶음 폼, 삭제는 한 번에 (admin-rooms.md)', async () => {
+    const P = (h: number) => ({ ...S(11, 2, h, '인공지능기초 102'), e_h: h, e_m: 50 })
+    api.buildingSlots.mockResolvedValue([P(9), P(10), P(11)])
+    api.replaceSlots.mockResolvedValue({ outbox_ids: [1, 2, 3], id: null })
+    await mountView()
+    picked.value = [11]
+    await flushPromises()
+    expect(slotRows()).toHaveLength(1)
+    const row = slotRows()[0]
+    expect(row.text()).toContain('09:00 – 11:50')
+    expect(row.text()).toContain('3교시 · 50분 + 쉬는 10분')
+
+    await row.get('.tbl__toggle').trigger('click')
+    const periods = w.findAll('.blk__period').map((p) => p.find('.num').text())
+    expect(periods).toEqual(['1교시 09:00–09:50', '2교시 10:00–10:50', '3교시 11:00–11:50'])
+
+    await btn(slotRows()[0], '수정').trigger('click')
+    await flushPromises()
+    expect(dialog('수업 수정 — 3교시 묶음')).toBeTruthy()
+    await btn(w, '취소').trigger('click')
+
+    await btn(slotRows()[0], '삭제').trigger('click')
+    expect(w.text()).toContain('401호 화 인공지능기초 102 — 3교시 09:00–11:50')
+    await btn(dialog('수업 삭제'), '삭제').trigger('click')
+    await flushPromises()
+    expect(api.replaceSlots).toHaveBeenCalledWith(11, {
+      remove: [9, 10, 11].map((h) => ({ day: 2, s_h: h, s_m: 0 })),
+      put: [],
+    })
+    expect(api.deleteSlot).not.toHaveBeenCalled()
   })
 
   it('강의실이 하나도 없으면 건물 · 강의실로 보낸다', async () => {

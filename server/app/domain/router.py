@@ -259,23 +259,24 @@ def list_slots(id: int, sc: Scope = MgrScope, s: Session = _DB):
     ).all()
 
 
-# 버전·outbox·도메인 write 는 같은 세션(#9). 핸들러가 커밋한 뒤 허브에 알린다.
-@router.put("/rooms/{id}/slots", response_model=S.Enqueued)
-def put_slot(id: int, body: S.SlotIn, sc: Scope = MgrScope, s: Session = _DB):
-    bld, room, mid = _addr(s, id, sc)
+def _put_slot(s: Session, room_id: int, bld: str, room: int, body: S.SlotIn) -> list[int]:
+    """슬롯 한 개 쓰기 + outbox — 커밋은 부른 쪽이 (여러 개를 한 트랜잭션에 담을 수 있게)."""
     obj = s.scalar(
         select(Slot).where(
-            Slot.room_id == id, Slot.day == body.day, Slot.s_h == body.s_h, Slot.s_m == body.s_m
+            Slot.room_id == room_id,
+            Slot.day == body.day,
+            Slot.s_h == body.s_h,
+            Slot.s_m == body.s_m,
         )
     )
     if obj is not None and obj.source > body.source:
         raise HTTPException(409, f"source {obj.source} 슬롯은 source ≥ {obj.source} 로만 수정")
     if obj is None:
-        obj = Slot(room_id=id)
+        obj = Slot(room_id=room_id)
         s.add(obj)
     for k, v in body.model_dump().items():
         setattr(obj, k, v)
-    ids = api.enqueue_slot_set(
+    return api.enqueue_slot_set(
         bld,
         room,
         body.day,
@@ -286,6 +287,36 @@ def put_slot(id: int, body: S.SlotIn, sc: Scope = MgrScope, s: Session = _DB):
         body.professor,
         session=s,
     )
+
+
+# 버전·outbox·도메인 write 는 같은 세션(#9). 핸들러가 커밋한 뒤 허브에 알린다.
+@router.put("/rooms/{id}/slots", response_model=S.Enqueued)
+def put_slot(id: int, body: S.SlotIn, sc: Scope = MgrScope, s: Session = _DB):
+    bld, room, mid = _addr(s, id, sc)
+    ids = _put_slot(s, id, bld, room, body)
+    _commit_notify(s, mid)
+    return {"outbox_ids": ids}
+
+
+@router.post("/rooms/{id}/slots/replace", response_model=S.Enqueued)
+def replace_slots(id: int, body: S.SlotReplaceIn, sc: Scope = MgrScope, s: Session = _DB):
+    """교시 묶음 수정·삭제 (admin-rooms.md 「연속 교시 묶음」). 지울 교시와 새 교시를 한 트랜잭션으로 —
+    하나라도 거절되면(source 보호 409 등) 아무것도 바뀌지 않는다. 새 교시와 키가 같은 옛 교시는 지우지 않고
+    덮어쓴다(DEL 뒤 SET 으로 노드 화면이 깜빡이지 않게). 저장은 교시마다 — 문 앞 쉬는시간이 그 틈으로 그려진다"""
+    bld, room, mid = _addr(s, id, sc)
+    keep = {(p.day, p.s_h, p.s_m) for p in body.put}
+    ids: list[int] = []
+    for k in body.remove:
+        if (k.day, k.s_h, k.s_m) in keep:
+            continue
+        s.execute(
+            delete(Slot).where(
+                Slot.room_id == id, Slot.day == k.day, Slot.s_h == k.s_h, Slot.s_m == k.s_m
+            )
+        )
+        ids += api.enqueue_slot_del(bld, room, k.day, (k.s_h, k.s_m), session=s)
+    for p in body.put:
+        ids += _put_slot(s, id, bld, room, p)
     _commit_notify(s, mid)
     return {"outbox_ids": ids}
 

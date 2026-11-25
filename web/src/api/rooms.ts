@@ -65,6 +65,9 @@ export const roomsApi = {
   slots: (roomId: number) => request<SlotOut[]>('GET', `/api/rooms/${roomId}/slots`),
   /** 키 = day+s_h+s_m. 같은 키면 수정, 아니면 추가 — 벌크가 아니다 */
   putSlot: (roomId: number, s: SlotIn) => request<Enqueued>('PUT', `/api/rooms/${roomId}/slots`, s),
+  /** 교시 묶음 수정·삭제 — 지울 교시와 새 교시를 한 트랜잭션으로 (admin-rooms.md 「연속 교시 묶음」) */
+  replaceSlots: (roomId: number, body: { remove: SlotKeyParts[]; put: SlotIn[] }) =>
+    request<Enqueued>('POST', `/api/rooms/${roomId}/slots/replace`, body),
   deleteSlot: (roomId: number, k: SlotKeyParts) =>
     request<Enqueued>('DELETE', `/api/rooms/${roomId}/slots/${k.day}/${k.s_h}/${k.s_m}`),
 
