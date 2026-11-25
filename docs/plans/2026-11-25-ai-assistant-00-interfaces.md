@@ -184,7 +184,7 @@ def state_items(intent: str, target: dict, set_: dict, missing_slot: str | None 
   "enabled": true,
   "schema_v": 1,
   "runtime": "webllm",                       // 0단계 실험 결과: webllm | transformers | litert | wllama
-  "repo": "4thIS/esc-assistant-e2b",
+  "repo": "leemonta9482/esc-assistant-e2b",   // 당분간 wj 개인 계정(spec §17, 2026-11-26)
   "revision": "3f2a…(40자 커밋 해시)",
   "files": [{"name": "…", "size": 123, "sha256": "…"}],
   "system_prompt": "…",                      // assistant_proto.SYSTEM_PROMPT
@@ -288,5 +288,5 @@ def state_items(intent: str, target: dict, set_: dict, missing_slot: str | None 
 | `server/app/assistant/`, `server/app/domain/ops.py`, 새 마이그레이션 | cw (`ops.py` 정리는 wj 리뷰) | 01 |
 | `server/app/assistant/model.json` | cw 머지, 값은 wj 릴리스 | 01 만듦, 02 릴리스 때 바꿈 |
 | `ml/` | wj | 02 |
-| `docs/design/screens/admin-assistant.md`, `components.md`, `admin-master.md` | cw | 03 (Task 0) |
-| `web/src/admin/assistant/`, `web/src/components/ui/SidebarNav.vue`, `web/src/admin/router.ts`·`AdminShell.vue`, `web/src/api/` | wj | 03 |
+| `docs/design/screens/admin-assistant.md`, `components.md`, `admin-master.md` | cw (AI 비서 화면은 wj 시안 · cw 승인, #176) | 03 (Task 0 — 머지 #176) |
+| `web/src/admin/assistant/`, `web/src/components/ui/SidebarNav.vue`, `web/src/admin/AdminShell.vue`(창 마운트 — 라우트 없음, #176), `web/src/api/` | wj | 03 |

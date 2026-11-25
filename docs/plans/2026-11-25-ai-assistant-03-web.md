@@ -11,6 +11,9 @@
 
 **Goal:** 관리자 웹 사이드바 맨 위 "AI 비서" 탭에서, 브라우저 안의 파인튜닝 모델이 관리자 문장을 양식으로 옮기고 서버가 되묻기·미리보기를 돌려주면, 기존│수정 주간표를 나란히 보여 준 뒤 [적용]으로 반영한다.
 
+> **화면 변경(2026-11-26, #176)**: 화면은 머지된 `docs/design/screens/admin-assistant.md` 가 원본이다 — **상단 명령창**(사이드바 `AI 비서` 버튼·`Ctrl K` 로 보던 화면 위에 여는 창, 라우트 없음) + **펼친 확인 창**(왼쪽 요약·하루 막대, 오른쪽 격자 하나 + `기존 | 수정` 전환). 아래 Task 5·7·8·10·13 의 화면 코드는 처음 초안(별도 화면 `/assistant` · 대화 열 · 두 격자 · 탭) 기준이라 각 Task 머리의 「화면 변경」 블록대로 바꿔 만든다. 로직·상태·API 코드는 그대로다.
+> 진행: Task 0 완료 #176 · Task 1 완료 #177 · Task 2 완료 #174 · Task 3·4 = #175 (Draft, 01 PR B 머지 뒤 머지).
+
 **Architecture:** 화면 스펙(`docs/design/`, cw)을 먼저 머지하고 웹이 따라간다. 모델은 Web Worker 안의 실행 도구 어댑터(`ModelRunner`)가 돌리고, 화면은 서버 계약(`/api/assistant/*`)만 소비한다. 전·후 비교는 기존 주간 시간표의 격자를 `WeekGrid` 로 뽑아(표적 리팩터) 두 번 그린다. 모델 파일은 Hugging Face 에서 처음 한 번 받아 SHA-256 검증 후 Cache API 에 둔다. 0단계 실험(02 계획) 결과가 나오기 전에는 개발용 대역(`StubRunner`)으로 전 흐름을 만든다.
 
 **Tech Stack:** Vue 3 + TypeScript (Vite, pnpm), Vitest + @vue/test-utils(jsdom), Playwright E2E. 새 의존성: `hash-wasm`(스트리밍 SHA-256, Task 11), `@mlc-ai/web-llm`(기본 가정 실행 도구, Task 12 — 0단계 결과로 바뀔 수 있음).
@@ -26,7 +29,7 @@
 - 모델 파일 URL 은 **커밋 해시로 고정한 판**: `https://huggingface.co/${repo}/resolve/${revision}/${name}`. 판이 바뀌면 옛 판 파일을 지운다.
 - 적용은 **[적용] 버튼으로만** — 채팅 글로 적용하지 않는다. 막음(`blockers`)이 있으면 버튼 비활성.
 - 화면은 모델·서버가 준 글을 **글자로만** 표시한다(`v-html` 금지).
-- 관리자 화면은 데스크톱 전용(≥ 1024px, `docs/design/README.md`). 1024~1279px 에서는 확인 화면이 대화 위를 덮는다.
+- 관리자 화면은 데스크톱 전용(≥ 1024px, `docs/design/README.md`). (처음 초안의 "1024~1279px 에서 확인 화면이 대화 위를 덮는다"는 #176 에서 없어졌다 — 확인은 늘 펼친 창 하나다.)
 - 커밋: Conventional Commits(`feat(web):`·`style(web):`·`refactor(web):`·`docs(design):`), attribution 줄 없음, `git add` 는 정확한 파일만. `main` 직접 push·force push 금지. 머지는 팀장(cw)만.
 - 게이트: `pnpm test && pnpm lint && pnpm exec vue-tsc --noEmit` (web/ 에서).
 
@@ -34,24 +37,24 @@
 
 | PR | Task | 담당 | 제목 | 선행 |
 |---|---|---|---|---|
-| α | 0 | cw | `docs(design): AI 비서 화면 스펙 — 대화·확인(기존│수정)·모델 받기, diff 토큰, 사이드바 아이콘` | 없음 (먼저 머지) |
-| β | 1 | wj | `style(web): diff 토큰 · ProgressBar · 사이드바 AI 비서 아이콘` | α |
-| γ | 2 | wj | `refactor(web): 주간 시간표 격자를 WeekGrid 로 분리 (동작 불변)` | 없음 (언제든) |
-| δ | 3–10 | wj | `feat(web): AI 비서 탭 — 대화·확인 화면·적용·변경 기록 (개발용 대역)` | β, γ, **01 PR B 머지** |
+| α | 0 | wj 시안 · cw 승인 | `docs(design): AI 비서 화면 스펙 — 상단 명령창·펼친 확인 창·모델 받기, diff 토큰, 사이드바 버튼 항목` | **머지 #176** |
+| β | 1 | wj | `style(web): diff 토큰 · ProgressBar · 사이드바 AI 비서 아이콘 · 버튼 항목(action)` | **머지 #177** |
+| γ | 2 | wj | `refactor(web): 주간 시간표 격자를 WeekGrid 로 분리 (동작 불변)` | **머지 #174** |
+| δ | 3–10 | wj | `feat(web): AI 비서 — 명령창·확인 창·적용·변경 기록 (개발용 대역)` (Task 3·4 는 #175 Draft 로 먼저) | β, γ, **01 PR B 머지** |
 | ε | 11–14 | wj | `feat(web): AI 비서 모델 받기·검증·WebLLM 실행, CSP` | δ, **02 0단계 결과** |
 
-δ 가 운영에 나가도 서버의 모델 안내가 `{"enabled": false}` 인 동안 탭은 "준비 중"만 보인다 — 안전하다.
+δ 가 운영에 나가도 서버의 모델 안내가 `{"enabled": false}` 인 동안 창은 "준비 중"만 보인다 — 안전하다.
 
 ## 파일 구조
 
 ```
-docs/design/screens/admin-assistant.md        (새, cw, Task 0)
-docs/design/tokens.md · components.md · screens/admin-master.md   (수정, cw, Task 0)
+docs/design/screens/admin-assistant.md        (새, Task 0 — 머지 #176)
+docs/design/tokens.md · components.md · screens/admin-master.md   (수정, Task 0 — 머지 #176)
 
 web/src/styles/tokens.css                      (수정, Task 1 — green·amber·diff.*)
 web/src/styles/__tests__/tokens.guard.spec.ts  (수정, Task 1 — green·amber 도 원시로)
 web/src/components/ui/ProgressBar.vue          (새, Task 1)
-web/src/components/ui/SidebarNav.vue           (수정, Task 1 — assistant 아이콘)
+web/src/components/ui/SidebarNav.vue           (수정, Task 1 — assistant 아이콘, `action` 버튼 항목 · `shortcut`)
 
 web/src/admin/views/week/WeekGrid.vue          (새, Task 2 — WeekView 의 격자)
 web/src/admin/views/WeekView.vue               (수정, Task 2)
@@ -73,270 +76,38 @@ web/src/admin/assistant/                       ← 화면이 아닌 로직 (테�
 ├── conversation.ts    대화 상태(모듈) — 턴·선택·적용                   (Task 6, Task 9 확장)
 └── diff.ts            미리보기 changes → 블록 표시                     (Task 8)
 
-web/src/admin/views/AssistantView.vue          (Task 5, 7, 8, 10)
-web/src/admin/views/assistant/ModelGate.vue · ChatPane.vue · PreviewPane.vue · ChangeLog.vue · Examples.vue
-web/src/admin/router.ts · AdminShell.vue       (Task 5)
-web/security-headers.conf                      (Task 12 — CSP)
+web/src/admin/views/assistant/AssistantPanel.vue  (Task 5, 7, 8, 10 — 창 껍데기. 처음 초안의 AssistantView.vue 자리)
+web/src/admin/views/assistant/ModelGate.vue · CommandBar.vue · ConfirmPanel.vue · ChangeLog.vue
+                                               (CommandBar = 처음 초안 ChatPane, ConfirmPanel = PreviewPane. Examples.vue 없음)
+web/src/admin/AdminShell.vue                   (Task 5 — 창 한 번 마운트 · 사이드바 action · Ctrl K. 라우트 없음)
+web/security-headers-admin.conf · nginx.conf · Dockerfile   (Task 12 — 관리자 앱만 넓힌 CSP)
 web/e2e/admin-assistant.spec.ts                (Task 13)
 ```
 
 ---
 
-### Task 0 (cw): 화면 스펙 — `admin-assistant.md`, diff 토큰, 사이드바 아이콘, 메뉴 순서
+### Task 0: 화면 스펙 — `admin-assistant.md`, diff 토큰, 사이드바 아이콘·버튼 항목, 메뉴 순서 — 완료 #176 (wj 시안, cw 승인 2026-11-26)
 
-**Files:**
-- Create: `docs/design/screens/admin-assistant.md`
-- Modify: `docs/design/tokens.md` (1층 유채색 표 · 3층 `diff.*` 절)
-- Modify: `docs/design/components.md` (`## SidebarNav` 표·아이콘 목록, 새 `## ProgressBar`)
-- Modify: `docs/design/screens/admin-master.md` (사이드 메뉴 확정 문단)
-- Modify: `docs/design/README.md` (파일 구성에 `admin-assistant.md` 한 줄)
+머지된 `docs/design/screens/admin-assistant.md`(와 `tokens.md` · `components.md` · `screens/admin-master.md` · `README.md`)가 원본이다. 이 자리에 있던 초안 전문은 지웠다. 초안에서 바뀐 것:
 
-**Interfaces:**
-- Produces: 토큰 이름 `diff.add.fill/line/text` · `diff.remove.fill/line/text` · `diff.change.fill/line/text`, 원시 `green.50`·`green.700`·`amber.50`·`amber.700`; `NavIcon` 값 `assistant` + SVG path; 컴포넌트 `ProgressBar`(props `value`·`max`·`label`). Task 1·8 이 이 이름 그대로 쓴다.
-
-- [ ] **Step 1: `docs/design/screens/admin-assistant.md` 작성 (전문)**
-
-````markdown
-# 관리자 — AI 비서
-
-- 소비자: wj → `web/src/admin/views/AssistantView.vue` · `web/src/admin/views/assistant/*`
-- 전제: `tokens.md` v2 (`admin` 치수 세트) · `components.md` · [주간 시간표](admin-schedule.md)(격자 모양을 그대로 쓴다)
-- 근거: `docs/specs/2026-11-25-admin-ai-assistant-design.md` §7 · 부록 `docs/plans/2026-11-25-ai-assistant-00-interfaces.md` §4
-- 대상: **데스크톱 전용** (`bp.desktop` ≥ 1024px). 1024~1279px 는 확인 화면이 대화를 덮는다(아래 「좁은 화면」)
-
-## 목적 · 진입
-
-**관리자가 한 문장으로 시간표·일정·시험기간·학생 신청을 바꾸고, 바뀌기 전·후를 한 눈에 보고 적용한다.** 모델은 문장을 양식으로 옮기기만 하고, 되묻기·검증·전후 비교는 서버가 한다. 이 화면은 그 결과를 보여 주고 [적용]을 받는다.
-
-진입: 사이드 메뉴 맨 위 묶음 **`AI`** 의 **`AI 비서`** (`/admin/assistant`). 건물 관리자·최고 관리자 모두 보인다.
-
-## 레이아웃
-
-```
-┌ 사이드 ┬ 대화 (380px) ─────────────────┬ 확인 (나머지) ────────────────────────────┐
-│ AI     │ 관리자: 803호 이번주 금…         │ [확인 | 변경 기록]                          │
-│ AI 비서│ AI: 특강 이름은 무엇인가요?       │ 변경 확인                     10:10 까지     │
-│ 운영   │ 관리자: 알고리즘 특강             │ + 11/27(금) 15:00–18:00 특강 "알고리즘 특강" │
-│ …      │ AI: 오른쪽에서 확인해 주세요      │ ⚠ 기존 수업 "자료구조"와 겹칩니다             │
-│        │                                 │ 공학관 803 · 11/23~11/29 주                 │
-│        │                                 │ ┌ 기존 ────────┐ ┌ 수정 ────────┐          │
-│        │ ┌──────────────────────────┐    │ │ 주간 격자     │ │ 주간 격자     │          │
-│        │ │ AI 비서에게 말하기        │    │ └──────────────┘ └──────────────┘          │
-│        │ └──────────────────────────┘    │                          [취소] [적용]       │
-│        │                      [보내기]    │                                             │
-└────────┴─────────────────────────────────┴─────────────────────────────────────────────┘
-```
-
-- 대화 열 폭 380px, 바탕 `surface`, 오른쪽 경계 `line.2` 1px. 확인 열은 나머지 폭, 패딩 `space.5`.
-- 별도 `<h1>` 을 두지 않는다 — 메뉴 라벨과 같은 말이 둘이 된다. 확인 열 위에 `SegmentedControl` `확인 | 변경 기록`.
-
-## 대화 열
-
-- 말풍선: 관리자는 오른쪽 정렬, 바탕 `brand.tint`, 글자 `text.1`. AI 는 왼쪽 정렬, 바탕 `sunken`, 글자 `text.1`. 라운드 `radius.lg`, 패딩 `space.2` `space.3`, `font.size.md`, 최대 폭 85%. 줄바꿈은 그대로(`white-space: pre-wrap`).
-- AI 의 오류 말풍선(이해 못 함·만료·모델 판 바뀜)은 바탕 `red.50` 틴트 + 글자 `danger` (조합 규칙 A, 5.91 ✓).
-- 선택 버튼(`choices`): 말풍선 아래 `Button` `secondary` `sm` 줄. **마지막 말풍선의 버튼만** 누를 수 있다 — 지난 질문의 버튼은 비활성.
-- 조회 답(`answer`): 말풍선 안에 제목(`font.weight.bold`) + `Table`(열 = `columns`). 행이 없으면 Table 의 빈 상태 `조건에 맞는 항목이 없습니다`.
-- 답을 만드는 동안: AI 자리에 `생각하는 중…` (`text.3`) 한 줄. 입력·보내기 비활성.
-- 입력: `Textarea` 라벨 `AI 비서에게 말하기`, 최대 300자. **Enter = 보내기, Shift+Enter = 줄바꿈**, 한글 조합 중 Enter 는 보내지 않는다. 오른쪽 아래 `Button` `primary` `보내기`.
-- 새 말풍선이 오면 목록 맨 아래로 스크롤. 목록은 `aria-live="polite"`.
-
-## 확인 열 — 빈 상태 · 예문
-
-미리보기가 없을 때 **할 수 있는 일**을 예문으로 보인다. 예문을 누르면 입력칸에 채워진다(바로 보내지 않는다).
-
-| 묶음 | 예문 |
-|---|---|
-| 날짜별 일정 | `803호 이번 주 금요일 15시부터 18시까지 특강` · `다음 주 화요일 자료구조 휴강` · `목요일 보강 잡아줘` |
-| 시험기간 | `801·803 12/15~19 시험기간` |
-| 정규 시간표 | `803 월 9~12시 자료구조 김교수로 바꿔` |
-| 학생 신청 | `대기 중인 신청 보여 줘` · `801호 내일 신청 승인` |
-| 조회 | `금요일 오후 빈 강의실?` · `801 노드 배터리?` |
-
-## 확인 열 — 미리보기
-
-위에서 아래로:
-
-1. 머리: `변경 확인` (`font.size.lg`, bold) + 오른쪽 `HH:MM 까지` (`text.3`, `expires_at` KST).
-2. 요약(`summary`) — 한 줄씩 목록, `font.size.md`.
-3. **막음**(`blockers`) — 하나라도 있으면 `danger` 글자 목록 + 앞에 `적용할 수 없습니다:` 한 줄. `role="alert"`. [적용] 비활성.
-4. **경고**(`warnings`) — 앞에 `⚠` + `text.1`. 적용은 가능.
-5. **안내**(`notices`) — `text.3`.
-6. 강의실이 둘 이상이면 **강의실 요약 표**(`Table`: 강의실 · 추가 · 삭제 · 수정, 숫자 오른쪽 정렬). 행을 누르면 그 강의실의 주간 격자로 바뀐다(선택 행 `brand.tint`). 하나면 표 없이 바로 격자.
-7. 주마다 제목 `공학관 803 · 11/23~11/29 주` (정규 시간표만 바뀌면 `공학관 803 · 매주 시간표`) + **기존 │ 수정 두 격자**를 나란히(각 50%, 사이 `space.4`). 각 격자 위 캡션 `기존` / `수정` (`text.2`, `font.size.sm`, bold).
-8. 아래 오른쪽 `[취소]`(`secondary`) `[적용]`(`primary`). 적용 중이면 `loading`.
-
-### 격자
-
-[주간 시간표](admin-schedule.md)의 격자와 **같은 모양**(30분 행 44px, 09~18시 기본, 필요하면 야간·주말 자동). 다른 점:
-
-- 셀을 누를 수 없다(편집 없음). 블록도 누를 수 없다.
-- 두 격자는 **같은 시각 범위**를 쓴다 — 한쪽에만 08:30 블록이 있어도 양쪽이 08:30 부터.
-- 정규 시간표만 바뀐 경우 요일 헤더에 날짜를 적지 않는다(`월` `화` …).
-- 전송 점(OutboxDot)은 없다.
-
-### 변경 표시
-
-블록 바탕은 **원래 상태 색 그대로**(`room.busy` / `room.free` — 상태 색 규칙을 깨지 않는다). 변경은 **테두리 2px + 머리 태그(기호 + 글자)** 로만 표시한다. 색만으로 읽히지 않게 기호와 글자를 함께 쓴다.
-
-| 변경 | 나오는 쪽 | 테두리 | 태그 | 그 밖 |
-|---|---|---|---|---|
-| 추가 | 수정 | `diff.add.line` 2px 실선 | `+ 추가` — 바탕 `diff.add.fill`, 글자 `diff.add.text` | — |
-| 삭제 | 기존 | `diff.remove.line` 2px 점선 | `− 삭제` — 바탕 `diff.remove.fill`, 글자 `diff.remove.text` | 과목명 취소선 |
-| 수정 | 양쪽 | `diff.change.line` 2px 실선 | `~ 수정` — 바탕 `diff.change.fill`, 글자 `diff.change.text` | `title` 에 `바뀐 칸: 시작 · 이름` |
-
-- 시험기간이 바뀐 날은 요일 헤더 아래 `시험기간` 띠 옆에 같은 태그를 붙인다.
-- 연속 교시 묶음 안에서 일부 교시만 바뀌면 묶음 전체를 `~ 수정` 으로 표시한다.
-
-## 적용 후
-
-- 미리보기가 사라지고 AI 말풍선 `적용했습니다. 문 앞 화면으로 보내는 중입니다.`
-- 그 말풍선 아래 `OutboxDot` + `문 앞 반영 중` → `acked` 면 `문 앞 반영 완료`, `failed` 면 `일부 전송 실패 — 강의실 설정에서 재전송` (`danger`). 30초 동안 따라간다(기존 전송 추적과 같은 규칙).
-- 다른 관리자가 그사이 바꿨으면(409) 새 미리보기로 바뀌고 AI 말풍선 `확인하는 동안 다른 변경이 있었습니다. 바뀐 내용으로 다시 확인해 주세요.`
-- 만료(410)면 미리보기를 닫고 `확인 화면이 만료되었습니다. 다시 말씀해 주세요.`
-
-## 변경 기록
-
-`SegmentedControl` 의 `변경 기록` — `Table`: `적용 시각`(KST `YYYY-MM-DD HH:MM`) · `관리자` · `요청`(관리자 문장) · `변경`(요약, 줄마다). 최신 50건. 빈 상태 `AI 비서로 적용한 변경이 아직 없습니다`. 적용하면 다시 불러온다.
-
-## 모델 상태 (대화 열 자리에 선다)
-
-| 상태 | 표시 |
-|---|---|
-| 안내 받는 중 | `Skeleton` block |
-| 준비 중 (`enabled:false`) | `EmptyState` `AI 비서를 준비하고 있습니다. 모델이 배포되면 여기서 쓸 수 있습니다.` |
-| 받기 전 | 설명 두 줄(`이 PC 에서 AI 모델을 돌립니다. 문장은 학교 서버로만 갑니다.` / `처음 한 번 약 1.5 GB 를 받습니다. 받는 동안 다른 화면을 써도 됩니다.`) + `Button` `primary` `AI 모델 받기 (약 N GB)` |
-| 받는 중 | `ProgressBar` (`label` = `AI 모델 받는 중`) + 아래 `N.N / M.M GB` (`num`) + `Button` `ghost` `취소` |
-| 불러오는 중 | `Skeleton` + `모델을 불러오는 중…` |
-| 저장 공간 부족 | `Banner` `danger` `저장 공간이 부족합니다 (필요 N GB, 남은 M GB). 브라우저 저장 공간을 비운 뒤 다시 확인해 주세요.` + `다시 확인` |
-| 이 PC 에서 못 씀 | `EmptyState` 이유(아래) + 액션 `주간 시간표로` · `강의실 설정으로` |
-| 실패 | `EmptyState` 오류 문구 + `다시 시도` |
-
-이 PC 에서 못 쓰는 이유 문구:
-- WebGPU 없음: `이 브라우저는 WebGPU 를 지원하지 않아 AI 비서를 쓸 수 없습니다. 최신 Chrome·Edge 를 쓰세요.`
-- 그래픽 장치 없음: `이 PC 의 그래픽 장치로는 AI 모델을 돌릴 수 없습니다.`
-- 메모리 부족: `이 PC 의 메모리가 부족해 AI 모델을 돌릴 수 없습니다.`
-- 저장소 없음: `이 브라우저는 모델을 저장할 수 없습니다(사생활 보호 모드 등).`
-
-## 좁은 화면 (1024~1279px)
-
-대화 열만 보이고, 미리보기가 오면 확인 열이 **화면 전체를 덮는다**(바탕 `bg`). 덮개 맨 위 왼쪽 `Button` `ghost` `← 대화로` — 누르면 덮개를 닫는다(미리보기는 남아 있고, 대화 열 위 `Banner` `확인할 변경이 있습니다` + `확인 열기`).
-
-## 접근성
-
-- 대화 목록 `aria-live="polite"`, 막음 목록 `role="alert"`.
-- 격자 블록은 이름에 변경을 넣는다: `금 15:00–18:00 예약 · 특강 알고리즘 특강, 추가`.
-- 키보드: 입력칸 → 보내기 → 선택 버튼 → 확인 열 → [취소] [적용] 순.
-
-## 미결
-
-- 대화 기록 보관 기간 안내 문구(서버 180일)를 화면에 둘지 — 1단계는 두지 않는다.
-````
-
-- [ ] **Step 2: `docs/design/tokens.md` — 1층 유채색 표에 네 줄, 제목 숫자**
-
-`## 유채색 (A) — 일곱` 을 `## 유채색 (A) — 열하나` 로 바꾸고, 표의 `gold.600` 줄 아래에 넣는다(대비는 WCAG 상대 휘도 계산값):
-
-```markdown
-| `green.700` | `#067647` | 5.69 ✓ | 5.69 ✓ |
-| `green.50` | `#ECFDF3` | — | — |
-| `amber.700` | `#B54708` | 5.43 ✓ | 5.43 ✓ |
-| `amber.50` | `#FFFAEB` | — | — |
-```
-
-표 아래 문단 `teal.600·gold.600은 차트 마크 전용` 다음 줄에 추가:
-
-```markdown
-`green.*`·`amber.*` 은 **AI 비서 확인 화면의 변경 표시(`diff.*`) 전용**이다. 강의실 상태·액션에 쓰지 않는다 — 상태 색은 `room.*` 둘뿐이다.
-```
-
-3층 `## \`outbox.*\` — 전송 상태` 절 **앞**에 새 절:
-
-```markdown
-## `diff.*` — 변경 표시 (AI 비서 확인 화면)
-
-블록 바탕은 `room.*` 그대로 두고 **테두리와 태그만** 이 색을 쓴다. 기호(`+` `−` `~`)와 글자를 함께 써서 색만으로 읽히지 않게 한다([admin-assistant.md](screens/admin-assistant.md) 「변경 표시」).
-
-| 토큰 | = | 쓰임 |
+| | 처음 초안 | 머지본 (#176) |
 |---|---|---|
-| `diff.add.fill` | `green.50` | 태그 바탕 |
-| `diff.add.line` | `green.700` | 블록 테두리 2px 실선 |
-| `diff.add.text` | `green.700` | 태그 글자 (`green.50` 위 5.48 ✓) |
-| `diff.remove.fill` | `red.50` | 태그 바탕 |
-| `diff.remove.line` | `red.700` | 블록 테두리 2px 점선 |
-| `diff.remove.text` | `red.700` | 태그 글자 (`red.50` 위 5.91 ✓) |
-| `diff.change.fill` | `amber.50` | 태그 바탕 |
-| `diff.change.line` | `amber.700` | 블록 테두리 2px 실선 |
-| `diff.change.text` | `amber.700` | 태그 글자 (`amber.50` 위 5.22 ✓) |
-```
+| 진입 | `/admin/assistant` 라우트(사이드바 링크) | 사이드바 `AI 비서` **버튼**(`SidebarNav` `action` 항목) · `Ctrl K`(macOS `⌘K`). **라우트 없음** — 보던 화면 위에 창이 열린다(덮개는 본문만, 사이드바는 안 덮음) |
+| 입력 | 대화 열 380px(말풍선) | 상단 **한 줄 명령창**(56px, 300자) + 되묻기 칸(질문 · 선택 버튼 또는 답 입력 · `요청 취소`) |
+| 확인 | 기존│수정 격자 둘 나란히 | **펼친 창**: 왼쪽 340px 요약·막음·경고·안내·하루 막대(`기존`/`수정`, 최대 3일 + `외 N일`, 강의실 여럿이면 강의실 표), 오른쪽 격자 하나 + `기존 \| 수정` `SegmentedControl`(같은 시각 범위) · 아래 줄 `[취소]` `[적용]` |
+| 대화 기록 | 화면에 말풍선으로 남음 | **화면에 안 남는다** — 다시 열면 빈 명령창 |
+| 변경 기록 | 확인 열 `확인 \| 변경 기록` 탭 | 명령창 머리 줄 `변경 기록` 버튼 → 아래로 펼치는 칸 |
+| 예문 · 좁은 화면 | 확인 열 빈 상태 예문, 1024~1279px 덮개 | 없음 |
 
-- [ ] **Step 3: `docs/design/components.md` — SidebarNav 아이콘, ProgressBar**
-
-`## SidebarNav` 표의 `items` 줄을 바꾼다:
-
-```markdown
-| `items` | `{ to, label, group?, icon?, badge? }[]` | — |
-```
-
-표 아래 목록 끝에 추가:
-
-```markdown
-- `icon` 은 24×24 선 아이콘 하나(`stroke: currentColor`). 값: `building` · `settings` · `calendar` · `node` · `send` · `users` · **`assistant`**.
-  - `assistant` (AI 비서, 2026-11-25): 큰 별 하나 + 작은 별 하나 — path `M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8ZM18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8Z`
-```
-
-`## StatTile` 앞에 새 절:
-
-```markdown
-## ProgressBar
-
-| prop | 값 | 기본 |
-|---|---|---|
-| `value` | 0 이상 숫자 | — |
-| `max` | 0 보다 큰 숫자 | — |
-| `label` | 문자열 (스크린리더 이름) | — |
-
-높이 8px, 라운드 `radius.full`, 바탕 `sunken` + `line.2` 1px, 채움 `brand`(진행은 "지금 하는 일"의 활성 표시). `role="progressbar"` + `aria-valuenow`·`aria-valuemax`·`aria-label`. 퍼센트 글자는 컴포넌트가 그리지 않는다 — 화면이 옆에 적는다. 쓰는 곳: [AI 비서](screens/admin-assistant.md) 모델 받기.
-```
-
-- [ ] **Step 4: `docs/design/screens/admin-master.md` — 메뉴 순서**
-
-`> **사이드 메뉴를 여기서 확정한다.** 시안마다 항목이 달랐던 것을 여섯으로 맞췄다 — 모든 관리자 화면이 이 순서를 쓴다.` 문단의 목록 줄을 바꾸고 한 줄 덧붙인다:
-
-```markdown
-> `AI 비서` · `건물 · 강의실` · `강의실 설정` · `주간 시간표` · `노드 상태` · `전송 현황` · `회원`
->
-> `AI 비서` 는 맨 위 **별도 묶음 `AI`** 다(2026-11-25, [admin-assistant.md](admin-assistant.md)). 나머지 여섯의 순서는 그대로다.
-```
-
-(같은 파일 15행 "**메뉴에서 맨 위**에 둔다"는 `운영` 묶음 안에서 맨 위라는 뜻으로 `운영` 묶음의 맨 위로 고친다: `**`운영` 묶음의 맨 위**에 둔다`.)
-
-- [ ] **Step 5: `docs/design/README.md` 파일 구성에 한 줄**
-
-`│   ├── admin-users.md      ← 회원 승인 (S4a)` 다음 줄에:
-
-```markdown
-│   ├── admin-assistant.md  ← AI 비서: 대화 · 확인(기존│수정 격자) · 모델 받기 · 변경 기록
-```
-
-- [ ] **Step 6: 웹 토큰 테스트가 새 팔레트 줄을 읽는지 확인 (코드 없이 계산만)**
-
-`web/src/styles/__tests__/tokens.spec.ts` 의 첫 테스트는 1층 표 줄 `| \`fam.step\` | \`#RRGGBB\`` 를 모두 읽어 `tokens.css` 와 비교한다. 이 PR(α)만 머지되면 그 테스트가 `green-700` 등이 없어 **빨개진다** — 그래서 β(Task 1)를 α 바로 뒤에 머지한다. α PR 본문에 이 순서를 적는다.
-
-- [ ] **Step 7: 커밋 + PR α**
-
-```bash
-git switch -c docs/ai-assistant-screen main
-git add docs/design/screens/admin-assistant.md docs/design/tokens.md docs/design/components.md docs/design/screens/admin-master.md docs/design/README.md
-git commit -m "docs(design): AI 비서 화면 스펙 — 대화·확인(기존│수정)·모델 받기, diff 토큰, 사이드바 아이콘"
-```
-
-PR 본문: 스펙 요약 + "머지 직후 β(`style(web)`) 가 따라온다 — 그 사이 web `tokens.spec.ts` 1층 비교가 빨갛다".
+- 대비 값 정정: `diff.add.text`(`green.50` 위) **5.40**, `diff.change.text`(`amber.50` 위) **5.20** (초안 5.48 · 5.22).
+- 토큰 이름(`diff.*`, `green.50/700`, `amber.50/700`)·`ProgressBar` props·`assistant` 아이콘 path 는 초안 그대로다. 여기에 `SidebarNav` 항목 `{ to?, action?, label, group?, icon?, badge?, shortcut? }`(`to` 또는 `action` 하나)가 더해졌다 — Task 1 이 구현.
 
 ---
 
-### Task 1: diff 토큰 · ProgressBar · 사이드바 AI 비서 아이콘 (`style(web)`)
+### Task 1: diff 토큰 · ProgressBar · 사이드바 AI 비서 아이콘 (`style(web)`) — 완료 #177
 
 > 선행: Task 0(PR α) 머지.
+> **완료 #177**: 아래에 더해 `SidebarNav` 의 `action` 버튼 항목(`<button>` + `aria-expanded`, 열림 활성 모양)과 `shortcut` 표시도 넣었다(`components.md` SidebarNav). Task 5 가 이것을 쓴다.
 
 **Files:**
 - Modify: `web/src/styles/tokens.css`
@@ -500,7 +271,7 @@ PR β 를 연다(α 바로 뒤 머지).
 
 ---
 
-### Task 2: 주간 격자를 `WeekGrid` 로 분리 — 표적 리팩터 (동작 불변)
+### Task 2: 주간 격자를 `WeekGrid` 로 분리 — 표적 리팩터 (동작 불변) — 완료 #174
 
 **Files:**
 - Create: `web/src/admin/views/week/WeekGrid.vue`
@@ -1056,7 +827,7 @@ PR γ 본문: "AI 비서 확인 화면이 같은 격자를 읽기 전용으로 �
 
 ---
 
-### Task 3: API 타입 · `assistantApi` · 오류 가르기
+### Task 3: API 타입 · `assistantApi` · 오류 가르기 — #175 (Draft, 01 PR B 머지 뒤 머지)
 
 > 선행: 없음(가짜 fetch 로 개발). **PR δ 머지는 01 PR B 머지 뒤.**
 
@@ -1444,7 +1215,7 @@ git commit -m "feat(web): AI 비서 API 타입·클라이언트 — 턴·적용�
 
 ---
 
-### Task 4: 모델 실행 추상화 — 프롬프트 조립 · `ModelRunner` · Worker 메시지 · 개발용 대역
+### Task 4: 모델 실행 추상화 — 프롬프트 조립 · `ModelRunner` · Worker 메시지 · 개발용 대역 — #175 (Draft)
 
 **Files:**
 - Create: `web/src/admin/assistant/prompt.ts`
@@ -1918,6 +1689,14 @@ git commit -m "feat(web): AI 비서 모델 실행 추상화 — Worker 메시지
 
 > 선행: Task 1(아이콘) 머지.
 
+> **화면 변경(2026-11-26, #176)**: `/assistant` 라우트·메뉴 링크를 만들지 않는다(`router.ts`·`router.spec.ts` 는 고치지 않음, `prefetchViews` 대상도 아님).
+> - 사이드바: `AdminShell.vue` nav 맨 위 묶음 `AI` 에 `{ action, label: 'AI 비서', group: 'AI', icon: 'assistant', shortcut }` 항목(Task 1 의 `action`). `shortcut` 은 macOS 면 `⌘K`, 아니면 `Ctrl K`. 창이 열려 있으면 활성 모양·`aria-expanded="true"`. `shell.spec.ts` 는 링크 목록 대신 맨 위 **버튼** `AI 비서` + 나머지 링크 순서로 바꾼다.
+> - 창: `AssistantView.vue` 대신 `views/assistant/AssistantPanel.vue` — `AdminShell.vue` 에 **한 번만** 마운트한다(본문 영역 안, `role="dialog"` · `aria-modal="true"` · `aria-label="AI 비서"`, 덮개는 본문만). 열림 상태는 모듈 `ref` 하나(`open`)로 두고 사이드바 버튼·단축키가 토글한다.
+> - 단축키: 전역 `keydown` 에서 `Ctrl+K`(macOS `⌘+K`) → `preventDefault` 후 토글. 닫기 = ×·`Esc`·덮개 클릭·버튼 다시 누름. 열리면 입력칸에 포커스, 닫히면 **연 요소로 포커스를 돌려준다**. 열려 있는 동안 포커스는 창 안에서 돈다(사이드바 `AI 비서` 버튼만 예외).
+> - 모델 상태(`ModelGate`)는 명령창 아래 되묻기 칸 자리에 선다(스펙 「모델 상태」) — 준비되기 전엔 입력칸 비활성. 받는 중에 창을 닫아도 받기는 이어진다(`model.ts` 모듈 상태 — 아래 코드 그대로).
+> - `Examples.vue`(예문)는 머지된 스펙에 없다 — 만들지 않는다.
+> - 그대로: `model.ts`(상태·`initModel`·`setEngine`·`resetModel`), `ModelGate.vue` 의 상태별 문구·버튼. 아래 `assistantView.spec.ts` 의 모델 상태 테스트는 `mount(AssistantPanel)` 로 바꿔 그대로 쓴다.
+
 **Files:**
 - Modify: `web/src/admin/router.ts` (`views.assistant`, children `assistant`)
 - Modify: `web/src/admin/AdminShell.vue:21-45` (nav 맨 위)
@@ -2323,6 +2102,8 @@ git commit -m "feat(web): 사이드바 맨 위 AI 비서 탭 — 라우트, 모�
 
 ### Task 6: 대화 상태 — 턴 흐름 (모델 출력 → 재시도 → 서버), 선택 버튼, 판 불일치
 
+> **화면 변경(2026-11-26, #176)**: 턴 흐름·재시도·판 불일치 로직은 그대로다. 다른 점 하나 — 화면에 대화 기록이 남지 않으므로 **창을 닫으면 `resetChat()`**(미리보기가 있으면 적용하지 않고 버린다 = 취소와 같다). `chat.msgs` 는 그대로 두되 명령창은 마지막 AI 메시지(질문·선택지·오류)만 그린다. "탭을 옮겼다 와도 대화가 남는다" 주석은 "창을 닫으면 사라진다"로 고친다.
+
 **Files:**
 - Create: `web/src/admin/assistant/conversation.ts`
 - Test: `web/src/admin/__tests__/assistantChat.spec.ts`
@@ -2680,6 +2461,16 @@ git commit -m "feat(web): AI 비서 대화 상태 — 모델 출력 1회 재시�
 
 ### Task 7: 대화 화면 (`ChatPane`) — 말풍선·선택 버튼·조회 표·입력
 
+> **화면 변경(2026-11-26, #176)**: `ChatPane.vue` 대신 **`views/assistant/CommandBar.vue`** — 한 줄 명령창(스펙 「명령창」·「보내는 중」·「되묻기」·「오류」). 아래 코드에서 바뀌는 것:
+> - 입력: 테두리 없는 한 줄 입력칸(숨은 라벨 `AI 비서에게 말하기`, 최대 300자) + `primary` `sm` `보내기`. **Enter = 보내기, 한글 조합 중(`isComposing`) Enter 는 무시**, 빈 입력은 안 보냄. 여러 줄 `textarea`·Shift+Enter 없음.
+> - 보내는 중: 보낸 문장(한 줄 말줄임) + `변경 내용을 정리하는 중…` + 머리 줄 아래 2px 진행 줄(`role="progressbar"`). 이 동안 입력 막음.
+> - 되묻기(`kind: ask`): 머리 줄 아래 칸 — `AI` + 질문, 선택지가 있으면 `secondary` `sm` 버튼 줄(누르면 `pick`), 없으면 답 `Input`(360px) + `답하기` + `ghost` `요청 취소`(`resetChat`). 머리 줄에는 처음 보낸 문장이 남는다.
+> - 오류(`kind: error`·모델 실패): 되묻기 칸 자리에 `danger` 한 줄 + 입력칸 다시 열림. 판 불일치는 `새로고침` 버튼.
+> - **말풍선 목록·대화 기록이 없다.** `aria-live="polite"` 는 질문·결과 줄에.
+> - 조회 답(`answer`) 표는 머지된 스펙에 자리가 없다 — 되묻기 칸 자리에 `Table` 로 그린다(스펙 「되묻기」 칸과 같은 바탕·패딩). 화면 스펙에 더할 일이면 cw 에게 이슈로.
+> - 개발용 `manualOutput` 입력칸(개발 서버만)은 되묻기 칸 아래에 그대로 둔다.
+> - 테스트 `assistantChatPane.spec.ts` → `assistantCommandBar.spec.ts`: 말풍선 대신 위 동작(조합 중 Enter 무시 포함)을 확인. `send`·`pick`·`draft` 를 쓰는 방식은 그대로.
+
 **Files:**
 - Create: `web/src/admin/views/assistant/ChatPane.vue`
 - Modify: `web/src/admin/views/AssistantView.vue` (ready 면 ChatPane, 예문 클릭 → draft)
@@ -2999,6 +2790,15 @@ git commit -m "feat(web): AI 비서 대화 화면 — 말풍선, 선택 버튼, 
 ### Task 8: 전·후 비교 — `diff.ts`, WeekGrid 변경 표시, `PreviewPane`
 
 > 선행: Task 1(diff 토큰), Task 2(WeekGrid).
+
+> **화면 변경(2026-11-26, #176)**: `diff.ts`(변경 표시 계산)와 WeekGrid 새 props(`showDates`·`cells`·`mark`·`examMark`)는 **그대로**. `PreviewPane.vue` 대신 **`views/assistant/ConfirmPanel.vue`**(같은 props `{ preview, applying }`, emits `apply`·`discard`) — 명령창이 아래로 펼쳐진 확인 창(스펙 「확인 — 펼친 창」):
+> - 머리 줄: 보낸 문장 · `HH:MM 까지` · ×. 아래 줄(64px): `변경 N건 · 겹침 N건` · `[취소]` `[적용]`(막음이 있으면 비활성, 적용 중 `loading`).
+> - **왼쪽 340px**: 제목 `변경 확인 · {강의실}`(여럿이면 `강의실 N곳`) · 요약 · 막음(`적용할 수 없습니다:` + `danger`, `role="alert"`) · 경고(`⚠`) · 안내(`text.3`) · **하루 막대**(바뀌는 날마다 `기존`/`수정` 두 줄, 09~18시 기본, 겹친 구간 `danger` 3px, 최대 3일 + `외 N일`) · 만료 안내 줄. 강의실이 둘 이상이면 제목 아래 강의실 표(행 누르면 하루 막대·격자가 그 강의실로).
+> - **오른쪽**: 제목(`MM/DD~MM/DD 주` 또는 `매주 시간표`, 여러 주면 `◀` `▶`) + `SegmentedControl` `기존 | 수정`(기본 `수정`) + **읽기 전용 WeekGrid 하나**. 두 쪽이 **같은 시각 범위**를 쓴다(전환해도 행이 안 움직임) — 두 쪽 블록을 합쳐 `gridRange` 를 한 번 구한다.
+> - 변경 표시는 블록 테두리 2px + 머리 태그(`+ 추가`·`− 삭제`·`~ 수정`)만, 바탕은 `room.*` 그대로(아래 WeekGrid 코드 그대로).
+> - 하루 막대는 새 순수 함수로 계산한다(`diff.ts` 에 `dayBars(preview, roomId) → { date, before, after, overlaps }[]` 를 더하고 테스트). 왼쪽·오른쪽 두 열은 각각 스크롤.
+> - 좁은 화면 덮개(Step 6 의 1024~1279px 분기)는 없앤다.
+> - 테스트 `assistantDiff.spec.ts` 의 `PreviewPane` describe 는 `ConfirmPanel` 로: 격자가 **하나**이고 `기존 | 수정` 전환으로 바뀌는지, 막음 시 `[적용]` 비활성, 4일 이상이면 `외 N일`.
 
 **Files:**
 - Create: `web/src/admin/assistant/diff.ts`
@@ -3646,6 +3446,8 @@ git commit -m "feat(web): AI 비서 확인 화면 — 기존│수정 주간 격
 
 ### Task 9: 적용 흐름 — [적용]/[취소], 409 stale · 410 · 422, 전송 추적
 
+> **화면 변경(2026-11-26, #176)**: `applyPreview`·`discardPreview`·409/410/422 처리·전송 추적 로직은 **그대로**. 그리는 자리만 바뀐다(스펙 「적용 후」·「오류」): 적용하면 펼친 창이 한 줄로 접히고 머리 줄에 `적용했습니다. 문 앞 화면으로 보내는 중입니다.` + `OutboxDot`(`ApplyTrack.vue`) — `acked` 면 3초 뒤 창을 닫고, `failed` 면 닫지 않고, 30초 뒤에도 안 끝나면 3초 뒤 닫는다. 409 `stale` 은 새 미리보기 + 왼쪽 열 맨 위 `Banner`, 410 은 한 줄로 접고 `danger` 문구 + 입력칸. 적용 뒤 **뒤 화면(주간 시간표 등)을 다시 불러온다** — 창이 라우트 밖에 있으므로 `AssistantPanel` 이 적용 완료 이벤트를 내고 열린 화면이 받아 다시 불러온다(또는 `router.replace` 로 같은 주소 다시 그리기 — 둘 중 단순한 쪽). `AssistantView.vue` 를 고치는 Step 은 `AssistantPanel.vue` 에 한다.
+
 **Files:**
 - Modify: `web/src/admin/assistant/conversation.ts` (`applyPreview`, `discardPreview`, 문구 상수)
 - Modify: `web/src/admin/views/AssistantView.vue` (`onApply`·`onDiscard`, 전송 추적)
@@ -3900,6 +3702,8 @@ git commit -m "feat(web): AI 비서 적용 — 버튼으로만, 다른 변경·�
 ---
 
 ### Task 10: 변경 기록 목록 · 확인 열 탭
+
+> **화면 변경(2026-11-26, #176)**: 탭(`SegmentedControl` `확인 | 변경 기록`)이 없다. `ChangeLog.vue`(목록·`reload`)는 그대로 쓰고, 명령창 상태에서 **입력칸이 비어 있을 때** 머리 줄 오른쪽 `ghost` `sm` `변경 기록` 버튼으로 머리 줄 아래 칸을 펼친다(최대 높이 400px 스크롤). 입력을 시작하면 접힌다. 적용 뒤 다시 불러오기는 그대로. Step 4 의 `AssistantView.vue` 전문은 `AssistantPanel.vue` 로 — 상태(닫힘·명령창·보내는 중·되묻기·확인·적용 후)에 따라 `ModelGate` / `CommandBar` / `ConfirmPanel` / `ApplyTrack` / `ChangeLog` 를 고르는 껍데기로 바꾸고, `pickTab` 은 지운다.
 
 **Files:**
 - Create: `web/src/admin/views/assistant/ChangeLog.vue`
@@ -4162,7 +3966,7 @@ git commit -m "feat(web): AI 비서 변경 기록 — 확인 | 변경 기록 탭
 
 ```bash
 git push -u origin feat/ai-assistant-web
-gh pr create --draft --title "feat(web): AI 비서 탭 — 대화·확인 화면·적용·변경 기록 (개발용 대역)" --body "<아래 본문>"
+gh pr create --draft --title "feat(web): AI 비서 — 명령창·확인 창·적용·변경 기록 (개발용 대역)" --body "<아래 본문>"
 ```
 
 본문: Task 3~10 요약 / 게이트 결과(`pnpm test`·`lint`·`vue-tsc`) / "서버 모델 안내가 enabled:false 인 동안 운영 화면은 '준비 중'만 — 안전" / 수동 확인: `pnpm dev` + 개발 서버에서 `localStorage.setItem('esc-assistant-stub','manual')` 로 대화·미리보기·적용을 실제 서버(01 PR B)와 돌린 스크린샷 1440·1200 폭.
@@ -4251,7 +4055,7 @@ const M = (o: Partial<ModelManifestOn> = {}): ModelManifestOn => ({
   enabled: true,
   schema_v: 1,
   runtime: 'webllm',
-  repo: '4thIS/esc-assistant-e2b',
+  repo: 'leemonta9482/esc-assistant-e2b',
   revision: 'a'.repeat(40),
   files: [
     { name: 'params_shard_0.bin', size: 3, sha256: ABC },
@@ -4305,7 +4109,7 @@ describe('modelStore', () => {
   const cacheName = webllmCacheName
   it('fileUrl — 커밋 해시로 고정한 resolve 주소', () => {
     expect(fileUrl(M(), 'a b.bin')).toBe(
-      `https://huggingface.co/4thIS/esc-assistant-e2b/resolve/${'a'.repeat(40)}/a%20b.bin`,
+      `https://huggingface.co/leemonta9482/esc-assistant-e2b/resolve/${'a'.repeat(40)}/a%20b.bin`,
     )
   })
 
@@ -4790,7 +4594,7 @@ const M = (o: Partial<ModelManifestOn> = {}): ModelManifestOn => ({
   enabled: true,
   schema_v: 1,
   runtime: 'webllm',
-  repo: '4thIS/esc-assistant-e2b',
+  repo: 'leemonta9482/esc-assistant-e2b',
   revision: 'a'.repeat(40),
   files: [
     { name: 'params_shard_0.bin', size: 3, sha256: 'x' },
@@ -4867,7 +4671,9 @@ git commit -m "feat(web): AI 모델 받기 — 기기·저장 공간 점검, HF 
 - Modify: `web/package.json`·`web/pnpm-lock.yaml` (`@mlc-ai/web-llm`)
 - Create: `web/src/admin/assistant/adapters/webllm.ts`
 - Modify: `web/src/admin/assistant/worker.ts` (`adapterFor`)
-- Modify: `web/security-headers.conf` (CSP)
+- Create: `web/security-headers-admin.conf` (관리자 앱 CSP — 2026-11-26 팀장 결정: 넓힌 CSP 는 `/admin` 만)
+- Modify: `web/nginx.conf` (`/admin` location 이 admin 헤더를 include), `web/Dockerfile` (admin 헤더 COPY)
+- 그대로: `web/security-headers.conf` (학생 앱 공용 — 지금의 좁은 CSP)
 - Test: `web/src/admin/__tests__/assistantWebllm.spec.ts`, `web/src/admin/__tests__/csp.spec.ts`
 
 **Interfaces:**
@@ -4902,7 +4708,7 @@ const M: ModelManifestOn = {
   enabled: true,
   schema_v: 1,
   runtime: 'webllm',
-  repo: '4thIS/esc-assistant-e2b',
+  repo: 'leemonta9482/esc-assistant-e2b',
   revision: 'a'.repeat(40),
   files: [
     { name: 'esc-assistant-webgpu.wasm', size: 1, sha256: 'x' },
@@ -4918,9 +4724,9 @@ describe('WebLLM 어댑터', () => {
   it('appConfig — 모델·라이브러리 모두 고정 판 HF 주소', () => {
     const c = appConfig(M)
     expect(c.model_list[0]).toEqual({
-      model: `https://huggingface.co/4thIS/esc-assistant-e2b/resolve/${'a'.repeat(40)}/`,
+      model: `https://huggingface.co/leemonta9482/esc-assistant-e2b/resolve/${'a'.repeat(40)}/`,
       model_id: MODEL_ID,
-      model_lib: `https://huggingface.co/4thIS/esc-assistant-e2b/resolve/${'a'.repeat(40)}/esc-assistant-webgpu.wasm`,
+      model_lib: `https://huggingface.co/leemonta9482/esc-assistant-e2b/resolve/${'a'.repeat(40)}/esc-assistant-webgpu.wasm`,
     })
     expect(() => appConfig({ ...M, files: [] })).toThrow('.wasm')
   })
@@ -4960,26 +4766,45 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-const conf = readFileSync(
-  fileURLToPath(new URL('../../../security-headers.conf', import.meta.url)),
-  'utf8',
-)
-const csp = conf.match(/Content-Security-Policy "([^"]+)"/)?.[1] ?? ''
-const dir = (name: string) =>
+const read = (name: string) =>
+  readFileSync(fileURLToPath(new URL(`../../../${name}`, import.meta.url)), 'utf8')
+const cspOf = (conf: string) => conf.match(/Content-Security-Policy "([^"]+)"/)?.[1] ?? ''
+const dir = (csp: string, name: string) =>
   csp
     .split(';')
     .map((s) => s.trim())
     .find((s) => s.startsWith(`${name} `)) ?? ''
+const HEADERS = ['X-Content-Type-Options', 'X-Frame-Options', 'Referrer-Policy']
 
-describe('CSP — AI 비서 모델 받기·실행', () => {
-  it('Hugging Face 와 그 CDN 으로만 연결, WASM 실행 허용, Worker 는 자기 출처', () => {
-    expect(dir('connect-src')).toBe(
+describe('CSP — AI 비서 모델 받기·실행 (관리자 앱만)', () => {
+  it('관리자 헤더: Hugging Face 와 그 CDN 으로만 연결, WASM 실행 허용, Worker 는 자기 출처', () => {
+    const csp = cspOf(read('security-headers-admin.conf'))
+    expect(dir(csp, 'connect-src')).toBe(
       "connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co",
     )
-    expect(dir('script-src')).toBe("script-src 'self' 'wasm-unsafe-eval'")
-    expect(dir('worker-src')).toBe("worker-src 'self'")
-    expect(dir('default-src')).toBe("default-src 'self'")
+    expect(dir(csp, 'script-src')).toBe("script-src 'self' 'wasm-unsafe-eval'")
+    expect(dir(csp, 'worker-src')).toBe("worker-src 'self'")
+    expect(dir(csp, 'default-src')).toBe("default-src 'self'")
     expect(csp).toContain("frame-ancestors 'none'")
+  })
+
+  it('관리자 헤더는 공용 헤더의 나머지 보안 헤더를 모두 되풀이한다 (location add_header 는 상속이 끊긴다)', () => {
+    const admin = read('security-headers-admin.conf')
+    for (const h of HEADERS) expect(admin).toContain(`add_header ${h} `)
+  })
+
+  it('공용(학생 앱) 헤더는 넓히지 않는다', () => {
+    const csp = cspOf(read('security-headers.conf'))
+    expect(csp).not.toContain('huggingface')
+    expect(csp).not.toContain('hf.co')
+    expect(csp).not.toContain('wasm-unsafe-eval')
+  })
+
+  it('nginx: /admin location 만 관리자 헤더를 include 한다', () => {
+    const nginx = read('nginx.conf')
+    const admin = nginx.match(/location \/admin \{([^}]+)\}/)?.[1] ?? ''
+    expect(admin).toContain('security-headers-admin.conf')
+    expect(admin).not.toMatch(/snippets\/security-headers\.conf/)
   })
 })
 ```
@@ -4987,7 +4812,7 @@ describe('CSP — AI 비서 모델 받기·실행', () => {
 - [ ] **Step 3: 실패 확인**
 
 Run: `cd web && pnpm test src/admin/__tests__/assistantWebllm.spec.ts src/admin/__tests__/csp.spec.ts`
-Expected: FAIL — `adapters/webllm` 없음, CSP 에 `connect-src` 없음.
+Expected: FAIL — `adapters/webllm` 없음, `security-headers-admin.conf` 없음.
 
 - [ ] **Step 4: `adapters/webllm.ts`**
 
@@ -5064,21 +4889,38 @@ async function adapterFor(runtime: AssistantRuntime): Promise<ModelRunner> {
 }
 ```
 
-- [ ] **Step 6: CSP (`web/security-headers.conf`)**
+- [ ] **Step 6: CSP — 관리자 앱(`/admin`)만 넓힌다 (2026-11-26 팀장 결정)**
 
-4행을:
-
-```nginx
-add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
-```
-
-그리고 3행 주석 끝에 한 줄:
+`web/security-headers.conf`(학생 앱·공용)는 **고치지 않는다.** 새 파일 `web/security-headers-admin.conf`:
 
 ```nginx
+# 관리자 앱(/admin) 보안 헤더 — nginx.conf 의 location /admin 이 include 한다.
+# location 에 add_header 가 하나라도 있으면 바깥(server) add_header 가 상속되지 않는다 —
+# 그래서 security-headers.conf 의 헤더를 모두 여기 되풀이한다(바꿀 때 두 파일을 함께).
 # AI 비서(2026-11-25): 모델 파일은 Hugging Face 와 그 CDN(*.hf.co — 큰 파일은 cas-bridge.xethub.hf.co 로 넘어간다)에서만, 모델 실행은 WASM('wasm-unsafe-eval')·자기 출처 Worker
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Referrer-Policy "same-origin" always;
 ```
 
-(학생 앱도 같은 헤더를 쓴다. `connect-src` 를 넓힌 것은 외부 **연결**만이고 스크립트는 여전히 자기 출처뿐이다. 관리자 앱에만 걸고 싶으면 `nginx.conf` 의 `/admin` location 에 별도 헤더를 둔다 — 보고서의 제안 3.)
+`web/nginx.conf` 의 `location /admin` 에서 include 줄을 바꾼다:
+
+```nginx
+    location /admin {
+        try_files $uri /admin.html;
+        add_header Cache-Control "no-cache";
+        include /etc/nginx/snippets/security-headers-admin.conf;
+    }
+```
+
+`web/Dockerfile` 의 `COPY security-headers.conf …` 다음 줄:
+
+```dockerfile
+COPY security-headers-admin.conf /etc/nginx/snippets/security-headers-admin.conf
+```
+
+주의 — **Worker 의 CSP 는 Worker 스크립트 응답의 헤더로 정해진다.** 빌드된 Worker 청크는 `/assets/` 에서 나가고 `/assets/` location 은 공용(좁은) 헤더라, 그대로면 Worker 안의 HF 연결·WASM 실행이 막힌다. Worker 청크를 따로 모은다 — `vite.config.ts` 에 `worker: { rollupOptions: { output: { entryFileNames: 'assets/worker/[name]-[hash].js', chunkFileNames: 'assets/worker/[name]-[hash].js' } } }`, `nginx.conf` 에 `/assets/` 와 같은 캐시 설정의 `location /assets/worker/ { … include /etc/nginx/snippets/security-headers-admin.conf; }`. Step 7 실기에서 Worker 쪽 CSP 위반 콘솔 오류가 없는지로 확인한다.
 
 - [ ] **Step 7: 통과 + 실기 확인**
 
@@ -5091,8 +4933,8 @@ Run: `cd web && pnpm test src/admin && pnpm exec vue-tsc --noEmit && pnpm lint` 
 - [ ] **Step 8: 커밋**
 
 ```bash
-git add web/package.json web/pnpm-lock.yaml web/src/admin/assistant/adapters/webllm.ts web/src/admin/assistant/worker.ts web/security-headers.conf web/src/admin/__tests__/assistantWebllm.spec.ts web/src/admin/__tests__/csp.spec.ts
-git commit -m "feat(web): AI 비서 WebLLM 실행 — 고정 판 모델·라이브러리, JSON Schema 문법 강제, CSP"
+git add web/package.json web/pnpm-lock.yaml web/src/admin/assistant/adapters/webllm.ts web/src/admin/assistant/worker.ts web/security-headers-admin.conf web/nginx.conf web/Dockerfile web/vite.config.ts web/src/admin/__tests__/assistantWebllm.spec.ts web/src/admin/__tests__/csp.spec.ts
+git commit -m "feat(web): AI 비서 WebLLM 실행 — 고정 판 모델·라이브러리, JSON Schema 문법 강제, 관리자 앱 CSP"
 ```
 
 #### wllama 로 정해지면 (대안 어댑터의 차이)
@@ -5110,6 +4952,8 @@ git commit -m "feat(web): AI 비서 WebLLM 실행 — 고정 판 모델·라이�
 ---
 
 ### Task 13: E2E — 대화 → 되묻기 → 확인 화면 → 적용 (개발용 대역)
+
+> **화면 변경(2026-11-26, #176)**: 대본(`SCRIPT`)·시드·정리(`afterAll`)·확인할 결과(예약이 생김)는 그대로. 흐름만 새 창 기준으로: `getByRole('link', { name: 'AI 비서' })` + `toHaveURL(/assistant/)` 대신 **주간 시간표 화면에서** `getByRole('button', { name: 'AI 비서' })` 를 누르거나 `Control+K` → `getByRole('dialog', { name: 'AI 비서' })` 가 보이고 URL 은 그대로 → 입력칸에 SAY1 + Enter → 되묻기 칸의 답 입력칸에 SAY2 → `답하기` → 펼친 창에서 `+ 추가` 태그가 보이고 `기존` 으로 바꾸면 사라짐 → `[적용]` → `적용했습니다` → 창이 닫히고 뒤의 주간 시간표에 새 블록. 덧붙여 `Esc` 로 닫으면 포커스가 `AI 비서` 버튼으로 돌아오는지 한 줄. 스크린샷은 명령창·되묻기·펼친 창 셋.
 
 > 선행: 01 계획 PR B(서버 API)가 main 에 있거나 `E2E_SERVER_DIR` 로 그 서버를 가리킨다. 모델은 쓰지 않는다(개발용 대역 대본) — E2E 는 Vite dev 서버라 `import.meta.env.DEV` 가 참이다.
 
@@ -5236,7 +5080,7 @@ Expected: 전부 통과. `pnpm build` 산출물에서 관리자 화면 청크에
 grep -l "CreateMLCEngine" dist/assets/*.js
 ```
 
-Expected: Worker 청크 파일 하나만 나온다(`AssistantView-*.js`·`admin-*.js` 는 나오지 않는다).
+Expected: Worker 청크 파일 하나만 나온다(`assets/worker/` 아래. 관리자 화면 청크 `admin-*.js` 는 나오지 않는다).
 
 - [ ] **Step 2: PR ε**
 

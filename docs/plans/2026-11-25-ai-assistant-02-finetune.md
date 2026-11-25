@@ -14,7 +14,7 @@
 
 **Architecture:** 정답이 확실한 데이터를 기계로 만든다 — 문장 틀 × 가상 값 생성기 → Claude 다양화(해석기로 뜻이 같은 변형만 남김). 사람이 쓴 문장 약 300개는 시험에만 쓴다. 학습은 LoRA SFT(TRL·PEFT), 평가는 `assistant_proto` 해석기로 "푼 값"을 비교하는 채점기 하나로 HF 실행·브라우저 실행을 똑같이 채점한다. 브라우저 실행 도구는 0단계 실험으로 고르고, 그 도구 형식으로 변환·양자화한 **배포 모델**로 합격 판정한다.
 
-**Tech Stack:** Python 3.12 · uv · ruff · pytest · `assistant-proto`(경로 의존) · transformers / TRL / PEFT / datasets / bitsandbytes(학습, 선택 설치) · anthropic 공식 SDK(다양화, 선택 설치) · huggingface_hub(배포, 선택 설치) · 브라우저 하네스: 순수 ES module + WebLLM / Transformers.js / MediaPipe tasks-genai / wllama · Kaggle 또는 Colab GPU(16 GB)
+**Tech Stack:** Python 3.12 · uv · ruff · pytest · `assistant-proto`(경로 의존) · transformers / TRL / PEFT / datasets / bitsandbytes(학습, 선택 설치) · anthropic 공식 SDK(다양화, 선택 설치) · huggingface_hub(배포, 선택 설치) · 브라우저 하네스: 순수 ES module + WebLLM / Transformers.js / MediaPipe tasks-genai / wllama · 학습 GPU = wj 데스크톱 RTX 5070 Ti 16 GB(bf16, `ml/reports/gpu-local.md`) — Kaggle·Colab 은 대체 경로
 
 ## Global Constraints
 
@@ -23,7 +23,7 @@
 - 학습·다양화·공개 데이터에는 **가상 값만** 쓴다(가상 건물·강의실·과목·교수·학생). 실제 교수·학생 이름은 Hugging Face·외부 API 로 보내지 않는다.
 - 사람 시험 문장(`ml/data/test_human.jsonl`)과 계약 예문(`assistant_proto/vectors/forms.v1.jsonl`)은 **학습·검증·예문 몇 개(few-shot)에 절대 넣지 않는다.** 시험 문장은 실명을 가상 이름으로 바꾼 뒤에만 커밋한다.
 - 모델 가중치·체크포인트·변환 산출물·생성 데이터 원본은 커밋하지 않는다(`ml/.gitignore`). 공개 위치는 Hugging Face 뿐이다.
-- Hugging Face·Anthropic·GitHub 토큰은 커밋하지 않는다. 로컬은 환경변수, Kaggle 은 Secrets.
+- Hugging Face·Anthropic·GitHub 토큰은 커밋하지 않는다. 로컬은 환경변수, (대체 경로) Kaggle 은 Secrets.
 - 비용이 드는 다양화 실행은 `--yes` 없이는 API 를 부르지 않는다. 처음 실행 전에 예상 비용을 cw 에게 보이고 승인받는다.
 - 규격 판(`SCHEMA_VERSION`)이 바뀌면 데이터 재생성 + 재학습. 모델 안내의 `schema_v` 와 학습에 쓴 판이 같아야 한다.
 - 릴리스는 커밋 해시로 고정한 판만. `model.json` 을 바꾸는 PR 은 cw 가 합격선 숫자를 확인한 뒤 머지한다.
@@ -38,7 +38,7 @@
 | 8 (기준 점수) | Task 5·6·7 + GPU |
 | 9 (학습) | Task 3·4 + GPU |
 | 10 (변환·양자화 평가) | Task 1 판정 + Task 9 |
-| 11 (릴리스) | Task 10 합격 + 01 의 `server/app/assistant/model.json` 존재 + HF 조직 결정(spec §17) |
+| 11 (릴리스) | Task 10 합격 + 01 의 `server/app/assistant/model.json` 존재 (HF 계정 = 당분간 wj 개인 `leemonta9482`, spec §17 — 2026-11-26) |
 | 12 (게이트·PR) | 각 PR 마다 |
 
 ## 파일 구조
@@ -81,7 +81,7 @@ ml/
 │   ├── make_suite.py
 │   ├── serve.py
 │   └── suites/spike.json
-├── notebooks/kaggle_train.md
+├── notebooks/local_train.md # 로컬 GPU 학습 절차 (Kaggle·Colab 은 끝에 대체 경로 한 줄)
 ├── data/test_human.jsonl   # 커밋 (가상화 후)
 ├── reports/                # 커밋 (spike.md, baseline-*.md, run-*.md, release-*.md)
 └── tests/
@@ -99,7 +99,10 @@ ml/
 
 ---
 
-### Task 1: 0단계 — 브라우저 실행 도구 실험 (선행 조건 없음)
+### Task 1: 0단계 — 브라우저 실행 도구 실험 (선행 조건 없음) — 완료 #172 (관리자 PC 측정 남음)
+
+> **결과(2026-11-25, #172)**: 잠정 판정 `runtime: webllm` — wj 데스크톱(RTX 5070 Ti)만 측정. 문법 강제가 실제로 동작한 도구는 WebLLM 뿐(강제 켬 20/20, 평균 1.4 s)이고 Step 9 변환 경로도 통과. **관리자 PC 측정이 남았다** — 같은 하네스(Step 7 Space)로 Step 8 의 1~3 을 재고, 평균이 5 s 를 넘으면 판정 규칙 4(cw 결정). 숫자·원본 기록은 `ml/reports/spike.md`.
+> 아래 내용과 다르게 한 것(이유는 `ml/reports/spike.md` 「계획서와 다르게 한 것」): Step 5 MediaPipe 모델 주소·대화 틀(아래 코드에 반영), Step 6 생성기 파일·한글 이스케이프·`-X utf8`(아래 명령에 반영), Step 7 Space 는 wj 개인 계정, Step 8 메모리 미측정·wllama 3문장 뒤 중단, Step 9 는 1위(WebLLM)만.
 
 **Files:**
 - Create: `ml/spike/README.md`, `ml/spike/index.html`, `ml/spike/common.js`, `ml/spike/adapters/webllm.js`, `ml/spike/adapters/transformers.js`, `ml/spike/adapters/mediapipe.js`, `ml/spike/adapters/wllama.js`, `ml/spike/form.schema.json`, `ml/spike/system_draft.txt`, `ml/spike/spike_examples.jsonl`, `ml/spike/make_suite.py`, `ml/spike/serve.py`, `ml/spike/suites/spike.json`(생성물이지만 커밋 — 0단계 기록용), `ml/reports/spike.md`
@@ -542,10 +545,13 @@ import { FilesetResolver, LlmInference } from 'https://cdn.jsdelivr.net/npm/@med
 
 export const supportsGrammar = false
 let llm = null
-const PROMPT = (system, user) => `<start_of_turn>user\n${system}\n\n${user}<end_of_turn>\n<start_of_turn>model\n`
+// Gemma 4 대화 틀(litert-community/gemma-4-E2B-it-litert-lm 의 chat_template.jinja) — 생각 모드 끔(<|think|> 없음).
+// Gemma 3 의 <start_of_turn>/<end_of_turn> 과 다르다.
+const PROMPT = (system, user) => `<|turn>system\n${system}<turn|>\n<|turn>user\n${user}<turn|>\n<|turn>model\n`
 
 export async function defaultModel() {
-  return 'https://huggingface.co/litert-community/gemma-4-e2b-it/resolve/main/gemma-4-e2b-it-int4-web.task'
+  // litert-community/gemma-4-e2b-it/…-int4-web.task 는 401(없는 저장소) — 실제 공개 저장소
+  return 'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it-web.task'
 }
 
 export async function load(model, onProgress) {
@@ -599,11 +605,15 @@ export async function generate(system, user, constraint) {
 - [ ] **Step 6: GBNF 만들기·묶음 만들기·로컬 확인**
 
 ```bash
-git clone --depth 1 https://github.com/ggml-org/llama.cpp ml/out/llama.cpp
-python ml/out/llama.cpp/examples/json_schema_to_grammar.py ml/spike/form.schema.json > ml/spike/form.gbnf
-python ml/spike/make_suite.py
-python ml/spike/serve.py
+# 최신 llama.cpp 에서는 examples/json_schema_to_grammar.py 가 지워졌다(acecd56) — 직전 커밋의 파일을 쓴다
+git clone https://github.com/ggml-org/llama.cpp ml/out/llama.cpp
+git -C ml/out/llama.cpp show c5a5535e6ebc:examples/json_schema_to_grammar.py > ml/out/json_schema_to_grammar.py
+python -X utf8 ml/out/json_schema_to_grammar.py ml/spike/form.schema.json > ml/spike/form.gbnf
+python -X utf8 ml/spike/make_suite.py
+python -X utf8 ml/spike/serve.py
 ```
+`-X utf8`: Windows 기본 인코딩(cp949)으로는 한글 스키마를 못 읽고 `make_suite.py` 출력이 깨진다.
+생성기는 한글 enum 값을 `\uXXXX` 이스케이프로 쓴다 — 그대로면 문법 강제 때 모델이 `"수업"` 을 한글 글자로 못 내고 이스케이프로만 낼 수 있다. `make_suite.py` 전에 `form.gbnf` 의 `\uXXXX` 를 모두 글자로 바꾼다(커밋된 `ml/spike/form.gbnf` 가 바꾼 결과 — 28곳).
 Expected: `ml/spike/suites/spike.json — 20문장, gbnf=있음`, 브라우저 `http://localhost:8080` 에서 환경 정보에 `"webgpu": true` 와 `"cross_origin_isolated": true`.
 `form.gbnf` 는 커밋하지 않아도 되지만(묶음에 들어감) 재현을 위해 커밋한다(작은 텍스트 파일 — `.gitignore` 대상 아님).
 
@@ -624,7 +634,7 @@ custom_headers:
 ESC 관리자 AI 비서 — 브라우저 실행 도구 실험 하네스(0단계). 모델은 각 도구의 공개 저장소에서 받는다. 데이터는 가상 문장 20개뿐이다.
 로컬: `python ml/spike/serve.py` → http://localhost:8080
 ```
-업로드(토큰은 `HF_TOKEN` 환경변수 또는 `huggingface-cli login`, 조직은 spec §17 결정 — 정해지기 전에는 wj 개인 계정):
+업로드(토큰은 `HF_TOKEN` 환경변수 또는 `huggingface-cli login`, 계정은 당분간 wj 개인 `leemonta9482` — spec §17, 조직 이전은 나중):
 ```bash
 uv run --with huggingface_hub python -c "
 from huggingface_hub import HfApi
@@ -635,7 +645,7 @@ api.upload_folder(folder_path='ml/spike', repo_id=repo, repo_type='space', ignor
 print('https://huggingface.co/spaces/' + repo)
 "
 ```
-`HF_OWNER=<계정 또는 조직>` 을 먼저 export 한다. 관리자 PC 에서는 Space 페이지의 "Embed/Direct URL"(정적 Space 직접 주소, `*.static.hf.space`)로 연다 — iframe 안에서는 WebGPU·SharedArrayBuffer 가 막힐 수 있다. 환경 정보의 `cross_origin_isolated` 가 `false` 면 wllama 는 단일 스레드로만 돈다고 표에 적는다.
+`HF_OWNER=leemonta9482` 를 먼저 export 한다(실제 Space: https://leemonta9482-esc-spike.static.hf.space). 관리자 PC 에서는 Space 페이지의 "Embed/Direct URL"(정적 Space 직접 주소, `*.static.hf.space`)로 연다 — iframe 안에서는 WebGPU·SharedArrayBuffer 가 막힐 수 있다. 환경 정보의 `cross_origin_isolated` 가 `false` 면 wllama 는 단일 스레드로만 돈다고 표에 적는다.
 
 - [ ] **Step 8: 측정 — 두 기계 × 네 도구**
 
@@ -2038,7 +2048,7 @@ uv run --extra paraphrase python -m esc_ml.paraphrase --in data/gen/train.jsonl 
 uv run --extra paraphrase python -m esc_ml.paraphrase --in data/gen/val.jsonl --out data/para/val.jsonl --variants 2 --yes
 ```
 Expected: `변형 N개 중 M개 남김`. 남김 비율이 50% 미만이면 거절 사유를 샘플 20개로 확인한다 — 대부분 "해석기가 못 푸는 구어 표현(금욜·낼·담주)"이면 버리지 말고 cw 에게 해석기 보강 이슈로 올린다(부록 변경 제안).
-데이터 저장소 업로드는 Task 11 의 `release.py upload-data` 로 한다(Kaggle 학습이 여기서 받는다).
+데이터 저장소 업로드는 Task 11 의 `release.py upload-data` 로 한다(다른 기계나 대체 경로 Kaggle 에서 학습할 때 여기서 받는다).
 
 - [ ] **Step 5: 커밋**
 
@@ -3064,7 +3074,7 @@ uv run python -m esc_ml.predict_hf --data data/test_human.jsonl --vectors ../ass
 uv run python -m esc_ml.predict_hf --data data/test_human.jsonl --vectors ../assistant_proto/vectors/forms.v1.jsonl \
   --fewshot-pool data/gen/train.jsonl --k 6 --out preds/baseline-e2b-k6.jsonl
 ```
-GPU 가 없으면 Kaggle 에서(Task 9 Step 1 과 같은 준비) 같은 명령.
+wj 데스크톱 GPU 에서 돌린다(준비는 Task 9 Step 4 의 `notebooks/local_train.md` 1). 데스크톱을 못 쓸 때만 Kaggle 에서 같은 명령(대체 경로).
 
 - [ ] **Step 3: 채점·기록**
 
@@ -3089,14 +3099,16 @@ git commit -m "feat(ml): 원본 Gemma 4 E2B 기준 점수 (예문 0·6개)"
 
 ### Task 9: LoRA 학습 (선행: Task 3·4, GPU)
 
+> **로컬 GPU 확인 반영(2026-11-25, #173 — `ml/reports/gpu-local.md`)**: 학습은 **wj 데스크톱 RTX 5070 Ti 16 GB 에서 bf16 LoRA** 로 한다(최대 11.3 GiB, 배치 4 에서 1.36 s/스텝, 16,000문장 × 3 에폭 약 4.5 시간). `--quant 4bit` 는 필요 없다(옵션은 대체 경로용으로 남긴다). LoRA 는 글자 모델(`language_model`)의 q/k/v/o/gate/up/down 에만, 이미지·음성 탑은 메모리에서 뺀다, gradient checkpointing 켬. `to_prompt_completion` 의 BOS 는 **토크나이저가 BOS 를 스스로 붙일 때만** 지운다 — Gemma 4 는 `add_bos_token=False` 라 무조건 지우면 학습은 BOS 없이·생성은 BOS 와 함께 돌아 한 토큰 어긋난다(정답 14~16/20 → 고친 뒤 20/20). 아래 코드는 이 넷을 반영했다(`ml/gpu/smoke_train.py` 와 같은 방식).
+
 **Files:**
-- Create: `ml/esc_ml/train.py`, `ml/esc_ml/merge.py`, `ml/notebooks/kaggle_train.md`
+- Create: `ml/esc_ml/train.py`, `ml/esc_ml/merge.py`, `ml/notebooks/local_train.md`
 - Test: `ml/tests/test_train.py`
 - Create (학습 후): `ml/reports/run-<YYYYMMDD>-<n>.md`
 
 **Interfaces:**
 - Consumes: `esc_ml.records`, `esc_ml.hf`
-- Produces: `train.to_prompt_completion(tok, ex) -> {"prompt": str, "completion": str}`, `train.data_digest(paths) -> str`, CLI `python -m esc_ml.train --train … --val … --out runs/<이름> [--quant 4bit] …` → `runs/<이름>/adapter/`, `runs/<이름>/run_config.json`; CLI `python -m esc_ml.merge --adapter … --out out/merged`
+- Produces: `train.to_prompt_completion(tok, ex) -> {"prompt": str, "completion": str}`, `train.data_digest(paths) -> str`, CLI `python -m esc_ml.train --train … --val … --out runs/<이름> [--quant 4bit(대체 경로용)] …` → `runs/<이름>/adapter/`, `runs/<이름>/run_config.json`; CLI `python -m esc_ml.merge --adapter … --out out/merged`
 
 - [ ] **Step 1: 실패 테스트**
 
@@ -3115,11 +3127,24 @@ EX = Example(
 
 
 class FakeTok:
+    """토크나이저가 BOS 를 스스로 붙이는 경우."""
+
     bos_token = "<bos>"
+    bos_token_id = 2
+    add_bos = True
+
+    def __call__(self, text):
+        return {"input_ids": ([self.bos_token_id] if self.add_bos else []) + [9]}
 
     def apply_chat_template(self, msgs, tokenize=False, add_generation_prompt=False, enable_thinking=False):
         s = "<bos>" + "".join(f"<{m['role']}>{m['content']}<end>" for m in msgs)
         return s + ("<assistant>" if add_generation_prompt else "")
+
+
+class NoBosTok(FakeTok):
+    """Gemma 4 처럼 add_bos_token=False — chat template 의 <bos> 가 유일한 BOS."""
+
+    add_bos = False
 
 
 class BadTok(FakeTok):
@@ -3133,6 +3158,11 @@ def test_prompt_completion_split():
     assert not pc["prompt"].startswith("<bos>")  # 토크나이저가 BOS 를 다시 붙인다
     assert pc["prompt"].endswith("<user>관리자: 취소<end><assistant>")
     assert pc["completion"] == canonical_json(EX.form) + "<end>"
+
+
+def test_prompt_keeps_bos_when_tokenizer_does_not_add():
+    pc = to_prompt_completion(NoBosTok(), EX)
+    assert pc["prompt"].startswith("<bos>")  # 지우면 학습·생성 입력이 한 토큰 어긋난다(#173)
 
 
 def test_template_mismatch_raises():
@@ -3166,6 +3196,10 @@ from pathlib import Path
 from esc_ml.hf import DEFAULT_MODEL, load_model, load_tokenizer
 from esc_ml.records import Example, read_examples
 
+# 글자 모델만 LoRA — all-linear 면 Gemma 4 의 이미지·음성 탑까지 학습한다(#173)
+TARGET = r".*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)"
+DROP = ("audio_tower", "vision_tower", "embed_audio", "embed_vision")
+
 
 def to_prompt_completion(tok, ex: Example) -> dict:
     msgs = ex.messages()
@@ -3176,9 +3210,12 @@ def to_prompt_completion(tok, ex: Example) -> dict:
     if not full.startswith(prompt):
         raise ValueError("chat template: 생성 프롬프트가 전체 대화의 앞부분이 아니다 — 템플릿 확인")
     completion = full[len(prompt) :]
-    bos = getattr(tok, "bos_token", None)
-    if bos and prompt.startswith(bos):
-        prompt = prompt[len(bos) :]  # 토크나이저가 다시 붙이므로 두 번 들어가지 않게
+    # 토크나이저가 BOS 를 스스로 붙일 때만 지운다(두 번 들어가지 않게). Gemma 4 는 add_bos_token=False 라
+    # 지우면 학습은 BOS 없이, 생성(chat template)은 BOS 와 함께 돌아 입력이 한 토큰 어긋난다(#173).
+    bos_id = getattr(tok, "bos_token_id", None)
+    adds_bos = bos_id is not None and tok("x")["input_ids"][:1] == [bos_id]
+    if adds_bos and prompt.startswith(tok.bos_token):
+        prompt = prompt[len(tok.bos_token) :]
     return {"prompt": prompt, "completion": completion}
 
 
@@ -3195,7 +3232,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--train", type=Path, nargs="+", required=True)
     ap.add_argument("--val", type=Path, nargs="+", required=True)
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--quant", default="none", choices=("none", "4bit"), help="T4·P100 은 4bit(QLoRA)")
+    ap.add_argument(
+        "--quant", default="none", choices=("none", "4bit"), help="로컬 16 GB 는 none(bf16). 대체 경로 T4·P100 만 4bit"
+    )
     ap.add_argument("--epochs", type=float, default=3)
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--rank", type=int, default=16)
@@ -3218,6 +3257,12 @@ def main(argv: list[str] | None = None) -> int:
     val = Dataset.from_list([to_prompt_completion(tok, e) for e in val_rows])
 
     model = load_model(a.model, a.quant)
+    inner = getattr(model, "model", model)
+    for name in DROP:  # 이미지·음성 탑은 글자 학습에 안 쓴다 — 메모리에서 뺀다(약 0.9 GiB)
+        if hasattr(inner, name):
+            setattr(inner, name, None)
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     if a.quant == "4bit":
         model = prepare_model_for_kbit_training(model)
     bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
@@ -3228,6 +3273,7 @@ def main(argv: list[str] | None = None) -> int:
         per_device_train_batch_size=a.batch,
         per_device_eval_batch_size=a.batch,
         gradient_accumulation_steps=a.grad_accum,
+        gradient_checkpointing=True,
         max_length=a.max_len,
         completion_only_loss=True,
         bf16=bf16,
@@ -3244,7 +3290,7 @@ def main(argv: list[str] | None = None) -> int:
         report_to="none",
     )
     peft_cfg = LoraConfig(
-        r=a.rank, lora_alpha=a.alpha, lora_dropout=0.05, target_modules="all-linear", task_type="CAUSAL_LM"
+        r=a.rank, lora_alpha=a.alpha, lora_dropout=0.05, target_modules=TARGET, task_type="CAUSAL_LM"
     )
     trainer = SFTTrainer(
         model=model, args=cfg, train_dataset=train, eval_dataset=val, processing_class=tok, peft_config=peft_cfg
@@ -3312,48 +3358,45 @@ if __name__ == "__main__":
 
 - [ ] **Step 3: 통과**
 
-Run: `cd ml && uv run pytest tests/test_train.py -q` → `3 passed`.
+Run: `cd ml && uv run pytest tests/test_train.py -q` → `4 passed`.
 
-- [ ] **Step 4: Kaggle 실행 절차**
+- [ ] **Step 4: 로컬 GPU 실행 절차**
 
-`ml/notebooks/kaggle_train.md`:
+`ml/notebooks/local_train.md`:
 ```markdown
-# Kaggle 학습 절차 (GPU T4×2 또는 P100, 주 30시간 무료)
+# 로컬 GPU 학습 절차 (wj 데스크톱 — RTX 5070 Ti 16 GB, bf16)
 
-Settings → Accelerator: GPU. Add-ons → Secrets: `HF_TOKEN`(데이터 저장소 읽기·Gemma 다운로드), 저장소가 비공개면 `GITHUB_TOKEN`.
+확인 결과: `ml/reports/gpu-local.md` — bf16 LoRA 최대 11.3 GiB, 배치 4 에서 1.36 s/스텝. 4bit 는 쓰지 않는다.
+평소 다른 프로그램이 GPU 메모리를 약 3 GB 쓴다 — 학습 중에는 GPU 를 쓰는 프로그램을 닫는다.
 
-셀 1 — 코드·의존성
-    import os
-    from kaggle_secrets import UserSecretsClient
-    sec = UserSecretsClient()
-    os.environ["HF_TOKEN"] = sec.get_secret("HF_TOKEN")
-    !git clone https://github.com/4thIS/Woo-ESC-Capston.git
-    # 비공개면: !git clone https://$(python -c "print(sec.get_secret('GITHUB_TOKEN'))")@github.com/4thIS/Woo-ESC-Capston.git
-    %cd Woo-ESC-Capston
-    !pip install -q -e ./assistant_proto -e "./ml[train,release]"
+1 — 의존성 (CUDA 판 torch)
+    cd ml
+    uv sync --extra train
+    uv pip install --reinstall torch --index-url https://download.pytorch.org/whl/cu130
+    uv run --no-sync python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+→ `True NVIDIA GeForce RTX 5070 Ti`. 아래 명령은 모두 `uv run --no-sync`(sync 가 CPU 판 torch 로 되돌리지 않게).
 
-셀 2 — 데이터 (생성은 seed 로 똑같이 재현, 다양화는 HF 데이터 저장소에서)
-    %cd ml
-    !python -m esc_ml.gen --n 8000 --seed 7 --out data/gen
-    !python -c "from huggingface_hub import snapshot_download; snapshot_download('HF_OWNER/esc-assistant-data', repo_type='dataset', local_dir='data', allow_patterns=['para/*'])"
+2 — 데이터 (생성은 seed 로 재현, 다양화는 Task 4 의 로컬 data/para/)
+    uv run --no-sync python -m esc_ml.gen --n 8000 --seed 7 --out data/gen
 
-셀 3 — 학습 (T4·P100 은 bf16 이 없어 --quant 4bit)
-    !python -m esc_ml.train --train data/gen/train.jsonl data/para/train.jsonl --val data/gen/val.jsonl data/para/val.jsonl \
-        --out /kaggle/working/run1 --quant 4bit
+3 — 학습 (bf16, --quant 없음)
+    uv run --no-sync python -m esc_ml.train --train data/gen/train.jsonl data/para/train.jsonl \
+        --val data/gen/val.jsonl data/para/val.jsonl --out runs/run1
 
-셀 4 — 검증 문장으로 바로 예측(배포 전 감 잡기)
-    !python -m esc_ml.predict_hf --adapter /kaggle/working/run1/adapter --quant 4bit --data data/gen/val.jsonl --limit 200 --out /kaggle/working/run1/preds-val.jsonl
-    !python -m esc_ml.score --data data/gen/val.jsonl --pred /kaggle/working/run1/preds-val.jsonl --no-grammar --title "run1 검증" --out /kaggle/working/run1/val.md
+4 — 검증 문장으로 바로 예측(배포 전 감 잡기)
+    uv run --no-sync python -m esc_ml.predict_hf --adapter runs/run1/adapter --data data/gen/val.jsonl --limit 200 --out runs/run1/preds-val.jsonl
+    uv run --no-sync python -m esc_ml.score --data data/gen/val.jsonl --pred runs/run1/preds-val.jsonl --no-grammar --title "run1 검증" --out runs/run1/val.md
 
-출력(/kaggle/working/run1 의 adapter/, run_config.json, val.md)을 내려받아 로컬 ml/runs/run1/ 에 둔다(커밋 안 함).
-`HF_OWNER` 는 spec §17 에서 정한 계정·조직으로 바꿔 쓴다.
+`runs/run1/`(adapter/, run_config.json, val.md)은 커밋하지 않는다.
+
+대체 경로(데스크톱을 못 쓸 때): Kaggle(T4×2·P100)·Colab — `HF_TOKEN` 은 Secrets, 다양화는 `HF_OWNER/esc-assistant-data` 에서 받고, bf16 이 없어 학습·예측에 `--quant 4bit`.
 ```
 
 - [ ] **Step 5: 학습 실행·보고서**
 
-1. 다양화 데이터 업로드(학습 전 1회): `uv run --extra release python -m esc_ml.release upload-data --folder data/para --repo $HF_OWNER/esc-assistant-data` (Task 11 Step 2 의 함수 — Task 11 Step 1~3 을 먼저 구현해 둔다).
-2. Kaggle 절차 셀 1~4 실행.
-3. 시험 세트 예측·채점(로컬 GPU 또는 Kaggle):
+1. 다양화 데이터 업로드(학습 전 1회 — 보관·재현용, 대체 경로는 여기서 받는다): `uv run --extra release python -m esc_ml.release upload-data --folder data/para --repo $HF_OWNER/esc-assistant-data` (Task 11 Step 2 의 함수 — Task 11 Step 1~3 을 먼저 구현해 둔다).
+2. `notebooks/local_train.md` 1~4 실행.
+3. 시험 세트 예측·채점(로컬 GPU):
 ```bash
 uv run python -m esc_ml.predict_hf --adapter runs/run1/adapter --data data/test_human.jsonl \
   --vectors ../assistant_proto/vectors/forms.v1.jsonl --out preds/run1-hf.jsonl
@@ -3366,8 +3409,8 @@ uv run python -m esc_ml.score --data data/test_human.jsonl --vectors ../assistan
 - [ ] **Step 6: 커밋**
 
 ```bash
-git add ml/esc_ml/train.py ml/esc_ml/merge.py ml/notebooks/kaggle_train.md ml/tests/test_train.py
-git commit -m "feat(ml): LoRA 학습·병합 — prompt-completion(정답에만 손실), Kaggle 절차"
+git add ml/esc_ml/train.py ml/esc_ml/merge.py ml/notebooks/local_train.md ml/tests/test_train.py
+git commit -m "feat(ml): LoRA 학습·병합 — prompt-completion(정답에만 손실), 로컬 GPU 절차"
 git add ml/reports/run-<YYYYMMDD>-1.md
 git commit -m "feat(ml): run1 학습 보고서"
 ```
@@ -3411,13 +3454,19 @@ python examples/json_schema_to_grammar.py ../form.schema.json > ../../spike/mode
 
 - [ ] **Step 2 (갈래 B — `runtime: webllm`): MLC**
 
+Task 1 Step 9 에서 원본으로 통과한 절차(`ml/reports/spike.md` 「Step 9」) 그대로, 입력만 `ml/out/merged`. **Windows 에서 한다** — Linux nightly(0.26.dev6)는 `gemma4` 를 모른다(소스 빌드 필요).
 ```bash
-pip install --pre -U -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu
-mlc_llm convert_weight ml/out/merged --quantization q4f16_1 -o ml/spike/models/esc-webllm
-mlc_llm gen_config ml/out/merged --quantization q4f16_1 --conv-template gemma_instruction -o ml/spike/models/esc-webllm
-mlc_llm compile ml/spike/models/esc-webllm/mlc-chat-config.json --device webgpu -o ml/spike/models/esc-webllm/lib.wasm
+uv venv ml/out/mlc-venv
+uv pip install --python ml/out/mlc-venv --pre -f https://mlc.ai/wheels mlc-llm-nightly-cpu mlc-ai-nightly-cpu psutil
+# Windows 휠에 SPIRV-Tools.dll 이 빠져 있다(tvm_compiler.dll 이 안 올라가 RegisterOpAttr 오류)
+#   → conda-forge spirv-tools 의 SPIRV-Tools.dll 을 ml/out/mlc-venv/Lib/site-packages/tvm/lib/ 에 복사
+python -m mlc_llm convert_weight ml/out/merged --quantization q4f16_1 --device cpu -o ml/spike/models/esc-webllm
+python -m mlc_llm gen_config ml/out/merged --quantization q4f16_1 --conv-template gemma4_instruction -o ml/spike/models/esc-webllm
+# mlc-chat-config.json 의 context_window_size 131072 → 4096
+# lib.wasm: 공개본 binary-mlc-llm-libs/web-llm-models/v0_2_87/base/gemma-4-E2B-it-q4f16_1_cs512-webgpu.wasm 을
+#   ml/spike/models/esc-webllm/lib.wasm 으로 받는다 — 같은 구조·양자화라 compile(emscripten)이 필요 없다
 ```
-`--device webgpu` 컴파일은 emscripten 이 필요하다(MLC 문서 "WebLLM 모델 컴파일" 절차대로 `emsdk` 설치·활성화). Gemma 4 대화 틀 이름이 `gemma_instruction` 과 다르면 `mlc_llm gen_config --help` 의 목록에서 gemma 계열 최신 이름으로. 하네스 모델 칸: `models/esc-webllm`.
+(`python -m mlc_llm` 은 `ml/out/mlc-venv` 의 python.) 대화 틀은 Gemma 4 용 `gemma4_instruction`(`gemma_instruction` 아님). `mlc_llm compile ml/spike/models/esc-webllm/mlc-chat-config.json --device webgpu -o ml/spike/models/esc-webllm/lib.wasm`(emscripten — MLC 문서 "WebLLM 모델 컴파일" 절차대로 `emsdk` 설치·활성화)은 공개 `lib.wasm` 이 없을 때만 한다(예: E4B). 하네스 모델 칸: `models/esc-webllm`.
 
 - [ ] **Step 2 (갈래 C — `runtime: transformers`): ONNX q4f16**
 
@@ -3463,7 +3512,7 @@ PR ③ `feat(ml): 기준 점수·학습·양자화 보고서` (Task 8~10 보고�
 
 ---
 
-### Task 11: 릴리스 — Hugging Face 업로드 · 관리자 PC 확인 · `model.json` (선행: Task 10 합격, 01 의 `model.json` 존재, HF 조직 결정)
+### Task 11: 릴리스 — Hugging Face 업로드 · 관리자 PC 확인 · `model.json` (선행: Task 10 합격, 01 의 `model.json` 존재)
 
 **Files:**
 - Create: `ml/esc_ml/release.py`, `ml/tests/test_release.py`
@@ -3705,7 +3754,7 @@ git commit -m "feat(ml): 릴리스 도우미 — 파일 목록·SHA-256, 모델 
 
 ```bash
 cd ml
-export HF_OWNER=…           # spec §17 결정
+export HF_OWNER=leemonta9482  # 당분간 wj 개인 계정(spec §17, 2026-11-26). 조직 이전은 나중
 export HF_TOKEN=…           # 커밋 금지
 uv run --extra release python -m esc_ml.release card --version 1.0.0 --runtime <도구> \
   --summary reports/quant-<YYYYMMDD>.json --n-train <학습 문장 수> --out spike/models/<배포 폴더>/README.md
