@@ -64,5 +64,8 @@ describe('tokens.css 는 tokens.md 를 그대로 옮긴다', () => {
     expect(cssVar(tokens, 'text-3')).toBe('var(--gray-500)')
     expect(cssVar(tokens, 'room-busy-fill')).toBe('var(--red-50)')
     expect(cssVar(tokens, 'bg-student')).toBe('var(--gray-25)')
+    expect(cssVar(tokens, 'diff-add-line')).toBe('var(--green-700)')
+    expect(cssVar(tokens, 'diff-remove-line')).toBe('var(--red-700)')
+    expect(cssVar(tokens, 'diff-change-fill')).toBe('var(--amber-50)')
   })
 })

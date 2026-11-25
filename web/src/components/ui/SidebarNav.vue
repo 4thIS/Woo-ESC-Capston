@@ -3,10 +3,28 @@ import { nextTick, onMounted, onScopeDispose, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import Badge from './Badge.vue'
 
-export type NavIcon = 'building' | 'settings' | 'calendar' | 'node' | 'send' | 'users'
-const props = defineProps<{
-  items: { to: string; label: string; badge?: number; group?: string; icon?: NavIcon }[]
-}>()
+export type NavIcon = 'building' | 'settings' | 'calendar' | 'node' | 'send' | 'users' | 'assistant'
+interface NavCommon {
+  label: string
+  badge?: number
+  group?: string
+  icon?: NavIcon
+}
+/** 화면으로 가는 링크 */
+export interface NavLink extends NavCommon {
+  to: string
+}
+/** 화면을 옮기지 않는 버튼 — 지금 화면 위에 무언가를 연다 (components.md SidebarNav `action`) */
+export interface NavAction extends NavCommon {
+  action: () => void
+  /** 연 것이 열려 있다 — aria-expanded · 활성 모양 */
+  expanded?: boolean
+  /** 오른쪽 끝 단축키 표시 (`Ctrl K`) */
+  shortcut?: string
+}
+export type NavItem = NavLink | NavAction
+const props = defineProps<{ items: NavItem[] }>()
+const isLink = (i: NavItem): i is NavLink => 'to' in i
 
 // 24×24 선 아이콘 — stroke 는 currentColor 라 글자색(선택·hover)을 그대로 따른다
 const ICONS: Record<NavIcon, string> = {
@@ -18,6 +36,8 @@ const ICONS: Record<NavIcon, string> = {
   send: 'M3 12h4l3-8 4 16 3-8h4',
   users:
     'M9 11.5A3.5 3.5 0 1 0 9 4.5a3.5 3.5 0 0 0 0 7ZM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6',
+  assistant:
+    'M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8ZM18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8Z',
 }
 const showGroup = (i: number) => {
   const g = props.items[i].group
@@ -54,12 +74,28 @@ onScopeDispose(() => window.removeEventListener('resize', place))
         :style="{ transform: `translateY(${pill.y}px)`, height: `${pill.h}px` }"
         aria-hidden="true"
       ></li>
-      <template v-for="(i, n) in items" :key="i.to">
+      <template v-for="(i, n) in items" :key="isLink(i) ? i.to : `action:${i.label}`">
         <!-- 묶음 제목은 제목으로 — 스크린리더가 제목 이동으로 묶음을 건넌다 -->
         <li v-if="showGroup(n)" class="nav__group" role="none">
           <h2 class="nav__group-h">{{ i.group }}</h2>
         </li>
-        <li>
+        <li v-if="!isLink(i)">
+          <!-- 화면을 옮기지 않는 항목 — 면(surface + line.2)으로 링크와 구별한다 -->
+          <button
+            type="button"
+            class="nav__item nav__item--action"
+            :class="{ 'nav__item--open': i.expanded }"
+            :aria-expanded="i.expanded ? 'true' : 'false'"
+            @click="i.action()"
+          >
+            <svg v-if="i.icon" class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path :d="ICONS[i.icon]" />
+            </svg>
+            <span class="nav__label">{{ i.label }}</span>
+            <kbd v-if="i.shortcut" class="nav__kbd">{{ i.shortcut }}</kbd>
+          </button>
+        </li>
+        <li v-else>
           <RouterLink
             :to="i.to"
             class="nav__item"
@@ -171,6 +207,37 @@ onScopeDispose(() => window.removeEventListener('resize', place))
 .nav__item--active {
   color: var(--brand);
   font-weight: var(--font-weight-medium);
+}
+.nav__item--action {
+  width: 100%;
+  border: var(--border-thin) solid var(--line-2);
+  background: var(--surface);
+  font: inherit;
+  font-size: var(--font-size-md);
+  text-align: left;
+  cursor: pointer;
+}
+.nav__item--action:hover:not(.nav__item--open) {
+  background: var(--nav-hover);
+}
+.nav__item--open {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+  color: var(--brand);
+  font-weight: var(--font-weight-medium);
+}
+.nav__item--action:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.nav__kbd {
+  padding: 0 var(--space-1);
+  border: var(--border-thin) solid var(--line-3);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  color: var(--text-3);
 }
 .nav__icon {
   width: 16px;
