@@ -262,7 +262,7 @@ v2에서 쓸 수 있는 수단은 다섯이고, 이 밖으로 나가지 않는�
 
 | prop | 값 | 기본 |
 |---|---|---|
-| `items` | `{ to, label }[]` | — |
+| `items` | `{ to?, action?, label, group?, icon?, badge?, shortcut? }[]` — `to`(링크) 또는 `action`(버튼) 중 하나 | — |
 | `header` | slot | — |
 | `footer` | slot | — |
 
@@ -272,6 +272,19 @@ v2에서 쓸 수 있는 수단은 다섯이고, 이 밖으로 나가지 않는�
 - **활성: 바탕 `brand.tint` + 글자 `brand` + `medium`.** 활성 표시는 `brand`를 쓰는 두 자리 중 하나다(다른 하나는 1차 버튼).
 - `header` 슬롯은 위에 붙는다 — 관리자 웹의 학교 표시가 들어간다. 32px 로고 칸(**학교 이름 첫 글자**) + 학교 이름 + 그 아래 `강의실 게시 관리자`. 학교 이름은 로그인 응답의 **`school_name` 만** 적고 `ESC` 를 붙이지 않는다. `school_name` 이 없는 옛 세션이면 `ESC`(로고 칸은 `E` — `favicon-16.svg` 를 2배로, [logo.md](logo.md) 「쓰는 자리」)다 — 학생 웹과 같은 규칙([student-room.md](screens/student-room.md) 내 정보 줄). 학교 이름을 고정 글자로 넣지 않는다(#70 — 다른 학교 관리자에게도 `MJC` 로 보였다).
 - `footer` 슬롯은 아래에 붙는다 — 관리자 웹은 학교 카드(읽기 전용, [admin-master.md](screens/admin-master.md))와 내 정보·로그아웃이 들어간다. 모뎀Pi 연결 표시는 두지 않는다([admin-nodes.md](screens/admin-nodes.md) 진입).
+- `icon` 은 24×24 선 아이콘 하나(`stroke: currentColor`, 16px 로 그린다). 값: `building` · `settings` · `calendar` · `node` · `send` · `users` · **`assistant`**.
+  - `assistant` (AI 비서, 2026-11-25): 큰 별 하나 + 작은 별 하나 — path `M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7-4.7-1.8 4.7-1.8ZM18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8Z`
+- **`action` 항목은 화면을 옮기지 않는 버튼이다** — `<button>` 으로 그리고 `aria-expanded` 를 단다. 모양은 같은 높이·라운드에 바탕 `surface` + `line.2` 1px 테두리(링크 항목과 면으로 구별). 연 것이 열려 있으면 활성 모양(바탕 `brand.tint`, 글자·테두리 `brand`). `shortcut` 은 오른쪽 끝 단축키 표시(`font.size.xs`, `text.3`, `line.3` 1px `radius.sm`). 지금은 `AI 비서` 하나다([admin-assistant.md](screens/admin-assistant.md)).
+
+## ProgressBar
+
+| prop | 값 | 기본 |
+|---|---|---|
+| `value` | 0 이상 숫자 | — |
+| `max` | 0 보다 큰 숫자 | — |
+| `label` | 문자열 (스크린리더 이름) | — |
+
+높이 8px, 라운드 `radius.full`, 바탕 `sunken` + `line.2` 1px, 채움 `brand`(진행은 "지금 하는 일"의 활성 표시). `role="progressbar"` + `aria-valuenow`·`aria-valuemax`·`aria-label`. 퍼센트 글자는 컴포넌트가 그리지 않는다 — 화면이 옆에 적는다. 쓰는 곳: [AI 비서](screens/admin-assistant.md) 모델 받기.
 
 ## StatTile
 

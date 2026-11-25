@@ -20,6 +20,7 @@ docs/design/
 │   ├── admin-dashboard.md  ← 분석 대시보드 (차트 규칙은 tokens.md 의 chart.* 를 따른다)
 │   ├── admin-nodes.md      ← 노드 상태·모뎀Pi·등록 대기
 │   ├── admin-users.md      ← 회원 승인 (S4a)
+│   ├── admin-assistant.md  ← AI 비서: 상단 명령창 · 펼친 확인 창(하루 막대 + 기존|수정 격자) · 모델 받기 · 변경 기록
 │   ├── student-room.md     ← 학생 웹 (S10, 모바일 우선, 라우트 6개)
 │   ├── policies.md         ← 약관 및 정책 `/policies/:doc` · 가입 동의 안내 (로그인 없이, 반응형)
 │   └── terminal-epaper.md  ← 단말 e-Paper 화면 (→ firmware/src/terminal/, 소비자는 dh)
