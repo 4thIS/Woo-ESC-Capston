@@ -149,6 +149,7 @@ def normalize_room(expr: str) -> str: ...  # 공백·"호" 정리: "803호"→"8
 # ---- 대화 규칙 (assistant_proto.rules) — 서버가 되묻고, ml 이 같은 접두어를 만든다 ----
 PRIMARY: dict[str, str]   # intent → 이어지는 답(fill)이 들어갈 칸 묶음 "set" | "target"
 PREVIEW_QUESTION: str     # 미리보기 뒤 next_prefix 질문
+PICK_QUESTION: str        # 여러 항목 중 고를 때 next_prefix 질문 (대상을 못 찾으면 question(intent, "target.any"))
 def missing(intent: str, target: dict, set_: dict) -> str | None: ...   # 다음에 물을 칸 "set.time" 등, 다 찼으면 None
 def question(intent: str, slot: str, type_label: str | None = None) -> str: ...  # 그 칸을 묻는 문장
 def state_items(intent: str, target: dict, set_: dict, missing_slot: str | None = None) -> list[tuple[str, str | None]]: ...

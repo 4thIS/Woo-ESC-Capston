@@ -27,6 +27,8 @@ PRIMARY: dict[str, str] = {
 }
 # 미리보기를 띄운 뒤 서버가 다음 접두어에 넣는 질문 — ml 도 같은 글자로 접두어를 만든다
 PREVIEW_QUESTION = "확인 화면을 보고 [적용]을 눌러 주세요. 바꿀 것이 있으면 말씀해 주세요."
+# 같은 조건에 맞는 항목이 여럿이라 고르게 할 때 접두어 질문 (선택 버튼과 함께) — 서버·ml 공용
+PICK_QUESTION = "어느 것인가요? 목록에서 골라 주시거나 날짜·시각·이름으로 알려 주세요."
 CHANGE_INTENTS = ("event.change", "exam.change", "class.change")
 _LABEL = {
     "rooms": "강의실",
@@ -106,6 +108,8 @@ def question(intent: str, slot: str, type_label: str | None = None) -> str:
             else f"{type_label or '일정'} 이름은 무엇인가요?"
         )
     if f == "any":
+        if sec == "target":  # 바꾸거나 지울 대상을 못 찾았을 때
+            return "어떤 일정인가요? 날짜·시각·이름으로 다시 알려 주세요."
         return "무엇을 어떻게 바꿀까요? (예: 16시부터 18시까지로, 이름을 ○○로)"
     return "조금 더 자세히 알려 주세요."
 

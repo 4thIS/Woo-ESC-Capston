@@ -114,3 +114,16 @@ def test_render_with_state_items():
         p
         == "상태: class.add | 강의실 801 | 요일 월 | 시각 9시~12시 | 과목 ?\n질문: 과목명은 무엇인가요?\n관리자: "
     )
+
+
+def test_pick_and_target_any_questions():
+    # 서버가 고르기·대상 다시 묻기 접두어에 쓰는 고정 문구 — ml 이 같은 글자로 학습 접두어를 만든다
+    assert rules.PICK_QUESTION.startswith("어느 것인가요?")
+    assert (
+        rules.question("event.change", "target.any")
+        == "어떤 일정인가요? 날짜·시각·이름으로 다시 알려 주세요."
+    )
+    assert rules.question("class.remove", "target.any") == rules.question(
+        "event.remove", "target.any"
+    )
+    assert rules.question("event.change", "set.any").startswith("무엇을 어떻게 바꿀까요?")
