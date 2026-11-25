@@ -285,8 +285,8 @@ def not_found_message(intent: str) -> str:
 
 
 WEEKS_MAX = 6  # 한 방에 그리는 주 수 (시험기간이 길어도) — 세는 건 영향받는 주 전부
-SRC_AI = 2  # AI 비서가 쓰는 슬롯 source — 이보다 큰 source(포털·긴급)는 지우거나 옮기지 않는다
-PROTECTED = "포털·긴급 수업은 AI 비서로 지우거나 옮길 수 없습니다"
+SRC_AI = 2  # AI 비서가 쓰는 슬롯 source — 이보다 큰 source(3=긴급)는 지우거나 옮기지 않는다 (포털=1 은 수동 수정이 덮을 수 있는 기존 규칙 그대로)
+PROTECTED = "긴급 수업은 AI 비서로 지우거나 옮길 수 없습니다"
 
 
 @dataclass

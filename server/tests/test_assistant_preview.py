@@ -319,7 +319,7 @@ def test_class_change_checks_overlap_with_other_slots(client, app, monkeypatch):
 
 
 @pytest.mark.parametrize("intent", ["class.remove", "class.change"])
-def test_portal_slot_cannot_be_removed_or_moved(client, app, monkeypatch, intent):
+def test_emergency_slot_cannot_be_removed_or_moved(client, app, monkeypatch, intent):
     fix_clock(monkeypatch)
     ids = campus(app)
     with app.state.Session() as s, s.begin():
@@ -327,7 +327,7 @@ def test_portal_slot_cannot_be_removed_or_moved(client, app, monkeypatch, intent
     set_ = {"weekdays": [2]} if intent == "class.change" else None
     d = _class(intent, ids, {"weekdays": [1], "subject": "알고리즘"}, set_)
     pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
-    assert any("포털·긴급 수업은 AI 비서로 지우거나 옮길 수 없습니다" in b for b in pv["blockers"])
+    assert any("긴급 수업은 AI 비서로 지우거나 옮길 수 없습니다" in b for b in pv["blockers"])
 
 
 def test_exam_change_past_range_is_blocked(client, app, monkeypatch):
