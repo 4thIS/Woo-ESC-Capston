@@ -137,6 +137,11 @@ def _range_start_this_year(tok: str, today: date) -> date | None:
 _MAX_RANGE_DAYS = 92
 
 
+def _is_yearless_md(tok: str) -> bool:
+    m = _MD.match(tok)
+    return bool(m) and m.group(1) is None
+
+
 def _split_range(t: str) -> tuple[str, str] | None:
     if "부터" in t:
         a, b = t.split("부터", 1)
@@ -173,6 +178,13 @@ def resolve_when(expr: str, now: datetime) -> When | None:
             return When("range", start=da[0], end=db[0])
         start = _range_start_this_year(a, today)
         end = _range_end(b, start) if start else None
+        if start and _is_yearless_md(a) and not (end and start <= today <= end):
+            # 해를 넘기는 진행 중 기간 — 오늘 1/2 에 "12/28~1/3" 은 작년 12/28 부터
+            prev = _mk(start.year - 1, start.month, start.day)
+            prev_end = _range_end(b, prev) if prev else None
+            within = prev_end and prev_end - prev <= timedelta(days=_MAX_RANGE_DAYS)
+            if prev and prev_end and within and prev <= today <= prev_end:
+                return When("range", start=prev, end=prev_end)
         if start is not None and start < today and (end is None or end < today):
             # 시작도 끝도 지났다 — 다음 해(달)로 민다. 시작만 지났고 끝이 오늘 이후면 진행 중 기간이라 그대로.
             start = _one_date(a, today)
@@ -181,24 +193,31 @@ def resolve_when(expr: str, now: datetime) -> When | None:
             return None
         return When("range", start=start, end=end)
     dates: list[date] = []
+    month: tuple[int, int] | None = None  # 앞 항목의 (해, 달) — 날짜만 쓴 항목이 이어받는다
     for tok in (x for x in _LIST_SEP.split(t) if x):
         if (ws := _weekday_dates(tok, today, offset)) is not None:
             dates += ws
             continue
         if offset is not None:
             return None
-        if (d := _one_date(tok, today)) is None:
+        if month and (m := _DAY.match(tok)):
+            d = _mk(*month, int(m.group(1)))
+        else:
+            d = _one_date(tok, today)
+        if d is None:
             return None
+        if _MD.match(tok):
+            month = (d.year, d.month)
         dates.append(d)
     return When("dates", dates=tuple(sorted(set(dates)))) if dates else None
 
 
 def resolve_weekdays(expr: str) -> tuple[int, ...] | None:
     t = _compact(expr).removeprefix("매주").removesuffix("마다")
-    if m := re.fullmatch(r"([월화수목금토일])(?:요일)?~([월화수목금토일])(?:요일)?", t):
+    if m := re.fullmatch(r"([월화수목금토일])(?:요일|욜)?~([월화수목금토일])(?:요일|욜)?", t):
         a, b = WEEKDAYS.index(m.group(1)) + 1, WEEKDAYS.index(m.group(2)) + 1
         return tuple(range(a, b + 1)) if a <= b else None
-    t = _LIST_SEP.sub("", t).replace("요일", "")
+    t = _LIST_SEP.sub("", t).replace("요일", "").replace("욜", "")
     if not t or any(c not in WEEKDAYS for c in t):
         return None
     return tuple(sorted({WEEKDAYS.index(c) + 1 for c in t}))
@@ -215,19 +234,27 @@ def _clock(tok: str, *, bare_ok: bool) -> time | None:
     if not bare_ok and ":" not in tok and "시" not in tok:
         return None
     h, mi = int(hh), int(mm1 or mm2 or 0)
-    if ap and (h > 12 or h == 0 or (ap == "밤" and h == 12)):  # 24시간제와 모순·모호
+    # 24시간제와 모순(13시 이상·0시) 이거나 모호(12시는 오후·낮만, 밤은 6시부터)
+    if ap and (h > 12 or h == 0 or (h == 12 and ap != "오후" and ap != "낮")):
+        return None
+    if ap == "밤" and h < 6:
         return None
     if tok.endswith("반"):
         mi = 30
     if h > 23 or mi > 59:
         return None
-    if ap in ("오후", "저녁", "밤") and h < 12:
-        h += 12
-    elif ap in ("오전", "아침") and h == 12:
-        h = 0
-    elif ap in (None, "낮") and 1 <= h <= 8:
+    if (ap in ("오후", "저녁", "밤") and h < 12) or (ap in (None, "낮") and 1 <= h <= 8):
         h += 12
     return time(h, mi)
+
+
+def _marker(tok: str) -> str | None:
+    m = _CLOCK.match(tok)
+    return m.group(1) if m else None
+
+
+def _explicit_am(tok: str) -> bool:
+    return _marker(tok) in ("오전", "아침")
 
 
 def resolve_time(expr: str) -> TimeSpan | None:
@@ -241,10 +268,15 @@ def resolve_time(expr: str) -> TimeSpan | None:
         start = _clock(t, bare_ok=False)
         return TimeSpan(start, None) if start else None
     a, b = t.split(seps[0], 1)
+    until = b.endswith("까지")
     b = b.removesuffix("까지")
     start = _clock(a, bare_ok=True)
     if start is None or not b:
         return None
+    if until and re.fullmatch(r"\d{1,2}분", b) and ("시" in a or ":" in a):
+        # "3시 30분부터 50분까지" — 시작과 같은 시의 N분. 길이가 아니다
+        mi = int(b[:-1])
+        return TimeSpan(start, time(start.hour, mi)) if start.minute < mi <= 59 else None
     if d := _DUR.match(b):
         h, half, mins = d.groups()
         dur = int(h) * 60 + (30 if half else 0) if h else int(mins)
@@ -253,6 +285,10 @@ def resolve_time(expr: str) -> TimeSpan | None:
             return None
         return TimeSpan(start, time(total // 60, total % 60))
     end = _clock(b, bare_ok=True)
+    if _explicit_am(a) and _marker(b) is None and (am := _clock("오전" + b, bare_ok=True)):
+        end = am if am > start else end  # "오전 7시부터 8시" — 끝도 오전
+    if _marker(a) is None and start.hour == 0 and _marker(b) is None:
+        return None  # "0시부터 3시" — 자정인지 모호
     if end is None or end <= start:
         return None
     return TimeSpan(start, end)
