@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>ESC AI 비서 — 브라우저 실행 도구 실험</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 24px; max-width: 1200px }
+  label { margin-right: 12px }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px }
+  td, th { border: 1px solid #ccc; padding: 4px 6px; font-size: 12px; vertical-align: top }
+  .ok { background: #e4f6e4 } .bad { background: #fde2e2 }
+  pre { white-space: pre-wrap; margin: 0 }
+</style>
+</head>
+<body>
+<h1>브라우저 실행 도구 실험</h1>
+<pre id="env"></pre>
+<p>
+  <label>도구 <select id="runtime">
+    <option value="webllm">WebLLM</option>
+    <option value="transformers">Transformers.js</option>
+    <option value="mediapipe">MediaPipe tasks-genai (LiteRT 계열)</option>
+    <option value="wllama">wllama (llama.cpp)</option>
+  </select></label>
+  <label>모델 <input id="model" size="80"></label>
+</p>
+<p>
+  <label>묶음 <input id="suite" value="suites/spike.json" size="30"></label>
+  <label><input type="checkbox" id="grammar" checked> 문법 강제(지원하는 도구만)</label>
+  <button id="load">불러오기</button>
+  <button id="run" disabled>실행</button>
+  <button id="export" disabled>예측·요약 내보내기</button>
+</p>
+<p id="status"></p>
+<table>
+  <thead><tr><th>id</th><th>ms</th><th>토큰</th><th>규격</th><th>20문장 정답</th><th>출력</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<h2>요약</h2>
+<pre id="summary"></pre>
+<script type="module" src="common.js"></script>
+</body>
+</html>

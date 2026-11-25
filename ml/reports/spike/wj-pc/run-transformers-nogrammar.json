@@ -1,0 +1,20 @@
+{
+ "runtime": "transformers",
+ "model": "onnx-community/gemma-4-E2B-it-ONNX",
+ "load_ms": 54167,
+ "env": {
+  "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
+  "cores": 16,
+  "device_memory_gb": 32,
+  "webgpu": true,
+  "gpu": "nvidia / blackwell",
+  "cross_origin_isolated": true
+ },
+ "grammar": false,
+ "n": 20,
+ "mean_ms": 1585,
+ "p90_ms": 2196,
+ "tokens_per_s": 21.1,
+ "schema_valid": 16,
+ "exact": 2
+}

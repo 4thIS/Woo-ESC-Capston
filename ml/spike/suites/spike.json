@@ -1,0 +1,450 @@
+{
+ "system_prompt": "너는 대학 강의실 관리 AI 비서의 입력 해석기다. 관리자의 문장을 아래 양식의 JSON 한 줄로만 바꿔 출력한다. 설명·코드블록 없이 JSON 만 출력한다.\n양식: {\"v\":1,\"intent\":…,\"target\":{…},\"set\":{…}}\nintent: event.add event.change event.remove exam.add exam.change exam.remove class.add class.change class.remove request.approve request.reject ask.free_rooms ask.schedule ask.requests ask.node fill cancel unknown 중 하나.\ntarget 은 찾을 대상, set 은 새 값. 칸: rooms(강의실 표현 목록) when(날짜·기간·요일 표현) time(시각 표현) type(수업|시험|휴강|빈강의실|특강|대여) subject professor reason requester.\n강의실·날짜·시각·이름은 문장에 나온 글자 그대로 옮기고 계산하지 않는다. 없는 칸은 뺀다. 지원하지 않는 요청은 unknown, 취소는 cancel. \"상태:\" 줄이 있으면 관리자가 질문에 답한 것이므로 바뀐 칸만 fill 로 낸다.\n예: 관리자: 803 금요일 3시부터 6시 세미나 → {\"v\":1,\"intent\":\"event.add\",\"target\":{},\"set\":{\"rooms\":[\"803\"],\"when\":\"금요일\",\"time\":\"3시부터 6시\",\"type\":\"특강\"}}\n예: 관리자: 801 시험기간 없애줘 → {\"v\":1,\"intent\":\"exam.remove\",\"target\":{\"rooms\":[\"801\"]},\"set\":{}}",
+ "json_schema": {
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+   "v",
+   "intent",
+   "target",
+   "set"
+  ],
+  "properties": {
+   "v": {
+    "type": "integer",
+    "enum": [
+     1
+    ]
+   },
+   "intent": {
+    "type": "string",
+    "enum": [
+     "event.add",
+     "event.change",
+     "event.remove",
+     "exam.add",
+     "exam.change",
+     "exam.remove",
+     "class.add",
+     "class.change",
+     "class.remove",
+     "request.approve",
+     "request.reject",
+     "ask.free_rooms",
+     "ask.schedule",
+     "ask.requests",
+     "ask.node",
+     "fill",
+     "cancel",
+     "unknown"
+    ]
+   },
+   "target": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "rooms": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 20
+      }
+     },
+     "when": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     },
+     "time": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     },
+     "type": {
+      "type": "string",
+      "enum": [
+       "수업",
+       "시험",
+       "휴강",
+       "빈강의실",
+       "특강",
+       "대여"
+      ]
+     },
+     "subject": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     },
+     "professor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20
+     },
+     "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+     },
+     "requester": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20
+     }
+    }
+   },
+   "set": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+     "rooms": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 30,
+      "items": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 20
+      }
+     },
+     "when": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     },
+     "time": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     },
+     "type": {
+      "type": "string",
+      "enum": [
+       "수업",
+       "시험",
+       "휴강",
+       "빈강의실",
+       "특강",
+       "대여"
+      ]
+     },
+     "subject": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+     },
+     "professor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20
+     },
+     "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+     },
+     "requester": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20
+     }
+    }
+   }
+  }
+ },
+ "gbnf": "char ::= [^\"\\\\\\x7F\\x00-\\x1F] | [\\\\] ([\"\\\\bfnrt] | \"u\" [0-9a-fA-F]{4})\nintent ::= (\"\\\"event.add\\\"\" | \"\\\"event.change\\\"\" | \"\\\"event.remove\\\"\" | \"\\\"exam.add\\\"\" | \"\\\"exam.change\\\"\" | \"\\\"exam.remove\\\"\" | \"\\\"class.add\\\"\" | \"\\\"class.change\\\"\" | \"\\\"class.remove\\\"\" | \"\\\"request.approve\\\"\" | \"\\\"request.reject\\\"\" | \"\\\"ask.free_rooms\\\"\" | \"\\\"ask.schedule\\\"\" | \"\\\"ask.requests\\\"\" | \"\\\"ask.node\\\"\" | \"\\\"fill\\\"\" | \"\\\"cancel\\\"\" | \"\\\"unknown\\\"\")\nintent-kv ::= \"\\\"intent\\\"\" space \":\" space intent\nroot ::= \"{\" space v-kv \",\" space intent-kv \",\" space target-kv \",\" space set-kv space \"}\"\nset ::= \"{\" space  (set-rooms-kv set-rooms-rest | set-when-kv set-when-rest | set-time-kv set-time-rest | set-type-kv set-type-rest | set-subject-kv set-subject-rest | set-professor-kv set-professor-rest | set-reason-kv set-reason-rest | set-requester-kv )? space \"}\"\nset-kv ::= \"\\\"set\\\"\" space \":\" space set\nset-professor ::= \"\\\"\" char{1,20} \"\\\"\"\nset-professor-kv ::= \"\\\"professor\\\"\" space \":\" space set-professor\nset-professor-rest ::= ( \",\" space set-reason-kv )? set-reason-rest\nset-reason ::= \"\\\"\" char{1,100} \"\\\"\"\nset-reason-kv ::= \"\\\"reason\\\"\" space \":\" space set-reason\nset-reason-rest ::= ( \",\" space set-requester-kv )?\nset-requester ::= \"\\\"\" char{1,20} \"\\\"\"\nset-requester-kv ::= \"\\\"requester\\\"\" space \":\" space set-requester\nset-rooms ::= \"[\" space set-rooms-item (\",\" space set-rooms-item){0,29} space \"]\"\nset-rooms-item ::= \"\\\"\" char{1,20} \"\\\"\"\nset-rooms-kv ::= \"\\\"rooms\\\"\" space \":\" space set-rooms\nset-rooms-rest ::= ( \",\" space set-when-kv )? set-when-rest\nset-subject ::= \"\\\"\" char{1,40} \"\\\"\"\nset-subject-kv ::= \"\\\"subject\\\"\" space \":\" space set-subject\nset-subject-rest ::= ( \",\" space set-professor-kv )? set-professor-rest\nset-time ::= \"\\\"\" char{1,40} \"\\\"\"\nset-time-kv ::= \"\\\"time\\\"\" space \":\" space set-time\nset-time-rest ::= ( \",\" space set-type-kv )? set-type-rest\nset-type ::= (\"\\\"수업\\\"\" | \"\\\"시험\\\"\" | \"\\\"휴강\\\"\" | \"\\\"빈강의실\\\"\" | \"\\\"특강\\\"\" | \"\\\"대여\\\"\")\nset-type-kv ::= \"\\\"type\\\"\" space \":\" space set-type\nset-type-rest ::= ( \",\" space set-subject-kv )? set-subject-rest\nset-when ::= \"\\\"\" char{1,40} \"\\\"\"\nset-when-kv ::= \"\\\"when\\\"\" space \":\" space set-when\nset-when-rest ::= ( \",\" space set-time-kv )? set-time-rest\nspace ::= | \" \" | \"\\n\"{1,2} [ \\t]{0,20}\ntarget ::= \"{\" space  (target-rooms-kv target-rooms-rest | target-when-kv target-when-rest | target-time-kv target-time-rest | target-type-kv target-type-rest | target-subject-kv target-subject-rest | target-professor-kv target-professor-rest | target-reason-kv target-reason-rest | target-requester-kv )? space \"}\"\ntarget-kv ::= \"\\\"target\\\"\" space \":\" space target\ntarget-professor ::= \"\\\"\" char{1,20} \"\\\"\"\ntarget-professor-kv ::= \"\\\"professor\\\"\" space \":\" space target-professor\ntarget-professor-rest ::= ( \",\" space target-reason-kv )? target-reason-rest\ntarget-reason ::= \"\\\"\" char{1,100} \"\\\"\"\ntarget-reason-kv ::= \"\\\"reason\\\"\" space \":\" space target-reason\ntarget-reason-rest ::= ( \",\" space target-requester-kv )?\ntarget-requester ::= \"\\\"\" char{1,20} \"\\\"\"\ntarget-requester-kv ::= \"\\\"requester\\\"\" space \":\" space target-requester\ntarget-rooms ::= \"[\" space target-rooms-item (\",\" space target-rooms-item){0,29} space \"]\"\ntarget-rooms-item ::= \"\\\"\" char{1,20} \"\\\"\"\ntarget-rooms-kv ::= \"\\\"rooms\\\"\" space \":\" space target-rooms\ntarget-rooms-rest ::= ( \",\" space target-when-kv )? target-when-rest\ntarget-subject ::= \"\\\"\" char{1,40} \"\\\"\"\ntarget-subject-kv ::= \"\\\"subject\\\"\" space \":\" space target-subject\ntarget-subject-rest ::= ( \",\" space target-professor-kv )? target-professor-rest\ntarget-time ::= \"\\\"\" char{1,40} \"\\\"\"\ntarget-time-kv ::= \"\\\"time\\\"\" space \":\" space target-time\ntarget-time-rest ::= ( \",\" space target-type-kv )? target-type-rest\ntarget-type ::= (\"\\\"수업\\\"\" | \"\\\"시험\\\"\" | \"\\\"휴강\\\"\" | \"\\\"빈강의실\\\"\" | \"\\\"특강\\\"\" | \"\\\"대여\\\"\")\ntarget-type-kv ::= \"\\\"type\\\"\" space \":\" space target-type\ntarget-type-rest ::= ( \",\" space target-subject-kv )? target-subject-rest\ntarget-when ::= \"\\\"\" char{1,40} \"\\\"\"\ntarget-when-kv ::= \"\\\"when\\\"\" space \":\" space target-when\ntarget-when-rest ::= ( \",\" space target-time-kv )? target-time-rest\nv ::= (\"1\")\nv-kv ::= \"\\\"v\\\"\" space \":\" space v\n",
+ "examples": [
+  {
+   "id": "s01",
+   "user": "관리자: 803호 이번주 금요일 15시부터 18시까지 특강 예약해줘",
+   "gold": {
+    "v": 1,
+    "intent": "event.add",
+    "target": {},
+    "set": {
+     "rooms": [
+      "803호"
+     ],
+     "when": "이번주 금요일",
+     "time": "15시부터 18시까지",
+     "type": "특강"
+    }
+   }
+  },
+  {
+   "id": "s02",
+   "user": "관리자: 다음 주 화요일 공학관 801 자료구조 휴강",
+   "gold": {
+    "v": 1,
+    "intent": "event.add",
+    "target": {},
+    "set": {
+     "rooms": [
+      "공학관 801"
+     ],
+     "when": "다음 주 화요일",
+     "type": "휴강",
+     "subject": "자료구조"
+    }
+   }
+  },
+  {
+   "id": "s03",
+   "user": "관리자: 801·803 12/15~19 시험기간 잡아줘",
+   "gold": {
+    "v": 1,
+    "intent": "exam.add",
+    "target": {},
+    "set": {
+     "rooms": [
+      "801",
+      "803"
+     ],
+     "when": "12/15~19"
+    }
+   }
+  },
+  {
+   "id": "s04",
+   "user": "관리자: 803 월 9시부터 12시까지 운영체제 김하늘 교수님 수업 추가",
+   "gold": {
+    "v": 1,
+    "intent": "class.add",
+    "target": {},
+    "set": {
+     "rooms": [
+      "803"
+     ],
+     "when": "월",
+     "time": "9시부터 12시까지",
+     "subject": "운영체제",
+     "professor": "김하늘"
+    }
+   }
+  },
+  {
+   "id": "s05",
+   "user": "관리자: 금요일 오후 빈 강의실 있어?",
+   "gold": {
+    "v": 1,
+    "intent": "ask.free_rooms",
+    "target": {
+     "when": "금요일",
+     "time": "오후"
+    },
+    "set": {}
+   }
+  },
+  {
+   "id": "s06",
+   "user": "관리자: 801 배터리 몇 퍼센트야?",
+   "gold": {
+    "v": 1,
+    "intent": "ask.node",
+    "target": {
+     "rooms": [
+      "801"
+     ]
+    },
+    "set": {}
+   }
+  },
+  {
+   "id": "s07",
+   "user": "관리자: 대기 중인 신청 보여줘",
+   "gold": {
+    "v": 1,
+    "intent": "ask.requests",
+    "target": {},
+    "set": {}
+   }
+  },
+  {
+   "id": "s08",
+   "user": "관리자: 803 목요일 알고리즘 특강 16시로 바꿔줘",
+   "gold": {
+    "v": 1,
+    "intent": "event.change",
+    "target": {
+     "rooms": [
+      "803"
+     ],
+     "when": "목요일",
+     "subject": "알고리즘 특강"
+    },
+    "set": {
+     "time": "16시로"
+    }
+   }
+  },
+  {
+   "id": "s09",
+   "user": "관리자: 803 금요일 취업 설명회 취소해줘",
+   "gold": {
+    "v": 1,
+    "intent": "event.remove",
+    "target": {
+     "rooms": [
+      "803"
+     ],
+     "when": "금요일",
+     "subject": "취업 설명회"
+    },
+    "set": {}
+   }
+  },
+  {
+   "id": "s10",
+   "user": "관리자: 홍길동 신청 승인해줘",
+   "gold": {
+    "v": 1,
+    "intent": "request.approve",
+    "target": {
+     "requester": "홍길동"
+    },
+    "set": {}
+   }
+  },
+  {
+   "id": "s11",
+   "user": "관리자: 801 내일 신청 거절해줘. 사유는 장비 점검",
+   "gold": {
+    "v": 1,
+    "intent": "request.reject",
+    "target": {
+     "rooms": [
+      "801"
+     ],
+     "when": "내일"
+    },
+    "set": {
+     "reason": "장비 점검"
+    }
+   }
+  },
+  {
+   "id": "s12",
+   "user": "관리자: 803 시험기간 없애줘",
+   "gold": {
+    "v": 1,
+    "intent": "exam.remove",
+    "target": {
+     "rooms": [
+      "803"
+     ]
+    },
+    "set": {}
+   }
+  },
+  {
+   "id": "s13",
+   "user": "관리자: 점심 뭐 먹지",
+   "gold": {
+    "v": 1,
+    "intent": "unknown",
+    "target": {},
+    "set": {}
+   }
+  },
+  {
+   "id": "s14",
+   "user": "상태: event.add | 강의실 803 | 날짜 11/27(금) | 시각 15:00~18:00 | 유형 특강 | 이름 ?\n질문: 특강 이름은 무엇인가요?\n관리자: 취소",
+   "gold": {
+    "v": 1,
+    "intent": "cancel",
+    "target": {},
+    "set": {}
+   }
+  },
+  {
+   "id": "s15",
+   "user": "상태: event.add | 강의실 803 | 날짜 11/27(금) | 시각 15:00~18:00 | 유형 특강 | 이름 ?\n질문: 특강 이름은 무엇인가요?\n관리자: 알고리즘 특강이요",
+   "gold": {
+    "v": 1,
+    "intent": "fill",
+    "target": {},
+    "set": {
+     "subject": "알고리즘 특강"
+    }
+   }
+  },
+  {
+   "id": "s16",
+   "user": "상태: event.add | 강의실 801 | 날짜 12/2(수) | 시각 ? | 유형 대여 | 이름 동아리 회의\n질문: 몇 시부터 몇 시까지인가요?\n관리자: 3시부터 6시",
+   "gold": {
+    "v": 1,
+    "intent": "fill",
+    "target": {},
+    "set": {
+     "time": "3시부터 6시"
+    }
+   }
+  },
+  {
+   "id": "s17",
+   "user": "관리자: 8층 전체 12/24 휴강",
+   "gold": {
+    "v": 1,
+    "intent": "event.add",
+    "target": {},
+    "set": {
+     "rooms": [
+      "8층 전체"
+     ],
+     "when": "12/24",
+     "type": "휴강"
+    }
+   }
+  },
+  {
+   "id": "s18",
+   "user": "관리자: 803 화목 10시 반부터 12시 대관",
+   "gold": {
+    "v": 1,
+    "intent": "event.add",
+    "target": {},
+    "set": {
+     "rooms": [
+      "803"
+     ],
+     "when": "화목",
+     "time": "10시 반부터 12시",
+     "type": "대여"
+    }
+   }
+  },
+  {
+   "id": "s19",
+   "user": "관리자: 공학관 803 월요일 데이터베이스 수업 빼줘",
+   "gold": {
+    "v": 1,
+    "intent": "class.remove",
+    "target": {
+     "rooms": [
+      "공학관 803"
+     ],
+     "when": "월요일",
+     "subject": "데이터베이스"
+    },
+    "set": {}
+   }
+  },
+  {
+   "id": "s20",
+   "user": "관리자: 803 시간표 보여줘",
+   "gold": {
+    "v": 1,
+    "intent": "ask.schedule",
+    "target": {
+     "rooms": [
+      "803"
+     ]
+    },
+    "set": {}
+   }
+  }
+ ]
+}

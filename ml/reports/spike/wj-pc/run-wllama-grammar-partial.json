@@ -1,0 +1,8 @@
+{
+ "runtime": "wllama",
+ "model": "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf",
+ "load_ms": 82161,
+ "grammar": true,
+ "n": 3,
+ "aborted": "3문장 뒤 중단 — 문장당 약 31 s, 출력 깨짐"
+}

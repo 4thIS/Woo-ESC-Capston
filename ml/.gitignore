@@ -1,0 +1,21 @@
+# 생성·다양화 데이터 원본 (HF 데이터 저장소에만)
+data/gen/
+data/para/
+data/raw/
+# 학습·변환·예측 산출물
+runs/
+out/
+preds/
+spike/models/
+spike/suites/*
+!spike/suites/spike.json
+# 대용량 모델 파일은 어디에 있든 커밋하지 않는다
+*.safetensors
+*.gguf
+*.onnx
+*.onnx_data
+*.wasm
+*.task
+*.litertlm
+*.bin
+.env

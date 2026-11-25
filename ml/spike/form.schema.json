@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "intent", "target", "set"],
+  "properties": {
+    "v": {"type": "integer", "enum": [1]},
+    "intent": {"type": "string", "enum": [
+      "event.add", "event.change", "event.remove",
+      "exam.add", "exam.change", "exam.remove",
+      "class.add", "class.change", "class.remove",
+      "request.approve", "request.reject",
+      "ask.free_rooms", "ask.schedule", "ask.requests", "ask.node",
+      "fill", "cancel", "unknown"]},
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "rooms": {"type": "array", "minItems": 1, "maxItems": 30, "items": {"type": "string", "minLength": 1, "maxLength": 20}},
+        "when": {"type": "string", "minLength": 1, "maxLength": 40},
+        "time": {"type": "string", "minLength": 1, "maxLength": 40},
+        "type": {"type": "string", "enum": ["수업", "시험", "휴강", "빈강의실", "특강", "대여"]},
+        "subject": {"type": "string", "minLength": 1, "maxLength": 40},
+        "professor": {"type": "string", "minLength": 1, "maxLength": 20},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 100},
+        "requester": {"type": "string", "minLength": 1, "maxLength": 20}
+      }
+    },
+    "set": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "rooms": {"type": "array", "minItems": 1, "maxItems": 30, "items": {"type": "string", "minLength": 1, "maxLength": 20}},
+        "when": {"type": "string", "minLength": 1, "maxLength": 40},
+        "time": {"type": "string", "minLength": 1, "maxLength": 40},
+        "type": {"type": "string", "enum": ["수업", "시험", "휴강", "빈강의실", "특강", "대여"]},
+        "subject": {"type": "string", "minLength": 1, "maxLength": 40},
+        "professor": {"type": "string", "minLength": 1, "maxLength": 20},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 100},
+        "requester": {"type": "string", "minLength": 1, "maxLength": 20}
+      }
+    }
+  }
+}
