@@ -9,7 +9,7 @@ from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query
 from fastapi.responses import JSONResponse
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import schemas as S
@@ -18,7 +18,7 @@ from app.auth.deps import AdminUser, ManagerUser, MgrScope
 from app.auth.models import User
 from app.auth.scope import Scope
 from app.deps import _DB
-from app.domain import admin, clock, csv_import, reserve
+from app.domain import admin, clock, csv_import, ops
 from app.domain.models import Building, ExamPeriod, Reservation, Room, School, Slot
 from app.lora_service import api
 
@@ -259,41 +259,11 @@ def list_slots(id: int, sc: Scope = MgrScope, s: Session = _DB):
     ).all()
 
 
-def _put_slot(s: Session, room_id: int, bld: str, room: int, body: S.SlotIn) -> list[int]:
-    """슬롯 한 개 쓰기 + outbox — 커밋은 부른 쪽이 (여러 개를 한 트랜잭션에 담을 수 있게)."""
-    obj = s.scalar(
-        select(Slot).where(
-            Slot.room_id == room_id,
-            Slot.day == body.day,
-            Slot.s_h == body.s_h,
-            Slot.s_m == body.s_m,
-        )
-    )
-    if obj is not None and obj.source > body.source:
-        raise HTTPException(409, f"source {obj.source} 슬롯은 source ≥ {obj.source} 로만 수정")
-    if obj is None:
-        obj = Slot(room_id=room_id)
-        s.add(obj)
-    for k, v in body.model_dump().items():
-        setattr(obj, k, v)
-    return api.enqueue_slot_set(
-        bld,
-        room,
-        body.day,
-        (body.s_h, body.s_m),
-        (body.e_h, body.e_m),
-        body.type,
-        body.subject,
-        body.professor,
-        session=s,
-    )
-
-
 # 버전·outbox·도메인 write 는 같은 세션(#9). 핸들러가 커밋한 뒤 허브에 알린다.
 @router.put("/rooms/{id}/slots", response_model=S.Enqueued)
 def put_slot(id: int, body: S.SlotIn, sc: Scope = MgrScope, s: Session = _DB):
     bld, room, mid = _addr(s, id, sc)
-    ids = _put_slot(s, id, bld, room, body)
+    ids = ops.put_slot(s, id, bld, room, body)
     _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
@@ -309,14 +279,9 @@ def replace_slots(id: int, body: S.SlotReplaceIn, sc: Scope = MgrScope, s: Sessi
     for k in body.remove:
         if (k.day, k.s_h, k.s_m) in keep:
             continue
-        s.execute(
-            delete(Slot).where(
-                Slot.room_id == id, Slot.day == k.day, Slot.s_h == k.s_h, Slot.s_m == k.s_m
-            )
-        )
-        ids += api.enqueue_slot_del(bld, room, k.day, (k.s_h, k.s_m), session=s)
+        ids += ops.delete_slot(s, id, bld, room, k.day, k.s_h, k.s_m)
     for p in body.put:
-        ids += _put_slot(s, id, bld, room, p)
+        ids += ops.put_slot(s, id, bld, room, p)
     _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
@@ -324,10 +289,7 @@ def replace_slots(id: int, body: S.SlotReplaceIn, sc: Scope = MgrScope, s: Sessi
 @router.delete("/rooms/{id}/slots/{day}/{s_h}/{s_m}", response_model=S.Enqueued)
 def delete_slot(id: int, day: int, s_h: int, s_m: int, sc: Scope = MgrScope, s: Session = _DB):
     bld, room, mid = _addr(s, id, sc)
-    s.execute(
-        delete(Slot).where(Slot.room_id == id, Slot.day == day, Slot.s_h == s_h, Slot.s_m == s_m)
-    )
-    ids = api.enqueue_slot_del(bld, room, day, (s_h, s_m), session=s)
+    ids = ops.delete_slot(s, id, bld, room, day, s_h, s_m)
     _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
@@ -335,8 +297,7 @@ def delete_slot(id: int, day: int, s_h: int, s_m: int, sc: Scope = MgrScope, s: 
 @router.delete("/rooms/{id}/slots", response_model=S.Enqueued)
 def clear_day(id: int, day: int, sc: Scope = MgrScope, s: Session = _DB):
     bld, room, mid = _addr(s, id, sc)
-    s.execute(delete(Slot).where(Slot.room_id == id, Slot.day == day))
-    ids = api.enqueue_day_clear(bld, room, day, session=s)
+    ids = ops.clear_day(s, id, bld, room, day)
     _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
@@ -375,19 +336,7 @@ def put_resv(id: int, body: S.ResvIn, sc: Scope = MgrScope, s: Session = _DB):
 def _write_resv(
     s, room_id, bld, room, mid, body: S.ResvIn, rid: int, obj: Reservation | None
 ) -> dict:
-    obj = obj or Reservation(id=rid, room_id=room_id)
-    old_end = (obj.date, obj.e_h, obj.e_m)  # 노드가 가진 옛 항목의 끝 (새 행이면 None 들)
-    for k, v in body.model_dump(exclude={"id"}).items():
-        setattr(obj, k, v)
-    s.add(obj)
-    now = clock.local_now()
-    today = now.date()
-    if reserve.in_window(body.date, today):
-        if reserve.room_full(s, room_id, today, exclude_id=rid):
-            raise HTTPException(409, "이 강의실은 이번 주 예약이 가득 찼습니다(노드 용량 24)")
-        ids = reserve.push_set(s, obj)
-    else:  # 창 밖으로 옮겼으면 노드의 옛 날짜 항목을 지운다 (r3, 리뷰 🔴1c)
-        ids = reserve.push_del(s, obj, now, end=old_end if old_end[0] else None)
+    ids = ops.write_resv(s, room_id, body, rid, obj, clock.local_now())
     _commit_notify(s, mid)
     return {"outbox_ids": ids, "id": rid}
 
@@ -396,12 +345,9 @@ def _write_resv(
 def delete_resv(id: int, resv_id: int, sc: Scope = MgrScope, s: Session = _DB):
     *_, mid = _addr(s, id, sc)
     with _ID_LOCK:  # 예약 쓰기는 읽기~커밋 전부 같은 락 — 동시 승인·승격과 엇갈리지 않게
-        r = s.get(Reservation, resv_id)
-        if r is None or r.room_id != id:  # 멱등 — 없는 id 에 RESV_DEL 을 보내지 않는다
+        ids = ops.delete_resv(s, id, resv_id, clock.local_now())
+        if ids is None:  # 멱등 — 없는 id 에 RESV_DEL 을 보내지 않는다
             return {"outbox_ids": []}
-        # 노드로 보낸 적 있는 것만 (r2: 신청·창 밖 예약엔 DEL 없음)
-        ids = reserve.push_del(s, r, clock.local_now())
-        s.delete(r)
         _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
@@ -435,10 +381,7 @@ def put_exam(id: int, body: S.ExamIn, sc: Scope = MgrScope, s: Session = _DB):
 def _write_exam(
     s, room_id, bld, room, mid, body: S.ExamIn, eid: int, obj: ExamPeriod | None
 ) -> dict:
-    obj = obj or ExamPeriod(id=eid, room_id=room_id)
-    obj.date_start, obj.date_end = body.date_start, body.date_end
-    s.add(obj)
-    ids = api.enqueue_exam_set(bld, room, eid, body.date_start, body.date_end, session=s)
+    ids = ops.write_exam(s, room_id, bld, room, body, eid, obj)
     _commit_notify(s, mid)
     return {"outbox_ids": ids, "id": eid}
 
@@ -447,8 +390,7 @@ def _write_exam(
 def delete_exam(id: int, exam_id: int, sc: Scope = MgrScope, s: Session = _DB):
     bld, room, mid = _addr(s, id, sc)
     with _ID_LOCK:  # 같은 id 수정(put_exam)의 읽기~커밋 사이에 끼어들면 StaleDataError (#48 🟡2)
-        s.execute(delete(ExamPeriod).where(ExamPeriod.id == exam_id, ExamPeriod.room_id == id))
-        ids = api.enqueue_exam_del(bld, room, exam_id, session=s)
+        ids = ops.delete_exam(s, id, bld, room, exam_id)
         _commit_notify(s, mid)
     return {"outbox_ids": ids}
 
