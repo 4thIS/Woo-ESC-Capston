@@ -14,6 +14,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
+    def translate_path(self, path: str) -> str:
+        # WebLLM 은 모델 주소 뒤에 HF 형식 'resolve/main/' 을 붙인다(cleanModelUrl).
+        # 로컬 변환본(models/<폴더>/)을 그대로 쓰도록 그 조각을 지운다.
+        return super().translate_path(path.replace("/resolve/main/", "/", 1))
+
 
 if __name__ == "__main__":
     handler = functools.partial(Handler, directory=str(HERE))

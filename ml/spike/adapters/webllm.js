@@ -14,7 +14,18 @@ export async function load(model, onProgress) {
   const custom = model.startsWith('models/') || model.startsWith('http')
   const base = custom ? new URL(model.replace(/\/?$/, '/'), location.href).href : null
   const appConfig = custom
-    ? { model_list: [{ model: base, model_id: 'esc-custom', model_lib: base + 'lib.wasm' }] }
+    ? {
+        model_list: [
+          {
+            model: base,
+            model_id: 'esc-custom',
+            model_lib: base + 'lib.wasm',
+            // Gemma 4 는 미리 만든 목록처럼 manifest 가 있어야 KV 캐시 ABI 를 고른다(없으면 'Invalid kv_cache ABI')
+            model_manifest: 'mlc-model-manifest.json',
+            overrides: { context_window_size: 4096 },
+          },
+        ],
+      }
     : undefined
   engine = await webllm.CreateMLCEngine(custom ? 'esc-custom' : model, {
     appConfig,
