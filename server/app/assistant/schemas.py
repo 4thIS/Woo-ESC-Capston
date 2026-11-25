@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app import schemas as S
 
-
 FORM_MAX = 4096  # form(JSON) 글자 수 상한 — 정상 form 은 수백 자
 
 

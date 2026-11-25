@@ -2,7 +2,7 @@ import datetime as dt
 import json
 
 import pytest
-from assistant_proto import SYSTEM_PROMPT
+from assistant_proto import SYSTEM_PROMPT, rules
 from sqlalchemy import select
 
 from app.assistant import manifest
@@ -275,3 +275,102 @@ def test_input_bounds(client):
     assert _post(client, utterance="x", form=big).status_code == 422
     ok = _post(client, utterance="  취소  ", form=form("cancel"))
     assert ok.status_code == 200
+
+
+def _q(j) -> str:
+    """next_prefix 의 '질문:' 줄."""
+    [line] = [x for x in j["next_prefix"].split(chr(10)) if x.startswith("질문: ")]
+    return line[len("질문: ") :]
+
+
+def _ev(**set_):
+    return form("event.add", set_={"rooms": ["공학관 803"], "type": "특강", **set_})
+
+
+def test_prefix_question_is_always_the_rules_text(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    campus(app)
+    # 칸 묻기 — rules.question
+    j = turn(client, "x", _ev(when="이번주 금요일", time="15시~18시"))
+    assert j["kind"] == "ask" and _q(j) == rules.question("event.add", "set.subject", "특강")
+    # 날짜를 못 풀면 — 설명은 message, 질문 줄은 rules
+    j = turn(client, "x", _ev(when="블라블라", time="15시~18시", subject="세미나"))
+    assert j["message"].startswith("날짜를") and _q(j) == rules.question("event.add", "set.when")
+    # 끝나는 시각 없음
+    j = turn(client, "x", _ev(when="이번주 금요일", time="15시", subject="세미나"))
+    assert j["message"].startswith("끝나는 시각도")
+    assert _q(j) == rules.question("event.add", "set.time")
+    # 강의실 못 찾음
+    f = form(
+        "event.add",
+        set_={
+            "rooms": ["999"],
+            "when": "이번주 금요일",
+            "time": "15시~18시",
+            "type": "특강",
+            "subject": "세",
+        },
+    )
+    j = turn(client, "x", f)
+    assert j["message"].startswith("'999' 강의실을 찾지 못했습니다")
+    assert _q(j) == rules.question("event.add", "set.rooms")
+    # 강의실이 여러 곳 — 고르기
+    f = form(
+        "event.add",
+        set_={
+            "rooms": ["803"],
+            "when": "이번주 금요일",
+            "time": "15시~18시",
+            "type": "특강",
+            "subject": "세",
+        },
+    )
+    j = turn(client, "x", f)
+    assert j["message"].startswith("'803' 강의실이 여러 곳에") and _q(j) == rules.PICK_QUESTION
+    # 오류로 대화가 이어질 때 — 질문 줄은 직전 질문 그대로 (오류 문구가 아니다)
+    bad = turn(client, "x", conv=j["conversation_id"], choice="room:999999")
+    assert bad["kind"] == "error" and not bad["closed"] and _q(bad) == rules.PICK_QUESTION
+    bad = turn(client, "x", form("unknown"), conv=j["conversation_id"])
+    assert bad["kind"] == "error" and _q(bad) == rules.PICK_QUESTION
+
+
+def test_prefix_question_kept_after_preview_error(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    campus(app)
+    f = _ev(when="이번주 금요일", time="17시~18시", subject="세미나")
+    j = turn(client, "x", f)
+    assert j["kind"] == "preview" and _q(j) == rules.PREVIEW_QUESTION
+    bad = turn(client, "x", conv=j["conversation_id"], choice="room:1")
+    assert bad["kind"] == "error" and _q(bad) == rules.PREVIEW_QUESTION
+
+
+def test_not_found_asks_target_and_next_fill_goes_to_target(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    campus(app)
+    f = form(
+        "event.change",
+        target={"rooms": ["공학관 803"], "when": "이번주 금요일", "type": "특강"},
+        set_={"time": "17시~18시"},
+    )
+    j = turn(client, "x", f)
+    assert j["kind"] == "error" and not j["closed"] and j["message"].startswith("말씀하신 일정을")
+    assert _q(j) == rules.question("event.change", "target.any")
+    j = turn(
+        client, "아 목요일", form("fill", set_={"when": "이번주 목요일"}), conv=j["conversation_id"]
+    )
+    assert "대상 날짜 이번주 목요일" in j["next_prefix"]
+    assert "| 날짜 " not in j["next_prefix"]  # set.when 으로 들어가지 않았다
+
+
+def test_apply_closes_conversation(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    campus(app)
+    j = turn(client, "x", _ev(when="이번주 금요일", time="17시~18시", subject="세미나"))
+    conv, pid = j["conversation_id"], j["preview"]["preview_id"]
+    assert client.post(f"/api/assistant/previews/{pid}/apply").status_code == 200
+    j2 = turn(client, "아 801도", form("fill", set_={"rooms": ["공학관 801"]}), conv=conv)
+    assert (j2["kind"], j2["closed"]) == ("error", True) and j2["message"].startswith("대화가 만료")
+    with app.state.Session() as s:
+        from app.assistant.models import AssistantPreview
+
+        assert len(s.scalars(select(AssistantPreview)).all()) == 1  # 새 미리보기를 만들지 않았다

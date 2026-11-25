@@ -1,5 +1,7 @@
 import datetime as dt
 
+from assistant_proto import rules
+
 from app.assistant import changes
 from app.assistant import dialog as D
 from tests.assistant_util import ALL, NOW, campus, resv
@@ -53,7 +55,7 @@ def test_room_ambiguity_then_ready(app, school):
 def test_missing_room_reasks_and_drops_expr(app, school):
     campus(app)
     d = adv(app, st("event.add", set_={**SPECIAL, "rooms": ["999"], "subject": "x"}))
-    assert isinstance(d, D.Ask) and d.question.startswith("'999' 강의실을 찾지 못했습니다")
+    assert isinstance(d, D.Ask) and d.message.startswith("'999' 강의실을 찾지 못했습니다")
     assert "rooms" not in d.state["set"] and d.state["asked"] == "set.rooms"
 
 
@@ -61,11 +63,11 @@ def test_bad_time_weekly_event_and_open_end(app, school):
     campus(app)
     base = {**SPECIAL, "rooms": ["공학관 803"], "subject": "x"}
     d = adv(app, st("event.add", set_={**base, "time": "몇 시"}))
-    assert d.question == "시각을 '15시~18시'처럼 알려 주세요." and "time" not in d.state["set"]
+    assert d.message == "시각을 '15시~18시'처럼 알려 주세요." and "time" not in d.state["set"]
     d = adv(app, st("event.add", set_={**base, "when": "매주 월"}))
-    assert d.question == D.WEEKLY_HINT
+    assert d.message == D.WEEKLY_HINT
     d = adv(app, st("event.add", set_={**base, "time": "15시"}))
-    assert d.question.startswith("끝나는 시각도")
+    assert d.message.startswith("끝나는 시각도")
 
 
 def test_holiday_fills_from_regular_class(app, school):
@@ -119,7 +121,9 @@ def test_change_with_two_candidates_asks_pick(app, school):
         set_={"time": "16시"},
     )
     d = adv(app, state)
-    assert isinstance(d, D.Ask)
+    assert (
+        isinstance(d, D.Ask) and d.question == rules.PICK_QUESTION and d.message == "어느 것인가요?"
+    )
     assert [c["id"] for c in d.choices] == [f"pick:{ids['E803']}:r17", f"pick:{ids['E803']}:r18"]
     assert d.choices[0]["label"] == "공학관 803 · 11/27(금) 17:00–18:00 특강 특강"
     d2 = adv(app, D.choose(d.state, f"pick:{ids['E803']}:r18", "19시 것"))
@@ -191,7 +195,7 @@ def test_building_admin_scope_hides_other_building(app, school):
     with app.state.Session() as s:
         d = D.advance(s, sc, st("event.remove", target={**CH, "rooms": ["인문관 803"]}), NOW)
         assert isinstance(d, D.Ask) and d.state["asked"] == "target.rooms"
-        assert "찾지 못했습니다" in d.question
+        assert "찾지 못했습니다" in d.message
         # '803' 은 범위 안의 공학관 803 하나로만 풀린다 — 인문관 예약은 후보가 아니다
         d = ok_json(D.advance(s, sc, st("event.remove", target={**CH, "rooms": ["803"]}), NOW))
         assert isinstance(d, D.Ready)

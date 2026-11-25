@@ -1,7 +1,11 @@
 """대화 상태와 한 턴의 진행 (spec §4). 상태는 JSON 으로 DB(assistant_conversations.state)에 둔다 —
 프로세스 메모리에 두지 않는다(워커 1개라도 재시작에 안전).
 
-상태 키: intent · target · set(표현 그대로) · room_pick · pick · asked · pending · utterances"""
+상태 키: intent · target · set(표현 그대로) · room_pick · pick · asked · pending · utterances ·
+q(직전에 접두어에 넣은 질문 — 오류 턴이 이어 쓴다, service 가 채운다)
+
+접두어 질문 줄(Ask.question·PICK_QUESTION·PREVIEW_QUESTION)은 항상 assistant_proto.rules 의 글자다.
+사람에게 보여 줄 설명(날짜를 '12/3'처럼…, 여러 곳에 있습니다…)은 Ask.message 에만 둔다."""
 
 from __future__ import annotations
 
@@ -37,9 +41,13 @@ class NeedContext(Exception):
 
 @dataclass
 class Ask:
-    question: str
+    question: str  # 접두어 '질문:' 줄 — rules 글자
     state: dict
     choices: list[dict] = field(default_factory=list)
+    message: str = ""  # 화면에 보일 문구 (비면 question)
+
+    def __post_init__(self):
+        self.message = self.message or self.question
 
 
 @dataclass
@@ -130,17 +138,26 @@ WEEKLY_HINT = (
 )
 
 
-def _ask(state: dict, slot: str, question: str, *, choices=None, pending=None) -> Ask:
+def _slot_q(state: dict, slot: str) -> str:
+    return rules.question(
+        state["intent"], slot, state["set"].get("type") or state["target"].get("type")
+    )
+
+
+def _ask(
+    state: dict, slot: str, question: str, *, message: str = "", choices=None, pending=None
+) -> Ask:
     st = copy.deepcopy(state)
     st["asked"], st["pending"] = slot, pending
-    return Ask(question, st, choices or [])
+    return Ask(question, st, choices or [], message)
 
 
 def _reask(state: dict, sec: str, f: str, message: str) -> Ask:
-    """풀지 못한 칸을 비우고 다시 묻는다 — 다음 답(fill)이 그 칸을 새로 채운다."""
+    """풀지 못한 칸을 비우고 다시 묻는다 — 다음 답(fill)이 그 칸을 새로 채운다.
+    접두어 질문은 그 칸의 rules 질문, 안내(message)는 따로."""
     st = copy.deepcopy(state)
     st[sec].pop(f, None)
-    return _ask(st, f"{sec}.{f}", message)
+    return _ask(st, f"{sec}.{f}", _slot_q(st, f"{sec}.{f}"), message=message)
 
 
 def _rooms(s: Session, sc: Scope, state: dict, sec: str, expr: str) -> list[int] | Ask:
@@ -158,7 +175,8 @@ def _rooms(s: Session, sc: Scope, state: dict, sec: str, expr: str) -> list[int]
         return _ask(
             state,
             f"{sec}.rooms",
-            f"'{expr}' 강의실이 여러 곳에 있습니다. 어느 곳인가요?",
+            rules.PICK_QUESTION,
+            message=f"'{expr}' 강의실이 여러 곳에 있습니다. 어느 곳인가요?",
             choices=opts,
             pending={
                 "kind": "room",
@@ -175,7 +193,8 @@ def _rooms(s: Session, sc: Scope, state: dict, sec: str, expr: str) -> list[int]
     return _ask(
         st,
         f"{sec}.rooms",
-        f"'{expr}' 강의실을 찾지 못했습니다. 강의실을 다시 알려 주세요. (예: 803, 공학관 803)",
+        _slot_q(st, f"{sec}.rooms"),
+        message=f"'{expr}' 강의실을 찾지 못했습니다. 강의실을 다시 알려 주세요. (예: 803, 공학관 803)",
     )
 
 
@@ -226,7 +245,7 @@ def advance(
     slot = rules.missing(intent, state["target"], state["set"])
     if slot:
         sec, f = slot.split(".")
-        q = rules.question(intent, slot, state["set"].get("type") or state["target"].get("type"))
+        q = _slot_q(state, slot)
         if f == "type":
             return _ask(
                 state,
@@ -283,7 +302,9 @@ def advance(
         return Ready(draft, state)
     cands = changes.find_candidates(s, sc, draft, now_local)
     if not any(cands.values()):
-        return Fail(changes.not_found_message(intent), state)
+        st = copy.deepcopy(state)  # 다음 답은 '대상'을 고쳐 말하는 것 — target 칸으로 합친다
+        st["asked"], st["pending"] = "target.any", None
+        return Fail(changes.not_found_message(intent), st)
     labels = changes.room_labels(s, [r for r in cands if r])
     for room_id, lst in cands.items():
         if len(lst) > 1 and draft["pick"].get(str(room_id)) not in {c["key"] for c in lst}:
@@ -297,7 +318,8 @@ def advance(
             return _ask(
                 state,
                 "target.pick",
-                "어느 것인가요?",
+                rules.PICK_QUESTION,
+                message="어느 것인가요?",
                 choices=opts,
                 pending={"kind": "pick", "options": [o["id"] for o in opts]},
             )

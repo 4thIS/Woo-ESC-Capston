@@ -51,10 +51,21 @@ def _out(
 
 
 def _keep(conv_id: str, state: dict | None, message: str) -> dict:
-    """오류 — 진행 중인 대화가 있으면 그대로 두고 이어서 말하게 한다."""
+    """오류 — 진행 중인 대화가 있으면 그대로 두고 이어서 말하게 한다.
+    접두어 질문 줄은 오류 문구가 아니라 직전에 묻던 질문(state["q"]) 그대로다."""
     if state is None:
         return _out(conv_id, "error", message, closed=True)
-    return _out(conv_id, "error", message, prefix=_prefix(state, state.get("asked"), message))
+    q = state.get("q")
+    if q is None:  # 옛 상태 — 묻던 칸이 있으면 그 질문, 아니면 미리보기 뒤 질문
+        slot = state.get("asked")
+        q = _prefix_slot_q(state, slot) if slot else rules.PREVIEW_QUESTION
+    return _out(conv_id, "error", message, prefix=_prefix(state, state.get("asked"), q))
+
+
+def _prefix_slot_q(state: dict, slot: str) -> str:
+    if slot == "target.pick" or slot.endswith(".rooms") and state.get("pending"):
+        return rules.PICK_QUESTION
+    return rules.question(state["intent"], slot, state["set"].get("type"))
 
 
 def _step(Session, sc: Scope, conv_id: str, state: dict | None, body: TurnIn, now_local):
@@ -86,18 +97,19 @@ def _step(Session, sc: Scope, conv_id: str, state: dict | None, body: TurnIn, no
             ans = answers.answer(s, sc, d.draft, now_local)
             return _out(conv_id, "answer", lead + ans["title"], closed=True, answer=ans), None
     if isinstance(d, dialog.Ask):
+        d.state["q"] = d.question
         prefix = _prefix(d.state, d.state["asked"], d.question)
-        return _out(conv_id, "ask", lead + d.question, choices=d.choices, prefix=prefix), d.state
+        return _out(conv_id, "ask", lead + d.message, choices=d.choices, prefix=prefix), d.state
     if isinstance(d, dialog.Fail):
-        return _out(
-            conv_id, "error", lead + d.message, prefix=_prefix(d.state, None, d.message)
-        ), d.state
+        q = d.state["q"] = rules.question(d.state["intent"], "target.any")
+        return _out(conv_id, "error", lead + d.message, prefix=_prefix(d.state, None, q)), d.state
     pv = preview.make_preview(Session, sc, conv_id, d.draft, now_local)
     msg = (
         "적용할 수 없는 변경이 있습니다. 오른쪽에서 이유를 확인해 주세요."
         if pv["blockers"]
         else "오른쪽에서 바뀌는 내용을 확인하고 [적용]을 눌러 주세요."
     )
+    d.state["q"] = rules.PREVIEW_QUESTION
     return _out(
         conv_id, "preview", lead + msg, prefix=_prefix(d.state, None, rules.PREVIEW_QUESTION), pv=pv
     ), d.state

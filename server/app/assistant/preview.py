@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app import schemas as S
 from app.assistant import changes, manifest
 from app.assistant import schemas as AS
-from app.assistant.models import AssistantChange, AssistantPreview
+from app.assistant.models import AssistantChange, AssistantConversation, AssistantPreview
 from app.auth import scope
 from app.auth.scope import Scope
 from app.domain import admin, clock, reserve
@@ -422,6 +422,9 @@ def apply_preview(
             )
             s.add(ch)
             p.applied_at = now_utc
+            conv = s.get(AssistantConversation, p.conversation_id)
+            if conv is not None:  # 적용하면 그 대화는 끝 — 같은 대화로 또 미리보기·적용하지 못하게
+                conv.state, conv.updated_at, conv.closed_at = "null", now_utc, now_utc
             s.flush()
             change_id = ch.id
             s.commit()
