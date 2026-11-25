@@ -10,40 +10,44 @@
 - 장비 명칭: **메인Pi**(웹서버·DB 원본, 전체 1대) · **모뎀Pi**(학교 건물당 1대, Heltec 모뎀 USB 연결, 메인Pi에 WebSocket 접속) · **ESP노드**(강의실 문마다, Heltec V3 + e-Paper). 이 세 이름만 쓴다.
 - 스택: 노드·모뎀 펌웨어 = PlatformIO / C++ (ESP32-S3 + SX1262, RadioLib + GxEPD2) · 메인Pi 서버 = FastAPI / Python(uv) · 모뎀Pi 서비스 = Python asyncio(uv) · 웹 = Vue 3 / TypeScript(pnpm) · 프로토콜 계약 = `lora_proto/` (C++ 헤더 + Python 미러)
 - 호스팅: https://github.com/4thIS/Woo-ESC-Capston
-- 배포: 메인Pi·모뎀Pi 모두 Raspberry Pi(보유). 개발·데모는 노트북, 4주차 Pi↔Pi 통합부터 실기. **메인Pi 서버는 Docker Compose**(루트 `compose.yaml` + `server/Dockerfile`, 2026-09-23 팀 결정) — 노트북에서도 같은 명령(`docker compose up -d --build`)으로 똑같이 띄운다. **모뎀Pi 는 systemd**(USB 시리얼·시계 동기에 직접 붙어야 해서). **메인Pi 는 `main` 이 바뀌면 스스로 받아 다시 배포한다**(`deploy/autodeploy/`, 2분마다 확인·실패 시 직전 정상본으로 되돌림, 2026-10-28) — 그래서 `main` 머지가 곧 운영 반영이다. CI 는 검증만 한다.
+- 배포: **2026-11-24 부터 메인Pi 역할(웹서버·DB)은 홈서버 myserver 가 맡는다** — `/srv/apps/Woo-ESC-Capston` 에서 Docker Compose(루트 `compose.yaml` + `server/Dockerfile`, 포트는 git 밖 `compose.override.yaml`), 공개 주소는 Cloudflare 터널 `esc.ssenu.cloud`. 홈서버의 사용자 타이머 `esc-autodeploy.timer` 가 2분마다 `main` 을 받아 server·web 이 바뀐 경우만 다시 빌드한다 — 그래서 `main` 머지가 곧 운영 반영이다. 옛 메인Pi(Raspberry Pi)는 정지·되돌리기용으로 보관한다(`deploy/autodeploy/` 는 그 시절 것). 노트북에서도 같은 명령(`docker compose up -d --build`)으로 띄운다. **모뎀Pi 는 systemd**(USB 시리얼·시계 동기에 직접 붙어야 해서). CI 는 검증만 한다.
 
 ## 역할 분담
 
 | 사람 | 계정 | 영역 | 책임 |
 |------|------|------|------|
-| cw | @ssenu (Owner) | 전 영역 총괄 + `lora_proto/` + `firmware/` 무선·스케줄링 + `modempi/lora/` | 설계(spec/plan)·계약·인프라·최종 승인. LoRa 파이프라인(전처리→송신) |
+| cw | @ssenu (Owner) | 전 영역 총괄 + `lora_proto/` + `firmware/` 무선·스케줄링 + `modempi/lora/` + `assistant_proto/`·`server/app/assistant/`(AI 비서) + `docs/design/` | 설계(spec/plan)·계약·인프라·최종 승인. LoRa 파이프라인(전처리→송신). AI 비서 규격·백엔드. 웹 디자인 스펙 |
 | dh | @Hyeon02-kr | `firmware/src/terminal/render*`, `firmware/src/fonts/`, `firmware/lib/render/`·`lib/bitmap_font/`·`lib/bitmap_image/`·`lib/host_gfx/`·`lib/fixture_parse/`·`lib/adafruit_gfx_vendor/`·`lib/epd_colors/`, `firmware/tools/` (`lib/render_model/` 은 cw 와 공동 — 계약 ④. `lib/node_store/`·`lib/schedule/` 도 cw 와 공동 — 저장 계층·상태 판단, #74) | e-Paper 렌더링·화면 레이아웃 구현, 호스트 렌더 프리뷰 인프라, 노드 저장 계층·상태 판단(dh-08). 모뎀 펌웨어 지원 |
-| wj | @leemonta9482 | `server/`, `web/` **전체**, `modempi/link/` | 메인Pi 서버·관리자/학생 웹 풀스택(디자인 스펙을 Vue 코드로 구현), 메인Pi↔모뎀Pi WebSocket 링크 |
-| mh | @jmh7706jmh-ops | `docs/design/` | 웹 디자인 — 시안 제작 → **디자인 스펙 문서**(토큰·컴포넌트·화면) 작성. 코드는 쓰지 않는다 |
+| wj | @leemonta9482 | `server/`(AI 비서 `server/app/assistant/` 제외), `web/` **전체**, `modempi/link/`, `ml/` | 서버·관리자/학생 웹 풀스택(디자인 스펙을 Vue 코드로 구현), 메인Pi↔모뎀Pi WebSocket 링크, AI 비서 모델 파인튜닝 |
 
-### 계층 규율 (고비용 계층 보호)
+mh(@jmh7706jmh-ops)는 2026-11-25 팀에서 빠졌다 — 웹 디자인 스펙(`docs/design/`)은 cw 가 쓰고 wj 가 구현한다.
+
+### 계층 규율
 
 아래 경로는 함부로 고치지 않는다. 흔들리면 파급이 커 품질이 무너지는 계층이다.
 
 | 경로 | 내용 | 고칠 때 |
 |------|------|---------|
 | `lora_proto/` | 공중 프레임 규격·무선 파라미터의 **단일 진실원**. C++ 헤더와 Python 미러가 같은 상수를 공유하고 `test_vectors.json`으로 교차 검증된다 | PM(@ssenu) 전담. 상수 1개를 바꿔도 펌웨어·서버가 동시에 깨진다. 반드시 헤더·미러·벡터를 한 커밋에서 함께 갱신하고, 그 PR을 **단독으로 먼저** 머지한다(lockstep) |
+| `assistant_proto/` | 관리자 AI 비서 양식 규격의 **단일 진실원** — 모델(`ml/`)·서버(`server/app/assistant/`)·웹이 같은 양식·지시문·해석 규칙·대화 규칙을 쓴다 | PM(@ssenu) 전담. 이 폴더만 바꾸는 PR 을 **단독으로 먼저** 머지(lockstep). 양식 판(`v`)을 올리면 모델 재학습이 따른다 |
 | `firmware/lib/lora_codec/` | 프레임 인코딩/디코딩. 단말·모뎀이 공용으로 링크 | 단말만 보고 고치지 말 것 — 모뎀 쪽 동작을 함께 확인하고 `pio test`의 벡터 테스트를 통과시킨다 |
 | `server/lora_service/` | outbox·버전 벡터·`api.py`·WS 허브(메인Pi ↔ 모뎀Pi 계약 ⑥의 제공 측) | wj가 구현하되 **PM(@ssenu)이 필수 리뷰**. 여기가 웹·모뎀Pi 양쪽 계약의 접점이다. 메시지·시그니처를 바꾸면 로드맵 스펙 §4.2 갱신 + BREAKING CHANGE 명시 |
 | `modempi/store.py` | 모뎀Pi 내부 계약 ⑦ — 링크(wj)와 파이프라인(cw)이 만나는 SQLite 스키마 | 양쪽 협의 + 양쪽 리뷰. 컬럼은 additive만 |
-| `docs/design/` ↔ `web/src/styles/`, `web/src/components/ui/` | 디자인 스펙(문서, mh) ↔ 디자인 토큰·디자인시스템(코드, wj) | **스펙이 원본, 코드는 구현.** 토큰 값·컴포넌트 variant를 바꾸려면 mh가 `docs/design/` PR을 먼저 머지하고 wj가 코드 PR로 따라간다(lockstep). 화면(`views/`)에서 토큰을 우회한 하드코딩 색·간격 금지. wj 의 코드 PR 은 mh 리뷰를 받지 않는다(2026-11-17 철회) |
+| `docs/design/` ↔ `web/src/styles/`, `web/src/components/ui/` | 디자인 스펙(문서, cw) ↔ 디자인 토큰·디자인시스템(코드, wj) | **스펙이 원본, 코드는 구현.** 토큰 값·컴포넌트 variant를 바꾸려면 cw가 `docs/design/` PR을 먼저 머지하고 wj가 코드 PR로 따라간다(lockstep). 화면(`views/`)에서 토큰을 우회한 하드코딩 색·간격 금지 |
 
 ## 폴더 구조 요약
 
 ```
 Woo-ESC-Capston/
 ├── lora_proto/   ← 프로토콜 계약: C 헤더 원본 + Python 미러·codec + test_vectors.json (Owner 전담, README 의 lockstep 절차)
+├── assistant_proto/ ← AI 비서 양식 규격: JSON Schema·해석기·대화 규칙·프롬프트·예문 (Owner 전담, lockstep)
 ├── firmware/     ← 노드·모뎀 펌웨어 (PlatformIO, C++)
 ├── server/       ← 메인Pi: FastAPI 백엔드 + outbox·버전·WS 허브
 ├── modempi/      ← 모뎀Pi: WS 링크(wj) + LoRa 파이프라인(cw)
 ├── web/          ← Vue 3 학생/관리자 웹 (wj 전체)
+├── ml/           ← AI 비서 모델 데이터·파인튜닝·평가·변환 (wj)
 ├── compose.yaml  ← 메인Pi 배포(Docker). 서버 이미지는 server/Dockerfile
-└── docs/         ← 사람·AI 공용 문서 (specs/·plans/·design/ 포함. design/ 은 mh의 디자인 스펙)
+└── docs/         ← 사람·AI 공용 문서 (specs/·plans/·design/ 포함. design/ 은 디자인 스펙(cw))
 ```
 
 ## 브랜치 전략
@@ -82,6 +86,8 @@ feat(modempi): ...      # 모뎀Pi 링크·파이프라인
 feat(web): ...          # 웹 기능
 feat(proto): ...        # 프로토콜 계약 변경 (펌웨어·모뎀Pi 양쪽 영향)
 feat(backhaul): ...     # 메인Pi↔모뎀Pi WS 계약 변경 (server·modempi 양쪽 영향)
+feat(assistant): ...    # 관리자 AI 비서 서버·웹 (server/app/assistant, web/src/admin/assistant)
+feat(ml): ...           # AI 비서 모델 학습·평가 (ml/)
 fix(<area>): ...        # 버그
 style(web): ...         # 퍼블리싱·스타일
 chore(infra): ...       # 인프라·CI
@@ -115,9 +121,10 @@ docs: ...               # 문서
 |------|------|
 | `docs/specs/2026-09-09-lora-v2-wor-design.md` | **v2 시스템 설계 스펙** — 하드웨어·공중 프로토콜·펌웨어·백엔드·구현 단계(P0~P8). 구현 전 반드시 정독 |
 | `docs/specs/2026-09-09-roadmap-design.md` | **진행 로드맵** — 메인Pi/모뎀Pi/ESP노드 토폴로지, 서브프로젝트 S1~S11, 영역 간 계약 7개(WS 백홀·JobStore 포함), 주차별 산출물, 마일스톤 완료 기준. **v2 §8을 대체** |
+| `docs/specs/2026-11-25-admin-ai-assistant-design.md` | 관리자 AI 비서 — 양식 채우기형, Gemma 4 E2B 파인튜닝·브라우저 실행, 전·후 비교 확인 후 적용 |
 | `docs/specs/`·`docs/plans/` | 설계서·작업지시서 (템플릿 포함) |
 | `firmware/CLAUDE.md` | 펌웨어 영역 규칙 |
 | `server/CLAUDE.md` | 메인Pi 서버 영역 규칙 |
 | `modempi/CLAUDE.md` | 모뎀Pi 영역 규칙 (링크/파이프라인 분할) |
 | `web/CLAUDE.md` | 웹 영역 규칙 |
-| `docs/design/README.md` | 디자인 스펙 작성 규칙·템플릿 (mh → wj 계약) |
+| `docs/design/README.md` | 디자인 스펙 작성 규칙·템플릿 (cw → wj 계약) |
