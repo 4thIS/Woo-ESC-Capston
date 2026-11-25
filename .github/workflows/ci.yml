@@ -56,6 +56,7 @@ jobs:
             server:
               - 'server/**'
               - 'lora_proto/**'
+              - 'assistant_proto/**'
               - '.github/workflows/ci.yml'
             modempi:
               - 'modempi/**'
@@ -67,6 +68,7 @@ jobs:
             docker:
               - 'server/**'
               - 'lora_proto/**'
+              - 'assistant_proto/**'
               - 'compose.yaml'
               - '.dockerignore'
               - '.github/workflows/ci.yml'
@@ -255,6 +257,8 @@ jobs:
           test "$(docker exec esc-server id -u)" = 10001            # root 로 돌지 않는다
           docker exec esc-server sh -c 'test ! -e /app/server/.env'  # 비밀값이 이미지에 안 들어갔다
           docker exec esc-server python -c "from lora_proto.charset import unsupported; assert unsupported('가Ⅲ') == []"  # 글자 목록(charset.txt)이 이미지에 있다 (#34)
+          docker exec esc-server python -c "import assistant_proto as A; assert A.json_schema()['properties']['v'] == {'const': 1} and A.SYSTEM_PROMPT"  # 규격 데이터 파일이 이미지에 있다
+          curl -fsS http://localhost:8000/api/assistant/model -H "Authorization: Bearer $T" | grep -q '"enabled":false'  # AI 비서 — 모델 안내 기본은 꺼짐
           if curl -sI http://localhost:8000/api/health | grep -qi '^server:'; then
             echo 'Server 헤더가 노출된다 (--no-server-header 누락)'; exit 1
           fi

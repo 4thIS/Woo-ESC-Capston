@@ -15,6 +15,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 # 런타임과 같은 경로(/app)에 설치한다 — venv 안의 절대 경로(파이썬·editable lora_proto)가 그대로 맞는다.
 WORKDIR /app
 COPY lora_proto/ lora_proto/
+COPY assistant_proto/ assistant_proto/
 COPY server/pyproject.toml server/uv.lock server/
 # 의존성 먼저(코드가 바뀌어도 이 레이어는 캐시된다)
 RUN --mount=type=cache,target=/root/.cache/uv \

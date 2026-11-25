@@ -9,7 +9,7 @@
 #   2. 직전에 실패한 커밋이면 건너뜀(같은 실패를 2분마다 반복하지 않는다 — 새 커밋이 오면 다시 시도)
 #   3. 리포에 손으로 고친 파일이 있으면 건너뜀(덮어쓰지 않는다)
 #   4. main 을 fast-forward 로만 당김(되감기·강제 리셋 없음)
-#   5. 배포에 영향 있는 경로(server/·web/·lora_proto/·compose.yaml·.dockerignore)가 바뀌었으면
+#   5. 배포에 영향 있는 경로(server/·web/·lora_proto/·assistant_proto/·compose.yaml·.dockerignore)가 바뀌었으면
 #      docker compose build → (마이그레이션이 들었으면 DB 를 떠 두고) up -d → server·web 가 healthy 가 될 때까지 기다림
 #   6. 실패하면 마지막 정상 배포 커밋으로 되돌려(분리 HEAD) 다시 빌드 — 운영은 정상본으로 계속 돈다.
 #      마이그레이션이 든 배포였으면 DB 도 떠 둔 것으로 되돌린다
@@ -20,7 +20,7 @@ BRANCH=${BRANCH:-main}
 INTERVAL=${INTERVAL:-120}
 HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-300}
 STATE=${STATE:-/state}
-DEPLOY_PATHS="server/ web/ lora_proto/ compose.yaml .dockerignore"
+DEPLOY_PATHS="server/ web/ lora_proto/ assistant_proto/ compose.yaml .dockerignore"
 MIGRATIONS=server/alembic/
 
 mkdir -p "$STATE"

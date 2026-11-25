@@ -1,7 +1,8 @@
-# 이미지에는 server/ 와 lora_proto/ 만 들어간다 (server/Dockerfile).
+# 이미지에는 server/ 와 lora_proto/ · assistant_proto/ 만 들어간다 (server/Dockerfile).
 *
 !server/
 !lora_proto/
+!assistant_proto/
 
 # 그 안에서도 빼는 것 — 특히 비밀값(.env)은 절대 이미지 레이어에 들어가면 안 된다
 **/.env
@@ -17,3 +18,4 @@
 **/*.db-shm
 server/tests/
 lora_proto/tests/
+assistant_proto/tests/

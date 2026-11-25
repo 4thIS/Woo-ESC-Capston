@@ -10,12 +10,14 @@ dependencies = [
   "alembic>=1.13",
   "pydantic>=2.9",
   "lora-proto",
+  "assistant-proto",
   "pyjwt>=2.9",
   "tzdata>=2026.4",
 ]
 
 [tool.uv.sources]
 lora-proto = { path = "../lora_proto", editable = true }
+assistant-proto = { path = "../assistant_proto", editable = true }
 
 [dependency-groups]
 dev = [
