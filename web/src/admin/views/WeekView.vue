@@ -291,7 +291,7 @@ function toRooms() {
       </div>
       <Checkbox v-model="night" label="야간" />
       <Checkbox v-model="weekend" label="주말" />
-      <Button class="wk__add" :disabled="!editable" @click="openSlot(null)">+ 슬롯 추가</Button>
+      <Button class="wk__add" :disabled="!editable" @click="openSlot(null)">+ 시간표 추가</Button>
     </header>
     <div class="wk__legend">
       <Badge tone="busy">사용중</Badge>
@@ -336,7 +336,7 @@ function toRooms() {
             type="button"
             class="wk__cell"
             :disabled="!editable"
-            :aria-label="`${DAYS[d.day - 1]} ${clock(t)} 슬롯 추가`"
+            :aria-label="`${DAYS[d.day - 1]} ${clock(t)} 시간표 추가`"
             @click="openSlot(null, { day: d.day, t })"
           />
           <!-- 자리 하나에 블록과 점이 형제로 선다 — 재전송 버튼을 role=button 블록 안에 넣으면
@@ -408,7 +408,7 @@ function toRooms() {
           <EmptyState
             message="이 강의실에 등록된 시간표가 없습니다"
             :actions="[
-              { label: '슬롯 추가', variant: 'primary', onClick: () => openSlot(null) },
+              { label: '시간표 추가', variant: 'primary', onClick: () => openSlot(null) },
               { label: '페이지1에서 CSV 가져오기', onClick: toRooms },
             ]"
           />

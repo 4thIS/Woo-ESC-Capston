@@ -8,7 +8,9 @@ import { ApiError, MESSAGES } from '@/api/client'
 import type { RoomOut, SlotWithRoom } from '@/api/types'
 import { dismissToast, toasts } from '@/components/ui/toast'
 
-vi.mock('@/api/rooms', () => ({ roomsApi: { putSlot: vi.fn(), deleteSlot: vi.fn() } }))
+vi.mock('@/api/rooms', () => ({
+  roomsApi: { putSlot: vi.fn(), deleteSlot: vi.fn(), replaceSlots: vi.fn() },
+}))
 const api = vi.mocked(roomsApi)
 
 const R = (id: number, room: number): RoomOut => ({
@@ -64,10 +66,12 @@ const control = (label: string) =>
 const save = () =>
   w
     .findAll('button')
-    .find((b) => b.text() === '저장')!
+    .find((b) => b.text() === '저장' || b.text() === '추가')! // 추가 창은 '추가', 수정 창은 '저장'
     .trigger('click')
 
 beforeEach(() => {
+  localStorage.clear() // 추가 방식 기억 — 테스트마다 '한 교시씩'에서
+  api.replaceSlots.mockReset().mockResolvedValue({ outbox_ids: [1, 2, 3], id: null })
   api.putSlot.mockReset().mockResolvedValue({ outbox_ids: [7], id: null })
   api.deleteSlot.mockReset().mockResolvedValue({ outbox_ids: [8], id: null })
   for (const t of [...toasts.value]) dismissToast(t.id)
@@ -92,10 +96,73 @@ describe('slotErrors', () => {
 })
 
 describe('SlotForm', () => {
+  it('시간표 추가 창 — 제목 · 토글(한 교시씩 기본), 수정 창에는 토글이 없다', async () => {
+    await mountForm({ preset: { room_id: 12 } })
+    expect(w.get('h2').text()).toBe('시간표 추가')
+    expect(w.get('[role=radiogroup][aria-label="추가 방식"]').text()).toContain('여러 교시 한 번에')
+    expect(control('종료')).toBeTruthy()
+    w.unmount()
+    await mountForm({ mode: 'edit', value: slot({ room_id: 12, day: 3, s_h: 14 }) })
+    expect(w.find('[role=radiogroup]').exists()).toBe(false)
+    expect(w.get('h2').text()).toBe('슬롯 수정')
+  })
+
+  it('여러 교시 한 번에 — 시작 · 교시 수 · 한 교시로 칩, 한 번에 추가(replace), 방식을 기억한다', async () => {
+    await mountForm({ preset: { room_id: 12, day: 2, s_h: 9, s_m: 0 } })
+    await w.findAll('[role=radiogroup] input')[1].setValue(true)
+    expect(w.findAll('.field').some((f) => f.text().includes('종료'))).toBe(false)
+    expect(w.findAll('.pf__chip').map((c) => c.text())).toEqual([
+      '1교시 09:00–09:50',
+      '2교시 10:00–10:50',
+      '3교시 11:00–11:50',
+    ])
+    await control('과목명').setValue('인공지능기초 102')
+    await w
+      .findAll('button')
+      .find((b) => b.text() === '3교시 추가')!
+      .trigger('click')
+    await flushPromises()
+    expect(api.replaceSlots).toHaveBeenCalledWith(12, {
+      remove: [],
+      put: [9, 10, 11].map((h) => ({
+        day: 2,
+        s_h: h,
+        s_m: 0,
+        e_h: h,
+        e_m: 50,
+        type: 1,
+        subject: '인공지능기초 102',
+        professor: '',
+        source: 2,
+      })),
+    })
+    expect(api.putSlot).not.toHaveBeenCalled()
+    expect(w.emitted('saved')![0][0]).toMatchObject({ roomId: 12, key: 's12-2-9-0' })
+    expect(localStorage.getItem('esc.admin.slotAddMode')).toBe('many')
+    w.unmount()
+    await mountForm({ preset: { room_id: 12 } }) // 다음에 열면 그 방식으로
+    expect(w.find('.pf__chip').exists()).toBe(true)
+  })
+
+  it('여러 교시 — 다른 수업과 겹치면 추가 잠금', async () => {
+    localStorage.setItem('esc.admin.slotAddMode', 'many')
+    await mountForm({
+      preset: { room_id: 12, day: 2, s_h: 9, s_m: 0 },
+      existing: [slot({ room_id: 12, day: 2, s_h: 10, subject: '다른 수업' })],
+    })
+    expect(w.text()).toContain('겹칩니다')
+    expect(
+      w
+        .findAll('button')
+        .find((b) => b.text() === '3교시 추가')!
+        .attributes('disabled'),
+    ).toBeDefined()
+  })
+
   it('Enter 로 저장 — 저장 버튼이 폼의 submit 이라 폼 submit 한 번이 저장 한 번', async () => {
     await mountForm({ preset: { room_id: 12, day: 3, s_h: 14, s_m: 0 } })
     const form = w.get('form')
-    const button = w.findAll('button').find((b) => b.text() === '저장')!
+    const button = w.findAll('button').find((b) => b.text() === '추가')! // 추가 창의 제출 버튼
     expect(button.attributes('type')).toBe('submit')
     expect(button.attributes('form')).toBe(form.attributes('id'))
     await control('과목명').setValue('캡스톤디자인')

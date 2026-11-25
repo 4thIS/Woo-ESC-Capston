@@ -167,8 +167,8 @@ describe('주간 시간표', () => {
 
   it('빈 칸을 누르면 그 요일·시각으로 슬롯 추가 — 종료는 +1시간', async () => {
     await mountAt('/rooms/11/week')
-    await w.get('button[aria-label="수 14:00 슬롯 추가"]').trigger('click')
-    const d = dialog('슬롯 추가')!
+    await w.get('button[aria-label="수 14:00 시간표 추가"]').trigger('click')
+    const d = dialog('시간표 추가')!
     expect((control(d, '요일').element as HTMLSelectElement).value).toBe('3')
     expect((control(d, '시작').element as HTMLInputElement).value).toBe('14:00')
     expect((control(d, '종료').element as HTMLInputElement).value).toBe('15:00')
@@ -260,7 +260,7 @@ describe('주간 시간표', () => {
   it('폼을 열면 슬롯을 다시 불러 겹침 검사가 최신 목록을 본다', async () => {
     await mountAt('/rooms/11/week')
     expect(api.slots).toHaveBeenCalledTimes(1)
-    await w.get('button[aria-label="수 14:00 슬롯 추가"]').trigger('click')
+    await w.get('button[aria-label="수 14:00 시간표 추가"]').trigger('click')
     await flushPromises()
     expect(api.slots).toHaveBeenCalledTimes(2)
   })
@@ -274,15 +274,15 @@ describe('주간 시간표', () => {
       .mockReset()
       .mockResolvedValue({ outbox_ids: [9], id: null })
     await mountAt('/rooms/11/week')
-    await w.get('button[aria-label="수 14:00 슬롯 추가"]').trigger('click')
+    await w.get('button[aria-label="수 14:00 시간표 추가"]').trigger('click')
     await flushPromises()
-    const d = () => dialog('슬롯 추가')!
+    const d = () => dialog('시간표 추가')!
     await control(d(), '과목명').setValue('자료구조')
     api.slots.mockResolvedValue([
       S({}),
       S({ id: 2, day: 3, s_h: 14, e_h: 15, subject: '자료구조' }),
     ])
-    await btn(d(), '저장').trigger('click')
+    await btn(d(), '추가').trigger('click')
     await flushPromises()
     api.buildingOutbox.mockResolvedValue([
       { id: 7, state: 'failed', last_error: 'max_retries' } as unknown as FailedOut,

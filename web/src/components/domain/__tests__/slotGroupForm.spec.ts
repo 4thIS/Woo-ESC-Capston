@@ -57,7 +57,7 @@ describe('SlotGroupForm — 교시 묶음 수정 (admin-rooms.md)', () => {
     expect((control('시작').element as HTMLInputElement).value).toBe('09:00')
     expect((control('교시 수').element as HTMLSelectElement).value).toBe('3')
     expect(w.text()).toContain('끝 11:50')
-    expect(w.findAll('.gf__chip').map((c) => c.text())).toEqual([
+    expect(w.findAll('.pf__chip').map((c) => c.text())).toEqual([
       '1교시 09:00–09:50',
       '2교시 10:00–10:50',
       '3교시 11:00–11:50',
@@ -101,7 +101,7 @@ describe('SlotGroupForm — 교시 묶음 수정 (admin-rooms.md)', () => {
   it('교시 수를 줄이면 칩도 준다, 다른 수업과 겹치면 저장 잠금', async () => {
     await mountForm([...PERIODS, slot(13, { subject: '다른 수업' })])
     await control('교시 수').setValue('2')
-    expect(w.findAll('.gf__chip')).toHaveLength(2)
+    expect(w.findAll('.pf__chip')).toHaveLength(2)
     await control('교시 수').setValue('5')
     expect(w.text()).toContain('겹칩니다: 13:00–13:50 다른 수업')
     expect(button('5교시 저장')!.attributes('disabled')).toBeDefined()

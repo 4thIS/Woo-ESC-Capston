@@ -174,7 +174,7 @@ async function remove() {
         class="blk__filter"
       />
       <Button class="blk__add" :disabled="!rooms.length" @click="openForm(null)"
-        >+ 슬롯 추가</Button
+        >+ 시간표 추가</Button
       >
     </header>
     <Table
@@ -193,7 +193,7 @@ async function remove() {
           message="이 건물에 등록된 시간표가 없습니다"
           :actions="[
             { label: 'CSV 가져오기', onClick: () => emit('csv') },
-            { label: '슬롯 추가', variant: 'primary', onClick: () => openForm(null) },
+            { label: '시간표 추가', variant: 'primary', onClick: () => openForm(null) },
           ]"
         />
       </template>

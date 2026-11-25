@@ -4,6 +4,7 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
 import Select from '@/components/ui/Select.vue'
+import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import { showToast } from '@/components/ui/toast'
 import { ApiError, MESSAGES } from '@/api/client'
 import { roomsApi } from '@/api/rooms'
@@ -20,6 +21,15 @@ import {
   type SavedRow,
 } from './rules'
 import { parseHm, slotErrors, type SlotDraft } from './slotForm'
+import PeriodFields from './PeriodFields.vue'
+import {
+  PERIOD_PATTERNS,
+  firstOverlap,
+  patternKey,
+  patternLabel,
+  periodsOf,
+  type PeriodDraft,
+} from './slotGroups'
 
 // 저장 버튼은 Modal 바닥(폼 밖)에 있다 — form 속성으로 이어 Enter 가 폼을 제출하게 (submit 한 길만)
 const formId = useId()
@@ -59,10 +69,47 @@ const draft = reactive<SlotDraft>({
   professor: '',
 })
 const errors = ref<{ start?: string; end?: string }>({})
+
+// 시간표 추가 창만 — 한 교시씩 | 여러 교시 한 번에 (admin-rooms.md 「시간표 추가」). 수정 창은 그대로.
+// 마지막에 쓴 방식을 이 브라우저에 기억한다(편의값 — 막힌 창이면 한 교시씩)
+type AddMode = 'one' | 'many'
+const MODE_KEY = 'esc.admin.slotAddMode'
+const ADD_MODES = [
+  { value: 'one', label: '한 교시씩' },
+  { value: 'many', label: '여러 교시 한 번에' },
+]
+function loadMode(): AddMode {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'many' ? 'many' : 'one'
+  } catch {
+    return 'one'
+  }
+}
+const addMode = ref<AddMode>(loadMode())
+function pickMode(v: string) {
+  addMode.value = v === 'many' ? 'many' : 'one'
+  try {
+    localStorage.setItem(MODE_KEY, addMode.value)
+  } catch {
+    // 저장소가 막힌 창 — 이번 창에서만
+  }
+}
+const many = computed(() => props.mode === 'create' && addMode.value === 'many')
+const time = ref<PeriodDraft>({ start: '09:00', count: 3, pattern: '50-10' })
+const PATTERN_OPTIONS = PERIOD_PATTERNS.map((p) => ({
+  value: patternKey(p),
+  label: patternLabel(p),
+}))
+const periods = computed(() => periodsOf(time.value))
+const timeError = computed(() => {
+  if (!/^\d{2}:\d{2}$/.test(time.value.start)) return '시작 시각을 넣으세요'
+  if (!periods.value) return '자정을 넘깁니다 — 시작을 당기거나 교시를 줄이세요'
+  return firstOverlap(props.existing, draft.roomId, draft.day, periods.value)
+})
 const formError = ref('')
 const saving = ref(false)
 const initial = ref('')
-const dirty = computed(() => JSON.stringify(draft) !== initial.value)
+const dirty = computed(() => JSON.stringify([draft, time.value]) !== initial.value)
 const roomOptions = computed(() =>
   props.rooms.map((r) => ({ value: r.id, label: props.roomLabel(r) })),
 )
@@ -97,14 +144,54 @@ watch(
             professor: '',
           },
     )
+    time.value = { ...time.value, start: draft.start }
     errors.value = {}
     formError.value = ''
-    initial.value = JSON.stringify(draft)
+    initial.value = JSON.stringify([draft, time.value])
   },
   { immediate: true },
 )
 
+// 여러 교시 한 번에 — 교시마다 슬롯, 한 요청 한 트랜잭션(POST /slots/replace, 지울 것 없이)
+async function saveMany() {
+  if (saving.value || timeError.value || !periods.value) return
+  const put: SlotIn[] = periods.value.map((p) => ({
+    day: draft.day,
+    ...p,
+    type: draft.type,
+    subject: draft.subject,
+    professor: draft.professor,
+    source: 2,
+  }))
+  saving.value = true
+  formError.value = ''
+  try {
+    const r = await roomsApi.replaceSlots(draft.roomId, { remove: [], put })
+    emit('saved', {
+      roomId: draft.roomId,
+      key: slotKey({ room_id: draft.roomId, ...put[0] }),
+      outboxIds: r.outbox_ids,
+    })
+    showToast({ message: `${put.length}교시를 추가했습니다.` })
+    emit('close')
+  } catch (e) {
+    if (!(e instanceof ApiError)) throw e
+    if (e.status === 422) formError.value = MESSAGES[422]
+    else if (e.status === 409) {
+      showToast({ tone: 'danger', message: conflictMessage(e) })
+      emit('stale')
+    } else if (e.status === 404) {
+      showToast({ tone: 'danger', message: '강의실을 찾을 수 없습니다. 목록을 새로 불러옵니다.' })
+      emit('stale')
+      emit('close')
+    } else if (e.status !== 401 && e.status !== 403) formError.value = e.message
+  } finally {
+    saving.value = false
+  }
+}
+
 async function save() {
+  if (many.value) return saveMany()
   if (saving.value) return
   errors.value = slotErrors(draft, props.existing, props.value)
   if (errors.value.start || errors.value.end) return
@@ -170,16 +257,25 @@ async function save() {
 <template>
   <Modal
     :open="open"
-    :title="mode === 'edit' ? '슬롯 수정' : '슬롯 추가'"
+    :title="mode === 'edit' ? '슬롯 수정' : '시간표 추가'"
     :close-on-backdrop="!dirty"
     @close="emit('close')"
   >
     <form :id="formId" class="form" novalidate @submit.prevent="save">
       <p v-if="formError" class="form__error" role="alert">{{ formError }}</p>
+      <SegmentedControl
+        v-if="mode === 'create'"
+        class="form__mode"
+        :items="ADD_MODES"
+        :value="addMode"
+        label="추가 방식"
+        @update:value="pickMode"
+      />
       <div class="form__grid">
         <Select v-model="draft.roomId" label="강의실" :options="roomOptions" />
         <Select v-model="draft.day" label="요일" :options="DAY_OPTIONS" />
         <Input
+          v-if="!many"
           v-model="draft.start"
           label="시작"
           type="time"
@@ -188,6 +284,7 @@ async function save() {
           :error="errors.start"
         />
         <Input
+          v-if="!many"
           v-model="draft.end"
           label="종료"
           type="time"
@@ -210,6 +307,14 @@ async function save() {
         />
         <Select v-model="draft.type" label="유형" :options="TYPE_OPTIONS" />
       </div>
+      <PeriodFields
+        v-if="many"
+        v-model="time"
+        class="form__periods"
+        :pattern-options="PATTERN_OPTIONS"
+        :error="timeError"
+        caption="추가되는 교시 (문 앞 화면은 쉬는시간을 이 사이로 보여 줍니다)"
+      />
       <p v-if="value?.source === 1" class="form__hint">
         저장하면 이 슬롯은 수동 편집으로 바뀌어 CSV 임포트에 덮이지 않습니다.
       </p>
@@ -223,7 +328,9 @@ async function save() {
         >삭제</Button
       >
       <Button variant="secondary" @click="emit('close')">취소</Button>
-      <Button type="submit" :form="formId" :loading="saving">저장</Button>
+      <Button type="submit" :form="formId" :loading="saving" :disabled="many && !!timeError">{{
+        mode === 'edit' ? '저장' : many ? `${periods?.length ?? time.count}교시 추가` : '추가'
+      }}</Button>
     </template>
   </Modal>
 </template>
@@ -233,6 +340,12 @@ async function save() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-3) var(--space-4);
+}
+.form__mode {
+  margin-bottom: var(--space-4);
+}
+.form__periods {
+  margin-top: var(--space-4);
 }
 .form__error {
   margin: 0 0 var(--space-3);
