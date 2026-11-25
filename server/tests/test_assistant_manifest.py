@@ -20,8 +20,10 @@ def _write(tmp_path, d):
 
 
 def test_committed_model_json_loads():
-    assert M.load() == {"enabled": False}
-    assert M.current_revision() is None
+    """커밋된 model.json 은 (릴리스 PR 이 켜든 끄든) 어느 쪽이어도 검증을 통과한다."""
+    m = M.load()
+    assert m["enabled"] in (True, False)
+    assert M.current_revision() == (m["revision"] if m["enabled"] else None)
 
 
 def test_valid_manifest(tmp_path):
@@ -44,6 +46,10 @@ BAD = {
     "repo-space": {**GOOD, "repo": "a b/c"},
     "repo-dotdot-path": {**GOOD, "repo": "a/../c"},
     "repo-three": {**GOOD, "repo": "a/b/c"},
+    "repo-dot-owner": {**GOOD, "repo": "./x"},
+    "repo-dotdot-name": {**GOOD, "repo": "a/.."},
+    "repo-dotdot-both": {**GOOD, "repo": "../.."},
+    "repo-dot-both": {**GOOD, "repo": "./."},
     "rev-branch": {**GOOD, "revision": "main"},
     "rev-upper": {**GOOD, "revision": "A" * 40},
     "files-empty": {**GOOD, "files": []},

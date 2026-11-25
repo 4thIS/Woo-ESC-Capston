@@ -80,6 +80,7 @@ def test_stale_preview_returns_new_preview(client, app, monkeypatch):
     code, body = _apply(app, pv["preview_id"])
     assert code == 409 and body["detail"] == "stale"
     assert body["preview"]["preview_id"] != pv["preview_id"] and body["preview"]["blockers"] == []
+    assert body["preview"]["expires_at"].endswith("Z")  # /turns 의 미리보기와 같은 직렬화
     assert _apply(app, pv["preview_id"])[0] == 410  # 옛 미리보기는 더 못 쓴다
     assert _apply(app, body["preview"]["preview_id"])[0] == 200
 

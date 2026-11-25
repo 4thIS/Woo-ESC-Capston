@@ -57,6 +57,7 @@ def load(path: Path | None = None) -> dict:
         d.get("runtime") in RUNTIMES
         and isinstance(d.get("repo"), str)
         and bool(_REPO.match(d["repo"]))
+        and not {".", ".."} & set(d["repo"].split("/"))  # 경로 조각 '.'·'..' 금지
         and isinstance(d.get("revision"), str)
         and bool(_REV.match(d["revision"]))  # 브랜치 이름이 아니라 커밋 해시로 고정
         and isinstance(d.get("files"), list)

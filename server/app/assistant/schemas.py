@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app import schemas as S
+
+
+FORM_MAX = 4096  # form(JSON) 글자 수 상한 — 정상 form 은 수백 자
 
 
 class TurnIn(BaseModel):
@@ -18,8 +22,18 @@ class TurnIn(BaseModel):
     # 브라우저가 두 번 시도해도 JSON 으로 못 읽은 모델 출력 원문 — 학습용 기록에 남기고 오류로 답한다
     raw_output: str | None = Field(None, max_length=2000)
 
+    @field_validator("utterance")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("빈 말은 보낼 수 없습니다")
+        return v
+
     @model_validator(mode="after")
     def _one(self):
+        if self.form is not None and len(json.dumps(self.form, ensure_ascii=False)) > FORM_MAX:
+            raise ValueError("form 이 너무 큽니다")
         if sum(x is not None for x in (self.form, self.choice, self.raw_output)) != 1:
             raise ValueError("form · choice · raw_output 중 정확히 하나")
         return self

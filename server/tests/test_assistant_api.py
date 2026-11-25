@@ -26,7 +26,10 @@ FIRST = form(
 FIRST_TEXT = "803호 이번주 금요일 15시부터 18시까지 특강 예약해줘"
 
 
-def test_model_disabled_by_default(client):
+def test_model_disabled_without_manifest_flag(client, tmp_path, monkeypatch):
+    p = tmp_path / "model.json"
+    p.write_text(json.dumps({"enabled": False}), encoding="utf-8")
+    monkeypatch.setattr(manifest, "MODEL_FILE", p)
     assert client.get("/api/assistant/model").json() == {"enabled": False}
     assert manifest.load() == {"enabled": False} and manifest.current_revision() is None
 
@@ -246,3 +249,29 @@ def test_building_admin_scope(client, app, monkeypatch):
     assert client.post(f"/api/assistant/previews/{pid}/apply").status_code == 200
     assert client.get("/api/assistant/changes", headers=h).json() == []
     assert len(client.get("/api/assistant/changes").json()) == 1
+
+
+def _post(client, **body):
+    return client.post("/api/assistant/turns", json=body)
+
+
+def test_schema_version_conflict_only_for_int_mismatch(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    campus(app)
+    j = _post(client, utterance="x", form={}).json()  # v 없음 — 보통의 오류 턴
+    assert j["kind"] == "error" and j["message"].startswith("요청을 이해하지 못했습니다")
+    r = _post(client, utterance="x", form={"v": 2, "intent": "cancel", "target": {}, "set": {}})
+    assert r.status_code == 409 and r.json() == {"detail": "schema_version"}
+    r = _post(client, utterance="x", form={"v": True, "intent": "cancel", "target": {}, "set": {}})
+    assert r.status_code == 200 and r.json()["kind"] == "error"
+    r = _post(client, utterance="x", form={"v": "1", "intent": "cancel", "target": {}, "set": {}})
+    assert r.status_code == 200 and r.json()["kind"] == "error"
+
+
+def test_input_bounds(client):
+    assert _post(client, utterance="   ", form=form("cancel")).status_code == 422
+    assert _post(client, utterance="", form=form("cancel")).status_code == 422
+    big = form("event.add", set_={"subject": "가" * 5000})
+    assert _post(client, utterance="x", form=big).status_code == 422
+    ok = _post(client, utterance="  취소  ", form=form("cancel"))
+    assert ok.status_code == 200

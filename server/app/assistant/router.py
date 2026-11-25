@@ -26,7 +26,9 @@ def model_info() -> dict:
 
 @router.post("/turns", response_model=AS.TurnOut)
 def turns(body: AS.TurnIn, request: Request, sc: Scope = MgrScope):
-    if body.form is not None and body.form.get("v") != SCHEMA_VERSION:
+    v = body.form.get("v") if body.form is not None else None
+    if isinstance(v, int) and not isinstance(v, bool) and v != SCHEMA_VERSION:
+        # 정수인데 다른 판일 때만 — v 가 없거나 이상하면 parse_form 이 보통의 오류 턴으로 답한다
         return JSONResponse({"detail": "schema_version"}, status_code=409)
     if not ratelimit.check(f"assistant:{sc.email}", limit=TURNS_PER_MIN):
         raise HTTPException(429, "잠시 후 다시 시도하세요")

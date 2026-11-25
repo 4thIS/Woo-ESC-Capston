@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app import schemas as S
 from app.assistant import changes, manifest
+from app.assistant import schemas as AS
 from app.assistant.models import AssistantChange, AssistantPreview
 from app.auth import scope
 from app.auth.scope import Scope
@@ -427,7 +428,9 @@ def apply_preview(
     if stale is not None:  # 락 밖에서 — make_preview 가 락을 다시 잡는다(비재진입)
         return 409, {
             "detail": "stale",
-            "preview": make_preview(Session, sc, stale[0], stale[1], now_local),
+            "preview": AS.PreviewOut(
+                **make_preview(Session, sc, stale[0], stale[1], now_local)
+            ).model_dump(mode="json"),
         }
     for m in modems:
         api.notify(m)
