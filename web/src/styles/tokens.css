@@ -18,6 +18,10 @@
   --red-50: #fdf0ef;
   --teal-600: #0d9488;
   --gold-600: #ca8a04;
+  --green-700: #067647;
+  --green-50: #ecfdf3;
+  --amber-700: #b54708;
+  --amber-50: #fffaeb;
 
   /* 2층 — 시맨틱 */
   --bg: var(--gray-0);
@@ -42,6 +46,16 @@
   --room-busy-label: var(--red-700);
   --room-free-text: var(--text-3);
   --room-free-line: var(--line-3);
+  /* AI 비서 확인 화면 — 변경 표시 (tokens.md diff.*). 블록 바탕은 room.* 그대로, 테두리·태그만 */
+  --diff-add-fill: var(--green-50);
+  --diff-add-line: var(--green-700);
+  --diff-add-text: var(--green-700);
+  --diff-remove-fill: var(--red-50);
+  --diff-remove-line: var(--red-700);
+  --diff-remove-text: var(--red-700);
+  --diff-change-fill: var(--amber-50);
+  --diff-change-line: var(--amber-700);
+  --diff-change-text: var(--amber-700);
   --chart-series-1: var(--blue-600);
   --chart-series-2: var(--teal-600);
   --chart-series-3: var(--gold-600);

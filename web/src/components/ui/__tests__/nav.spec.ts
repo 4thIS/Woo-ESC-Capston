@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import SidebarNav from '@/components/ui/SidebarNav.vue'
@@ -20,6 +20,42 @@ async function withRouter(path: string) {
 }
 
 describe('SidebarNav', () => {
+  it('AI 비서 아이콘 — assistant 값이 path 를 그린다', async () => {
+    const router = await withRouter('/nodes')
+    const w = mount(SidebarNav, {
+      props: { items: [{ to: '/nodes', label: 'AI 비서', group: 'AI', icon: 'assistant' }] },
+      global: { plugins: [router] },
+    })
+    expect(w.get('a svg.nav__icon path').attributes('d')).toMatch(/^M12 3l1\.8 4\.7/)
+  })
+
+  it('action 항목은 화면을 옮기지 않는 버튼 — 누르면 action, aria-expanded, 단축키 표시 (components.md SidebarNav)', async () => {
+    const router = await withRouter('/nodes')
+    const open = vi.fn()
+    const items = [
+      {
+        action: open,
+        label: 'AI 비서',
+        group: 'AI',
+        icon: 'assistant' as const,
+        shortcut: 'Ctrl K',
+      },
+      { to: '/nodes', label: '노드 상태', group: '모니터링' },
+    ]
+    const w = mount(SidebarNav, { props: { items }, global: { plugins: [router] } })
+    const b = w.get('button.nav__item')
+    expect(b.attributes('type')).toBe('button')
+    expect(b.attributes('aria-expanded')).toBe('false')
+    expect(b.get('kbd').text()).toBe('Ctrl K')
+    expect(b.classes()).not.toContain('nav__item--open')
+    await b.trigger('click')
+    expect(open).toHaveBeenCalledOnce()
+    expect(w.findAll('a')).toHaveLength(1)
+    await w.setProps({ items: [{ ...items[0], expanded: true }, items[1]] })
+    expect(w.get('button.nav__item').attributes('aria-expanded')).toBe('true')
+    expect(w.get('button.nav__item').classes()).toContain('nav__item--open')
+  })
+
   it('현재 경로 항목이 활성, badge 는 0 이면 숨김', async () => {
     const router = await withRouter('/users')
     const w = mount(SidebarNav, {

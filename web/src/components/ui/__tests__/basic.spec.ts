@@ -4,6 +4,22 @@ import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import ProgressBar from '@/components/ui/ProgressBar.vue'
+
+describe('ProgressBar', () => {
+  it('progressbar 역할 · 값 · 이름, 채움 폭은 비율 (0~100% 로 자른다)', () => {
+    const w = mount(ProgressBar, { props: { value: 3, max: 4, label: 'AI 모델 받는 중' } })
+    const bar = w.get('[role="progressbar"]')
+    expect(bar.attributes('aria-valuenow')).toBe('3')
+    expect(bar.attributes('aria-valuemax')).toBe('4')
+    expect(bar.attributes('aria-label')).toBe('AI 모델 받는 중')
+    expect(w.get('.progress__fill').attributes('style')).toContain('width: 75%')
+    const over = mount(ProgressBar, { props: { value: 9, max: 4, label: 'x' } })
+    expect(over.get('.progress__fill').attributes('style')).toContain('width: 100%')
+    const zero = mount(ProgressBar, { props: { value: 0, max: 0, label: 'x' } })
+    expect(zero.get('.progress__fill').attributes('style')).toContain('width: 0%')
+  })
+})
 
 describe('Button', () => {
   it('기본은 primary·md·type=button', () => {
