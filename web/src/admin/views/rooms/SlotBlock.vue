@@ -7,9 +7,11 @@ import Select from '@/components/ui/Select.vue'
 import Table from '@/components/ui/Table.vue'
 import { showToast } from '@/components/ui/toast'
 import SlotForm from '@/components/domain/SlotForm.vue'
+import SlotGroupForm from '@/components/domain/SlotGroupForm.vue'
 import SourceBadge from '@/components/domain/SourceBadge.vue'
 import TypeBadge from '@/components/domain/TypeBadge.vue'
 import type { DotState } from '@/components/domain/OutboxDot.vue'
+import { groupSlots, type SlotGroup } from '@/components/domain/slotGroups'
 import { DAYS, DAY_OPTIONS, TYPE_OPTIONS, slotKey, type SavedRow } from '@/components/domain/rules'
 import { ApiError } from '@/api/client'
 import { roomsApi } from '@/api/rooms'
@@ -42,27 +44,42 @@ const ALL = { value: 0, label: '전체' }
 const day = ref(0)
 const type = ref(0)
 const order = (roomId: number) => props.rooms.findIndex((r) => r.id === roomId)
-const rows = computed(() =>
-  props.slots
-    .filter((s) => (!day.value || s.day === day.value) && (!type.value || s.type === type.value))
-    .sort(
-      (a, b) =>
-        order(a.room_id) - order(b.room_id) || a.day - b.day || a.s_h - b.s_h || a.s_m - b.s_m,
-    )
-    .map((s) => ({ ...s, key: slotKey(s) })),
+// 연속 교시는 한 줄 (admin-rooms.md 「연속 교시 묶음」) — 저장은 교시마다 그대로, 목록에서만 묶는다
+type Row = SlotGroup & { first: SlotWithRoom }
+const rows = computed<Row[]>(() =>
+  groupSlots(
+    props.slots.filter(
+      (s) => (!day.value || s.day === day.value) && (!type.value || s.type === type.value),
+    ),
+  )
+    .sort((a, b) => order(a.room_id) - order(b.room_id) || a.day - b.day || a.start - b.start)
+    .map((g) => ({ ...g, first: g.slots[0] })),
 )
 const COLUMNS = [
   { key: 'room', label: '호수', width: '72px' },
   { key: 'day', label: '요일', width: '56px' },
-  { key: 'start', label: '시작', width: '64px' },
-  { key: 'end', label: '종료', width: '64px' },
+  { key: 'time', label: '시간', width: '168px' },
   { key: 'subject', label: '과목명' },
   { key: 'professor', label: '교수', width: '96px' },
   { key: 'type', label: '유형', width: '80px' },
   { key: 'source', label: '출처', width: '64px' },
   { key: 'actions', label: '작업', width: '104px', align: 'right' as const },
 ]
-const asS = (row: Record<string, unknown>) => row as unknown as SlotWithRoom & { key: string }
+const asG = (row: Record<string, unknown>) => row as unknown as Row
+const span = (s: SlotWithRoom) => `${hm(s.s_h, s.s_m)}–${hm(s.e_h, s.e_m)}`
+const mm = (m: number) => hm(Math.floor(m / 60), m % 60)
+/** 시간 칸 아래 한 줄 — '3교시 · 50분 + 쉬는 10분' */
+function periodsNote(g: SlotGroup): string {
+  if (g.slots.length === 1) return ''
+  const n = `${g.slots.length}교시`
+  return g.uniform ? `${n} · ${g.periodMin}분 + 쉬는 ${g.gapMin}분` : n
+}
+// 묶음의 전송 점 — 교시들 중 가장 손이 가야 하는 것 (실패 > 취소 > 전송 중 > 대기 > 예정 > 반영됨)
+const DOT_RANK: DotState[] = ['failed', 'cancelled', 'dispatched', 'queued', 'scheduled', 'acked']
+function groupState(g: SlotGroup): DotState | undefined {
+  const mine = new Set(g.slots.map((s) => props.states.get(slotKey(s))))
+  return DOT_RANK.find((st) => mine.has(st))
+}
 const roomLabel = (r: RoomOut) => `${props.label(r.id)}호`
 
 // 추가·수정은 같은 폼 — 페이지2 셀 편집도 이 폼이다 (검증이 경로마다 갈라지지 않게)
@@ -73,6 +90,13 @@ function openForm(s: SlotWithRoom | null) {
   formOpen.value = true
   emit('changed') // 겹침 검사(existing)가 최신 슬롯을 보게 — 다른 관리자가 넣은 같은 키를 모르고 덮지 않도록
 }
+// 줄의 수정 — 한 교시짜리는 지금 폼, 여러 교시면 묶음 폼(시작 · 교시 수 · 한 교시)
+const editingGroup = ref<SlotGroup | null>(null)
+function editRow(g: SlotGroup) {
+  if (g.slots.length === 1) return openForm(g.slots[0])
+  editingGroup.value = g
+  emit('changed')
+}
 // 저장한 행이 요일·유형 필터에 가려지면 필터를 푼다 — 행과 점이 보여야 결과를 안다
 const reveal = ref<string | null>(null)
 watch(
@@ -81,7 +105,7 @@ watch(
     const k = reveal.value
     if (!k || !slots.some((s) => slotKey(s) === k)) return
     reveal.value = null
-    if (!rows.value.some((r) => r.key === k)) day.value = type.value = 0
+    if (!rows.value.some((r) => r.slots.some((s) => slotKey(s) === k))) day.value = type.value = 0
   },
 )
 function onSaved(r: SavedRow) {
@@ -90,14 +114,35 @@ function onSaved(r: SavedRow) {
   emit('changed')
 }
 
-const removing = ref<SlotWithRoom | null>(null)
+// 지우기 — 교시 하나 또는 묶음 전체(한 트랜잭션). 없는 키는 서버가 조용히 넘긴다(멱등)
+const removing = ref<SlotWithRoom[] | null>(null)
 const busy = ref(false)
+function removeRow(g: SlotGroup) {
+  editingGroup.value = null
+  removing.value = g.slots
+}
+const removeLines = computed(() => {
+  const list = removing.value
+  if (!list?.length) return []
+  const f = list[0]
+  const l = list[list.length - 1]
+  const head = `${props.label(f.room_id)}호 ${DAYS[f.day - 1]} ${f.subject}`
+  return list.length === 1
+    ? [`${head} ${hm(f.s_h, f.s_m)}`]
+    : [`${head} — ${list.length}교시 ${hm(f.s_h, f.s_m)}–${hm(l.e_h, l.e_m)}`]
+})
 async function remove() {
-  const s = removing.value
-  if (!s || busy.value) return
+  const list = removing.value
+  if (!list?.length || busy.value) return
   busy.value = true
   try {
-    await roomsApi.deleteSlot(s.room_id, s) // 없는 키는 서버가 조용히 넘긴다(멱등)
+    const roomId = list[0].room_id
+    if (list.length === 1) await roomsApi.deleteSlot(roomId, list[0])
+    else
+      await roomsApi.replaceSlots(roomId, {
+        remove: list.map(({ day, s_h, s_m }) => ({ day, s_h, s_m })),
+        put: [],
+      })
     showToast({ message: '지웠습니다.' })
   } catch (e) {
     if (!(e instanceof ApiError)) throw e
@@ -137,6 +182,7 @@ async function remove() {
       :rows="rows as unknown as Record<string, unknown>[]"
       row-key="key"
       :loading="loading"
+      expandable
     >
       <template #empty>
         <EmptyState v-if="!rooms.length" message="위에서 강의실을 고르세요" />
@@ -152,30 +198,48 @@ async function remove() {
       </template>
       <template #cell-room="{ row }">
         <!-- 호수를 누르면 그 강의실의 한 주 (페이지2) -->
-        <RouterLink class="blk__room num" :to="`/rooms/${asS(row).room_id}/week`">{{
-          label(asS(row).room_id)
+        <RouterLink class="blk__room num" :to="`/rooms/${asG(row).room_id}/week`">{{
+          label(asG(row).room_id)
         }}</RouterLink>
       </template>
-      <template #cell-day="{ row }">{{ DAYS[asS(row).day - 1] }}</template>
-      <template #cell-start="{ row }"
-        ><span class="num">{{ hm(asS(row).s_h, asS(row).s_m) }}</span></template
-      >
-      <template #cell-end="{ row }"
-        ><span class="num">{{ hm(asS(row).e_h, asS(row).e_m) }}</span></template
-      >
-      <template #cell-professor="{ row }">{{ asS(row).professor || '—' }}</template>
-      <template #cell-type="{ row }"><TypeBadge :type="asS(row).type" /></template>
-      <template #cell-source="{ row }"><SourceBadge :source="asS(row).source" /></template>
+      <template #cell-day="{ row }">{{ DAYS[asG(row).day - 1] }}</template>
+      <template #cell-time="{ row }">
+        <span class="blk__time">
+          <b class="num">{{ mm(asG(row).start) }} – {{ mm(asG(row).end) }}</b>
+          <small v-if="periodsNote(asG(row))">{{ periodsNote(asG(row)) }}</small>
+        </span>
+      </template>
+      <template #cell-subject="{ row }">{{ asG(row).first.subject }}</template>
+      <template #cell-professor="{ row }">{{ asG(row).first.professor || '—' }}</template>
+      <template #cell-type="{ row }"><TypeBadge :type="asG(row).first.type" /></template>
+      <template #cell-source="{ row }"><SourceBadge :source="asG(row).first.source" /></template>
       <template #cell-actions="{ row }">
         <div class="blk__actions">
           <RowDot
-            :state="states.get(asS(row).key)"
-            :busy="resyncing.has(asS(row).room_id)"
-            @resync="emit('resync', asS(row).room_id, asS(row).key)"
+            :state="groupState(asG(row))"
+            :busy="resyncing.has(asG(row).room_id)"
+            @resync="emit('resync', asG(row).room_id, asG(row).key)"
           />
-          <Button variant="ghost" size="sm" @click="openForm(asS(row))">수정</Button>
-          <Button variant="ghost" size="sm" @click="removing = asS(row)">삭제</Button>
+          <Button variant="ghost" size="sm" @click="editRow(asG(row))">수정</Button>
+          <Button variant="ghost" size="sm" @click="removeRow(asG(row))">삭제</Button>
         </div>
+      </template>
+      <!-- 펼치면 교시별 — 한 교시만 휴강 · 보강할 때 -->
+      <template #expanded="{ row }">
+        <ul class="blk__periods">
+          <li v-for="(s, i) in asG(row).slots" :key="slotKey(s)" class="blk__period">
+            <span class="num">{{ i + 1 }}교시 {{ span(s) }}</span>
+            <span class="blk__actions">
+              <RowDot
+                :state="states.get(slotKey(s))"
+                :busy="resyncing.has(s.room_id)"
+                @resync="emit('resync', s.room_id, slotKey(s))"
+              />
+              <Button variant="ghost" size="sm" @click="openForm(s)">수정</Button>
+              <Button variant="ghost" size="sm" @click="removing = [s]">삭제</Button>
+            </span>
+          </li>
+        </ul>
       </template>
     </Table>
     <SlotForm
@@ -190,16 +254,20 @@ async function remove() {
       @saved="onSaved"
       @stale="emit('changed')"
     />
+    <SlotGroupForm
+      :open="!!editingGroup"
+      :group="editingGroup"
+      :room-label="editingGroup ? `${label(editingGroup.room_id)}호` : ''"
+      :existing="slots"
+      @close="editingGroup = null"
+      @saved="onSaved"
+      @stale="emit('changed')"
+      @remove="editingGroup && removeRow(editingGroup)"
+    />
     <ConfirmModal
       :open="!!removing"
-      title="슬롯 삭제"
-      :lines="
-        removing
-          ? [
-              `${label(removing.room_id)}호 ${DAYS[removing.day - 1]} ${hm(removing.s_h, removing.s_m)} ${removing.subject}`,
-            ]
-          : []
-      "
+      :title="(removing?.length ?? 0) > 1 ? '수업 삭제' : '슬롯 삭제'"
+      :lines="removeLines"
       :loading="busy"
       @confirm="remove"
       @close="removing = null"
@@ -241,5 +309,28 @@ async function remove() {
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-1);
+}
+.blk__time {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.blk__time small {
+  font-size: var(--font-size-xs);
+  color: var(--text-3);
+}
+.blk__periods {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0 0 0 var(--space-6);
+  list-style: none;
+}
+.blk__period {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  color: var(--text-2);
 }
 </style>
