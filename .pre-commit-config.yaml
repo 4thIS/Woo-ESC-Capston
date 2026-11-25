@@ -47,7 +47,7 @@ repos:
 
   # ── server · modempi: ruff (Python) ──────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.7  # uv 잠금(server 0.16.7 / modempi·lora_proto 0.16.6)과 맞춘다 — 다르면 같은 코드가 다르게 포맷됨(PR #21)
+    rev: v0.16.7  # uv 잠금(server·assistant_proto 0.16.7 / modempi·lora_proto 0.16.6)과 맞춘다 — 다르면 같은 코드가 다르게 포맷됨(PR #21)
     hooks:
       - id: ruff
         args: [--fix]

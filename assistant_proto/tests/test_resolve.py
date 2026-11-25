@@ -46,4 +46,5 @@ def test_every_function_has_vectors():
 
 def test_naive_now_works_too():
     # 서버는 KST naive 시각을 넘긴다 — .date() 만 쓰므로 같다
-    assert resolve_when("내일", datetime(2026, 11, 25, 10, 0)).dates[0].isoformat() == "2026-11-26"
+    naive = datetime(2026, 11, 25, 10, 0)  # noqa: DTZ001 — naive 가 이 테스트의 목적
+    assert resolve_when("내일", naive).dates[0].isoformat() == "2026-11-26"
