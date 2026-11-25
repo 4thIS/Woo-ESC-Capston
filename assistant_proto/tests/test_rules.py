@@ -44,6 +44,9 @@ def test_missing_change_and_remove():
 
 def test_question_texts():
     q = rules.question
+    assert (
+        q("ask.free_rooms", "target.when") == "언제 빈 강의실을 찾을까요? (예: 이번 주 금요일 오후)"
+    )
     assert q("event.add", "set.subject", "특강") == "특강 이름은 무엇인가요?"
     assert q("class.add", "set.subject") == "과목명은 무엇인가요?"
     assert q("class.add", "set.when") == "무슨 요일인가요? (예: 월, 화목)"

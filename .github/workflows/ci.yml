@@ -6,6 +6,8 @@
 # proto job(lora_proto의 check_mirror·pytest)이 담당한다. firmware의 native 유닛 테스트는
 # 그 벡터로 C++ 쪽 인코딩/디코딩 라운드트립만 검증한다(v2 §10.1).
 #
+# assistant_proto/ 가 바뀌면 assistant_proto job(양식 검증·해석기·예문 pytest + ruff)이 돈다.
+#
 # 각 job은 그 영역의 프로젝트 매니페스트가 생기기 전까지 스스로 건너뛴다.
 # 구현 단계 P1~P4에서 매니페스트가 커밋되면 자동으로 검증이 켜진다.
 

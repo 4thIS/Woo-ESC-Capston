@@ -130,6 +130,8 @@ def parse_form(text_or_obj: str | dict) -> Form:
             obj = json.loads(obj)
         except json.JSONDecodeError as e:
             raise FormError(f"JSON 이 아님: {e.msg}") from e
+        except RecursionError as e:  # 깊게 중첩된 입력
+            raise FormError("JSON 이 너무 깊다") from e
     if not isinstance(obj, dict):
         raise FormError("양식은 객체")
     if set(obj) != {"v", "intent", "target", "set"}:
@@ -164,6 +166,6 @@ def form_to_dict(form: Form) -> dict:
 
 
 def canonical_json(form: Form | dict) -> str:
-    """모델 출력·학습 정답의 정규형 (부록 §1.3). dict 를 주면 먼저 검증한다."""
-    f = form if isinstance(form, Form) else parse_form(form)
+    """모델 출력·학습 정답의 정규형 (부록 §1.3). Form·dict 모두 먼저 검증한다."""
+    f = parse_form(form_to_dict(form) if isinstance(form, Form) else form)
     return json.dumps(form_to_dict(f), ensure_ascii=False, separators=(",", ":"))

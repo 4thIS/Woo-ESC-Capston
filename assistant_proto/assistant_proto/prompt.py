@@ -9,6 +9,14 @@ FIRST_PREFIX = "관리자: "
 SYSTEM_PROMPT: str = (ROOT / "prompt" / "system.v1.txt").read_text(encoding="utf-8").strip()
 
 
+def _flat(text: str) -> str:
+    """값 안의 줄바꿈은 공백으로 — 값이 '질문:' '관리자:' 줄을 위조하지 못하게."""
+    return text.replace("\r", " ").replace("\n", " ")
+
+
 def render_prefix(intent: str, items: list[tuple[str, str | None]], question: str) -> str:
-    parts = [intent, *(f"{label} {'?' if value is None else value}" for label, value in items)]
-    return f"상태: {' | '.join(parts)}\n질문: {question}\n{FIRST_PREFIX}"
+    parts = [
+        intent,
+        *(f"{label} {'?' if value is None else _flat(value)}" for label, value in items),
+    ]
+    return f"상태: {' | '.join(parts)}\n질문: {_flat(question)}\n{FIRST_PREFIX}"

@@ -86,6 +86,8 @@ def question(intent: str, slot: str, type_label: str | None = None) -> str:
             return "무슨 요일인가요? (예: 월, 화목)"
         if grp == "exam":
             return "시험기간은 언제부터 언제까지인가요? (예: 12/15~12/19)"
+        if grp == "ask":
+            return "언제 빈 강의실을 찾을까요? (예: 이번 주 금요일 오후)"
         if sec == "target":
             return "언제 일정인가요? (예: 이번 주 금요일, 12/3)"
         return "날짜는 언제인가요? (예: 12/3, 이번 주 금요일)"

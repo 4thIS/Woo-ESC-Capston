@@ -3,3 +3,5 @@ Dockerfile      text eol=lf
 *.sh            text eol=lf
 compose.yaml    text eol=lf
 .dockerignore   text eol=lf
+# assistant_proto 의 예문(jsonl)·프롬프트는 글자 하나까지 서버·ml 이 공유한다 — CRLF 로 바뀌면 안 된다
+assistant_proto/**  text eol=lf
