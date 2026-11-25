@@ -273,12 +273,12 @@ const pickBuilding = (v: string | number) => void router.push(`/${v}`)
   .split {
     display: grid;
     grid-template-columns: 340px minmax(0, 1fr);
-    min-height: calc(100vh - 64px);
+    min-height: calc(100vh - var(--student-nav-h, 0px));
   }
   .split__list {
     position: sticky;
-    top: 64px;
-    height: calc(100vh - 64px);
+    top: var(--student-nav-h, 0px);
+    height: calc(100vh - var(--student-nav-h, 0px));
     overflow-y: auto;
     border-right: var(--border-thin) solid var(--line-2);
   }
