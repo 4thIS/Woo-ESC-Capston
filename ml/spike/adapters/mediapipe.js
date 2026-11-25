@@ -5,10 +5,13 @@ import { FilesetResolver, LlmInference } from 'https://cdn.jsdelivr.net/npm/@med
 
 export const supportsGrammar = false
 let llm = null
-const PROMPT = (system, user) => `<start_of_turn>user\n${system}\n\n${user}<end_of_turn>\n<start_of_turn>model\n`
+// Gemma 4 대화 틀(litert-community/gemma-4-E2B-it-litert-lm 의 chat_template.jinja) — 생각 모드 끔(<|think|> 없음).
+// Gemma 3 의 <start_of_turn>/<end_of_turn> 과 다르다.
+const PROMPT = (system, user) => `<|turn>system\n${system}<turn|>\n<|turn>user\n${user}<turn|>\n<|turn>model\n`
 
 export async function defaultModel() {
-  return 'https://huggingface.co/litert-community/gemma-4-e2b-it/resolve/main/gemma-4-e2b-it-int4-web.task'
+  // 계획서의 litert-community/gemma-4-e2b-it/…-int4-web.task 는 401(없는 저장소) — 실제 공개 저장소 이름으로 고침
+  return 'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it-web.task'
 }
 
 export async function load(model, onProgress) {
