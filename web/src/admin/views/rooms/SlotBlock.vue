@@ -11,7 +11,7 @@ import SlotGroupForm from '@/components/domain/SlotGroupForm.vue'
 import SourceBadge from '@/components/domain/SourceBadge.vue'
 import TypeBadge from '@/components/domain/TypeBadge.vue'
 import type { DotState } from '@/components/domain/OutboxDot.vue'
-import { groupSlots, type SlotGroup } from '@/components/domain/slotGroups'
+import { groupDot, groupSlots, type SlotGroup } from '@/components/domain/slotGroups'
 import { DAYS, DAY_OPTIONS, TYPE_OPTIONS, slotKey, type SavedRow } from '@/components/domain/rules'
 import { ApiError } from '@/api/client'
 import { roomsApi } from '@/api/rooms'
@@ -73,12 +73,6 @@ function periodsNote(g: SlotGroup): string {
   if (g.slots.length === 1) return ''
   const n = `${g.slots.length}교시`
   return g.uniform ? `${n} · ${g.periodMin}분 + 쉬는 ${g.gapMin}분` : n
-}
-// 묶음의 전송 점 — 교시들 중 가장 손이 가야 하는 것 (실패 > 취소 > 전송 중 > 대기 > 예정 > 반영됨)
-const DOT_RANK: DotState[] = ['failed', 'cancelled', 'dispatched', 'queued', 'scheduled', 'acked']
-function groupState(g: SlotGroup): DotState | undefined {
-  const mine = new Set(g.slots.map((s) => props.states.get(slotKey(s))))
-  return DOT_RANK.find((st) => mine.has(st))
 }
 const roomLabel = (r: RoomOut) => `${props.label(r.id)}호`
 
@@ -217,7 +211,7 @@ async function remove() {
       <template #cell-actions="{ row }">
         <div class="blk__actions">
           <RowDot
-            :state="groupState(asG(row))"
+            :state="groupDot(asG(row), states)"
             :busy="resyncing.has(asG(row).room_id)"
             @resync="emit('resync', asG(row).room_id, asG(row).key)"
           />

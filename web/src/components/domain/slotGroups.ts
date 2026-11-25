@@ -1,6 +1,7 @@
 // 연속 교시 묶음 (admin-rooms.md 「연속 교시 묶음」) — 저장은 교시마다 그대로, 관리자 목록에서만 묶어 보이고 묶음째 고친다.
 // 문 앞 e-Paper 가 "수업 슬롯 사이 틈"으로 쉬는시간을 그려서 DB 는 교시 단위여야 한다(server room_state).
 import type { SlotWithRoom } from '@/api/types'
+import type { DotState } from './OutboxDot.vue'
 import { hm } from '@/lib/time'
 import { slotKey, spansOverlap, toMin } from './rules'
 
@@ -119,4 +120,11 @@ export function firstOverlap(
       periods.some((p) => spansOverlap(x, p)),
   )
   return hit ? `겹칩니다: ${hm(hit.s_h, hit.s_m)}–${hm(hit.e_h, hit.e_m)} ${hit.subject}` : ''
+}
+
+// 묶음의 전송 점 — 교시들 중 가장 손이 가야 하는 것 (실패 > 취소 > 전송 중 > 대기 > 예정 > 반영됨)
+const DOT_RANK: DotState[] = ['failed', 'cancelled', 'dispatched', 'queued', 'scheduled', 'acked']
+export function groupDot(g: SlotGroup, states: Map<string, DotState>): DotState | undefined {
+  const mine = new Set(g.slots.map((s) => states.get(slotKey(s))))
+  return DOT_RANK.find((st) => mine.has(st))
 }

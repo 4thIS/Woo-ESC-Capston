@@ -1,5 +1,6 @@
 import type { ExamOut, ResvWithRoom, SlotWithRoom } from '@/api/types'
-import { BUSY_TYPES, resvKey, slotKey, toMin } from '@/components/domain/rules'
+import { BUSY_TYPES, resvKey, toMin } from '@/components/domain/rules'
+import { groupSlots, type SlotGroup } from '@/components/domain/slotGroups'
 import { addDays, dayOfDate } from '@/lib/time'
 
 /** 격자 — 30분 행, 44px 고정. 기본 09:00~18:00(18행), 야간 보기 22:00 까지(26행) (admin-schedule.md).
@@ -19,7 +20,10 @@ export interface Block {
   e: number
   /** 점유 — 사용중 슬롯(1·2·5·6)과 승인 예약. 겹침 막대는 둘 다 점유일 때만 */
   busy: boolean
+  /** 묶음의 첫 교시 — 유형 · 과목 · 교수는 묶음 안에서 같다 */
   slot?: SlotWithRoom
+  /** 연속 교시 묶음 (한 교시짜리도 묶음 하나) */
+  group?: SlotGroup
   resv?: ResvWithRoom
 }
 export interface Placed extends Block {
@@ -46,19 +50,19 @@ export interface Box {
 }
 
 /** 시간표는 요일 기반이라 주가 바뀌어도 같다 — 예약만 보고 있는 주로 거른다.
- * 빈강의실(4)은 그리지 않는다, 거절·취소·만료 예약도 그리지 않는다 */
+ * 빈강의실(4)은 그리지 않는다, 거절·취소·만료 예약도 그리지 않는다.
+ * 연속 교시는 한 블록 (admin-schedule.md) — 저장은 교시마다, 묶음은 목록 · 학생 주간표와 같은 규칙 */
 export function weekBlocks(slots: SlotWithRoom[], resv: ResvWithRoom[], monday: string): Block[] {
   const sunday = addDays(monday, 6)
-  const fromSlots: Block[] = slots
-    .filter((s) => s.type !== 4)
-    .map((s) => ({
-      key: slotKey(s),
-      day: s.day,
-      s: toMin(s.s_h, s.s_m),
-      e: toMin(s.e_h, s.e_m),
-      busy: BUSY_TYPES.includes(s.type),
-      slot: s,
-    }))
+  const fromSlots: Block[] = groupSlots(slots.filter((s) => s.type !== 4)).map((g) => ({
+    key: g.key,
+    day: g.day,
+    s: g.start,
+    e: g.end,
+    busy: BUSY_TYPES.includes(g.slots[0].type),
+    slot: g.slots[0],
+    group: g,
+  }))
   const fromResv: Block[] = resv
     .filter(
       (r) =>

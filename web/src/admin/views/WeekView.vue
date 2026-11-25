@@ -11,6 +11,8 @@ import OutboxDot from '@/components/domain/OutboxDot.vue'
 import ResvForm from '@/components/domain/ResvForm.vue'
 import RoomTree from '@/components/domain/RoomTree.vue'
 import SlotForm from '@/components/domain/SlotForm.vue'
+import SlotGroupForm from '@/components/domain/SlotGroupForm.vue'
+import { groupDot, type SlotGroup } from '@/components/domain/slotGroups'
 import {
   DAYS,
   TYPE_LABEL,
@@ -184,7 +186,11 @@ function resync(key: string) {
   void tracker.resync([key, ...others], r.id, r.building_id)
 }
 const dotOf = (p: Placed) =>
-  p.resv ? resvDot(p.resv, tracker.states.get(p.key), today) : tracker.states.get(p.key)
+  p.resv
+    ? resvDot(p.resv, tracker.states.get(p.key), today)
+    : p.group
+      ? groupDot(p.group, tracker.states)
+      : tracker.states.get(p.key)
 function blockClass(p: Placed) {
   const requested = p.resv?.status === 'requested'
   const cancelled = p.slot?.type === 3
@@ -197,8 +203,10 @@ function blockClass(p: Placed) {
   }
 }
 // 라벨이 상태를 말한다 — 넷(수업·시험·특강·대여)을 색으로 나누지 않는다
+// 연속 교시 블록은 '수업중 · 3교시' (admin-schedule.md)
+const periodsOf = (p: Placed) => p.group?.slots.length ?? 1
 function blockLabel(p: Placed) {
-  if (p.slot) return TYPE_LABEL[p.slot.type]
+  if (p.slot) return TYPE_LABEL[p.slot.type] + (periodsOf(p) > 1 ? ` · ${periodsOf(p)}교시` : '')
   return `${p.resv!.status === 'requested' ? '신청' : '예약'} · ${TYPE_LABEL[p.resv!.type]}`
 }
 /** 스크린리더 이름 — '월 10:00–12:00 수업중 캡스톤디자인' */
@@ -230,27 +238,51 @@ function blockTitle(p: Placed) {
   if (p.resv?.requester) return '학생 예약 — 강의실 설정에서 취소'
   return undefined
 }
+// 여러 교시 블록은 묶음 폼 — 맨 위 토글 '묶음 전체 | 한 교시만'. 한 교시짜리는 지금 슬롯 수정
+const groupEditing = ref<SlotGroup | null>(null)
 function openBlock(p: Placed) {
   if (!editable.value) return
-  if (p.slot) openSlot(p.slot)
+  if (p.group && p.group.slots.length > 1) {
+    groupEditing.value = p.group
+    void res.reload()
+  } else if (p.slot) openSlot(p.slot)
   else if (p.resv && resvEditable(p.resv)) {
     resvEditing.value = p.resv
     resvOpen.value = true
     void res.reload()
   }
 }
-const removing = ref<SlotWithRoom | null>(null)
+// 지우기 — 교시 하나 또는 여러 교시(한 트랜잭션). 확인 모달 한 곳
+const removing = ref<SlotWithRoom[] | null>(null)
 const removingBusy = ref(false)
-function askRemove() {
-  removing.value = slotEditing.value
+function askRemove(list: SlotWithRoom[]) {
+  removing.value = list
   slotOpen.value = false
+  groupEditing.value = null
 }
+const removeLines = computed(() => {
+  const list = removing.value
+  const r = room.value
+  if (!list?.length || !r) return []
+  const f = list[0]
+  const l = list[list.length - 1]
+  const head = `${r.room}호 ${DAYS[f.day - 1]}`
+  return list.length === 1
+    ? [`${head} ${hm(f.s_h, f.s_m)} ${f.subject}`]
+    : [`${head} ${f.subject} — ${list.length}교시 ${hm(f.s_h, f.s_m)}–${hm(l.e_h, l.e_m)}`]
+})
 async function remove() {
-  const s = removing.value
-  if (!s || removingBusy.value) return
+  const list = removing.value
+  if (!list?.length || removingBusy.value) return
   removingBusy.value = true
   try {
-    await roomsApi.deleteSlot(s.room_id, s)
+    const rid = list[0].room_id
+    if (list.length === 1) await roomsApi.deleteSlot(rid, list[0])
+    else
+      await roomsApi.replaceSlots(rid, {
+        remove: list.map(({ day, s_h, s_m }) => ({ day, s_h, s_m })),
+        put: [],
+      })
     showToast({ message: '지웠습니다.' })
   } catch (e) {
     if (!(e instanceof ApiError)) throw e
@@ -426,6 +458,17 @@ function toRooms() {
       @close="slotOpen = false"
       @saved="saved"
       @stale="res.reload"
+      @remove="slotEditing && askRemove([slotEditing])"
+    />
+    <SlotGroupForm
+      :open="!!groupEditing"
+      :group="groupEditing"
+      :room-label="room ? `${room.room}호` : ''"
+      :existing="slots"
+      scopes
+      @close="groupEditing = null"
+      @saved="saved"
+      @stale="res.reload"
       @remove="askRemove"
     />
     <ResvForm
@@ -441,13 +484,7 @@ function toRooms() {
     <ConfirmModal
       :open="!!removing"
       title="슬롯 삭제"
-      :lines="
-        removing && room
-          ? [
-              `${room.room}호 ${DAYS[removing.day - 1]} ${hm(removing.s_h, removing.s_m)} ${removing.subject}`,
-            ]
-          : []
-      "
+      :lines="removeLines"
       :loading="removingBusy"
       @confirm="remove"
       @close="removing = null"
