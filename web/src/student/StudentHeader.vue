@@ -78,9 +78,9 @@ withDefaults(
   white-space: nowrap;
 }
 @media (min-width: 640px) {
-  /* 넓은 폭은 위 막대(StudentNav 64px) 아래에 붙는다 */
+  /* 넓은 폭 — 위 막대(StudentNav)가 있으면 그 아래에. 없는 화면(약관 · 404)은 0 */
   .sh {
-    top: 64px;
+    top: var(--student-nav-h, 0px);
   }
   .sh--nobackwide .sh__back {
     display: none;

@@ -125,6 +125,10 @@ test('약관 — 로그인 없이 열리고 목차로 조항에 간다, 넓은 �
   await side.getByRole('link', { name: '이용약관' }).click()
   await expect(page).toHaveURL(/\/policies\/terms$/)
   await expect(side.getByRole('link', { name: '제6조 (예약)' })).toBeVisible()
+  // 약관은 메뉴 위 막대가 없다 — 헤더가 64px 아래에 떠 본문이 위로 비치면 안 된다
+  await page.mouse.wheel(0, 800)
+  await expect.poll(async () => (await page.locator('header.sh').boundingBox())!.y).toBe(0)
+  await page.mouse.wheel(0, -800)
   await shot(page, 'student-policies-1280')
   await page.setViewportSize(SIZES.student)
 })
@@ -148,7 +152,8 @@ test('없는 주소 — 벽 없이 404 + 건물 목록으로', async () => {
   await page.goto('/no/such/page')
   await expect(page.getByRole('heading', { name: '찾을 수 없는 주소예요' })).toBeVisible()
   await expect(page.getByRole('link', { name: '건물 목록으로' })).toHaveAttribute('href', '/')
-  expect((await page.locator('header.sh').boundingBox())!.height).toBe(58)
+  // 화면 전환(들어올 때 살짝 커지는 움직임)이 끝난 뒤의 높이 — 도중에 재면 57.5 같은 값이 나온다
+  await expect.poll(async () => (await page.locator('header.sh').boundingBox())!.height).toBe(58)
   await shot(page, 'student-notfound-390')
 })
 
