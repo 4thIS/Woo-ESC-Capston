@@ -1,5 +1,6 @@
 import datetime as dt
 import json
+import threading
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -8,8 +9,9 @@ from app.assistant import preview as P
 from app.assistant.models import AssistantChange, AssistantPreview
 from app.auth.scope import Scope
 from app.domain import ops
-from app.domain.models import Reservation
-from app.lora_service.models import Outbox
+from app.domain.models import Building, Reservation
+from app.lora_service import api
+from app.lora_service.models import Modem, Outbox
 from tests.assistant_util import ALL, NOW, campus, fix_clock, resv
 
 
@@ -125,3 +127,78 @@ def test_missing_preview_is_404(client, app, monkeypatch):
     fix_clock(monkeypatch)
     campus(app)
     assert _apply(app, "p_nope") == (404, {"detail": "미리보기 없음"})
+
+
+# ---- 수정 1차 ----
+
+
+def test_apply_notifies_each_modem(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    with app.state.Session() as s, s.begin():
+        s.add_all(
+            [
+                Modem(modem_id="mA", token_hash="x", school_id=1),
+                Modem(modem_id="mB", token_hash="x", school_id=1),
+            ]
+        )
+        s.flush()
+        s.get(Building, ids["E"]).modem_id = "mA"
+        s.get(Building, ids["H"]).modem_id = "mB"
+    pv = _pv(app, [ids["E803"], ids["H803"]])
+    calls = []
+    monkeypatch.setattr(api, "notify", lambda m: calls.append(m))
+    assert _apply(app, pv["preview_id"])[0] == 200
+    assert sorted(calls) == ["mA", "mB"]
+
+
+def test_scope_lost_before_apply_is_404_without_data(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    pv = _pv(app, [ids["E803"]])
+    resv(app, ids["E803"], dt.date(2026, 11, 28), (9, 0), (10, 0), id_=50, subject="비밀회의")
+    only_h = Scope(1, frozenset({ids["H"]}), "admin@mju.ac.kr")
+    code, body = _apply(app, pv["preview_id"], sc=only_h)
+    assert (code, body) == (404, {"detail": "미리보기 없음"})
+    with app.state.Session() as s:  # 새 미리보기도 만들지 않았다
+        assert s.scalar(select(func.count()).select_from(AssistantPreview)) == 1
+
+
+def test_concurrent_apply_commits_once(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    pv = _pv(app, [ids["E803"]])
+    codes = []
+    barrier = threading.Barrier(4)
+
+    def go():
+        barrier.wait()
+        codes.append(_apply(app, pv["preview_id"])[0])
+
+    ts = [threading.Thread(target=go) for _ in range(4)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert sorted(codes) == [200, 410, 410, 410]
+    with app.state.Session() as s:
+        assert s.scalar(select(func.count()).select_from(AssistantChange)) == 1
+        assert s.scalar(select(func.count()).select_from(Reservation)) == 1
+
+
+def test_apply_error_rolls_back_and_does_not_notify(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    pv = _pv(app, [ids["E803"]])
+    calls = []
+    monkeypatch.setattr(api, "notify", lambda m: calls.append(m))
+
+    def boom(*a, **kw):
+        raise HTTPException(409, "터짐")
+
+    monkeypatch.setattr(ops, "write_resv", boom)
+    assert _apply(app, pv["preview_id"]) == (422, {"detail": "blocked", "blockers": ["터짐"]})
+    assert calls == []
+    with app.state.Session() as s:
+        assert s.scalar(select(func.count()).select_from(AssistantChange)) == 0
+        assert s.get(AssistantPreview, pv["preview_id"]).applied_at is None
