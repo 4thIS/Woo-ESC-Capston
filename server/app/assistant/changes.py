@@ -55,26 +55,42 @@ def _hit(x, s_min: int, e_min: int) -> bool:
     return x.s_h * 60 + x.s_m < e_min and s_min < x.e_h * 60 + x.e_m
 
 
+def _squash(x: str) -> str:
+    return "".join(x.split())
+
+
+def same_subject(want: str, have: str | None) -> bool:
+    """공백을 뺀 이름이 같거나, 한쪽이 다른 쪽을 포함하고 짧은 쪽이 2자 이상."""
+    a, b = _squash(want), _squash(have or "")
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    return min(len(a), len(b)) >= 2 and (a in b or b in a)
+
+
 def _match(x, tg: dict) -> bool:
     """시작 시각·유형·이름(서로 포함)이 맞는가 — 대상 찾기 공용."""
     if "time" in tg and (x.s_h, x.s_m) != hm(tg["time"][0]):
         return False
     if "type" in tg and x.type != tg["type"]:
         return False
-    if "subject" in tg:
-        want = tg["subject"]
-        if not (x.subject and (want in x.subject or x.subject in want)):
-            return False
-    return True
+    return not ("subject" in tg and not same_subject(tg["subject"], x.subject))
 
 
-def fill_from_slots(s: Session, draft: dict) -> tuple[str, str] | None:
+def fill_from_slots(
+    s: Session, draft: dict, now_local: dt.datetime | None = None
+) -> tuple[str, str] | None:
     """휴강 — 그날 정규 수업에서 시각·이름을 찾아 set.entries 로 펼친다 (수업마다 휴강 하나).
     시각을 다 말했는데 그 시각 수업이 없으면 말한 시각 그대로. 아무것도 못 찾으면 (묻는 칸, 문구)."""
     st = draft["set"]
     if st.get("type") != 3:
         return None
     t = st.get("time")
+    if now_local is not None:  # 지난 날짜는 펼치지 않는다
+        st["dates"] = [x for x in st["dates"] if d_(x) >= now_local.date()]
+        if not st["dates"]:
+            return ("when", "이미 지난 날짜입니다. 날짜를 다시 알려 주세요.")
     entries: list[dict] = []
     for rid in st["rooms"]:
         for iso in st["dates"]:
@@ -93,7 +109,7 @@ def fill_from_slots(s: Session, draft: dict) -> tuple[str, str] | None:
                         eh, em = hm(t[1])
                         hit = _hit(x, sh * 60 + sm, eh * 60 + em)
                 elif "subject" in st:
-                    hit = st["subject"] in x.subject
+                    hit = same_subject(st["subject"], x.subject)
                 else:
                     hit = True
                 if hit:
@@ -129,13 +145,14 @@ def fill_from_slots(s: Session, draft: dict) -> tuple[str, str] | None:
     return None
 
 
-def _event_cands(s: Session, rid: int, tg: dict) -> list[dict]:
+def _event_cands(s: Session, rid: int, tg: dict, now_local: dt.datetime) -> list[dict]:
     q = (
         select(Reservation)
         .where(
             Reservation.room_id == rid,
             Reservation.status == "approved",
             Reservation.date.in_([d_(x) for x in tg["dates"]]),
+            Reservation.date >= now_local.date(),  # 지난 일정은 대상이 아니다
         )
         .order_by(Reservation.date, Reservation.s_h, Reservation.s_m, Reservation.id)
     )
@@ -144,17 +161,20 @@ def _event_cands(s: Session, rid: int, tg: dict) -> list[dict]:
             "key": f"r{r.id}",
             "id": r.id,
             "date": r.date.isoformat(),
-            "label": f"{md(r.date)} {span(r.s_h, r.s_m, r.e_h, r.e_m)} {TYPE[r.type]} {r.subject}".rstrip(),
+            "label": (
+                f"{md(r.date)} {span(r.s_h, r.s_m, r.e_h, r.e_m)} {TYPE[r.type]} {r.subject}".rstrip()
+                + (" (학생 예약)" if r.requested_by else "")
+            ),
         }
         for r in s.scalars(q)
         if _match(r, tg)
     ]
 
 
-def _class_cands(s: Session, rid: int, tg: dict) -> list[dict]:
+def _class_cands(s: Session, rid: int, tg: dict, now_local: dt.datetime) -> list[dict]:
     q = (
         select(Slot)
-        .where(Slot.room_id == rid, Slot.day.in_(tg["weekdays"]))
+        .where(Slot.room_id == rid, Slot.day.in_(tg["weekdays"]), Slot.type != 4)
         .order_by(Slot.day, Slot.s_h, Slot.s_m)
     )
     return [
@@ -170,7 +190,7 @@ def _class_cands(s: Session, rid: int, tg: dict) -> list[dict]:
     ]
 
 
-def _exam_cands(s: Session, rid: int, tg: dict) -> list[dict]:
+def _exam_cands(s: Session, rid: int, tg: dict, now_local: dt.datetime) -> list[dict]:
     q = select(ExamPeriod).where(ExamPeriod.room_id == rid).order_by(ExamPeriod.date_start)
     if "range" in tg:
         a, z = d_(tg["range"][0]), d_(tg["range"][1])
@@ -237,7 +257,7 @@ def find_candidates(
     if grp == "request":
         return {0: _request_cands(s, sc, tg, now_local)}
     fn = {"event": _event_cands, "class": _class_cands, "exam": _exam_cands}[grp]
-    return {rid: fn(s, rid, tg) for rid in tg["rooms"]}
+    return {rid: fn(s, rid, tg, now_local) for rid in tg["rooms"]}
 
 
 def chosen(cands: dict[int, list[dict]], picks: dict[str, str]) -> dict[int, dict]:

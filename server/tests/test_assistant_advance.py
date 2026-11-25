@@ -159,3 +159,174 @@ def test_ask_answer_and_request_lists(app, school, students):
     assert d.choices[0]["label"] == '공학관 801 11/26(목) 13:00–14:00 학생1 "스터디"'
     d = adv(app, st("request.approve", target={"requester": "학생1"}))
     assert isinstance(d, D.Ready)
+
+
+# --- 검토 반영 ---------------------------------------------------------------
+import json
+
+import pytest
+
+from app.auth.scope import Scope
+from app.domain.models import ExamPeriod
+from tests.assistant_util import UTC_NOW
+
+FRI = dt.date(2026, 11, 27)
+CH = {"rooms": ["공학관 803"], "when": "이번주 금요일", "type": "특강"}
+
+
+def ok_json(d):
+    """Ask/Ready 의 상태·초안이 JSON 으로 직렬화되는가."""
+    json.dumps(d.state)
+    if isinstance(d, D.Ready):
+        json.dumps(d.draft)
+    return d
+
+
+def test_building_admin_scope_hides_other_building(app, school):
+    ids = campus(app)
+    sc = Scope(1, frozenset({ids["E"]}), "b@mju.ac.kr")
+    resv(app, ids["H803"], FRI, (17, 0), (18, 0), id_=21)
+    resv(app, ids["E803"], FRI, (17, 0), (18, 0), id_=22)
+    with app.state.Session() as s:
+        d = D.advance(s, sc, st("event.remove", target={**CH, "rooms": ["인문관 803"]}), NOW)
+        assert isinstance(d, D.Ask) and d.state["asked"] == "target.rooms"
+        assert "찾지 못했습니다" in d.question
+        # '803' 은 범위 안의 공학관 803 하나로만 풀린다 — 인문관 예약은 후보가 아니다
+        d = ok_json(D.advance(s, sc, st("event.remove", target={**CH, "rooms": ["803"]}), NOW))
+        assert isinstance(d, D.Ready)
+        from app.assistant import changes
+
+        cands = changes.find_candidates(s, sc, d.draft, NOW)
+        assert list(cands) == [ids["E803"]] and [c["key"] for c in cands[ids["E803"]]] == ["r22"]
+
+
+@pytest.mark.parametrize("status", ["cancelled", "rejected", "expired", "requested"])
+def test_not_approved_is_not_candidate(app, school, status):
+    ids = campus(app)
+    resv(app, ids["E803"], FRI, (17, 0), (18, 0), id_=23, status=status)
+    d = adv(app, st("event.remove", target=CH))
+    assert isinstance(d, D.Fail)
+
+
+def test_other_day_or_room_not_matched(app, school):
+    ids = campus(app)
+    resv(app, ids["E803"], dt.date(2026, 11, 28), (17, 0), (18, 0), id_=24, subject="알고리즘 특강")
+    resv(app, ids["E802"], FRI, (17, 0), (18, 0), id_=25, subject="알고리즘 특강")
+    t = {**CH, "subject": "알고리즘 특강"}
+    assert isinstance(adv(app, st("event.remove", target=t)), D.Fail)
+
+
+def test_past_reservation_not_candidate(app, school):
+    ids = campus(app)
+    resv(app, ids["E803"], dt.date(2026, 11, 24), (17, 0), (18, 0), id_=26)
+    t = {"rooms": ["공학관 803"], "when": "11/24", "type": "특강"}
+    assert isinstance(adv(app, st("event.remove", target=t)), D.Fail)
+
+
+def test_subject_matching_rules(app, school):
+    ids = campus(app)
+    resv(app, ids["E803"], FRI, (17, 0), (18, 0), id_=27, subject="알고리즘")
+    with app.state.Session() as s:
+        from app.assistant import changes
+
+        assert changes.same_subject("알고리즘 수업", "알고리즘")
+        assert changes.same_subject("알 고리즘", "알고리즘")
+        assert changes.same_subject("수", "수")
+        assert not changes.same_subject("수", "수학")
+        assert not changes.same_subject("자료구조", "알고리즘")
+        assert not changes.same_subject("", "알고리즘")
+        _ = s
+    t = {**CH, "subject": "알고리즘 특강"}
+    assert isinstance(adv(app, st("event.remove", target=t)), D.Ready)
+
+
+def test_student_reservation_targetable_and_labeled(app, school, students):
+    ids = campus(app)
+    for i, who in ((28, "s1@mju.ac.kr"), (29, None)):
+        resv(
+            app,
+            ids["E803"],
+            FRI,
+            (17 + i - 28, 0),
+            (18 + i - 28, 0),
+            id_=i,
+            type_=6,
+            subject="스터디",
+            requested_by=who,
+        )
+    t = {**CH, "type": "대여"}
+    d = ok_json(adv(app, st("event.remove", target=t)))
+    assert isinstance(d, D.Ask)
+    assert d.choices[0]["label"].endswith("(학생 예약)")
+    assert not d.choices[1]["label"].endswith("(학생 예약)")
+
+
+def test_class_candidates_skip_empty_room_slots(app, school):
+    ids = campus(app)
+    from app.domain.models import Slot
+
+    with app.state.Session() as s, s.begin():
+        s.add(
+            Slot(
+                room_id=ids["E803"],
+                day=1,
+                s_h=13,
+                s_m=0,
+                e_h=14,
+                e_m=0,
+                type=4,
+                subject="",
+                professor="",
+            )
+        )
+    d = adv(
+        app,
+        st("class.remove", target={"rooms": ["공학관 803"], "when": "월", "subject": "알고리즘"}),
+    )
+    assert isinstance(d, D.Ready)
+    from app.assistant import changes
+
+    with app.state.Session() as s:
+        c = changes.find_candidates(s, ALL, d.draft, NOW)
+    assert [x["key"] for x in c[ids["E803"]]] == ["d1-0900"]
+
+
+def test_exam_remove_overlap_asks(app, school):
+    ids = campus(app)
+    with app.state.Session() as s, s.begin():
+        s.add_all(
+            [
+                ExamPeriod(
+                    id=1,
+                    room_id=ids["E803"],
+                    date_start=dt.date(2026, 11, 30),
+                    date_end=dt.date(2026, 12, 4),
+                ),
+                ExamPeriod(
+                    id=2,
+                    room_id=ids["E803"],
+                    date_start=dt.date(2026, 12, 2),
+                    date_end=dt.date(2026, 12, 6),
+                ),
+            ]
+        )
+    d = ok_json(adv(app, st("exam.remove", target={"rooms": ["공학관 803"], "when": "12/1~12/5"})))
+    assert isinstance(d, D.Ask)
+    assert [c["id"] for c in d.choices] == [f"pick:{ids['E803']}:e1", f"pick:{ids['E803']}:e2"]
+
+
+def test_stale_choice_rejected(app, school):
+    campus(app)
+    d = adv(app, st("event.add", set_={"rooms": ["803"], "when": "금요일"}))
+    with pytest.raises(D.NeedContext):
+        D.choose(d.state, "pick:1:r99", "x")
+    with pytest.raises(D.NeedContext):
+        D.choose(None, "type:특강", "x")
+
+
+def test_states_serialize(app, school):
+    ids = campus(app)
+    d = ok_json(adv(app, st("event.add", set_=SPECIAL)))
+    d = ok_json(adv(app, st("event.add", set_={**SPECIAL, "subject": "x"})))
+    ok_json(adv(app, D.choose(d.state, f"room:{ids['E803']}", "공학관 803")))
+    _ = UTC_NOW

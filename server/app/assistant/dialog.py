@@ -274,7 +274,7 @@ def advance(
     }
     if intent.startswith("ask."):
         return Answer(draft)
-    if intent == "event.add" and (need := changes.fill_from_slots(s, draft)):
+    if intent == "event.add" and (need := changes.fill_from_slots(s, draft, now_local)):
         return _reask(state, "set", need[0], need[1])
     st = draft["set"]
     if intent in ("event.add", "class.add") and "entries" not in st and st["time"][1] is None:
