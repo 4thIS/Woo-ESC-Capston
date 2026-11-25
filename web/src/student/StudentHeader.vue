@@ -78,6 +78,10 @@ withDefaults(
   white-space: nowrap;
 }
 @media (min-width: 640px) {
+  /* 넓은 폭은 위 막대(StudentNav 64px) 아래에 붙는다 */
+  .sh {
+    top: 64px;
+  }
   .sh--nobackwide .sh__back {
     display: none;
   }

@@ -6,7 +6,7 @@ import { clearSession, session, setSession } from '@/lib/session'
 import { favorites } from '@/student/favorites'
 import BuildingLayout from '@/student/views/BuildingLayout.vue'
 import { mineResv } from '@/api/__fixtures__/mine'
-import { mountAt, roomState } from './support'
+import { mountAt, roomState, stubMedia } from './support'
 
 vi.mock('@/api/student', () => ({
   studentApi: {
@@ -37,24 +37,31 @@ const ROOMS = [
 ]
 const chip = (w: Awaited<ReturnType<typeof mountAt>>['w'], label: string) =>
   w.findAll('.chips__chip').find((b) => b.text() === label)!
+const stats = (w: Awaited<ReturnType<typeof mountAt>>['w']) =>
+  w.findAll('.stats dd').map((d) => d.text())
 const roomNames = (w: Awaited<ReturnType<typeof mountAt>>['w']) =>
   w.findAll('ul.rows .row__room').map((r) => r.text())
 
 beforeEach(() => {
+  stubMedia(false)
   localStorage.clear()
   favorites.value = []
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
   api.rooms.mockReset().mockResolvedValue(ROOMS)
   api.mine.mockReset().mockResolvedValue([])
 })
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 describe('BuildingLayout — /:bld 강의실 목록', () => {
-  it('맨 위는 빈 곳 개수, 빈 곳이 기본 — 전체를 누르면 전체, 상태를 먼저 말한다', async () => {
+  it('폰 — 숫자 칸(빈 곳 · 사용중), 제목은 강의실, 빈 곳이 기본 — 전체를 누르면 전체, 상태를 먼저 말한다', async () => {
     const { w } = await mountAt(BuildingLayout, '/E', '/:bld')
-    // 내 예약은 이 건물 안 — 넓은 폭에서 목록 옆에 펼친다
-    expect(w.get('a.me__link').attributes('href')).toBe('/E/me')
-    expect(w.get('.list__count').text()).toBe('2곳이 지금 비어 있어요')
+    // 내 예약 링크 · 로그아웃은 메뉴(StudentNav)로 옮겼다
+    expect(w.find('a.me__link').exists()).toBe(false)
+    expect(stats(w).slice(0, 2)).toEqual(['2', '1'])
+    expect(w.get('.list__count').text()).toBe('강의실')
     expect(chip(w, '빈 곳').attributes('aria-pressed')).toBe('true')
     expect(roomNames(w)).toEqual(['402호', '403호'])
     expect(w.findAll('ul.rows .row__until').map((u) => u.text())).toEqual([
@@ -76,7 +83,7 @@ describe('BuildingLayout — /:bld 강의실 목록', () => {
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/K')
     expect(localStorage.getItem('esc.lastBld')).toBe('K')
-    expect(w.get('.list__count').text()).toBe('지금 비어 있는 강의실이 없어요')
+    expect(stats(w).slice(0, 2)).toEqual(['0', '1'])
     expect(w.text()).toContain('지금은 모든 강의실이 사용 중입니다')
     await w.get('.empty button').trigger('click')
     expect(roomNames(w)).toEqual(['101호'])
@@ -101,7 +108,9 @@ describe('BuildingLayout — /:bld 강의실 목록', () => {
     expect(rows.map((r) => r.classes().includes('row--current'))).toEqual([true, false])
   })
 
-  it('로그아웃은 사이드바 바닥 — 토큰을 버리고 로그인으로', async () => {
+  it('폰 머리말 — ESC · 학교 · 건물 선택, 인사 줄은 이름과 건물(조사), 지금 시각. 로그아웃은 내 정보로', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-23T01:42:00Z')) // KST 금 10:42
     setSession({
       token: 't',
       role: 'student',
@@ -109,14 +118,48 @@ describe('BuildingLayout — /:bld 강의실 목록', () => {
       school_name: '명지전문대학',
       name: '김민준',
     })
-    const { w, router } = await mountAt(BuildingLayout, '/E', '/:bld')
-    expect(w.get('.me__who b').text()).toBe('김민준')
-    expect(w.get('.me__who span').text()).toBe('명지전문대학') // 로그인한 학생의 실제 학교
-    await w.get('.foot button').trigger('click')
-    await flushPromises()
-    expect(session.value).toBeNull()
-    expect(router.currentRoute.value.path).toBe('/login')
+    const { w } = await mountAt(BuildingLayout, '/E', '/:bld')
+    expect(w.get('.top').text()).toContain('ESC')
+    expect(w.get('.top').text()).toContain('명지전문대학')
+    expect(w.find('.top select').exists()).toBe(true)
+    expect(w.get('.hello').text()).toContain('10월 23일 금요일')
+    expect(w.get('.hello').text()).toContain('김민준님, 지금 공학관은')
+    expect(w.get('.hello__clock').text()).toBe('10:42')
+    // 401 은 10:50 에 바뀐다 — 60분 안이라 곧 비는 곳
+    expect(stats(w)).toEqual(['2', '1', '1'])
+    expect(w.find('.foot button').exists()).toBe(false)
+    expect(session.value?.name).toBe('김민준')
     clearSession()
+  })
+
+  it('층 제목 — 빈 곳 · 전체는 호수 앞자리로 묶고, 즐겨찾기는 묶지 않는다', async () => {
+    api.rooms.mockResolvedValue([
+      roomState({ room_id: 1, room: 501 }),
+      roomState({ room_id: 2, room: 401 }),
+      roomState({ room_id: 3, room: 402, layout: 1 }),
+    ])
+    const { w } = await mountAt(BuildingLayout, '/E', '/:bld')
+    await chip(w, '전체').trigger('click')
+    expect(w.findAll('.floor').map((f) => f.text())).toEqual(['4층', '5층'])
+    expect(roomNames(w)).toEqual(['401호', '402호', '501호'])
+    favorites.value = ['E-501']
+    await chip(w, '★ 즐겨찾기').trigger('click')
+    expect(w.find('.floor').exists()).toBe(false)
+  })
+
+  it('넓은 폭 — 머리말 · 숫자 칸 없이 개수 제목, /{bld} 는 즐겨찾기 → 빈 곳 첫 강의실을 열어 둔다', async () => {
+    stubMedia(true)
+    favorites.value = ['E-403']
+    const { w, router } = await mountAt(BuildingLayout, '/E', '/:bld')
+    expect(router.currentRoute.value.path).toBe('/E/403')
+    w.unmount()
+    favorites.value = []
+    const next = await mountAt(BuildingLayout, '/E/402/week', '/:bld/:room/week')
+    expect(next.w.find('.top').exists()).toBe(false)
+    expect(next.w.find('.stats').exists()).toBe(false)
+    expect(next.w.get('.list__count').text()).toBe('2곳이 지금 비어 있어요')
+    const again = await mountAt(BuildingLayout, '/E', '/:bld')
+    expect(again.router.currentRoute.value.path).toBe('/E/402')
   })
 
   it('건물을 바꾸면 보기가 빈 곳으로 돌아온다', async () => {
@@ -165,7 +208,7 @@ describe('BuildingLayout — /:bld 강의실 목록', () => {
       roomState({ room_id: 7, room: 503, layout: 8 }),
     ])
     const { w } = await mountAt(BuildingLayout, '/E', '/:bld')
-    expect(w.get('.list__count').text()).toBe('지금 비어 있는 강의실이 없어요')
+    expect(stats(w).slice(0, 2)).toEqual(['0', '0'])
     await chip(w, '전체').trigger('click')
     expect(w.findAll('ul.rows .row__state').map((s) => s.text())).toEqual([
       '쉬는시간',

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { enableAutoUnmount, flushPromises } from '@vue/test-utils'
+import { enableAutoUnmount } from '@vue/test-utils'
 import { studentApi } from '@/api/student'
 import { setSession } from '@/lib/session'
 import HomeView from '@/student/views/HomeView.vue'
@@ -65,12 +65,10 @@ describe('HomeView — / 첫 진입 (student-room.md 미결 3)', () => {
       '공학관 2개 강의실 · 지금 1곳 비어 있어요',
       '운영관 1개 강의실 · 지금 0곳 비어 있어요',
     ])
-    expect(w.get('a.sh__me').attributes('href')).toBe('/me')
     expect(w.get('h1').text()).toBe('명지전문대학') // 로그인 뒤 헤더 = 그 학생의 학교 (student-room.md §내 정보 줄)
-    // 건물을 고르기 전에도 나갈 길 — 사이드바가 없는 화면
-    await w.get('.home__logout').trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/login')
+    // 내 예약 · 로그아웃은 메뉴로 옮겼다 (student-room.md 「학생 앱 메뉴」)
+    expect(w.find('a.sh__me').exists()).toBe(false)
+    expect(w.find('.home__logout').exists()).toBe(false)
   })
 
   it('예약 가능한 방이 없으면 EmptyState, 조회 실패면 다시 시도', async () => {

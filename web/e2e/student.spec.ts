@@ -176,7 +176,10 @@ test('딥링크 — 소문자는 대문자로, 벽 → 로그인 → 원래 주�
 })
 
 test('강의실 목록 — 빈 곳 개수가 먼저, 빈 곳 보기가 기본, 즐겨찾기 보기는 고른 것만', async () => {
-  await expect(page.getByRole('heading', { name: '3곳이 지금 비어 있어요' })).toBeVisible()
+  // 폰은 숫자 칸이 개수를 말한다 — 제목은 '강의실', 메뉴는 아래 탭 (student-room.md 「학생 앱 메뉴」)
+  await expect(page.locator('.stats__item--free dd')).toHaveText('3')
+  await expect(page.getByRole('heading', { name: '강의실', exact: true })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '학생 메뉴' })).toBeVisible()
   await expect(shownRows()).toHaveCount(3)
   await expect(page.getByRole('link', { name: /^101호/ })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '빈 곳' })).toHaveAttribute('aria-pressed', 'true')

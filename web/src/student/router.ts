@@ -15,6 +15,8 @@ export function upperBld(to: RouteLocationNormalized): string | true {
     : true
 }
 
+const DETAIL = { detail: true }
+
 // 학생 화면은 전부 로그인 필요(S10 §3) — meta.gate 면 StudentApp 이 그 주소 그대로 로그인 벽을 그린다.
 // 세션 중 401 은 installAuth(F1)가 /login?next= 로 보낸다.
 export const routes: RouteRecordRaw[] = [
@@ -32,6 +34,8 @@ export const routes: RouteRecordRaw[] = [
     beforeEnter: (to) => POLICIES.some((p) => p.id === to.params.doc) || '/policies/terms',
   },
   { path: '/me', component: () => import('./views/MyView.vue'), meta: { gate: true } },
+  { path: '/guide', component: () => import('./views/GuideView.vue'), meta: { gate: true } },
+  { path: '/account', component: () => import('./views/AccountView.vue'), meta: { gate: true } },
   // 건물 글자는 대문자 한 글자 — sensitive 로 소문자는 여기서 받지 않고 404 라우트가 대문자로 보낸다
   {
     path: '/:bld([A-Z])',
@@ -39,9 +43,14 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('./views/BuildingLayout.vue'),
     meta: { gate: true },
     children: [
-      { path: ':room(\\d+)', component: () => import('./views/RoomView.vue') },
-      { path: ':room(\\d+)/week', component: () => import('./views/WeekView.vue') },
-      { path: ':room(\\d+)/reserve', component: () => import('./views/ReserveView.vue') },
+      // detail — ‹ 로 돌아가고 하단 고정 바가 있어 폰 아래 탭을 두지 않는다 (student-room.md 「학생 앱 메뉴」)
+      { path: ':room(\\d+)', component: () => import('./views/RoomView.vue'), meta: DETAIL },
+      { path: ':room(\\d+)/week', component: () => import('./views/WeekView.vue'), meta: DETAIL },
+      {
+        path: ':room(\\d+)/reserve',
+        component: () => import('./views/ReserveView.vue'),
+        meta: DETAIL,
+      },
       // 넓은 폭에서 목록 옆에 펼친다 — 건물 없이 들어온 /me 는 한 화면 그대로
       { path: 'me', component: () => import('./views/MyView.vue') },
     ],

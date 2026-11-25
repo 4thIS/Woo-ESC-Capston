@@ -21,6 +21,17 @@ export interface BuildingCtx {
 export type MineResource = ReturnType<typeof useResource<ResvMineOut[]>>
 export const BUILDING: InjectionKey<BuildingCtx> = Symbol('building')
 
+/** 내 예약 한 벌 — 앱(StudentApp)이 로그인 동안 60초마다 부르고, 메뉴 배지 · 다음 예약 카드 · 내 예약 화면이
+ * 같이 쓴다(두 번 부르지 않는다). 앱 밖에서 올린 화면(단위 테스트)은 직접 부른다 */
+export const MINE: InjectionKey<MineResource> = Symbol('mine')
+export function useMine(): MineResource {
+  const shared = inject(MINE, null)
+  if (shared) return shared
+  const own = useResource(() => studentApi.mine())
+  usePolling(own.reload, POLL_MS)
+  return own
+}
+
 export function useBuilding(): BuildingCtx {
   const ctx = inject(BUILDING)
   if (!ctx) throw new Error('useBuilding 은 /:bld 레이아웃 안에서만 쓴다')

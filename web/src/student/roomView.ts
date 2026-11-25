@@ -1,6 +1,7 @@
 // 학생 화면 계산 (순수 함수) — 판정은 서버가 준 값(layout·busy·free)을 쓴다
 import type { BusySpan, FreeDay, FreeRange, RoomStateOut, SlotType } from '@/api/types'
-import { FREE_LAYOUT, hmToMin, minToHm } from '@/components/student/rules'
+import { FREE_LAYOUT, hmToMin, isRed, minToHm } from '@/components/student/rules'
+import { favKey } from './favorites'
 
 export interface BuildingItem {
   id: number
@@ -80,3 +81,37 @@ export function todayRows(spans: BusySpan[], nowMin: number): TodayRow[] {
 
 /** 넓은 폭 '다음 비는 시간' 카드 — 서버 free 의 오늘 첫 구간(지금 이후, 신청 가능한 것) */
 export const nextFree = (free: FreeDay[]): FreeRange | null => free[0]?.spans[0] ?? null
+
+/** 목록 숫자 칸 (student-room.md 「학생 앱 메뉴」) — 곧 비는 곳 = 사용중이고 다음 바뀌는 시각이 60분 안 */
+export const SOON_MIN = 60
+export function roomStats(rooms: RoomStateOut[], nowMin: number) {
+  const busy = rooms.filter((r) => isRed(r.layout))
+  return {
+    free: rooms.filter((r) => r.layout === FREE_LAYOUT).length,
+    busy: busy.length,
+    soon: busy.filter((r) => r.until && hmToMin(r.until) - nowMin <= SOON_MIN).length,
+  }
+}
+
+/** 넓은 폭 /{bld} 의 오른쪽 칸 — 즐겨찾기 순서의 첫 방 → 빈 첫 방 → 첫 방 */
+export function defaultRoom(rooms: RoomStateOut[], favs: string[]): RoomStateOut | null {
+  const byKey = new Map(rooms.map((r) => [favKey(r.bld, r.room), r]))
+  const fav = favs.map((k) => byKey.get(k)).find((r) => r !== undefined)
+  return fav ?? rooms.find((r) => r.layout === FREE_LAYOUT) ?? rooms[0] ?? null
+}
+
+/** 층 묶음 — 호수의 백의 자리. 층 · 호수 순 */
+export function byFloor(rooms: RoomStateOut[]): { floor: number; rooms: RoomStateOut[] }[] {
+  const m = new Map<number, RoomStateOut[]>()
+  for (const r of [...rooms].sort((a, b) => a.room - b.room)) {
+    const f = Math.floor(r.room / 100)
+    m.set(f, [...(m.get(f) ?? []), r])
+  }
+  return [...m].sort(([a], [b]) => a - b).map(([floor, rooms]) => ({ floor, rooms }))
+}
+
+/** 인사 줄 '지금 공학관은' — 마지막 글자에 받침이 있으면 은, 없거나 한글이 아니면 는 */
+export function topic(word: string): string {
+  const c = word.charCodeAt(word.length - 1) - 0xac00
+  return word + (c >= 0 && c < 11172 && c % 28 ? '은' : '는')
+}
