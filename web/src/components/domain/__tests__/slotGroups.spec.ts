@@ -85,3 +85,13 @@ describe('periodsFrom — 시작 · 교시 수 · 한 교시로 교시를 만든
     expect(periodsFrom(22 * 60, 3, 50, 10)).toBeNull()
   })
 })
+
+describe('periodsOf — 시간 상자 값으로', () => {
+  it("'09:00' · 3 · '50-10' → 3교시, 시작이 비면 null", async () => {
+    const { periodsOf } = await import('@/components/domain/slotGroups')
+    expect(periodsOf({ start: '09:00', count: 3, pattern: '50-10' })?.map((p) => p.s_h)).toEqual([
+      9, 10, 11,
+    ])
+    expect(periodsOf({ start: '', count: 3, pattern: '50-10' })).toBeNull()
+  })
+})

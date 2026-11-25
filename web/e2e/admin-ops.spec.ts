@@ -242,26 +242,26 @@ test('강의실 설정 — 트리: 건물 전체, 검색해도 선택 유지, �
 
 test('시간표 — 추가, 겹침은 저장 전에 막음, 시작을 바꾸면 옛 행이 남지 않음, 점 대기 → 반영됨', async () => {
   const slots = slotsBlock()
-  await slots.getByRole('button', { name: '+ 슬롯 추가' }).click()
-  const d = page.getByRole('dialog', { name: '슬롯 추가' })
+  await slots.getByRole('button', { name: '+ 시간표 추가' }).click()
+  const d = page.getByRole('dialog', { name: '시간표 추가' })
   await d.getByLabel('강의실').selectOption({ label: '101호' })
   await d.getByLabel('요일').selectOption({ label: '월' })
   await d.getByLabel('시작').fill('09:00')
   await d.getByLabel('종료').fill('11:00')
   await d.getByLabel('과목명').fill('캡스톤디자인')
   await d.getByLabel('교수').fill('김교수')
-  await d.getByRole('button', { name: '저장' }).click()
+  await d.getByRole('button', { name: '추가', exact: true }).click()
   await expect(d).toHaveCount(0)
   const row = slots.getByRole('row').filter({ hasText: '캡스톤디자인' })
   await expect(row).toContainText('수동')
   await expect(row.getByRole('img', { name: '대기' })).toBeVisible()
   // 겹침 — 서버는 같은 키만 막는다. 폼이 먼저 막는다
-  await slots.getByRole('button', { name: '+ 슬롯 추가' }).click()
+  await slots.getByRole('button', { name: '+ 시간표 추가' }).click()
   await d.getByLabel('강의실').selectOption({ label: '101호' })
   await d.getByLabel('요일').selectOption({ label: '월' })
   await d.getByLabel('시작').fill('10:00')
   await d.getByLabel('종료').fill('12:00')
-  await d.getByRole('button', { name: '저장' }).click()
+  await d.getByRole('button', { name: '추가', exact: true }).click()
   await expect(d.getByText('겹칩니다: 09:00–11:00 캡스톤디자인')).toBeVisible()
   await d.getByRole('button', { name: '취소' }).click()
   // 시작을 바꾸면 새 행을 넣고 옛 행을 지운다 — 한 줄만 남는다
@@ -279,12 +279,12 @@ test('시간표 — 추가, 겹침은 저장 전에 막음, 시작을 바꾸면 
 
 test('전송 실패 — 점이 실패 + 재전송(방 단위), 관리자 취소는 취소됨', async () => {
   const slots = slotsBlock()
-  await slots.getByRole('button', { name: '+ 슬롯 추가' }).click()
-  const d = page.getByRole('dialog', { name: '슬롯 추가' })
+  await slots.getByRole('button', { name: '+ 시간표 추가' }).click()
+  const d = page.getByRole('dialog', { name: '시간표 추가' })
   await d.getByLabel('강의실').selectOption({ label: '102호' })
   await d.getByLabel('요일').selectOption({ label: '화' })
   await d.getByLabel('과목명').fill('임베디드')
-  await d.getByRole('button', { name: '저장' }).click()
+  await d.getByRole('button', { name: '추가', exact: true }).click()
   const row = slots.getByRole('row').filter({ hasText: '임베디드' })
   await expect(row.getByRole('img', { name: '대기' })).toBeVisible()
   setOutbox(102, 'failed', 'max_retries')
@@ -511,18 +511,18 @@ test('주간 시간표 — 호수를 누르면 그 강의실의 한 주, 19시 �
   const bar = await page.locator('.wk__overlap').boundingBox()
   const label = await page.locator('.wk__overlap-label').boundingBox()
   expect(label!.y).toBeGreaterThanOrEqual(bar!.y + bar!.height)
-  // 앞 테스트의 Toast 가 상단 바 오른쪽(+ 슬롯 추가)을 가린다 — 걷힌 뒤 찍는다
+  // 앞 테스트의 Toast 가 상단 바 오른쪽(+ 시간표 추가)을 가린다 — 걷힌 뒤 찍는다
   await expect(page.locator('.toast')).toHaveCount(0, { timeout: 10_000 })
   await shot(page, 'admin-week-1440')
 })
 
 test('빈 칸을 누르면 그 자리로 슬롯 추가, 주를 옮기고 강의실을 바꿔도 보고 있는 주는 유지', async () => {
-  await page.getByRole('button', { name: '수 14:00 슬롯 추가', exact: true }).click()
-  const d = page.getByRole('dialog', { name: '슬롯 추가' })
+  await page.getByRole('button', { name: '수 14:00 시간표 추가', exact: true }).click()
+  const d = page.getByRole('dialog', { name: '시간표 추가' })
   await expect(d.getByLabel('시작')).toHaveValue('14:00')
   await expect(d.getByLabel('종료')).toHaveValue('15:00')
   await d.getByLabel('과목명').fill('자료구조')
-  await d.getByRole('button', { name: '저장' }).click()
+  await d.getByRole('button', { name: '추가', exact: true }).click()
   await expect(d).toHaveCount(0)
   await expect(page.locator('.wk__block').filter({ hasText: '자료구조' })).toBeVisible()
   // 저장 Toast 가 상단 바 버튼을 가린다 — 걷힐 때까지

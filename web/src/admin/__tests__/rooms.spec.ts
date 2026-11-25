@@ -148,9 +148,9 @@ describe('강의실 설정 — 트리와 시간표', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
     api.putSlot.mockResolvedValue({ outbox_ids: [7], id: null })
     await mountView()
-    await btn(w.get('[aria-labelledby=blk-slots]'), '+ 슬롯 추가').trigger('click')
+    await btn(w.get('[aria-labelledby=blk-slots]'), '+ 시간표 추가').trigger('click')
     // 매번 다시 찾는다 — 폼 값이 바뀌면 Modal 안 요소가 새로 그려져 잡아 둔 요소가 떨어진다
-    const d = () => dialog('슬롯 추가')
+    const d = () => dialog('시간표 추가')
     await control(d(), '요일').setValue('3')
     await control(d(), '시작').setValue('14:00')
     await control(d(), '종료').setValue('15:00')
@@ -159,7 +159,7 @@ describe('강의실 설정 — 트리와 시간표', () => {
       S(11, 1, 9, '캡스톤디자인'),
       S(11, 3, 14, '자료구조'),
     ])
-    await btn(d(), '저장').trigger('click')
+    await btn(d(), '추가').trigger('click')
     await flushPromises()
     const row = () => slotRows().find((r) => r.text().includes('자료구조'))!
     expect(row().get('.dot').attributes('title')).toBe('대기')
@@ -251,10 +251,10 @@ describe('강의실 설정 — 트리와 시간표', () => {
   it('폼을 열면 최신 슬롯을 다시 읽는다 — 다른 관리자가 넣은 같은 키를 모르고 덮지 않게', async () => {
     await mountView()
     expect(api.buildingSlots).toHaveBeenCalledTimes(1)
-    await btn(w.get('[aria-labelledby=blk-slots]'), '+ 슬롯 추가').trigger('click')
+    await btn(w.get('[aria-labelledby=blk-slots]'), '+ 시간표 추가').trigger('click')
     await flushPromises()
     expect(api.buildingSlots).toHaveBeenCalledTimes(2)
-    await btn(dialog('슬롯 추가'), '취소').trigger('click')
+    await btn(dialog('시간표 추가'), '취소').trigger('click')
     await btn(w.get('[aria-labelledby=blk-resv]'), '+ 예약 추가').trigger('click')
     await flushPromises()
     expect(api.buildingResv).toHaveBeenCalledTimes(3)
@@ -266,16 +266,16 @@ describe('강의실 설정 — 트리와 시간표', () => {
     const blk = () => w.get('[aria-labelledby=blk-slots]')
     await control(blk(), '요일').setValue('1')
     expect(slotRows()).toHaveLength(1)
-    await btn(blk(), '+ 슬롯 추가').trigger('click')
+    await btn(blk(), '+ 시간표 추가').trigger('click')
     await flushPromises()
-    const d = () => dialog('슬롯 추가')
+    const d = () => dialog('시간표 추가')
     await control(d(), '요일').setValue('3')
     await control(d(), '과목명').setValue('자료구조')
     api.buildingSlots.mockImplementation(async () => [
       S(11, 1, 9, '캡스톤디자인'),
       S(11, 3, 9, '자료구조'),
     ])
-    await btn(d(), '저장').trigger('click')
+    await btn(d(), '추가').trigger('click')
     await flushPromises()
     expect(
       slotRows()
@@ -288,18 +288,18 @@ describe('강의실 설정 — 트리와 시간표', () => {
   it('재전송은 강의실 단위 — 같은 방의 실패 행이 모두 대기로, 도는 동안 그 방 버튼 전부 잠금', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
     await mountView()
-    const d = () => dialog('슬롯 추가')
+    const d = () => dialog('시간표 추가')
     const blk = () => w.get('[aria-labelledby=blk-slots]')
     for (const [id, day, subject] of [
       [7, '3', '자료구조'],
       [8, '4', '운영체제'],
     ] as const) {
       api.putSlot.mockResolvedValueOnce({ outbox_ids: [id], id: null })
-      await btn(blk(), '+ 슬롯 추가').trigger('click')
+      await btn(blk(), '+ 시간표 추가').trigger('click')
       await flushPromises()
       await control(d(), '요일').setValue(day)
       await control(d(), '과목명').setValue(subject)
-      await btn(d(), '저장').trigger('click')
+      await btn(d(), '추가').trigger('click')
       await flushPromises()
     }
     api.buildingSlots.mockImplementation(async () => [
@@ -307,7 +307,7 @@ describe('강의실 설정 — 트리와 시간표', () => {
       S(11, 3, 9, '자료구조'),
       S(11, 4, 9, '운영체제'),
     ])
-    await btn(blk(), '+ 슬롯 추가').trigger('click') // 폼을 열면 다시 읽는다 — 새 두 행이 표에
+    await btn(blk(), '+ 시간표 추가').trigger('click') // 폼을 열면 다시 읽는다 — 새 두 행이 표에
     await flushPromises()
     await btn(d(), '취소').trigger('click')
     api.buildingOutbox.mockResolvedValue([

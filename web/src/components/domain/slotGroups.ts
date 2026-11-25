@@ -1,7 +1,8 @@
 // 연속 교시 묶음 (admin-rooms.md 「연속 교시 묶음」) — 저장은 교시마다 그대로, 관리자 목록에서만 묶어 보이고 묶음째 고친다.
 // 문 앞 e-Paper 가 "수업 슬롯 사이 틈"으로 쉬는시간을 그려서 DB 는 교시 단위여야 한다(server room_state).
 import type { SlotWithRoom } from '@/api/types'
-import { slotKey, toMin } from './rules'
+import { hm } from '@/lib/time'
+import { slotKey, spansOverlap, toMin } from './rules'
 
 /** 쉬는시간 상한 — lora_proto LP_BREAK_GAP_MAX_MIN, e-Paper 오늘 목록 · 학생 주간표와 같은 규칙 */
 export const BREAK_GAP_MAX_MIN = 15
@@ -72,4 +73,50 @@ export function periodsFrom(start: number, count: number, len: number, gap: numb
   })
   const last = out[out.length - 1]
   return last && last.e_h < 24 ? out : null
+}
+
+/** 한 교시 = 수업 + 쉬는시간 (admin-rooms.md 「연속 교시 묶음」) — 학교마다 다를 수 있어 둘을 둔다 */
+export const PERIOD_PATTERNS: [number, number][] = [
+  [50, 10],
+  [75, 15],
+]
+export const patternKey = ([len, gap]: [number, number]) => `${len}-${gap}`
+export const patternLabel = ([len, gap]: [number, number]) =>
+  gap ? `${len}분 + 쉬는 ${gap}분` : `${len}분 (쉬는시간 없음)`
+export const COUNT_OPTIONS = Array.from({ length: 8 }, (_, i) => ({
+  value: i + 1,
+  label: `${i + 1}`,
+}))
+
+/** 시간 상자 값 — 시작 'HH:MM' · 교시 수 · 한 교시 'len-gap' */
+export interface PeriodDraft {
+  start: string
+  count: number
+  pattern: string
+}
+const HM = /^(\d{2}):(\d{2})$/
+/** 시간 상자 → 교시들. 시작이 비었거나 자정을 넘기면 null */
+export function periodsOf(d: PeriodDraft) {
+  const m = HM.exec(d.start)
+  if (!m) return null
+  const [len, gap] = d.pattern.split('-').map(Number)
+  return periodsFrom(Number(m[1]) * 60 + Number(m[2]), d.count, len, gap)
+}
+
+/** 같은 방 · 요일에서 교시들과 겹치는 첫 슬롯 문장 — 없으면 ''. exclude 는 지금 고치는 묶음의 교시 키 */
+export function firstOverlap(
+  existing: SlotWithRoom[],
+  roomId: number,
+  day: number,
+  periods: { s_h: number; s_m: number; e_h: number; e_m: number }[],
+  exclude: Set<string> = new Set(),
+): string {
+  const hit = existing.find(
+    (x) =>
+      x.room_id === roomId &&
+      x.day === day &&
+      !exclude.has(slotKey(x)) &&
+      periods.some((p) => spansOverlap(x, p)),
+  )
+  return hit ? `겹칩니다: ${hm(hit.s_h, hit.s_m)}–${hm(hit.e_h, hit.e_m)} ${hit.subject}` : ''
 }
