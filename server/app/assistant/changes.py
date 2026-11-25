@@ -284,7 +284,9 @@ def not_found_message(intent: str) -> str:
     }[intent.split(".")[0]]
 
 
-WEEKS_MAX = 3  # 한 방에 그리는 주 수 (시험기간이 길어도)
+WEEKS_MAX = 6  # 한 방에 그리는 주 수 (시험기간이 길어도) — 세는 건 영향받는 주 전부
+SRC_AI = 2  # AI 비서가 쓰는 슬롯 source — 이보다 큰 source(포털·긴급)는 지우거나 옮기지 않는다
+PROTECTED = "포털·긴급 수업은 AI 비서로 지우거나 옮길 수 없습니다"
 
 
 @dataclass
@@ -301,8 +303,12 @@ class Built:
 
     def week(self, room_id: int, wk: str | None) -> None:
         lst = self.weeks.setdefault(room_id, [])
-        if wk not in lst and len(lst) < WEEKS_MAX:
+        if wk not in lst:
             lst.append(wk)
+
+    def drawn(self, room_id: int) -> list[str | None]:
+        """그릴 주 — 시간순(정규=None 이 먼저), 앞 WEEKS_MAX 개."""
+        return sorted(self.weeks[room_id], key=lambda w: (w is not None, w or ""))[:WEEKS_MAX]
 
     @property
     def room_ids(self) -> list[int]:
@@ -457,6 +463,8 @@ def _exam_add(s, b: Built, st: dict, now_local) -> None:
 
 def _exam_change(s, b: Built, ch: dict, st: dict, now_local) -> None:
     a, z = d_(st["range"][0]), d_(st["range"][1])
+    if z < now_local.date():
+        b.blockers.append(f"{md(a)}~{md(z)} 은 이미 지난 기간입니다.")
     for rid, c in ch.items():
         b.ops.append(
             {
@@ -476,6 +484,21 @@ def _exam_remove(s, b: Built, ch: dict, st: dict, now_local) -> None:
         b.ops.append({"op": "exam.del", "room_id": rid, "id": c["id"]})
         _exam_weeks(b, rid, d_(c["start"]), d_(c["end"]))
         b.summary.append(f"− 시험기간 {c['label']} ({b.labels[rid]})")
+
+
+def _slot_clash(s, b: Built, rid: int, day: int, sp, skip_id: int | None) -> None:
+    """같은 요일 다른 수업과의 겹침·덮어쓰기 경고. 시작이 같으면 put 이 그 수업을 덮어쓴다."""
+    sh, sm, eh, em = sp
+    label = b.labels[rid]
+    for x in s.scalars(select(Slot).where(Slot.room_id == rid, Slot.day == day)):
+        if x.id == skip_id:
+            continue
+        where = f"{WD[day - 1]} {span(x.s_h, x.s_m, x.e_h, x.e_m)}"
+        if (x.s_h, x.s_m) == (sh, sm):
+            b.warnings.append(f'{label} 기존 수업 "{x.subject}"({where})을 바꿉니다.')
+            b.summary.append(f"− 매주 {where} {x.subject} ({label})")
+        if _hit(x, sh * 60 + sm, eh * 60 + em):
+            b.warnings.append(f'{label} 기존 수업 "{x.subject}"({where})와 겹칩니다.')
 
 
 def _class_add(s, b: Built, st: dict, now_local) -> None:
@@ -506,11 +529,7 @@ def _class_add(s, b: Built, st: dict, now_local) -> None:
             b.summary.append(
                 f'+ 매주 {WD[wd - 1]} {span(sh, sm, eh, em)} {TYPE[type_]} "{st["subject"]}" ({b.labels[rid]})'
             )
-            for x in s.scalars(select(Slot).where(Slot.room_id == rid, Slot.day == wd)):
-                if (x.s_h, x.s_m) != (sh, sm) and _hit(x, sh * 60 + sm, eh * 60 + em):
-                    b.warnings.append(
-                        f'{b.labels[rid]} 기존 수업 "{x.subject}"({WD[wd - 1]} {span(x.s_h, x.s_m, x.e_h, x.e_m)})와 겹칩니다.'
-                    )
+            _slot_clash(s, b, rid, wd, (sh, sm, eh, em), None)
 
 
 def _class_change(s, b: Built, ch: dict, st: dict, now_local) -> None:
@@ -540,12 +559,17 @@ def _class_change(s, b: Built, ch: dict, st: dict, now_local) -> None:
             "professor": st.get("professor", x.professor),
             "source": 2,
         }
-        if (day, sh, sm) != (x.day, x.s_h, x.s_m):
+        moving = (day, sh, sm) != (x.day, x.s_h, x.s_m)
+        if moving and x.source > SRC_AI:
+            b.blockers.append(f"{b.labels[rid]} {c['label']}: {PROTECTED}")
+            continue
+        if moving:
             b.ops.append(
                 {"op": "slot.del", "room_id": rid, "day": x.day, "s_h": x.s_h, "s_m": x.s_m}
             )
         b.ops.append({"op": "slot.put", "room_id": rid, "slot": new})
         b.week(rid, None)
+        _slot_clash(s, b, rid, day, sp, x.id)
         b.summary.append(
             f"~ 매주 {c['label']} → {WD[day - 1]} {span(*sp)} {new['subject']} {new['professor']} ({b.labels[rid]})".rstrip()
         )
@@ -553,6 +577,17 @@ def _class_change(s, b: Built, ch: dict, st: dict, now_local) -> None:
 
 def _class_remove(s, b: Built, ch: dict, st: dict, now_local) -> None:
     for rid, c in ch.items():
+        x = s.scalar(
+            select(Slot).where(
+                Slot.room_id == rid,
+                Slot.day == c["day"],
+                Slot.s_h == c["s_h"],
+                Slot.s_m == c["s_m"],
+            )
+        )
+        if x is not None and x.source > SRC_AI:
+            b.blockers.append(f"{b.labels[rid]} {c['label']}: {PROTECTED}")
+            continue
         b.ops.append(
             {"op": "slot.del", "room_id": rid, "day": c["day"], "s_h": c["s_h"], "s_m": c["s_m"]}
         )

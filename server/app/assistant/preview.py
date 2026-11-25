@@ -23,7 +23,7 @@ from app.auth.scope import Scope
 from app.domain import admin, clock, reserve
 from app.domain import ops as dops
 from app.domain import router as R
-from app.domain.models import ExamPeriod, Reservation, Room, Slot
+from app.domain.models import Building, ExamPeriod, Reservation, Room, Slot
 from app.lora_service import api
 
 PREVIEW_TTL = dt.timedelta(minutes=10)
@@ -209,17 +209,91 @@ def marks(before: dict, after: dict) -> list[dict]:
     return out
 
 
+def _draft_rooms(draft: dict) -> set[int]:
+    st, tg = draft["set"], draft["target"]
+    ids = set(st.get("rooms", [])) | set(tg.get("rooms", []))
+    ids |= {e["room_id"] for e in st.get("entries", [])}
+    return ids
+
+
+def _in_scope(s: Session, sc: Scope, ids: set[int]) -> bool:
+    """모든 방이 관리자 범위 안인가 — 하나라도 밖이면 False. 데이터는 읽지 않고 방 번호만 본다."""
+    if not ids:
+        return True
+    q = (
+        select(Room.id)
+        .join(Building, Room.building_id == Building.id)
+        .where(scope.building_clause(sc), Room.id.in_(ids))
+    )
+    return set(s.scalars(q)) == ids
+
+
+def _earliest_start(ops_: list[dict], fallback: dt.datetime) -> dt.datetime:
+    """쓰는 일정(resv.put) 중 가장 이른 시작(UTC) — 시작 뒤에는 적용할 수 없다."""
+    best = fallback
+    for op in ops_:
+        if op["op"] == "resv.put":
+            r = op["resv"]
+            start = clock.to_utc(
+                clock.local_dt(dt.date.fromisoformat(r["date"]), r["s_h"], r["s_m"])
+            )
+            best = min(best, start)
+    return best
+
+
+def _store(Session: sessionmaker, sc: Scope, conv_id: str, draft: dict, now_utc, **cols) -> str:
+    pid = "p_" + secrets.token_hex(8)
+    with Session() as s, s.begin():
+        s.add(
+            AssistantPreview(
+                id=pid,
+                conversation_id=conv_id,
+                user_email=sc.email,
+                draft=_j(draft),
+                created_at=now_utc,
+                **cols,
+            )
+        )
+    return pid
+
+
 def make_preview(
     Session: sessionmaker, sc: Scope, conv_id: str, draft: dict, now_local: dt.datetime
 ) -> dict:
     now_utc = clock.to_utc(now_local)
-    with Session() as s:
-        built = changes.plan(s, sc, draft, now_local)
-    blockers = list(built.blockers)
-    keys = [(rid, wk) for rid in built.room_ids for wk in built.weeks[rid]]
+    with Session() as s:  # 범위 먼저 — 밖이면 어떤 데이터도 읽지 않는다
+        in_scope = _in_scope(s, sc, _draft_rooms(draft))
+    if not in_scope:
+        blockers = ["권한 밖 강의실이 있습니다"]
+        expires = now_utc + PREVIEW_TTL
+        pid = _store(
+            Session,
+            sc,
+            conv_id,
+            draft,
+            now_utc,
+            ops="[]",
+            room_ids="[]",
+            fingerprint="",
+            blockers=_j(blockers),
+            summary="[]",
+            expires_at=expires,
+        )
+        return {
+            "preview_id": pid,
+            "expires_at": expires.replace(tzinfo=dt.UTC),
+            "summary": [],
+            "blockers": blockers,
+            "warnings": [],
+            "notices": [],
+            "rooms": [],
+        }
     with R._ID_LOCK, Session() as s:
         try:
+            built = changes.plan(s, sc, draft, now_local)
+            blockers = list(built.blockers)
             fp = fingerprint(s, built.room_ids)
+            keys = [(rid, wk) for rid in built.room_ids for wk in built.weeks[rid]]
             before = {k: week_data(s, *k) for k in keys}
             try:
                 run_ops(s, sc, built.ops, sc.email, now_local)
@@ -227,25 +301,23 @@ def make_preview(
             except _OP_ERRORS as e:
                 blockers.append(_message(e))
                 after = before
+            bld_of = dict(
+                s.execute(
+                    select(Room.id, Room.building_id).where(Room.id.in_(built.room_ids))
+                ).all()
+            )
         finally:
             s.rollback()  # 미리보기는 아무것도 남기지 않는다 — 도메인 행·outbox·버전 모두
-    with Session() as s:  # 적용 뒤 전송 추적이 건물 단위로 outbox 를 읽는다(03 웹)
-        bld_of = dict(
-            s.execute(select(Room.id, Room.building_id).where(Room.id.in_(built.room_ids))).all()
-        )
     rooms_out = []
+    notices = list(built.notices)
     for rid in built.room_ids:
-        weeks, seen = [], set()
-        for wk in built.weeks[rid]:
-            ms = marks(before[(rid, wk)], after[(rid, wk)])
-            seen |= {(m["key"], m["op"]) for m in ms}
-            weeks.append(
-                {
-                    "week_start": wk,
-                    "before": before[(rid, wk)],
-                    "after": after[(rid, wk)],
-                    "changes": ms,
-                }
+        seen = set()
+        for wk in built.weeks[rid]:  # 센 값은 영향받는 주 전부
+            seen |= {(m["key"], m["op"]) for m in marks(before[(rid, wk)], after[(rid, wk)])}
+        drawn = built.drawn(rid)
+        if len(built.weeks[rid]) > len(drawn):
+            notices.append(
+                f"{built.labels[rid]}: {len(built.weeks[rid])}주 중 앞 {len(drawn)}주만 그렸습니다"
             )
         rooms_out.append(
             {
@@ -255,34 +327,41 @@ def make_preview(
                 "added": sum(op == "add" for _, op in seen),
                 "removed": sum(op == "remove" for _, op in seen),
                 "changed": sum(op == "change" for _, op in seen),
-                "weeks": weeks,
+                "weeks": [
+                    {
+                        "week_start": wk,
+                        "before": before[(rid, wk)],
+                        "after": after[(rid, wk)],
+                        "changes": marks(before[(rid, wk)], after[(rid, wk)]),
+                    }
+                    for wk in drawn
+                ],
             }
         )
-    pid = "p_" + secrets.token_hex(8)
     expires = now_utc + PREVIEW_TTL
-    with Session() as s, s.begin():
-        s.add(
-            AssistantPreview(
-                id=pid,
-                conversation_id=conv_id,
-                user_email=sc.email,
-                draft=_j(draft),
-                ops=_j(built.ops),
-                room_ids=_j(built.room_ids),
-                fingerprint=fp,
-                blockers=_j(blockers),
-                summary=_j(built.summary),
-                created_at=now_utc,
-                expires_at=expires,
-            )
-        )
+    first = _earliest_start(built.ops, expires)
+    if first > now_utc:  # 이미 시작한 일정은 막음(blocker)이 따로 잡는다
+        expires = first
+    pid = _store(
+        Session,
+        sc,
+        conv_id,
+        draft,
+        now_utc,
+        ops=_j(built.ops),
+        room_ids=_j(built.room_ids),
+        fingerprint=fp,
+        blockers=_j(blockers),
+        summary=_j(built.summary),
+        expires_at=expires,
+    )
     return {
         "preview_id": pid,
         "expires_at": expires.replace(tzinfo=dt.UTC),
         "summary": built.summary,
         "blockers": blockers,
         "warnings": built.warnings,
-        "notices": built.notices,
+        "notices": notices,
         "rooms": rooms_out,
     }
 
@@ -296,12 +375,16 @@ def apply_preview(
         p = s.get(AssistantPreview, preview_id)
         if p is None or p.user_email != sc.email:
             return 404, {"detail": "미리보기 없음"}
+        room_ids = json.loads(p.room_ids)
+        if not _in_scope(
+            s, sc, set(room_ids)
+        ):  # 범위를 잃었으면 없는 것과 같다 — 새 미리보기도 만들지 않는다
+            return 404, {"detail": "미리보기 없음"}
         if p.applied_at is not None or p.expires_at <= now_utc:
             return 410, {"detail": "expired"}
         blockers = json.loads(p.blockers)
         if blockers:
             return 422, {"detail": "blocked", "blockers": blockers}
-        room_ids = json.loads(p.room_ids)
         if fingerprint(s, room_ids) != p.fingerprint:
             stale = (p.conversation_id, json.loads(p.draft))
             p.expires_at = now_utc  # 옛 미리보기는 더 못 쓴다
