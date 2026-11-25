@@ -1,0 +1,127 @@
+{
+  "conversation_id": "c_1",
+  "kind": "preview",
+  "message": "오른쪽에서 확인해 주세요.",
+  "choices": [],
+  "next_prefix": "상태: event.add | 강의실 803 | 날짜 11/27(금) | 시각 15:00~18:00 | 유형 특강 | 이름 알고리즘 특강\n질문: 이대로 적용할까요?\n관리자: ",
+  "closed": false,
+  "answer": null,
+  "preview": {
+    "preview_id": "p_1",
+    "expires_at": "2026-11-25T01:10:00Z",
+    "summary": ["+ 11/27(금) 15:00–18:00 특강 \"알고리즘 특강\" (공학관 803)"],
+    "blockers": [],
+    "warnings": ["기존 수업 \"자료구조\"(금 15:00–16:15)와 겹칩니다"],
+    "notices": [],
+    "rooms": [
+      {
+        "room_id": 3,
+        "building_id": 7,
+        "label": "공학관 803",
+        "added": 1,
+        "removed": 0,
+        "changed": 0,
+        "weeks": [
+          {
+            "week_start": "2026-11-23",
+            "before": {
+              "slots": [
+                {
+                  "id": 5,
+                  "room_id": 3,
+                  "day": 5,
+                  "s_h": 15,
+                  "s_m": 0,
+                  "e_h": 16,
+                  "e_m": 15,
+                  "type": 1,
+                  "subject": "자료구조",
+                  "professor": "김교수",
+                  "source": 2
+                }
+              ],
+              "reservations": [
+                {
+                  "id": 9,
+                  "room_id": 3,
+                  "date": "2026-11-24",
+                  "s_h": 10,
+                  "s_m": 0,
+                  "e_h": 11,
+                  "e_m": 0,
+                  "type": 6,
+                  "subject": "동아리",
+                  "professor": "",
+                  "status": "approved",
+                  "requester": null,
+                  "pushed_at": "2026-11-20T01:00:00Z",
+                  "checked_in_at": null,
+                  "checked_out_at": null,
+                  "reject_reason": null
+                }
+              ],
+              "exams": []
+            },
+            "after": {
+              "slots": [
+                {
+                  "id": 5,
+                  "room_id": 3,
+                  "day": 5,
+                  "s_h": 15,
+                  "s_m": 0,
+                  "e_h": 16,
+                  "e_m": 15,
+                  "type": 1,
+                  "subject": "자료구조",
+                  "professor": "김교수",
+                  "source": 2
+                }
+              ],
+              "reservations": [
+                {
+                  "id": 9,
+                  "room_id": 3,
+                  "date": "2026-11-24",
+                  "s_h": 10,
+                  "s_m": 0,
+                  "e_h": 11,
+                  "e_m": 0,
+                  "type": 6,
+                  "subject": "동아리",
+                  "professor": "",
+                  "status": "approved",
+                  "requester": null,
+                  "pushed_at": "2026-11-20T01:00:00Z",
+                  "checked_in_at": null,
+                  "checked_out_at": null,
+                  "reject_reason": null
+                },
+                {
+                  "id": 17,
+                  "room_id": 3,
+                  "date": "2026-11-27",
+                  "s_h": 15,
+                  "s_m": 0,
+                  "e_h": 18,
+                  "e_m": 0,
+                  "type": 5,
+                  "subject": "알고리즘 특강",
+                  "professor": "",
+                  "status": "approved",
+                  "requester": null,
+                  "pushed_at": null,
+                  "checked_in_at": null,
+                  "checked_out_at": null,
+                  "reject_reason": null
+                }
+              ],
+              "exams": []
+            },
+            "changes": [{ "entity": "resv", "key": "r17", "op": "add", "fields": [] }]
+          }
+        ]
+      }
+    ]
+  }
+}
