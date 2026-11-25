@@ -183,6 +183,7 @@ async function remove() {
       row-key="key"
       :loading="loading"
       expandable
+      tall
     >
       <template #empty>
         <EmptyState v-if="!rooms.length" message="위에서 강의실을 고르세요" />
@@ -314,6 +315,8 @@ async function remove() {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  /* 두 줄 칸 — 행 테두리에 글자가 붙지 않게 (Table td 는 위아래 여백이 0) */
+  padding-block: var(--space-2);
 }
 .blk__time small {
   font-size: var(--font-size-xs);
