@@ -295,7 +295,8 @@ SRC_AI = 2  # AI 비서가 쓰는 슬롯 source — 이보다 큰 source(3=긴�
 PROTECTED = "긴급 수업은 AI 비서로 지우거나 옮길 수 없습니다"
 OPS_MAX = 150  # 한 미리보기에서 바꿀 수 있는 항목 수
 MOVE_ROOM = (
-    "강의실을 옮기는 변경은 지원하지 않습니다 — 새 강의실에 등록하고 기존 일정을 지워 주세요"
+    "강의실을 옮기는 변경은 지원하지 않습니다 — 새 강의실에 등록하고 기존 일정을 지워 주세요."
+    " 취소하고 다시 말씀해 주세요."
 )
 NOOP = "바뀌는 내용이 없습니다"
 TOO_MANY = f"한 번에 바꾸는 항목이 너무 많습니다 ({OPS_MAX}개 이하로 나눠 주세요)"
@@ -581,13 +582,16 @@ def _class_change(s, b: Built, ch: dict, st: dict, now_local) -> None:
         if x.source > SRC_AI:
             b.blockers.append(f"{b.labels[rid]} {c['label']}: {PROTECTED}")
             continue
+        n = len(b.blockers)
+        _slot_clash(s, b, rid, day, sp, x.id)
+        if len(b.blockers) > n:  # 긴급 수업 위로 옮기려 함 — del·put 은 하지 않는다
+            continue
         if moving:
             b.ops.append(
                 {"op": "slot.del", "room_id": rid, "day": x.day, "s_h": x.s_h, "s_m": x.s_m}
             )
         b.ops.append({"op": "slot.put", "room_id": rid, "slot": new})
         b.week(rid, None)
-        _slot_clash(s, b, rid, day, sp, x.id)
         b.summary.append(
             f"~ 매주 {c['label']} → {WD[day - 1]} {span(*sp)} {new['subject']} {new['professor']} ({b.labels[rid]})".rstrip()
         )

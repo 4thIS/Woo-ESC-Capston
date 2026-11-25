@@ -481,3 +481,37 @@ def test_too_many_ops_is_blocked(client, app, monkeypatch):
     d["set"]["dates"] = dates[:150]
     pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
     assert not any("너무 많습니다" in b for b in pv["blockers"])
+
+
+def test_rule_violation_shows_reason_not_noop(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    d = _special(ids)
+    d["set"]["subject"] = "가" * 40
+    pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
+    assert any(b.startswith("입력값이 규칙에 맞지 않습니다") for b in pv["blockers"])
+    assert "바뀌는 내용이 없습니다" not in pv["blockers"]
+
+
+def test_move_onto_emergency_slot_shows_only_friendly_message(client, app, monkeypatch):
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    with app.state.Session() as s, s.begin():
+        s.add(
+            Slot(
+                room_id=ids["E803"],
+                day=2,
+                s_h=9,
+                s_m=0,
+                e_h=10,
+                e_m=0,
+                type=1,
+                subject="긴급",
+                professor="",
+                source=3,
+            )
+        )
+    d = _class("class.change", ids, {"weekdays": [1], "subject": "알고리즘"}, {"weekdays": [2]})
+    pv = P.make_preview(app.state.Session, ALL, "c_t", d, NOW)
+    assert any("긴급 수업은 AI 비서로" in b for b in pv["blockers"])
+    assert not any("source" in b for b in pv["blockers"])

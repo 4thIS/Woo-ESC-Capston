@@ -296,18 +296,15 @@ def make_preview(
             fp = fingerprint(s, built.room_ids)
             keys = [(rid, wk) for rid in built.room_ids for wk in built.weeks[rid]]
             before = {k: week_data(s, *k) for k in keys}
-            try:
-                if (
-                    len(built.ops) > changes.OPS_MAX
-                ):  # 너무 많으면 돌려 보지 않는다(막음이 이미 있다)
-                    raise ValueError(changes.TOO_MANY)
-                run_ops(s, sc, built.ops, sc.email, now_local)
-                after = {k: week_data(s, *k) for k in keys}
-            except ValueError:
+            if len(built.ops) > changes.OPS_MAX:  # 너무 많으면 돌려 보지 않는다(막음이 이미 있다)
                 after = before
-            except _OP_ERRORS as e:
-                blockers.append(_message(e))
-                after = before
+            else:
+                try:
+                    run_ops(s, sc, built.ops, sc.email, now_local)
+                    after = {k: week_data(s, *k) for k in keys}
+                except _OP_ERRORS as e:
+                    blockers.append(_message(e))
+                    after = before
             bld_of = dict(
                 s.execute(
                     select(Room.id, Room.building_id).where(Room.id.in_(built.room_ids))
