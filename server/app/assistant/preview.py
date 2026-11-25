@@ -16,8 +16,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import schemas as S
-from app.assistant import changes
-from app.assistant.models import AssistantPreview
+from app.assistant import changes, manifest
+from app.assistant.models import AssistantChange, AssistantPreview
 from app.auth import scope
 from app.auth.scope import Scope
 from app.domain import admin, clock, reserve
@@ -285,3 +285,57 @@ def make_preview(
         "notices": built.notices,
         "rooms": rooms_out,
     }
+
+
+def apply_preview(
+    Session: sessionmaker, sc: Scope, preview_id: str, now_local: dt.datetime
+) -> tuple[int, dict]:
+    now_utc = clock.to_utc(now_local)
+    stale: tuple[str, dict] | None = None
+    with R._ID_LOCK, Session() as s:
+        p = s.get(AssistantPreview, preview_id)
+        if p is None or p.user_email != sc.email:
+            return 404, {"detail": "미리보기 없음"}
+        if p.applied_at is not None or p.expires_at <= now_utc:
+            return 410, {"detail": "expired"}
+        blockers = json.loads(p.blockers)
+        if blockers:
+            return 422, {"detail": "blocked", "blockers": blockers}
+        room_ids = json.loads(p.room_ids)
+        if fingerprint(s, room_ids) != p.fingerprint:
+            stale = (p.conversation_id, json.loads(p.draft))
+            p.expires_at = now_utc  # 옛 미리보기는 더 못 쓴다
+            s.commit()
+        else:
+            try:
+                ids, modems = run_ops(s, sc, json.loads(p.ops), sc.email, now_local)
+            except _OP_ERRORS as e:
+                s.rollback()  # 한 트랜잭션 — 하나라도 실패하면 아무것도 바뀌지 않는다
+                return 422, {"detail": "blocked", "blockers": [_message(e)]}
+            draft = json.loads(p.draft)
+            bids = sorted(set(s.scalars(select(Room.building_id).where(Room.id.in_(room_ids)))))
+            ch = AssistantChange(
+                preview_id=p.id,
+                user_email=sc.email,
+                school_id=sc.school_id,
+                building_ids=_j(bids),
+                utterance=" / ".join(draft["utterances"]),
+                ops=p.ops,
+                summary=p.summary,
+                outbox_ids=_j(ids),
+                model_rev=manifest.current_revision(),
+                applied_at=now_utc,
+            )
+            s.add(ch)
+            p.applied_at = now_utc
+            s.flush()
+            change_id = ch.id
+            s.commit()
+    if stale is not None:  # 락 밖에서 — make_preview 가 락을 다시 잡는다(비재진입)
+        return 409, {
+            "detail": "stale",
+            "preview": make_preview(Session, sc, stale[0], stale[1], now_local),
+        }
+    for m in modems:
+        api.notify(m)
+    return 200, {"change_id": change_id, "outbox_ids": ids}
