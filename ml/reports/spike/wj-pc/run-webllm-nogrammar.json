@@ -1,0 +1,20 @@
+{
+ "runtime": "webllm",
+ "model": "gemma-4-E2B-it-q4f16_1-MLC",
+ "load_ms": 50557,
+ "env": {
+  "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
+  "cores": 16,
+  "device_memory_gb": 32,
+  "webgpu": true,
+  "gpu": "nvidia / blackwell",
+  "cross_origin_isolated": true
+ },
+ "grammar": false,
+ "n": 20,
+ "mean_ms": 1392,
+ "p90_ms": 1946,
+ "tokens_per_s": 24.7,
+ "schema_valid": 15,
+ "exact": 3
+}

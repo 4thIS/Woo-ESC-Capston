@@ -1,0 +1,20 @@
+{"id": "s01", "text": "{\"v\":1,\"intent\":\"event.add\",\"target\":{},\"set\":{\"rooms\":[\"803\"],\"when\":\"이번주 금요일\",\"time\":\"15시부터 18시\",\"type\":\"특강\"}}", "latency_ms": 1940}
+{"id": "s02", "text": "{\"v\":1,\"intent\":\"exam.change\",\"target\":{\"rooms\":[\"801\"]},\"set\":{\"type\":\"휴강\"}}", "latency_ms": 1325}
+{"id": "s03", "text": "{\"v\":1,\"intent\":\"exam.add\",\"target\":{},\"set\":{\"rooms\":[\"801\",\"803\"],\"when\":\"12/15~19\",\"time\":null,\"type\":\"시험\"}}", "latency_ms": 1861}
+{"id": "s04", "text": "{\"v\":1,\"intent\":\"event.add\",\"target\":{},\"set\":{\"rooms\":[\"803\"],\"when\":\"월\",\"time\":\"9시부터 12시까지\",\"type\":\"수업\",\"subject\":\"운영체제\",\"professor\":\"김하늘\"}}", "latency_ms": 2196}
+{"id": "s05", "text": "{\"v\":1,\"intent\":\"ask\",\"target\":{\"rooms\":null,\"when\":\"금요일\",\"time\":null,\"type\":\"빈강의실\"},\"set\":{}}", "latency_ms": 1715}
+{"id": "s06", "text": "{\"v\":1,\"intent\":\"unknown\",\"target\":{},\"set\":{}}", "latency_ms": 1032}
+{"id": "s07", "text": "{\"v\":1,\"intent\":\"request.show\",\"target\":{},\"set\":{}}", "latency_ms": 1109}
+{"id": "s08", "text": "{\"v\":1,\"intent\":\"event.change\",\"target\":{\"rooms\":[\"803\"]},\"set\":{\"time\":\"16시\"}}", "latency_ms": 1343}
+{"id": "s09", "text": "{\"v\":1,\"intent\":\"event.remove\",\"target\":{\"rooms\":[\"803\"]},\"set\":{}}", "latency_ms": 1156}
+{"id": "s10", "text": "{\"v\":1,\"intent\":\"request.approve\",\"target\":{},\"set\":{}}", "latency_ms": 1081}
+{"id": "s11", "text": "{\"v\":1,\"intent\":\"request.reject\",\"target\":{\"rooms\":[\"801\"]},\"set\":{\"reason\":\"장비 점검\"}}", "latency_ms": 1305}
+{"id": "s12", "text": "{\"v\":1,\"intent\":\"exam.remove\",\"target\":{\"rooms\":[\"803\"]},\"set\":{}}", "latency_ms": 1193}
+{"id": "s13", "text": "{\"v\":1,\"intent\":\"unknown\",\"target\":{},\"set\":{}}", "latency_ms": 1096}
+{"id": "s14", "text": "{\"v\":1,\"intent\":\"event.remove\",\"target\":{\"rooms\":[\"803\"],\"when\":\"11/27(금)\",\"time\":\"15:00~18:00\",\"type\":\"특강\"},\"set\":{}}", "latency_ms": 2172}
+{"id": "s15", "text": "{\"v\":1,\"intent\":\"event.add\",\"target\":{\"rooms\":[\"803\"],\"when\":\"11/27(금)\",\"time\":\"15:00~18:00\",\"type\":\"특강\"},\"set\":{\"subject\":\"알고리즘\",\"professor\":null,\"reason\":null,\"requester\":null}}", "latency_ms": 2995}
+{"id": "s16", "text": "{\"v\":1,\"intent\":\"event.add\",\"target\":{\"rooms\":[\"801\"]},\"set\":{\"when\":\"12/2(수)\",\"time\":\"3시부터 6시\",\"type\":\"대여\",\"subject\":\"동아리 회의\"}}", "latency_ms": 2209}
+{"id": "s17", "text": "{\"v\":1,\"intent\":\"class.change\",\"target\":{\"rooms\":[\"8층 전체\"]},\"set\":{\"type\":\"휴강\",\"when\":\"12/24\"}}", "latency_ms": 1603}
+{"id": "s18", "text": "{\"v\":1,\"intent\":\"request.approve\",\"target\":{\"rooms\":[\"803\"]},\"set\":{\"when\":\"화목\",\"time\":\"10시 반부터 12시\",\"type\":\"대여\"}}", "latency_ms": 1850}
+{"id": "s19", "text": "{\"v\":1,\"intent\":\"exam.remove\",\"target\":{\"rooms\":[\"공학관 803\"]},\"set\":{}}", "latency_ms": 1377}
+{"id": "s20", "text": "{\"v\":1,\"intent\":\"request.approve\",\"target\":{},\"set\":{}}", "latency_ms": 1142}
