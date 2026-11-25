@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       proto: ${{ steps.filter.outputs.proto }}
+      assistant_proto: ${{ steps.filter.outputs.assistant_proto }}
       firmware: ${{ steps.filter.outputs.firmware }}
       server: ${{ steps.filter.outputs.server }}
       modempi: ${{ steps.filter.outputs.modempi }}
@@ -42,6 +43,9 @@ jobs:
           filters: |
             proto:
               - 'lora_proto/**'
+              - '.github/workflows/ci.yml'
+            assistant_proto:
+              - 'assistant_proto/**'
               - '.github/workflows/ci.yml'
             firmware:
               - 'firmware/**'
@@ -87,6 +91,28 @@ jobs:
       - name: header ↔ python mirror
         run: uv run python -m tools.check_mirror
       - name: test (벡터 드리프트 포함)
+        run: uv run pytest -q
+
+  # ===== assistant_proto: 관리자 AI 비서 양식 규격 (검증·해석기·예문) =====
+  assistant_proto:
+    needs: changes
+    if: ${{ needs.changes.outputs.assistant_proto == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: assistant_proto
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: setup
+        run: |
+          pip install uv
+          uv sync --frozen
+      - name: lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: test (양식·해석기·대화 규칙·예문)
         run: uv run pytest -q
 
   # ===== firmware: PlatformIO (C++) =====

@@ -51,9 +51,9 @@ repos:
     hooks:
       - id: ruff
         args: [--fix]
-        files: '^(server|modempi|lora_proto|firmware/tools)/'
+        files: '^(server|modempi|lora_proto|assistant_proto|firmware/tools)/'
       - id: ruff-format
-        files: '^(server|modempi|lora_proto|firmware/tools)/'
+        files: '^(server|modempi|lora_proto|assistant_proto|firmware/tools)/'
 
   # ── web: prettier (TS/Vue/CSS) ───────────────────────────
   - repo: local
