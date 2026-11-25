@@ -53,6 +53,21 @@ def test_question_texts():
     assert q("event.change", "set.any").startswith("무엇을 어떻게 바꿀까요?")
 
 
+def test_class_target_time_question_has_no_event_wording():
+    assert (
+        rules.question("class.change", "target.time")
+        == "몇 시 수업인가요? 과목 이름으로 알려 주셔도 됩니다."
+    )
+    assert (
+        rules.question("class.remove", "target.time")
+        == "몇 시 수업인가요? 과목 이름으로 알려 주셔도 됩니다."
+    )
+    assert (
+        rules.question("event.change", "target.time")
+        == "몇 시 일정인가요? 과목·행사 이름으로 알려 주셔도 됩니다."
+    )
+
+
 def test_state_items_example_and_change_labels():
     items = rules.state_items(
         "event.add",

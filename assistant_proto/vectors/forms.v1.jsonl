@@ -26,7 +26,7 @@
 {"id":"class.add-1","prefix":"관리자: ","utterance":"803 월 9시~12시 자료구조 김교수 수업 추가","form":{"v":1,"intent":"class.add","target":{},"set":{"rooms":["803"],"when":"월","time":"9시~12시","type":"수업","subject":"자료구조","professor":"김교수"}}}
 {"id":"class.add-2","prefix":"관리자: ","utterance":"801 매주 화목 오후 3시부터 4시 15분 알고리즘 정규 수업 넣어줘","form":{"v":1,"intent":"class.add","target":{},"set":{"rooms":["801"],"when":"매주 화목","time":"오후 3시부터 4시 15분","type":"수업","subject":"알고리즘"}}}
 {"id":"class.add-3","prefix":"관리자: ","utterance":"공학관 802 수요일 10시부터 12시 캡스톤디자인 박교수","form":{"v":1,"intent":"class.add","target":{},"set":{"rooms":["공학관 802"],"when":"수요일","time":"10시부터 12시","subject":"캡스톤디자인","professor":"박교수"}}}
-{"id":"class.add-4","prefix":"관리자: ","utterance":"803 금요일마다 1시~3시 세미나 정규 편성","form":{"v":1,"intent":"class.add","target":{},"set":{"rooms":["803"],"when":"금요일마다","time":"1시~3시","type":"특강","subject":"세미나"}}}
+{"id":"class.add-4","prefix":"관리자: ","utterance":"803 금요일마다 1시~3시 세미나 정규 편성","form":{"v":1,"intent":"class.add","target":{},"set":{"rooms":["803"],"when":"금요일마다","time":"1시~3시","subject":"세미나"}}}
 {"id":"class.change-1","prefix":"관리자: ","utterance":"803 월요일 자료구조 교수 이교수로 바꿔","form":{"v":1,"intent":"class.change","target":{"rooms":["803"],"when":"월요일","subject":"자료구조"},"set":{"professor":"이교수"}}}
 {"id":"class.change-2","prefix":"관리자: ","utterance":"801 화요일 3시 수업 4시로 옮겨줘","form":{"v":1,"intent":"class.change","target":{"rooms":["801"],"when":"화요일","time":"3시","type":"수업"},"set":{"time":"4시"}}}
 {"id":"class.change-3","prefix":"관리자: ","utterance":"802 수요일 캡스톤디자인 10시부터 1시까지로 변경","form":{"v":1,"intent":"class.change","target":{"rooms":["802"],"when":"수요일","subject":"캡스톤디자인"},"set":{"time":"10시부터 1시까지"}}}

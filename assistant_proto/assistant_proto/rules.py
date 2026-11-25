@@ -25,6 +25,8 @@ PRIMARY: dict[str, str] = {
     "ask.requests": "target",
     "ask.node": "target",
 }
+# 미리보기를 띄운 뒤 서버가 다음 접두어에 넣는 질문 — ml 도 같은 글자로 접두어를 만든다
+PREVIEW_QUESTION = "확인 화면을 보고 [적용]을 눌러 주세요. 바꿀 것이 있으면 말씀해 주세요."
 CHANGE_INTENTS = ("event.change", "exam.change", "class.change")
 _LABEL = {
     "rooms": "강의실",
@@ -89,6 +91,8 @@ def question(intent: str, slot: str, type_label: str | None = None) -> str:
         return "날짜는 언제인가요? (예: 12/3, 이번 주 금요일)"
     if f == "time":
         if sec == "target":
+            if grp == "class":
+                return "몇 시 수업인가요? 과목 이름으로 알려 주셔도 됩니다."
             return "몇 시 일정인가요? 과목·행사 이름으로 알려 주셔도 됩니다."
         return "몇 시부터 몇 시까지인가요? (예: 15시~18시)"
     if f == "type":
