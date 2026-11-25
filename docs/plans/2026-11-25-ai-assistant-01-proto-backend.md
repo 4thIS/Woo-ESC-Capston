@@ -4687,7 +4687,7 @@ from tests.conftest import _hdr
 GOOD_MODEL = {
     "enabled": True,
     "runtime": "webllm",
-    "repo": "4thIS/esc-assistant-e2b",
+    "repo": "leemonta9482/esc-assistant-e2b",
     "revision": "a" * 40,
     "files": [{"name": "model.bin", "size": 123, "sha256": "b" * 64}],
     "generation": {"temperature": 0, "max_tokens": 256},
