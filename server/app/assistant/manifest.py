@@ -14,18 +14,33 @@ RUNTIMES = ("webllm", "transformers", "litert", "wllama")
 DEFAULT_GENERATION = {"temperature": 0, "max_tokens": 256}
 _REV = re.compile(r"^[0-9a-f]{40}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
+_REPO = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 
 
 def _read(path: Path | None) -> dict:
-    return json.loads((path or MODEL_FILE).read_text(encoding="utf-8"))
+    d = json.loads((path or MODEL_FILE).read_text(encoding="utf-8"))
+    if not isinstance(d, dict):
+        raise ValueError("model.json 은 객체여야 합니다")  # noqa: TRY004
+    return d
+
+
+def _safe_name(n: object) -> bool:
+    """내려받을 파일 이름 — 상대 경로만, 위로 거슬러 오르지 않는다."""
+    return (
+        isinstance(n, str)
+        and bool(n)
+        and not n.startswith(("/", "\\"))
+        and ":" not in n
+        and ".." not in n.replace("\\", "/").split("/")
+    )
 
 
 def _valid_file(f: object) -> bool:
     return (
         isinstance(f, dict)
-        and isinstance(f.get("name"), str)
-        and bool(f["name"])
+        and _safe_name(f.get("name"))
         and isinstance(f.get("size"), int)
+        and not isinstance(f["size"], bool)
         and f["size"] > 0
         and isinstance(f.get("sha256"), str)
         and bool(_SHA.match(f["sha256"]))
@@ -34,17 +49,20 @@ def _valid_file(f: object) -> bool:
 
 def load(path: Path | None = None) -> dict:
     d = _read(path)
-    if not d.get("enabled"):
-        return {"enabled": False}
+    if d.get("enabled") is not True:
+        if d.get("enabled") in (None, False):
+            return {"enabled": False}
+        raise ValueError("model.json 의 enabled 는 true/false 여야 합니다")
     ok = (
         d.get("runtime") in RUNTIMES
         and isinstance(d.get("repo"), str)
-        and d["repo"].count("/") == 1
+        and bool(_REPO.match(d["repo"]))
         and isinstance(d.get("revision"), str)
         and bool(_REV.match(d["revision"]))  # 브랜치 이름이 아니라 커밋 해시로 고정
         and isinstance(d.get("files"), list)
         and bool(d["files"])
         and all(_valid_file(f) for f in d["files"])
+        and isinstance(d.get("generation", {}), dict)
     )
     if not ok:
         raise ValueError(
@@ -65,9 +83,9 @@ def load(path: Path | None = None) -> dict:
 
 
 def current_revision(path: Path | None = None) -> str | None:
-    """기록에 남길 모델 판. 안내가 없거나 읽을 수 없으면 None."""
+    """기록에 남길 모델 판. 안내가 없거나 틀렸거나 읽을 수 없으면 None — 절대 던지지 않는다."""
     try:
-        d = _read(path)
+        m = load(path)
     except (OSError, ValueError):
         return None
-    return d.get("revision") if d.get("enabled") else None
+    return m["revision"] if m.get("enabled") else None
