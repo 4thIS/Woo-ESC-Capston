@@ -9,6 +9,7 @@
 
 # ─── 프로토콜 계약 (단일 진실원, lockstep 대상) ───────────
 /lora_proto/                        @ssenu
+/assistant_proto/                   @ssenu
 
 # ─── firmware: 무선·절전·스케줄링은 cw, 렌더링은 dh ───────
 /firmware/                          @ssenu
@@ -30,6 +31,8 @@
 # ─── server: 웹 풀스택은 wj, LoRa 서비스 계층은 PM ────────
 /server/                            @leemonta9482
 /server/app/lora_service/           @ssenu
+/server/app/assistant/              @ssenu
+/server/app/domain/ops.py           @ssenu @leemonta9482
 
 # ─── 메인Pi 배포(Docker): 인프라는 PM, 서버 이미지는 wj 와 공동 ─────────
 /compose.yaml                       @ssenu @leemonta9482
@@ -45,9 +48,12 @@
 # ─── web: 코드 전체는 wj. mh 디자인 리뷰는 2026-11-17 철회 — 팀장 확인 후 머지 ──
 /web/                               @leemonta9482
 
+# ─── ml: AI 비서 모델 데이터·학습·평가 (wj) ─────────────
+/ml/                                @leemonta9482
+
 # ─── 문서 ─────────────────────────────────────────────────
 /docs/                              @ssenu
-/docs/design/                       @jmh7706jmh-ops
+/docs/design/                       @ssenu
 
 # ─── 참고: 혼자 진행하는 프로젝트라면 ──────────────────────
 # 위 경로별 규칙을 지우고 아래 한 줄로 축약한다.
