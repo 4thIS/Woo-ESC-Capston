@@ -32,7 +32,7 @@
 |---|---|---|
 | `rooms` | 문자열 배열 (1~30개, 각 1~20자) | 강의실 표현 그대로 ("803", "803호", "공학관 803", "8층 전체", "801~805") |
 | `when` | 문자열 (1~40자) | 날짜·기간·요일 표현 그대로 ("이번 주 금요일", "12/15~19", "매주 월") |
-| `time` | 문자열 (1~40자) | 시각 표현 그대로 ("15시부터 18시까지", "3시 반", "16시로") |
+| `time` | 문자열 (1~40자) | 시각 표현 그대로 ("15시부터 18시까지", "3시 반", "16시") |
 | `type` | 문자열 enum | `수업` `시험` `휴강` `빈강의실` `특강` `대여` 중 하나 |
 | `subject` | 문자열 (1~40자) | 과목·행사 이름 그대로 |
 | `professor` | 문자열 (1~20자) | 교수·담당자 이름 그대로 |
@@ -139,7 +139,7 @@ class When:
 @dataclass(frozen=True)
 class TimeSpan:
     start: time
-    end: time | None                   # None = 시작만 말함("16시로")
+    end: time | None                   # None = 시작만 말함("16시")
 
 def resolve_when(expr: str, now: datetime) -> When | None: ...   # now 는 KST aware. 못 풀면 None
 def resolve_weekdays(expr: str) -> tuple[int, ...] | None: ...  # 1=월 … 7=일, 오름차순. 못 풀면 None
@@ -148,6 +148,7 @@ def normalize_room(expr: str) -> str: ...  # 공백·"호" 정리: "803호"→"8
 
 # ---- 대화 규칙 (assistant_proto.rules) — 서버가 되묻고, ml 이 같은 접두어를 만든다 ----
 PRIMARY: dict[str, str]   # intent → 이어지는 답(fill)이 들어갈 칸 묶음 "set" | "target"
+PREVIEW_QUESTION: str     # 미리보기 뒤 next_prefix 질문
 def missing(intent: str, target: dict, set_: dict) -> str | None: ...   # 다음에 물을 칸 "set.time" 등, 다 찼으면 None
 def question(intent: str, slot: str, type_label: str | None = None) -> str: ...  # 그 칸을 묻는 문장
 def state_items(intent: str, target: dict, set_: dict, missing_slot: str | None = None) -> list[tuple[str, str | None]]: ...
@@ -167,6 +168,9 @@ def state_items(intent: str, target: dict, set_: dict, missing_slot: str | None 
 - 정규 시간표(`class.*`)는 `resolve_when` 대신 `resolve_weekdays` 를 쓴다: "월" "월요일" "매주 월" "월수금" "화, 목" → 요일 번호 튜플.
 - 시각 "15시" "15:30" "3시 반" "오전 9시" "오후 3시" "정오". 오전·오후 없는 1~8시는 13~20시. 9~12시는 그대로.
 - 구간 "3시부터 6시" "3~6시" "15:00-18:00" "3시부터 3시간". 끝만 있는 "6시까지"는 못 풂(None).
+- 시각 정제: 오전 시작 + 표시 없는 끝은 오전 유지("오전 7시부터 8시" → 07~08). "N분까지"는 시작한 시의 N분("3시 30분부터 50분까지" → 15:30~15:50, N ≤ 시작 분이면 못 풂). 오전/오후가 24시간 표기와 모순이거나("오후 13시") 모호하면("오전·아침·저녁·밤 12시", "밤 1~5시", "0시부터 3시") 못 풂.
+- 기간 길이 0~92일만(넘거나 거꾸로면 못 풂). 날짜만 쓴 거꾸로 끝("28일부터 3일까지")은 시작 ≥ 20일 · 끝 ≤ 10일일 때만 다음 달. 진행 중인 기간은 올해 시작 그대로(해 넘김 "12/28~1/3" 을 1월에 말하면 작년 12/28 부터).
+- 목록의 날짜만 쓴 항목("7일")은 앞 항목의 해·달을 이어받는다("1/5, 7일" → 2027-01-05, 01-07). 건물 이름의 "호관"("5호관")은 `normalize_room` 이 지우지 않는다.
 
 ---
 
