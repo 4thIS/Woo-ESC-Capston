@@ -67,6 +67,9 @@
 {"fn":"time","now":"2026-11-25T10:00:00+09:00","expr":"오후 4시부터 6시","expect":{"start":"16:00","end":"18:00"}}
 {"fn":"time","now":"2026-11-25T10:00:00+09:00","expr":"3시 반","expect":{"start":"15:30","end":null}}
 {"fn":"time","now":"2026-11-25T10:00:00+09:00","expr":"오후 3시","expect":{"start":"15:00","end":null}}
+{"fn":"time","now":"2026-11-25T10:00:00+09:00","expr":"08:00","expect":{"start":"08:00","end":null}}
+{"fn":"time","now":"2026-11-25T10:00:00+09:00","expr":"07:30-09:00","expect":{"start":"07:30","end":"09:00"}}
+{"fn":"time","now":"2026-11-25T10:00:00+09:00","expr":"8:00","expect":{"start":"20:00","end":null}}
 {"fn":"time","now":"2026-11-25T10:00:00+09:00","expr":"오전 10시","expect":{"start":"10:00","end":null}}
 {"fn":"time","now":"2026-11-25T10:00:00+09:00","expr":"16시","expect":{"start":"16:00","end":null}}
 {"fn":"time","now":"2026-11-25T10:00:00+09:00","expr":"16시로","expect":{"start":"16:00","end":null}}
