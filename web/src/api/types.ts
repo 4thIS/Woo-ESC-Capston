@@ -375,3 +375,117 @@ export const RESV_MINE_DATES = [
   'checked_out_at',
   'cancelled_at',
 ] as const
+
+// ---- AI 비서 (docs/plans/2026-11-25-ai-assistant-00-interfaces.md §4) ----
+/** 02 계획 0단계 실험으로 고른 브라우저 실행 도구 */
+export type AssistantRuntime = 'webllm' | 'transformers' | 'litert' | 'wllama'
+export interface ModelFile {
+  name: string
+  size: number
+  sha256: string
+}
+export interface ModelGeneration {
+  temperature: number
+  max_tokens: number
+}
+export interface ModelManifestOn {
+  enabled: true
+  schema_v: number
+  runtime: AssistantRuntime
+  repo: string
+  /** 40자 커밋 해시 — 브랜치 이름이 아니다 */
+  revision: string
+  files: ModelFile[]
+  system_prompt: string
+  first_prefix: string
+  json_schema: Record<string, unknown>
+  generation: ModelGeneration
+}
+/** enabled:false = 모델 안내가 아직 없다 (화면은 '준비 중') */
+export type ModelManifest = { enabled: false } | ModelManifestOn
+export interface TurnIn {
+  conversation_id: string | null
+  /** 1~300자. 선택 버튼 턴은 버튼 라벨 */
+  utterance: string
+  /** 모델 출력(파싱한 객체) — form · choice · raw_output 중 정확히 하나 */
+  form: Record<string, unknown> | null
+  choice: string | null
+  /** 두 번 시도해도 JSON 으로 못 읽은 모델 출력 원문(≤2000자) — 서버가 학습용 기록에 남기고 error 로 답한다 */
+  raw_output?: string | null
+}
+export interface TurnChoice {
+  id: string
+  label: string
+}
+export type TurnKind = 'ask' | 'preview' | 'answer' | 'error'
+export interface WeekData {
+  slots: SlotWithRoom[]
+  reservations: ResvWithRoom[]
+  exams: ExamWithRoom[]
+}
+export type DiffOp = 'add' | 'remove' | 'change'
+export interface PreviewMark {
+  entity: 'slot' | 'resv' | 'exam'
+  /** 정규 시간표 d{day}-{HHMM} · 예약 r{id} · 시험기간 e{id} */
+  key: string
+  op: DiffOp
+  /** change 일 때 바뀐 칸 이름 (s_h · subject …) */
+  fields: string[]
+}
+export interface PreviewWeek {
+  /** 그 주 월요일. null = 정규 시간표만 바뀜(요일 격자) */
+  week_start: string | null
+  before: WeekData
+  after: WeekData
+  changes: PreviewMark[]
+}
+export interface PreviewRoom {
+  room_id: number
+  /** 전송 추적이 건물 단위로 outbox 를 읽을 때 쓴다 */
+  building_id: number
+  label: string
+  added: number
+  removed: number
+  changed: number
+  weeks: PreviewWeek[]
+}
+export interface PreviewOut {
+  preview_id: string
+  expires_at: Date
+  summary: string[]
+  /** 하나라도 있으면 적용 불가 */
+  blockers: string[]
+  warnings: string[]
+  notices: string[]
+  rooms: PreviewRoom[]
+}
+export interface AnswerOut {
+  title: string
+  columns: string[]
+  rows: string[][]
+}
+export interface TurnOut {
+  conversation_id: string
+  kind: TurnKind
+  message: string
+  choices: TurnChoice[]
+  /** 다음 턴 모델 입력 접두어. 대화가 끝났으면 null */
+  next_prefix: string | null
+  /** true = 대화 끝 — 다음 턴은 conversation_id null 로 */
+  closed: boolean
+  preview: PreviewOut | null
+  answer: AnswerOut | null
+}
+export interface ApplyOut {
+  change_id: number
+  outbox_ids: number[]
+}
+export interface ChangeOut {
+  id: number
+  applied_at: Date
+  user_email: string
+  utterance: string
+  summary: string[]
+  outbox_ids: number[]
+}
+export const CHANGE_DATES = ['applied_at'] as const
