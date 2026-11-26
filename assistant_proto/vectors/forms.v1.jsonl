@@ -1,0 +1,76 @@
+{"id":"event.add-1","prefix":"관리자: ","utterance":"803호 이번주 금요일 15시부터 18시까지 특강 예약해줘","form":{"v":1,"intent":"event.add","target":{},"set":{"rooms":["803호"],"when":"이번주 금요일","time":"15시부터 18시까지","type":"특강"}}}
+{"id":"event.add-2","prefix":"관리자: ","utterance":"다음 주 화요일 공학관 801 자료구조 휴강","form":{"v":1,"intent":"event.add","target":{},"set":{"rooms":["공학관 801"],"when":"다음 주 화요일","type":"휴강","subject":"자료구조"}}}
+{"id":"event.add-3","prefix":"관리자: ","utterance":"803 목요일 3시~6시 알고리즘 보강 잡아줘 김교수","form":{"v":1,"intent":"event.add","target":{},"set":{"rooms":["803"],"when":"목요일","time":"3시~6시","type":"수업","subject":"알고리즘","professor":"김교수"}}}
+{"id":"event.add-4","prefix":"관리자: ","utterance":"12/3 801, 803 오후 2시부터 4시 학생회 행사로 대관","form":{"v":1,"intent":"event.add","target":{},"set":{"rooms":["801","803"],"when":"12/3","time":"오후 2시부터 4시","type":"대여","subject":"학생회 행사"}}}
+{"id":"event.add-5","prefix":"관리자: ","utterance":"8층 전체 12/24 휴강","form":{"v":1,"intent":"event.add","target":{},"set":{"rooms":["8층 전체"],"when":"12/24","type":"휴강"}}}
+{"id":"event.change-1","prefix":"관리자: ","utterance":"803 금요일 특강 16시로 바꿔줘","form":{"v":1,"intent":"event.change","target":{"rooms":["803"],"when":"금요일","type":"특강"},"set":{"time":"16시"}}}
+{"id":"event.change-2","prefix":"관리자: ","utterance":"801 다음 주 화요일 휴강을 수요일로 옮겨줘","form":{"v":1,"intent":"event.change","target":{"rooms":["801"],"when":"다음 주 화요일","type":"휴강"},"set":{"when":"수요일"}}}
+{"id":"event.change-3","prefix":"관리자: ","utterance":"12/3 803 대관 이름을 동아리 발표회로 바꿔","form":{"v":1,"intent":"event.change","target":{"rooms":["803"],"when":"12/3","type":"대여"},"set":{"subject":"동아리 발표회"}}}
+{"id":"event.change-4","prefix":"관리자: ","utterance":"이번주 목요일 803 보강 시간 3시부터 5시로 변경","form":{"v":1,"intent":"event.change","target":{"rooms":["803"],"when":"이번주 목요일","type":"수업"},"set":{"time":"3시부터 5시"}}}
+{"id":"event.remove-1","prefix":"관리자: ","utterance":"803 이번주 금요일 특강 삭제해줘","form":{"v":1,"intent":"event.remove","target":{"rooms":["803"],"when":"이번주 금요일","type":"특강"},"set":{}}}
+{"id":"event.remove-2","prefix":"관리자: ","utterance":"12/24 8층 전체 휴강 지워","form":{"v":1,"intent":"event.remove","target":{"rooms":["8층 전체"],"when":"12/24","type":"휴강"},"set":{}}}
+{"id":"event.remove-3","prefix":"관리자: ","utterance":"801 내일 오후 2시 대관 없애줘","form":{"v":1,"intent":"event.remove","target":{"rooms":["801"],"when":"내일","time":"오후 2시","type":"대여"},"set":{}}}
+{"id":"event.remove-4","prefix":"관리자: ","utterance":"다음 주 월요일 803 알고리즘 보강 취소","form":{"v":1,"intent":"event.remove","target":{"rooms":["803"],"when":"다음 주 월요일","type":"수업","subject":"알고리즘"},"set":{}}}
+{"id":"exam.add-1","prefix":"관리자: ","utterance":"801, 803 12/15~19 시험기간으로 설정","form":{"v":1,"intent":"exam.add","target":{},"set":{"rooms":["801","803"],"when":"12/15~19"}}}
+{"id":"exam.add-2","prefix":"관리자: ","utterance":"공학관 8층 전체 다음 주 월요일부터 금요일까지 시험기간","form":{"v":1,"intent":"exam.add","target":{},"set":{"rooms":["공학관 8층 전체"],"when":"다음 주 월요일부터 금요일까지"}}}
+{"id":"exam.add-3","prefix":"관리자: ","utterance":"803 기말고사 기간 12월 14일부터 18일까지","form":{"v":1,"intent":"exam.add","target":{},"set":{"rooms":["803"],"when":"12월 14일부터 18일까지"}}}
+{"id":"exam.add-4","prefix":"관리자: ","utterance":"802호 12/8~12/12 중간고사 기간 등록","form":{"v":1,"intent":"exam.add","target":{},"set":{"rooms":["802호"],"when":"12/8~12/12"}}}
+{"id":"exam.change-1","prefix":"관리자: ","utterance":"803 시험기간을 12/16~20 으로 바꿔","form":{"v":1,"intent":"exam.change","target":{"rooms":["803"]},"set":{"when":"12/16~20"}}}
+{"id":"exam.change-2","prefix":"관리자: ","utterance":"801 12/15~19 시험기간을 12/14~18 로 변경","form":{"v":1,"intent":"exam.change","target":{"rooms":["801"],"when":"12/15~19"},"set":{"when":"12/14~18"}}}
+{"id":"exam.change-3","prefix":"관리자: ","utterance":"공학관 803 시험기간 다음 주 월요일부터 금요일까지로 변경","form":{"v":1,"intent":"exam.change","target":{"rooms":["공학관 803"]},"set":{"when":"다음 주 월요일부터 금요일까지"}}}
+{"id":"exam.change-4","prefix":"관리자: ","utterance":"802 중간고사 기간 12/9~12/13으로 수정","form":{"v":1,"intent":"exam.change","target":{"rooms":["802"]},"set":{"when":"12/9~12/13"}}}
+{"id":"exam.remove-1","prefix":"관리자: ","utterance":"803 시험기간 삭제","form":{"v":1,"intent":"exam.remove","target":{"rooms":["803"]},"set":{}}}
+{"id":"exam.remove-2","prefix":"관리자: ","utterance":"801 12/15~19 시험기간 지워줘","form":{"v":1,"intent":"exam.remove","target":{"rooms":["801"],"when":"12/15~19"},"set":{}}}
+{"id":"exam.remove-3","prefix":"관리자: ","utterance":"8층 전체 시험기간 해제","form":{"v":1,"intent":"exam.remove","target":{"rooms":["8층 전체"]},"set":{}}}
+{"id":"exam.remove-4","prefix":"관리자: ","utterance":"공학관 802 기말고사 기간 취소해","form":{"v":1,"intent":"exam.remove","target":{"rooms":["공학관 802"]},"set":{}}}
+{"id":"class.add-1","prefix":"관리자: ","utterance":"803 월 9시~12시 자료구조 김교수 수업 추가","form":{"v":1,"intent":"class.add","target":{},"set":{"rooms":["803"],"when":"월","time":"9시~12시","type":"수업","subject":"자료구조","professor":"김교수"}}}
+{"id":"class.add-2","prefix":"관리자: ","utterance":"801 매주 화목 오후 3시부터 4시 15분 알고리즘 정규 수업 넣어줘","form":{"v":1,"intent":"class.add","target":{},"set":{"rooms":["801"],"when":"매주 화목","time":"오후 3시부터 4시 15분","type":"수업","subject":"알고리즘"}}}
+{"id":"class.add-3","prefix":"관리자: ","utterance":"공학관 802 수요일 10시부터 12시 캡스톤디자인 박교수","form":{"v":1,"intent":"class.add","target":{},"set":{"rooms":["공학관 802"],"when":"수요일","time":"10시부터 12시","subject":"캡스톤디자인","professor":"박교수"}}}
+{"id":"class.add-4","prefix":"관리자: ","utterance":"803 금요일마다 1시~3시 알고리즘 정규 편성","form":{"v":1,"intent":"class.add","target":{},"set":{"rooms":["803"],"when":"금요일마다","time":"1시~3시","subject":"알고리즘"}}}
+{"id":"class.change-1","prefix":"관리자: ","utterance":"803 월요일 자료구조 교수 이교수로 바꿔","form":{"v":1,"intent":"class.change","target":{"rooms":["803"],"when":"월요일","subject":"자료구조"},"set":{"professor":"이교수"}}}
+{"id":"class.change-2","prefix":"관리자: ","utterance":"801 화요일 3시 수업 4시로 옮겨줘","form":{"v":1,"intent":"class.change","target":{"rooms":["801"],"when":"화요일","time":"3시","type":"수업"},"set":{"time":"4시"}}}
+{"id":"class.change-3","prefix":"관리자: ","utterance":"802 수요일 캡스톤디자인 10시부터 1시까지로 변경","form":{"v":1,"intent":"class.change","target":{"rooms":["802"],"when":"수요일","subject":"캡스톤디자인"},"set":{"time":"10시부터 1시까지"}}}
+{"id":"class.change-4","prefix":"관리자: ","utterance":"공학관 803 목 9시 수업 과목명 운영체제로 수정","form":{"v":1,"intent":"class.change","target":{"rooms":["공학관 803"],"when":"목","time":"9시","type":"수업"},"set":{"subject":"운영체제"}}}
+{"id":"class.remove-1","prefix":"관리자: ","utterance":"803 월요일 자료구조 수업 삭제","form":{"v":1,"intent":"class.remove","target":{"rooms":["803"],"when":"월요일","type":"수업","subject":"자료구조"},"set":{}}}
+{"id":"class.remove-2","prefix":"관리자: ","utterance":"801 화요일 오후 3시 수업 빼줘","form":{"v":1,"intent":"class.remove","target":{"rooms":["801"],"when":"화요일","time":"오후 3시","type":"수업"},"set":{}}}
+{"id":"class.remove-3","prefix":"관리자: ","utterance":"공학관 802 매주 수요일 캡스톤디자인 없애","form":{"v":1,"intent":"class.remove","target":{"rooms":["공학관 802"],"when":"매주 수요일","subject":"캡스톤디자인"},"set":{}}}
+{"id":"class.remove-4","prefix":"관리자: ","utterance":"803 금요일 알고리즘 정규 시간표에서 지워","form":{"v":1,"intent":"class.remove","target":{"rooms":["803"],"when":"금요일","subject":"알고리즘"},"set":{}}}
+{"id":"request.approve-1","prefix":"관리자: ","utterance":"801 내일 신청 승인해줘","form":{"v":1,"intent":"request.approve","target":{"rooms":["801"],"when":"내일"},"set":{}}}
+{"id":"request.approve-2","prefix":"관리자: ","utterance":"김민수 학생 예약 승인","form":{"v":1,"intent":"request.approve","target":{"requester":"김민수"},"set":{}}}
+{"id":"request.approve-3","prefix":"관리자: ","utterance":"803 금요일 오후 2시 대여 신청 승인","form":{"v":1,"intent":"request.approve","target":{"rooms":["803"],"when":"금요일","time":"오후 2시","type":"대여"},"set":{}}}
+{"id":"request.approve-4","prefix":"관리자: ","utterance":"20231234 신청 허락해줘","form":{"v":1,"intent":"request.approve","target":{"requester":"20231234"},"set":{}}}
+{"id":"request.approve-5","prefix":"상태: event.add | 강의실 803 | 날짜 이번 주 금요일 | 시각 15시부터 18시까지 | 유형 특강 | 이름 ?\n질문: 특강 이름은 무엇인가요?\n관리자: ","utterance":"아 그거 말고 801 내일 신청 승인해줘","form":{"v":1,"intent":"request.approve","target":{"rooms":["801"],"when":"내일"},"set":{}}}
+{"id":"request.reject-1","prefix":"관리자: ","utterance":"801 내일 신청 거절해 장비 점검 때문에","form":{"v":1,"intent":"request.reject","target":{"rooms":["801"],"when":"내일"},"set":{"reason":"장비 점검 때문에"}}}
+{"id":"request.reject-2","prefix":"관리자: ","utterance":"김민수 예약 신청 반려, 사유는 시험 기간","form":{"v":1,"intent":"request.reject","target":{"requester":"김민수"},"set":{"reason":"시험 기간"}}}
+{"id":"request.reject-3","prefix":"관리자: ","utterance":"803 12/3 신청 거절","form":{"v":1,"intent":"request.reject","target":{"rooms":["803"],"when":"12/3"},"set":{}}}
+{"id":"request.reject-4","prefix":"관리자: ","utterance":"이영희 학생 신청은 강의실 공사로 거절","form":{"v":1,"intent":"request.reject","target":{"requester":"이영희"},"set":{"reason":"강의실 공사"}}}
+{"id":"ask.free_rooms-1","prefix":"관리자: ","utterance":"이번주 금요일 오후 2시부터 5시까지 빈 강의실 있어?","form":{"v":1,"intent":"ask.free_rooms","target":{"when":"이번주 금요일","time":"오후 2시부터 5시까지"},"set":{}}}
+{"id":"ask.free_rooms-2","prefix":"관리자: ","utterance":"내일 빈 강의실 알려줘","form":{"v":1,"intent":"ask.free_rooms","target":{"when":"내일"},"set":{}}}
+{"id":"ask.free_rooms-3","prefix":"관리자: ","utterance":"8층에서 12/3 10시~12시 비어있는 강의실","form":{"v":1,"intent":"ask.free_rooms","target":{"rooms":["8층"],"when":"12/3","time":"10시~12시"},"set":{}}}
+{"id":"ask.free_rooms-4","prefix":"관리자: ","utterance":"공학관 다음 주 월요일 빈 방","form":{"v":1,"intent":"ask.free_rooms","target":{"rooms":["공학관"],"when":"다음 주 월요일"},"set":{}}}
+{"id":"ask.schedule-1","prefix":"관리자: ","utterance":"803 이번주 일정 보여줘","form":{"v":1,"intent":"ask.schedule","target":{"rooms":["803"],"when":"이번주"},"set":{}}}
+{"id":"ask.schedule-2","prefix":"관리자: ","utterance":"801 내일 뭐 있어?","form":{"v":1,"intent":"ask.schedule","target":{"rooms":["801"],"when":"내일"},"set":{}}}
+{"id":"ask.schedule-3","prefix":"관리자: ","utterance":"공학관 802 시간표 알려줘","form":{"v":1,"intent":"ask.schedule","target":{"rooms":["공학관 802"]},"set":{}}}
+{"id":"ask.schedule-4","prefix":"관리자: ","utterance":"803 12/3 일정","form":{"v":1,"intent":"ask.schedule","target":{"rooms":["803"],"when":"12/3"},"set":{}}}
+{"id":"ask.requests-1","prefix":"관리자: ","utterance":"대기 중인 신청 보여줘","form":{"v":1,"intent":"ask.requests","target":{},"set":{}}}
+{"id":"ask.requests-2","prefix":"관리자: ","utterance":"801 예약 신청 들어온 거 있어?","form":{"v":1,"intent":"ask.requests","target":{"rooms":["801"]},"set":{}}}
+{"id":"ask.requests-3","prefix":"관리자: ","utterance":"내일 신청 목록","form":{"v":1,"intent":"ask.requests","target":{"when":"내일"},"set":{}}}
+{"id":"ask.requests-4","prefix":"관리자: ","utterance":"승인 기다리는 예약 몇 개야","form":{"v":1,"intent":"ask.requests","target":{},"set":{}}}
+{"id":"ask.node-1","prefix":"관리자: ","utterance":"801 노드 배터리 얼마야?","form":{"v":1,"intent":"ask.node","target":{"rooms":["801"]},"set":{}}}
+{"id":"ask.node-2","prefix":"관리자: ","utterance":"803 문 앞 화면 잘 붙어있어?","form":{"v":1,"intent":"ask.node","target":{"rooms":["803"]},"set":{}}}
+{"id":"ask.node-3","prefix":"관리자: ","utterance":"8층 전체 노드 상태","form":{"v":1,"intent":"ask.node","target":{"rooms":["8층 전체"]},"set":{}}}
+{"id":"ask.node-4","prefix":"관리자: ","utterance":"공학관 802 단말 신호 어때","form":{"v":1,"intent":"ask.node","target":{"rooms":["공학관 802"]},"set":{}}}
+{"id":"fill-1","prefix":"상태: event.add | 강의실 803 | 날짜 이번 주 금요일 | 시각 15시부터 18시까지 | 유형 특강 | 이름 ?\n질문: 특강 이름은 무엇인가요?\n관리자: ","utterance":"알고리즘 특강이요","form":{"v":1,"intent":"fill","target":{},"set":{"subject":"알고리즘 특강"}}}
+{"id":"fill-2","prefix":"상태: event.add | 강의실 803 | 유형 대여 | 이름 동아리 회의 | 날짜 ?\n질문: 날짜는 언제인가요? (예: 12/3, 이번 주 금요일)\n관리자: ","utterance":"다음 주 수요일 오후 4시부터 6시","form":{"v":1,"intent":"fill","target":{},"set":{"when":"다음 주 수요일","time":"오후 4시부터 6시"}}}
+{"id":"fill-3","prefix":"상태: event.add | 강의실 803 | 날짜 내일 | 시각 3시~5시 | 유형 대여 | 이름 스터디\n질문: 확인 화면을 보고 [적용]을 눌러 주세요. 바꿀 것이 있으면 말씀해 주세요.\n관리자: ","utterance":"아 801도 같이","form":{"v":1,"intent":"fill","target":{},"set":{"rooms":["801"]}}}
+{"id":"fill-4","prefix":"상태: class.add | 강의실 801 | 요일 월 | 시각 9시~12시 | 과목 ?\n질문: 과목명은 무엇인가요?\n관리자: ","utterance":"자료구조, 김교수님","form":{"v":1,"intent":"fill","target":{},"set":{"subject":"자료구조","professor":"김교수님"}}}
+{"id":"fill-5","prefix":"상태: event.change | 대상 강의실 803 | 대상 날짜 금요일 | 대상 유형 특강\n질문: 무엇을 어떻게 바꿀까요? (예: 16시부터 18시까지로, 이름을 ○○로)\n관리자: ","utterance":"17시부터 19시까지로","form":{"v":1,"intent":"fill","target":{},"set":{"time":"17시부터 19시까지"}}}
+{"id":"cancel-1","prefix":"관리자: ","utterance":"취소","form":{"v":1,"intent":"cancel","target":{},"set":{}}}
+{"id":"cancel-2","prefix":"관리자: ","utterance":"아니 그만할게","form":{"v":1,"intent":"cancel","target":{},"set":{}}}
+{"id":"cancel-3","prefix":"상태: event.add | 강의실 803 | 날짜 이번 주 금요일 | 시각 15시부터 18시까지 | 유형 특강 | 이름 ?\n질문: 특강 이름은 무엇인가요?\n관리자: ","utterance":"됐어 안 할래","form":{"v":1,"intent":"cancel","target":{},"set":{}}}
+{"id":"cancel-4","prefix":"관리자: ","utterance":"처음부터 다시","form":{"v":1,"intent":"cancel","target":{},"set":{}}}
+{"id":"unknown-1","prefix":"관리자: ","utterance":"지난달 가장 많이 빈 강의실이 어디야?","form":{"v":1,"intent":"unknown","target":{},"set":{}}}
+{"id":"unknown-2","prefix":"관리자: ","utterance":"안녕","form":{"v":1,"intent":"unknown","target":{},"set":{}}}
+{"id":"unknown-3","prefix":"관리자: ","utterance":"803호 강의실 삭제해줘","form":{"v":1,"intent":"unknown","target":{},"set":{}}}
+{"id":"unknown-4","prefix":"관리자: ","utterance":"점심 뭐 먹지","form":{"v":1,"intent":"unknown","target":{},"set":{}}}
+{"id":"unknown-5","prefix":"관리자: ","utterance":"801 노드 재부팅해줘","form":{"v":1,"intent":"unknown","target":{},"set":{}}}
