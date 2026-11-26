@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.assistant.router import router as assistant_router
 from app.auth import password
 from app.auth.router import admin as admin_router
 from app.auth.router import router as auth_router
@@ -87,6 +88,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app.include_router(admin_api_router)
     app.include_router(admin_resv_router)
     app.include_router(student_router)
+    app.include_router(assistant_router)
     if settings.debug:
         app.mount(
             "/static",

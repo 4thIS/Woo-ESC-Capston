@@ -11,6 +11,7 @@ import threading
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.assistant import prune as assistant_prune
 from app.auth.models import EmailToken, User
 from app.domain import clock, reserve
 from app.domain.models import JobRun, Reservation
@@ -179,7 +180,14 @@ def run_daily(
 def _run_daily(Session: sessionmaker, now_utc: dt.datetime | None) -> int:
     now_utc = now_utc or clock.now_utc()
     now_local = clock.to_local(now_utc)
-    res: dict = {"expired": 0, "promoted": 0, "resynced": [], "pruned": {}, "errors": []}
+    res: dict = {
+        "expired": 0,
+        "promoted": 0,
+        "resynced": [],
+        "pruned": {},
+        "assistant": {},
+        "errors": [],
+    }
 
     def step(name, fn):
         try:
@@ -194,6 +202,7 @@ def _run_daily(Session: sessionmaker, now_utc: dt.datetime | None) -> int:
     step("promoted", lambda s: _promote(Session, now_local, res["errors"]))  # 예약마다 자기 세션
     step("resynced", lambda s: _resync_failed(s, now_utc, res["errors"]))
     step("pruned", lambda s: _prune(s, now_utc, now_local))
+    step("assistant", lambda s: assistant_prune.prune(s, now_utc))
     with Session() as s, s.begin():
         run = JobRun(name="daily", ran_at=now_utc, result=json.dumps(res, ensure_ascii=False))
         s.add(run)

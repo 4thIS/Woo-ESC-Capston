@@ -48,6 +48,20 @@ wheels = [
 ]
 
 [[package]]
+name = "assistant-proto"
+version = "1.0.0"
+source = { editable = "../assistant_proto" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "jsonschema", specifier = ">=4.23" },
+    { name = "pytest", specifier = ">=8.3" },
+    { name = "ruff", specifier = "==0.16.7" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.7.22"
 source = { registry = "https://pypi.org/simple" }
@@ -552,6 +566,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "assistant-proto" },
     { name = "fastapi" },
     { name = "lora-proto" },
     { name = "pydantic" },
@@ -573,6 +588,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.13" },
+    { name = "assistant-proto", editable = "../assistant_proto" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "lora-proto", editable = "../lora_proto" },
     { name = "pydantic", specifier = ">=2.9" },

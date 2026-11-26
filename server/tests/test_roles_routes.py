@@ -87,6 +87,10 @@ ROUTES: dict[tuple[str, str], str] = {
     ("GET", "/api/lora/status"): MANAGER,
     ("GET", "/api/lora/pending"): MANAGER,
     ("POST", "/api/lora/pending/{mac}/provision"): MANAGER,
+    ("GET", "/api/assistant/model"): MANAGER,
+    ("POST", "/api/assistant/turns"): MANAGER,
+    ("POST", "/api/assistant/previews/{preview_id}/apply"): MANAGER,
+    ("GET", "/api/assistant/changes"): MANAGER,
     # 최고 관리자만
     ("PATCH", "/api/schools/{id}"): SUPER,
     ("POST", "/api/buildings"): SUPER,
