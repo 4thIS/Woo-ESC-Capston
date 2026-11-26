@@ -224,7 +224,8 @@ def resolve_weekdays(expr: str) -> tuple[int, ...] | None:
 
 
 def _clock(tok: str, *, bare_ok: bool) -> time | None:
-    """'15시' '3시 반' '오후 2시 30분' '15:30' '정오'. 오전·오후 없는 1~8시는 오후(수업 시간대)."""
+    """'15시' '3시 반' '오후 2시 30분' '15:30' '정오'. 오전·오후 없는 1~8시는 오후(수업 시간대).
+    앞자리 0("08:00" "07시")은 24시간제로 보고 오후로 바꾸지 않는다."""
     if tok in ("정오", "낮12시"):
         return time(12, 0)
     m = _CLOCK.match(tok)
@@ -243,7 +244,9 @@ def _clock(tok: str, *, bare_ok: bool) -> time | None:
         mi = 30
     if h > 23 or mi > 59:
         return None
-    if (ap in ("오후", "저녁", "밤") and h < 12) or (ap in (None, "낮") and 1 <= h <= 8):
+    if (ap in ("오후", "저녁", "밤") and h < 12) or (
+        ap in (None, "낮") and 1 <= h <= 8 and not hh.startswith("0")
+    ):
         h += 12
     return time(h, mi)
 
