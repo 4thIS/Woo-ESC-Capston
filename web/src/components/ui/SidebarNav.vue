@@ -86,12 +86,23 @@ onScopeDispose(() => window.removeEventListener('resize', place))
             class="nav__item nav__item--action"
             :class="{ 'nav__item--open': i.expanded }"
             :aria-expanded="i.expanded ? 'true' : 'false'"
+            :aria-label="i.badge ? `${i.label}, 대기 ${i.badge}건` : undefined"
             @click="i.action()"
           >
             <svg v-if="i.icon" class="nav__icon" viewBox="0 0 24 24" aria-hidden="true">
               <path :d="ICONS[i.icon]" />
             </svg>
             <span class="nav__label">{{ i.label }}</span>
+            <Transition name="nav-pop">
+              <Badge
+                v-if="i.badge"
+                :key="i.badge"
+                variant="solid"
+                tone="brand"
+                class="nav__count num"
+                >{{ i.badge }}</Badge
+              >
+            </Transition>
             <kbd v-if="i.shortcut" class="nav__kbd">{{ i.shortcut }}</kbd>
           </button>
         </li>
@@ -198,7 +209,8 @@ onScopeDispose(() => window.removeEventListener('resize', place))
     color var(--dur-fast) ease,
     transform var(--dur-fast) var(--ease-soft);
 }
-.nav__item:hover:not(.nav__item--active) {
+/* 열린 action 항목(--open)은 hover 해도 brand-tint 를 지킨다 — 이 규칙(0,3,0)이 --open(0,1,0)을 덮지 않게 */
+.nav__item:hover:not(.nav__item--active):not(.nav__item--open) {
   background: var(--nav-hover);
 }
 .nav__item:active {
@@ -216,9 +228,6 @@ onScopeDispose(() => window.removeEventListener('resize', place))
   font-size: var(--font-size-md);
   text-align: left;
   cursor: pointer;
-}
-.nav__item--action:hover:not(.nav__item--open) {
-  background: var(--nav-hover);
 }
 .nav__item--open {
   border-color: var(--brand);

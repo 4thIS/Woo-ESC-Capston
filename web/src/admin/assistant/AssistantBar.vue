@@ -2,6 +2,7 @@
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
 import Button from '@/components/ui/Button.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
+import Table from '@/components/ui/Table.vue'
 import { DAYS } from '@/components/domain/rules'
 import { addDays, formatHm, md } from '@/lib/time'
 import WeekGrid from '../views/week/WeekGrid.vue'
@@ -12,7 +13,7 @@ import { assistantStore } from './store'
 
 // AI 비서 — 지금 화면 위에 내려오는 명령창 (docs/design/screens/admin-assistant.md)
 const a = assistantStore()
-const { phase, text, sent, turn, preview, error, stale } = a
+const { phase, text, sent, turn, preview, error, stale, reload } = a
 
 const input = ref<HTMLInputElement | null>(null)
 const answer = ref('')
@@ -61,6 +62,7 @@ function enter(e: KeyboardEvent, go: () => void) {
   go()
 }
 const sendText = () => void a.send()
+const refresh = () => window.location.reload()
 function sendAnswer() {
   const v = answer.value
   answer.value = ''
@@ -105,6 +107,25 @@ const strips = computed(() =>
 const changeCount = computed(() =>
   room.value ? room.value.added + room.value.removed + room.value.changed : 0,
 )
+const title = computed(() => {
+  const rooms = preview.value?.rooms ?? []
+  if (rooms.length > 1) return `변경 확인 · 강의실 ${rooms.length}곳`
+  return room.value ? `변경 확인 · ${room.value.label}` : '변경 확인'
+})
+// 조회 답 — 서버의 열·행을 Table 모양으로
+const answerCols = computed(() =>
+  (turn.value?.answer?.columns ?? []).map((label, i) => ({ key: `c${i}`, label })),
+)
+const answerRows = computed(() =>
+  (turn.value?.answer?.rows ?? []).map((r, i) => ({
+    id: i,
+    ...Object.fromEntries(r.map((v, j) => [`c${j}`, v])),
+  })),
+)
+// 서버 경고에는 겹침 말고 '노드가 응답하지 않습니다' 같은 것도 섞여 온다 — 아래 줄은 겹침만 센다
+const overlaps = computed(
+  () => preview.value?.warnings.filter((w) => w.includes('겹칩니다')).length ?? 0,
+)
 const until = computed(() => (preview.value ? formatHm(preview.value.expires_at) : ''))
 const blocked = computed(() => !!preview.value?.blockers.length)
 const VIEWS = [
@@ -123,7 +144,7 @@ const VIEWS = [
       class="ai"
       :class="{
         'ai--expanded': expanded,
-        'ai--tall': phase === 'ask' || phase === 'error',
+        'ai--tall': phase === 'ask' || phase === 'error' || phase === 'answer',
       }"
       role="dialog"
       aria-modal="true"
@@ -177,10 +198,24 @@ const VIEWS = [
       </div>
 
       <!-- 오류 · 되묻기 — 한 줄 아래 칸 -->
-      <p v-if="phase === 'error'" class="ai__panel ai__error" role="alert">{{ error }}</p>
+      <div v-if="phase === 'error'" class="ai__panel ai__error-row">
+        <p class="ai__error" role="alert">{{ error }}</p>
+        <Button v-if="reload" variant="secondary" size="sm" @click="refresh">새로고침</Button>
+      </div>
       <div v-if="phase === 'ask'" class="ai__panel" aria-live="polite">
         <p class="ai__q"><b>AI</b> {{ turn?.message }}</p>
-        <div class="ai__answer">
+        <div v-if="turn?.choices.length" class="ai__choices">
+          <Button
+            v-for="c in turn.choices"
+            :key="c.id"
+            variant="secondary"
+            size="sm"
+            @click="a.choose(c)"
+            >{{ c.label }}</Button
+          >
+          <Button variant="ghost" size="sm" @click="a.close()">요청 취소</Button>
+        </div>
+        <div v-else class="ai__answer">
           <label for="ai-answer" class="sr-only">답</label>
           <input
             id="ai-answer"
@@ -196,11 +231,19 @@ const VIEWS = [
         </div>
       </div>
 
-      <!-- 확인 — 펼친 창 -->
-      <template v-if="expanded && preview && room">
+      <!-- 조회 답 — 창에 남긴다 -->
+      <div v-if="phase === 'answer'" class="ai__panel" aria-live="polite">
+        <p class="ai__q"><b>AI</b> {{ turn?.message }}</p>
+        <div class="ai__table">
+          <Table :columns="answerCols" :rows="answerRows" empty="해당하는 것이 없습니다" />
+        </div>
+      </div>
+
+      <!-- 확인 — 펼친 창. 막힌 미리보기는 강의실 없이(rooms: []) 올 수 있다 — 그때는 왼쪽 열만 -->
+      <template v-if="expanded && preview">
         <div class="ai__body">
           <div class="ai__left">
-            <h2 class="ai__title">변경 확인 · {{ room.label }}</h2>
+            <h2 class="ai__title">{{ title }}</h2>
             <p v-if="stale" class="ai__stale">
               확인하는 동안 다른 변경이 있었습니다. 바뀐 내용으로 다시 확인해 주세요.
             </p>
@@ -235,7 +278,7 @@ const VIEWS = [
               사라집니다.
             </p>
           </div>
-          <div class="ai__right">
+          <div v-if="room" class="ai__right">
             <div class="ai__week">
               <b class="num">{{ md(monday) }}~{{ md(addDays(monday, 6)) }} 주</b>
               <SegmentedControl
@@ -259,9 +302,7 @@ const VIEWS = [
           </div>
         </div>
         <div class="ai__foot">
-          <span class="ai__count"
-            >변경 {{ changeCount }}건 · 겹침 {{ preview.warnings.length }}건</span
-          >
+          <span class="ai__count">변경 {{ changeCount }}건 · 겹침 {{ overlaps }}건</span>
           <Button variant="secondary" @click="a.close()">취소</Button>
           <Button :disabled="blocked" :loading="phase === 'applying'" @click="a.apply()"
             >적용</Button
@@ -395,8 +436,23 @@ const VIEWS = [
   background: var(--sunken);
   font-size: var(--font-size-md);
 }
+.ai__error-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
 .ai__error {
+  margin: 0;
   color: var(--danger);
+}
+.ai__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.ai__table {
+  max-height: 50vh;
+  overflow: auto;
 }
 .ai__q {
   margin: 0 0 var(--space-2);

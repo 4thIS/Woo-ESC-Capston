@@ -17,11 +17,10 @@ const TYPES: [RegExp, string][] = [
   [/시험/, '시험'],
 ]
 
-export function parseSentence(text: string): Form {
-  const t = text.trim()
-  if (/^취소/.test(t)) return { v: 1, intent: 'cancel', target: {}, set: {} }
+/** 문장에서 강의실 · 요일 · 시각 · 유형 · 이름 칸을 표현 그대로 뽑는다 */
+function readFields(text: string): Record<string, unknown> {
   const set: Record<string, unknown> = {}
-  let rest = t
+  let rest = text.trim()
   const room = ROOM.exec(rest)
   if (room) {
     set.rooms = [room[1]]
@@ -44,6 +43,13 @@ export function parseSentence(text: string): Form {
     const word = new RegExp(`(\\S+)\\s*(?:${kind[0].source})`).exec(rest)?.[1]
     if (word) set.subject = kind[1] === '특강' ? `${word} 특강` : word
   }
+  return set
+}
+
+export function parseSentence(text: string): Form {
+  const t = text.trim()
+  if (/^취소/.test(t)) return { v: 1, intent: 'cancel', target: {}, set: {} }
+  const set = readFields(t)
   if (!set.rooms && !set.time) return { v: 1, intent: 'unknown', target: {}, set: {} }
   return { v: 1, intent: 'event.add', target: {}, set }
 }
@@ -63,9 +69,18 @@ export class DevRuleRunner implements ModelRunner {
   async generate(req: GenerateReq): Promise<string> {
     const u = lastUtterance(req.user)
     if (req.user.includes('질문:')) {
-      const form: Form = /^취소/.test(u)
-        ? { v: 1, intent: 'cancel', target: {}, set: {} }
-        : { v: 1, intent: 'fill', target: {}, set: { subject: u } }
+      if (/^취소/.test(u)) return JSON.stringify({ v: 1, intent: 'cancel', target: {}, set: {} })
+      // 답에 강의실 · 요일 · 시각이 있으면 그 칸으로, 없으면 이름으로
+      const { rooms, when, time } = readFields(u)
+      const set = Object.fromEntries(
+        Object.entries({ rooms, when, time }).filter(([, v]) => v !== undefined),
+      )
+      const form: Form = {
+        v: 1,
+        intent: 'fill',
+        target: {},
+        set: Object.keys(set).length ? set : { subject: u },
+      }
       return JSON.stringify(form)
     }
     return JSON.stringify(parseSentence(u))
