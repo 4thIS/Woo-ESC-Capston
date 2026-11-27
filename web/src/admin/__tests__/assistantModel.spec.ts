@@ -15,7 +15,7 @@ import type { ModelManifestOn } from '@/api/types'
 const ABC = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
 
 class FakeCache {
-  map = new Map<string, Uint8Array>()
+  map = new Map<string, Uint8Array<ArrayBuffer>>()
   async match(k: string) {
     const v = this.map.get(k)
     return v ? new Response(v) : undefined
