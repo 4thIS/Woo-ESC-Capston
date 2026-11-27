@@ -31,6 +31,8 @@ const props = withDefaults(
     failed?: (p: Placed) => boolean
     /** AI 비서 확인 화면의 변경 표시 — 테두리 2px + 머리 태그 (admin-assistant.md 「변경 표시」) */
     marks?: (p: Placed) => BlockMark | undefined
+    /** 요일만 — 정규 시간표(특정 주가 아님) 확인 화면에서 날짜를 숨긴다 */
+    weekly?: boolean
   }>(),
   {
     rangeBlocks: undefined,
@@ -107,7 +109,7 @@ const who = (p: Placed) =>
       <div class="wk__corner" />
       <div v-for="d in days" :key="d.date" class="wk__head">
         <span
-          >{{ DAYS[d.day - 1] }} <span class="num">{{ md(d.date) }}</span></span
+          >{{ DAYS[d.day - 1] }} <span v-if="!weekly" class="num">{{ md(d.date) }}</span></span
         >
         <!-- 시험기간은 요일 헤더 아래 얇은 띠 — 셀은 건드리지 않는다 -->
         <span v-if="d.exam" class="wk__exam">시험기간</span>
