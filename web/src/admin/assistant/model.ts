@@ -1,4 +1,4 @@
-import { reactive, shallowRef } from 'vue'
+import { reactive, shallowRef, toRaw } from 'vue'
 import { assistantApi } from '@/api/assistant'
 import type { AssistantRuntime, ModelManifest, ModelManifestOn } from '@/api/types'
 import { webllmCacheName } from './adapters/webllmFiles'
@@ -46,8 +46,11 @@ export const cacheNameFor = (rt: AssistantRuntime): CacheNameOf =>
 let aborter: AbortController | null = null
 let inflight: Promise<void> | null = null
 
-const enabledManifest = (): ModelManifestOn | null =>
-  model.manifest && model.manifest.enabled ? model.manifest : null
+/** 원본 객체로 — Worker 로 postMessage 하므로 Vue 반응형(Proxy)이면 복제되지 않는다(DataCloneError) */
+const enabledManifest = (): ModelManifestOn | null => {
+  const m = toRaw(model.manifest)
+  return m && m.enabled ? m : null
+}
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 async function setEngine(next: { runner: ModelRunner; manifest: ModelManifestOn } | null) {

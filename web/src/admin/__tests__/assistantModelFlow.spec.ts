@@ -30,7 +30,10 @@ vi.mock('@/admin/assistant/modelStore', async (importOriginal) => ({
 vi.mock('@/admin/assistant/runner', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/admin/assistant/runner')>()
   class FakeRunner {
-    load = vi.fn(async () => {})
+    // Worker 로 postMessage 한다 — Vue 반응형(Proxy)은 복제되지 않는다(DataCloneError)
+    load = vi.fn(async (m: unknown) => {
+      structuredClone(m)
+    })
     generate = vi.fn(async () => '')
     dispose = vi.fn(async () => {})
   }
