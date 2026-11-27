@@ -1,0 +1,10 @@
+{
+ "n": 381,
+ "intent_acc": 0.963254593175853,
+ "field_acc": 0.903470715835141,
+ "exact_acc": 0.8608923884514436,
+ "format_err": 0.0,
+ "danger_rate": 0.0,
+ "latency_mean_ms": 2172.154855643045,
+ "latency_p90_ms": 2629
+}
