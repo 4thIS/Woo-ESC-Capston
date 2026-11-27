@@ -69,3 +69,14 @@ def test_data_digest_changes_with_content(tmp_path):
     d1 = data_digest([p])
     p.write_text("y\n", encoding="utf-8")
     assert d1 != data_digest([p]) and len(d1) == 12
+
+
+def test_longest_tokens_counts_prompt_and_completion():
+    from esc_ml.train import longest_tokens
+
+    class LenTok:
+        def __call__(self, text, add_special_tokens=False):
+            return {"input_ids": list(range(len(text)))}
+
+    rows = [{"prompt": "ab", "completion": "c"}, {"prompt": "abcd", "completion": "ef"}]
+    assert longest_tokens(LenTok(), rows) == 6

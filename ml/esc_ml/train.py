@@ -33,6 +33,13 @@ def to_prompt_completion(tok, ex: Example) -> dict:
     return {"prompt": prompt, "completion": completion}
 
 
+def longest_tokens(tok, rows) -> int:
+    """prompt+completion 의 최대 토큰 수 — max_length 보다 길면 정답이 잘려 학습에서 빠진다."""
+    return max(
+        len(tok(r["prompt"] + r["completion"], add_special_tokens=False)["input_ids"]) for r in rows
+    )
+
+
 def data_digest(paths) -> str:
     h = hashlib.sha256()
     for p in paths:
@@ -58,7 +65,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--alpha", type=int, default=32)
     ap.add_argument("--batch", type=int, default=4)
     ap.add_argument("--grad-accum", type=int, default=4)
-    ap.add_argument("--max-len", type=int, default=512)
+    # 시스템 지시문 포함 약 700~850 토큰(#180 지시문 기준) — 512 면 정답이 모두 잘린다
+    ap.add_argument("--max-len", type=int, default=1024)
     ap.add_argument("--seed", type=int, default=7)
     a = ap.parse_args(argv)
 
@@ -70,8 +78,14 @@ def main(argv: list[str] | None = None) -> int:
     tok = load_tokenizer(a.model)
     train_rows = [e for p in a.train for e in read_examples(p) if e.split == "train"]
     val_rows = [e for p in a.val for e in read_examples(p) if e.split == "val"]
-    train = Dataset.from_list([to_prompt_completion(tok, e) for e in train_rows])
-    val = Dataset.from_list([to_prompt_completion(tok, e) for e in val_rows])
+    train_pc = [to_prompt_completion(tok, e) for e in train_rows]
+    val_pc = [to_prompt_completion(tok, e) for e in val_rows]
+    longest = longest_tokens(tok, train_pc + val_pc)
+    if longest > a.max_len:
+        raise SystemExit(f"가장 긴 문장 {longest} 토큰 > --max-len {a.max_len} — 정답이 잘린다")
+    print(f"학습 {len(train_pc)} · 검증 {len(val_pc)} · 가장 긴 문장 {longest} 토큰")
+    train = Dataset.from_list(train_pc)
+    val = Dataset.from_list(val_pc)
 
     model = load_model(a.model, a.quant)
     inner = getattr(model, "model", model)
