@@ -7,7 +7,7 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import Table from '@/components/ui/Table.vue'
 import { DAYS } from '@/components/domain/rules'
-import { addDays, formatHm, md } from '@/lib/time'
+import { addDays, formatHm, kstDateStr, md, mondayOf } from '@/lib/time'
 import WeekGrid from '../views/week/WeekGrid.vue'
 import { needsNight, needsWeekend, weekBlocks, type Block } from '../weekView'
 import DayStrip from './DayStrip.vue'
@@ -81,7 +81,10 @@ function sendAnswer() {
 // ---- 확인 — 강의실 하나 · 주 하나(1단계) ----
 const room = computed(() => preview.value?.rooms[0] ?? null)
 const week = computed(() => room.value?.weeks[0] ?? null)
-const monday = computed(() => week.value?.week_start ?? '')
+/** 정규 시간표(class.*)만 바뀌면 서버가 week_start: null 을 준다 — 특정 주가 아니라 요일 격자.
+ * 격자 계산은 이번 주 월요일로 하고, 화면에는 날짜 대신 '매주' */
+const weekly = computed(() => !!week.value && week.value.week_start === null)
+const monday = computed(() => week.value?.week_start ?? mondayOf(kstDateStr(new Date())))
 const changes = computed(() => week.value?.changes ?? [])
 const before = computed(() =>
   week.value
@@ -108,7 +111,9 @@ const changedDays = computed(() =>
 const strips = computed(() =>
   changedDays.value.slice(0, 3).map((day) => ({
     day,
-    title: `${md(addDays(monday.value, day - 1))}(${DAYS[day - 1]})`,
+    title: weekly.value
+      ? `매주 ${DAYS[day - 1]}요일`
+      : `${md(addDays(monday.value, day - 1))}(${DAYS[day - 1]})`,
     before: before.value.filter((b) => b.day === day),
     after: after.value.filter((b) => b.day === day),
   })),
@@ -339,7 +344,8 @@ const VIEWS = [
           </div>
           <div v-if="room" class="ai__right">
             <div class="ai__week">
-              <b class="num">{{ md(monday) }}~{{ md(addDays(monday, 6)) }} 주</b>
+              <b v-if="weekly">매주 (정규 시간표)</b>
+              <b v-else class="num">{{ md(monday) }}~{{ md(addDays(monday, 6)) }} 주</b>
               <SegmentedControl
                 :items="VIEWS"
                 :value="view"
@@ -353,6 +359,7 @@ const VIEWS = [
                 :range-blocks="both"
                 :exams="(view === 'before' ? week?.before : week?.after)?.exams ?? []"
                 :monday="monday"
+                :weekly="weekly"
                 :night="needsNight(both)"
                 :weekend="needsWeekend(both)"
                 :marks="gridMarks"
