@@ -3,7 +3,8 @@ import { computed, onMounted, onScopeDispose, ref } from 'vue'
 import { RouterView, useRouter } from 'vue-router'
 import SidebarNav, { type NavItem } from '@/components/ui/SidebarNav.vue'
 import AssistantBar from './assistant/AssistantBar.vue'
-import { assistantEnabled, assistantStore } from './assistant/store'
+import { assistantStore, assistantVisible } from './assistant/store'
+import { initModel } from './assistant/model'
 import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
@@ -21,11 +22,13 @@ import { prefetchViews } from './router'
 const router = useRouter()
 const me = computed(() => session.value?.name ?? '')
 // #46 admin-master.md 순서: 건물 · 강의실 · 강의실 설정 · 주간 시간표 · 노드 상태 · 전송 현황 · 회원
-const assistant = assistantEnabled ? assistantStore() : null
+const assistant = assistantStore()
+// 서버 모델 안내를 받아 이 PC 에서 쓸 수 있는지 본다 — 받아 둔 모델이면 바로 불러온다(백그라운드)
+onMounted(() => void initModel())
 const mac = /Mac|iPhone|iPad/.test(navigator.platform)
 const nav = computed<NavItem[]>(() => [
   // AI 비서 — 화면이 아니라 지금 화면 위에 창을 여는 버튼 (admin-assistant.md 「사이드 메뉴 버튼」)
-  ...(assistant
+  ...(assistantVisible.value
     ? [
         {
           action: assistant.toggle,
@@ -91,7 +94,7 @@ onScopeDispose(() => mq.removeEventListener('change', onChange))
 
 // Ctrl/⌘ + K — 어느 관리자 화면에서나 AI 비서를 열고 닫는다
 function onShortcut(e: KeyboardEvent) {
-  if (assistant && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+  if (assistantVisible.value && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault()
     assistant.toggle()
   }
@@ -164,7 +167,7 @@ const left = computed(() => mmss(idle.remaining.value))
         </div>
       </template>
     </SidebarNav>
-    <AssistantBar v-if="assistant" />
+    <AssistantBar v-if="assistantVisible" />
     <div class="shell__main">
       <Banner
         v-if="narrow"

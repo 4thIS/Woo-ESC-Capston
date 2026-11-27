@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onScopeDispose, ref, watch } from 'vue'
+import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
+import ProgressBar from '@/components/ui/ProgressBar.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import Table from '@/components/ui/Table.vue'
 import { DAYS } from '@/components/domain/rules'
@@ -9,7 +12,8 @@ import WeekGrid from '../views/week/WeekGrid.vue'
 import { needsNight, needsWeekend, weekBlocks, type Block } from '../weekView'
 import DayStrip from './DayStrip.vue'
 import { markOf } from './diffMarks'
-import { assistantStore } from './store'
+import { cancelDownload, checkAgain, downloadModel, model } from './model'
+import { assistantStore, canType } from './store'
 
 // AI 비서 — 지금 화면 위에 내려오는 명령창 (docs/design/screens/admin-assistant.md)
 const a = assistantStore()
@@ -61,7 +65,12 @@ function enter(e: KeyboardEvent, go: () => void) {
   e.preventDefault()
   go()
 }
-const sendText = () => void a.send()
+const sendText = () => {
+  if (canType.value) void a.send()
+}
+// ---- 모델 상태 (admin-assistant.md 「모델 상태」) — 모델이 이 PC 에 준비되기 전에는 입력칸 대신 ----
+const gb = (n: number) => (n / 1024 ** 3).toFixed(1)
+const needGb = computed(() => gb(model.need))
 const refresh = () => window.location.reload()
 function sendAnswer() {
   const v = answer.value
@@ -144,7 +153,11 @@ const VIEWS = [
       class="ai"
       :class="{
         'ai--expanded': expanded,
-        'ai--tall': phase === 'ask' || phase === 'error' || phase === 'answer',
+        'ai--tall':
+          phase === 'ask' ||
+          phase === 'error' ||
+          phase === 'answer' ||
+          (phase === 'input' && !canType),
       }"
       role="dialog"
       aria-modal="true"
@@ -171,9 +184,10 @@ const VIEWS = [
             maxlength="300"
             autocomplete="off"
             placeholder="한 문장으로 말하세요 — 예: 803 금요일 15~18시 특강"
+            :disabled="!canType"
             @keydown.enter="enter($event, sendText)"
           />
-          <Button size="sm" :disabled="!text.trim()" @click="sendText">보내기</Button>
+          <Button size="sm" :disabled="!canType || !text.trim()" @click="sendText">보내기</Button>
         </template>
         <template v-else-if="phase === 'applied'">
           <span class="ai__done" aria-live="polite"
@@ -195,6 +209,51 @@ const VIEWS = [
           aria-label="변경 내용을 정리하는 중"
           ><span
         /></span>
+      </div>
+
+      <!-- 모델 상태 — 모델이 준비되기 전, 되묻기 칸 자리 -->
+      <div v-if="phase === 'input' && !canType" class="ai__panel ai__model" aria-live="polite">
+        <Skeleton v-if="model.state === 'loading'" />
+        <p v-else-if="model.state === 'disabled'" class="ai__muted">
+          AI 비서를 준비하고 있습니다. 모델이 배포되면 여기서 쓸 수 있습니다.
+        </p>
+        <p v-else-if="model.state === 'unsupported'" class="ai__muted">{{ model.reason }}</p>
+        <template v-else-if="model.state === 'need-download'">
+          <p>이 PC 에서 AI 모델을 돌립니다. 문장은 학교 서버로만 갑니다.</p>
+          <p>처음 한 번 약 {{ needGb }} GB 를 받습니다. 받는 동안 다른 화면을 써도 됩니다.</p>
+          <div>
+            <Button @click="downloadModel">AI 모델 받기 (약 {{ needGb }} GB)</Button>
+          </div>
+        </template>
+        <template v-else-if="model.state === 'downloading'">
+          <ProgressBar
+            :value="model.progress.loaded"
+            :max="model.progress.total || 1"
+            label="AI 모델 받는 중"
+          />
+          <div class="ai__model-row">
+            <span class="num"
+              >{{ gb(model.progress.loaded) }} / {{ gb(model.progress.total) }} GB</span
+            >
+            <Button variant="ghost" size="sm" @click="cancelDownload">취소</Button>
+          </div>
+        </template>
+        <template v-else-if="model.state === 'starting'">
+          <Skeleton />
+          <p class="ai__muted">모델을 불러오는 중…</p>
+        </template>
+        <template v-else-if="model.state === 'no-space'">
+          <Banner
+            tone="danger"
+            :dismissible="false"
+            :message="`저장 공간이 부족합니다 (필요 ${needGb} GB, 남은 ${gb(model.free ?? 0)} GB). 브라우저 저장 공간을 비운 뒤 다시 확인해 주세요.`"
+          />
+          <div><Button variant="secondary" size="sm" @click="checkAgain">다시 확인</Button></div>
+        </template>
+        <template v-else-if="model.state === 'failed'">
+          <p class="ai__error" role="alert">{{ model.reason }}</p>
+          <div><Button variant="secondary" size="sm" @click="checkAgain">다시 시도</Button></div>
+        </template>
       </div>
 
       <!-- 오류 · 되묻기 — 한 줄 아래 칸 -->
@@ -435,6 +494,24 @@ const VIEWS = [
   border-top: var(--border-thin) solid var(--line-1);
   background: var(--sunken);
   font-size: var(--font-size-md);
+}
+.ai__model {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--text-2);
+}
+.ai__model p {
+  margin: 0;
+}
+.ai__model-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+.ai__muted {
+  color: var(--text-2);
 }
 .ai__error-row {
   display: flex;

@@ -18,6 +18,8 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "0.2.87",
+    "hash-wasm": "4.13.0",
     "vue": "^3.5.18",
     "vue-router": "^4.5.1"
   },

@@ -8,9 +8,15 @@ const ctx = self as unknown as {
   onmessage: ((e: MessageEvent<ToWorker>) => void) | null
 }
 
-// 실행 도구 라이브러리는 여기서만 동적 import 한다 — 화면 청크(prefetchViews)에 들어가지 않게 (Task 12 가 채운다)
+// 실행 도구 라이브러리는 여기서만 동적 import 한다 — 화면 청크(prefetchViews)에 들어가지 않게.
+// model.ts 의 SUPPORTED_RUNTIMES 와 같은 목록
 async function adapterFor(runtime: AssistantRuntime): Promise<ModelRunner> {
-  throw new Error(`이 실행 도구(${runtime})는 아직 지원하지 않습니다`)
+  switch (runtime) {
+    case 'webllm':
+      return new (await import('./adapters/webllm')).WebLlmRunner()
+    default:
+      throw new Error(`이 실행 도구(${runtime})는 아직 지원하지 않습니다`)
+  }
 }
 
 const handle = createHandler((m) => ctx.postMessage(m), adapterFor)
