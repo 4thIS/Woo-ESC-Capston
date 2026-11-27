@@ -49,7 +49,7 @@
 ```python
 adds_bos = tok.bos_token_id is not None and tok("x")["input_ids"][:1] == [tok.bos_token_id]
 if adds_bos and prompt.startswith(tok.bos_token):
-    prompt = prompt[len(tok.bos_token):]
+    prompt = prompt[len(tok.bos_token) :]
 ```
 
 계획서의 `test_prompt_completion_split`(`assert not pc["prompt"].startswith("<bos>")`)도 이 동작을 전제로 하므로 함께 고쳐야 한다 — BOS 를 붙이지 않는 토크나이저용 테스트를 하나 더 둔다.
