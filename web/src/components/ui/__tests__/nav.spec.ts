@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import SidebarNav from '@/components/ui/SidebarNav.vue'
+import navSource from '@/components/ui/SidebarNav.vue?raw'
 import StatTile from '@/components/ui/StatTile.vue'
 import Legend from '@/components/ui/Legend.vue'
 
@@ -54,6 +55,25 @@ describe('SidebarNav', () => {
     await w.setProps({ items: [{ ...items[0], expanded: true }, items[1]] })
     expect(w.get('button.nav__item').attributes('aria-expanded')).toBe('true')
     expect(w.get('button.nav__item').classes()).toContain('nav__item--open')
+  })
+
+  it('action 항목도 badge 를 그린다 — 링크와 같은 알약 · 이름에 대기 N건 (#177 리뷰)', async () => {
+    const router = await withRouter('/nodes')
+    const w = mount(SidebarNav, {
+      props: { items: [{ action: vi.fn(), label: 'AI 비서', badge: 3 }] },
+      global: { plugins: [router] },
+    })
+    const b = w.get('button.nav__item')
+    expect(b.get('.nav__count').text()).toBe('3')
+    expect(b.attributes('aria-label')).toBe('AI 비서, 대기 3건')
+  })
+
+  it('열린 action 항목은 hover 해도 nav-hover 로 바뀌지 않는다 (#177 리뷰 — 명시도)', () => {
+    // jsdom 은 :hover 를 계산하지 않아 규칙 글자로 지킨다 — 일반 hover 규칙이 --open 을 빼야 한다
+    const hover = /\.nav__item:hover([^{]*)\{\s*background: var\(--nav-hover\)/g
+    const rules = [...navSource.matchAll(hover)].map((m) => m[1])
+    expect(rules.length).toBeGreaterThan(0)
+    for (const r of rules) expect(r).toContain(':not(.nav__item--open)')
   })
 
   it('현재 경로 항목이 활성, badge 는 0 이면 숨김', async () => {

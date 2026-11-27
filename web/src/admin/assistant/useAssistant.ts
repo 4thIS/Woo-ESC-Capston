@@ -1,13 +1,13 @@
 import { computed, ref } from 'vue'
 import { ApiError } from '@/api/client'
 import { classify } from '@/api/assistant'
-import type { ApplyOut, ModelManifestOn, TurnIn, TurnOut } from '@/api/types'
+import type { ApplyOut, ModelManifestOn, TurnChoice, TurnIn, TurnOut } from '@/api/types'
 import { parseForm, userMessage } from './prompt'
 import type { ModelRunner } from './runner'
 
-/** admin-assistant.md 「흐름」 — 닫힘 · 명령창(입력) · 보내는 중 · 되묻기 · 확인 · 적용 중 · 적용 후 · 오류 */
+/** admin-assistant.md 「흐름」 — 닫힘 · 명령창(입력) · 보내는 중 · 되묻기 · 확인 · 적용 중 · 적용 후 · 오류 · 조회 답 */
 export type Phase =
-  'closed' | 'input' | 'sending' | 'ask' | 'preview' | 'applying' | 'applied' | 'error'
+  'closed' | 'input' | 'sending' | 'ask' | 'preview' | 'applying' | 'applied' | 'error' | 'answer'
 
 export interface AssistantDeps {
   api: { turn(t: TurnIn): Promise<TurnOut>; apply(previewId: string): Promise<ApplyOut> }
@@ -30,6 +30,8 @@ export function useAssistant(deps: AssistantDeps) {
   const error = ref('')
   /** 409 stale 로 미리보기가 바뀌었다 */
   const stale = ref(false)
+  /** 모델 판이 바뀌었다(409 schema_version) — 새로고침 버튼을 보인다 */
+  const reload = ref(false)
   let conversation: string | null = null
   let prefix: string | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -43,6 +45,7 @@ export function useAssistant(deps: AssistantDeps) {
     turn.value = null
     error.value = ''
     stale.value = false
+    reload.value = false
     conversation = null
     prefix = null
     if (timer) clearTimeout(timer)
@@ -67,9 +70,38 @@ export function useAssistant(deps: AssistantDeps) {
     if (t.kind === 'ask') phase.value = 'ask'
     else if (t.kind === 'preview') phase.value = 'preview'
     else if (t.kind === 'error') {
+      // closed:false 면 대화가 이어진다 — 다음 턴은 같은 대화 번호와 next_prefix
       error.value = t.message
       phase.value = 'error'
-    } else close() // 취소 등 — 대화가 끝났다
+    } else if (t.answer)
+      phase.value = 'answer' // 조회 답 — 창에 남겨 보여 준다
+    else close() // 취소 — 대화가 끝났다
+  }
+
+  function fail(e: unknown) {
+    error.value =
+      e instanceof ApiError && e.status === 429 ? '잠시 뒤 다시 보내 주세요.' : errorText(e)
+    phase.value = 'error'
+  }
+
+  /** 선택지 버튼 — 모델을 거치지 않고 choice 로 보낸다(utterance 는 라벨) */
+  async function choose(c: TurnChoice) {
+    if (phase.value !== 'ask') return
+    phase.value = 'sending'
+    error.value = ''
+    try {
+      handle(
+        await deps.api.turn({
+          conversation_id: conversation,
+          utterance: c.label,
+          form: null,
+          choice: c.id,
+          raw_output: null,
+        }),
+      )
+    } catch (e) {
+      fail(e)
+    }
   }
 
   async function send(utterance: string = text.value) {
@@ -103,9 +135,7 @@ export function useAssistant(deps: AssistantDeps) {
         }),
       )
     } catch (e) {
-      error.value =
-        e instanceof ApiError && e.status === 429 ? '잠시 뒤 다시 보내 주세요.' : errorText(e)
-      phase.value = 'error'
+      fail(e)
     }
   }
 
@@ -129,6 +159,7 @@ export function useAssistant(deps: AssistantDeps) {
       turn.value = null
       conversation = null
       prefix = null
+      reload.value = f?.kind === 'schema_version'
       error.value =
         f?.kind === 'expired'
           ? '확인 화면이 만료되었습니다. 다시 말씀해 주세요.'
@@ -149,11 +180,13 @@ export function useAssistant(deps: AssistantDeps) {
     preview,
     error,
     stale,
+    reload,
     isOpen,
     open: show,
     close,
     toggle,
     send,
+    choose,
     apply,
   }
 }
