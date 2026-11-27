@@ -1,6 +1,6 @@
 # 로컬 GPU 학습 절차 (wj 데스크톱 — RTX 5070 Ti 16 GB, bf16)
 
-확인 결과: `ml/reports/gpu-local.md` — bf16 LoRA 최대 11.3 GiB, 배치 4 에서 1.36 s/스텝. 4bit 는 쓰지 않는다.
+확인 결과: `ml/reports/gpu-local.md` — bf16 LoRA. 4bit 는 쓰지 않는다. 시스템 지시문 포함 문장이 약 850 토큰이라 배치 2 × 누적 8(기본값)로 14.3 GB · 6.5 s/스텝 · 약 3.6 시간(배치 4 는 16 GB 를 넘겨 일반 메모리로 넘쳐 4배 느려진다).
 평소 다른 프로그램이 GPU 메모리를 약 3 GB 쓴다 — 학습 중에는 GPU 를 쓰는 프로그램을 닫는다.
 
 1 — 의존성 (CUDA 판 torch)

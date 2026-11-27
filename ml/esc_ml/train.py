@@ -63,8 +63,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--rank", type=int, default=16)
     ap.add_argument("--alpha", type=int, default=32)
-    ap.add_argument("--batch", type=int, default=4)
-    ap.add_argument("--grad-accum", type=int, default=4)
+    ap.add_argument("--batch", type=int, default=2)
+    ap.add_argument("--grad-accum", type=int, default=8)
     # 시스템 지시문 포함 약 700~850 토큰(#180 지시문 기준) — 512 면 정답이 모두 잘린다
     ap.add_argument("--max-len", type=int, default=1024)
     ap.add_argument("--seed", type=int, default=7)
