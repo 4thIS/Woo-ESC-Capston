@@ -83,6 +83,31 @@ def _sample(rng: random.Random, kind: str, intent: str) -> tuple[str, object]:
     return v, v
 
 
+# 숫자 끝자리 읽기(영·일·이·삼·사·오·육·칠·팔·구)의 받침 — 0 은 십·백·천으로 읽어 받침이 있다
+_DIGIT_JONG = {"0": 1, "1": 8, "2": 0, "3": 16, "4": 0, "5": 0, "6": 1, "7": 8, "8": 8, "9": 0}
+_PARTICLE_AFTER = re.compile(r"(으로|로|이요|요)")
+
+
+def _jong(text: str) -> int | None:
+    """마지막 글자의 받침 번호(0 = 없음, 8 = ㄹ). 한글·숫자가 아니면 None."""
+    c = text.rstrip()[-1:] if text.strip() else ""
+    if "가" <= c <= "힣":
+        return (ord(c) - 0xAC00) % 28
+    return _DIGIT_JONG.get(c)
+
+
+def fix_particle(word: str, particle: str) -> str:
+    """'{값}로'·'{값}이요' 의 조사를 값의 끝소리에 맞춘다. 모르는 끝(영문 등)은 그대로."""
+    j = _jong(word)
+    if j is None:
+        return particle
+    if particle in ("으로", "로"):
+        return "로" if j in (0, 8) else "으로"
+    if particle in ("이요", "요"):
+        return "요" if j == 0 else "이요"
+    return particle
+
+
 def fill_template(
     rng: random.Random,
     tpl: Tpl,
@@ -100,7 +125,20 @@ def fill_template(
             form["target" if side == "t" else "set"][FIELD_OF[name]] = value
         return text
 
-    utterance = PLACEHOLDER.sub(repl, tpl.text)
+    # 자리표시 바로 뒤 조사(로·으로·이요)는 채운 값의 끝소리에 맞춘다 — 값을 뽑는 순서(rng)는 그대로
+    parts: list[str] = []
+    pos = 0
+    for m in PLACEHOLDER.finditer(tpl.text):
+        parts.append(tpl.text[pos : m.start()])
+        text = repl(m)
+        parts.append(text)
+        pos = m.end()
+        after = _PARTICLE_AFTER.match(tpl.text, pos)
+        if after:
+            parts.append(fix_particle(text, after.group(1)))
+            pos = after.end()
+    parts.append(tpl.text[pos:])
+    utterance = "".join(parts)
     if tpl.type_label is not None:
         form["set"]["type"] = tpl.type_label
     return utterance, form

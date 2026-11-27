@@ -104,3 +104,32 @@ def test_preview_prefix_uses_server_question():
 
     lines = [r.prefix.split("\n")[1] for r in ROWS if "\n" in r.prefix]
     assert f"질문: {rules.PREVIEW_QUESTION}" in lines
+
+
+def test_particle_follows_final_consonant():
+    """틀의 '{값}로'·'{값}이요' 는 값의 끝소리에 맞춘다 — '강수아으로'·'인공지능개론로' 같은 문장을 만들지 않는다."""
+    from esc_ml.gen.build import fix_particle
+
+    assert fix_particle("강수아", "으로") == "로"
+    assert fix_particle("인공지능개론", "로") == "으로"
+    assert fix_particle("16시", "으로") == "로"  # ㄹ 받침은 '로'
+    assert fix_particle("803", "로") == "으로"  # 삼 — 받침
+    assert fix_particle("12/15~19", "으로") == "로"  # 구
+    assert fix_particle("810", "로") == "으로"  # 십
+    assert fix_particle("801호", "으로") == "로"
+    assert fix_particle("모레", "이요") == "요"
+    assert fix_particle("금요일", "요") == "이요"
+
+
+def test_generated_particles_are_correct():
+    import re
+
+    from esc_ml.gen.build import fix_particle, generate
+
+    exs = generate(3000, 7)
+    for ex in exs:
+        for m in re.finditer(r"(\S+?)(으로|로)(?=\s|$)", ex.utterance):
+            word, p = m.group(1), m.group(2)
+            if word.endswith(("새", "시험기간", "기간")):
+                continue
+            assert fix_particle(word, p) == p, ex.utterance
