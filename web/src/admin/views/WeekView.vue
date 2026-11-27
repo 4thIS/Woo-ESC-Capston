@@ -26,6 +26,7 @@ import { nightPref, picked, weekMonday, weekRoom, weekendPref } from '../selecti
 import { needsNight, needsWeekend, weekBlocks, type Placed } from '../weekView'
 import RowDot from './rooms/RowDot.vue'
 import WeekGrid from './week/WeekGrid.vue'
+import { appliedTick } from '../assistant/store'
 
 const props = defineProps<{ roomId?: string }>()
 const router = useRouter()
@@ -75,6 +76,8 @@ const res = useResource(
   },
   { deps: id },
 )
+// AI 비서가 적용하면 다시 불러온다 — 덮개가 걷힐 때 새 블록이 보이게
+watch(appliedTick, () => void res.reload())
 // 지금 보는 방의 응답만 쓴다 — 방을 바꾼 직후 옛 방의 블록을 새 방 제목 아래 그리지 않는다
 // (주는 화면이 거르므로 방만 맞으면 된다)
 const fresh = computed(() =>

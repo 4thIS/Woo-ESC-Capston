@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onScopeDispose, ref } from 'vue'
 import { RouterView, useRouter } from 'vue-router'
-import SidebarNav from '@/components/ui/SidebarNav.vue'
+import SidebarNav, { type NavItem } from '@/components/ui/SidebarNav.vue'
+import AssistantBar from './assistant/AssistantBar.vue'
+import { assistantEnabled, assistantStore } from './assistant/store'
 import Banner from '@/components/ui/Banner.vue'
 import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
@@ -19,7 +21,22 @@ import { prefetchViews } from './router'
 const router = useRouter()
 const me = computed(() => session.value?.name ?? '')
 // #46 admin-master.md 순서: 건물 · 강의실 · 강의실 설정 · 주간 시간표 · 노드 상태 · 전송 현황 · 회원
-const nav = computed(() => [
+const assistant = assistantEnabled ? assistantStore() : null
+const mac = /Mac|iPhone|iPad/.test(navigator.platform)
+const nav = computed<NavItem[]>(() => [
+  // AI 비서 — 화면이 아니라 지금 화면 위에 창을 여는 버튼 (admin-assistant.md 「사이드 메뉴 버튼」)
+  ...(assistant
+    ? [
+        {
+          action: assistant.toggle,
+          expanded: assistant.isOpen.value,
+          label: 'AI 비서',
+          group: 'AI',
+          icon: 'assistant' as const,
+          shortcut: mac ? '⌘K' : 'Ctrl K',
+        },
+      ]
+    : []),
   { to: '/master', label: '건물 · 강의실', group: '운영', icon: 'building' as const },
   { to: '/rooms', label: '강의실 설정', group: '운영', icon: 'settings' as const },
   // 메뉴 항목에 :roomId 를 둘 수 없다 — 마지막으로 본 강의실, 없으면 /week 가 골라 준다
@@ -71,6 +88,16 @@ const narrow = ref(mq.matches)
 const onChange = (e: MediaQueryListEvent) => (narrow.value = e.matches)
 mq.addEventListener('change', onChange)
 onScopeDispose(() => mq.removeEventListener('change', onChange))
+
+// Ctrl/⌘ + K — 어느 관리자 화면에서나 AI 비서를 열고 닫는다
+function onShortcut(e: KeyboardEvent) {
+  if (assistant && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    assistant.toggle()
+  }
+}
+window.addEventListener('keydown', onShortcut)
+onScopeDispose(() => window.removeEventListener('keydown', onShortcut))
 
 function logout() {
   clearSession()
@@ -137,6 +164,7 @@ const left = computed(() => mmss(idle.remaining.value))
         </div>
       </template>
     </SidebarNav>
+    <AssistantBar v-if="assistant" />
     <div class="shell__main">
       <Banner
         v-if="narrow"

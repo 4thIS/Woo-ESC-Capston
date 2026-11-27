@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { DAYS, TYPE_LABEL } from '@/components/domain/rules'
-import type { ExamOut } from '@/api/types'
+import type { DiffOp, ExamOut } from '@/api/types'
+import { fieldsText, type BlockMark } from '../../assistant/diffMarks'
 import { addDays, hm, md } from '@/lib/time'
 import {
   ROW_PX,
@@ -28,6 +29,8 @@ const props = withDefaults(
     clickable?: (p: Placed) => boolean
     blockTitle?: (p: Placed) => string | undefined
     failed?: (p: Placed) => boolean
+    /** AI 비서 확인 화면의 변경 표시 — 테두리 2px + 머리 태그 (admin-assistant.md 「변경 표시」) */
+    marks?: (p: Placed) => BlockMark | undefined
   }>(),
   {
     rangeBlocks: undefined,
@@ -35,8 +38,17 @@ const props = withDefaults(
     clickable: () => false,
     blockTitle: () => undefined,
     failed: () => false,
+    marks: () => undefined,
   },
 )
+const TAG: Record<DiffOp, string> = { add: '+ 추가', remove: '− 삭제', change: '~ 수정' }
+/** 변경 블록은 바뀐 칸을 title 로 — 그 밖은 화면이 준 title */
+function titleOf(p: Placed) {
+  const m = props.marks(p)
+  return m?.op === 'change' && m.fields.length
+    ? `바뀐 칸: ${fieldsText(m.fields)}`
+    : props.blockTitle(p)
+}
 const emit = defineEmits<{ cell: [at: { day: number; t: number }]; block: [p: Placed] }>()
 defineSlots<{ dot?(props: { p: Placed }): unknown; overlay?(): unknown }>()
 
@@ -72,6 +84,7 @@ function blockClass(p: Placed) {
     'wk__block--requested': requested,
     'wk__block--failed': props.failed(p),
     'wk__block--static': !props.clickable(p),
+    [`wk__block--diff-${props.marks(p)?.op}`]: !!props.marks(p),
   }
 }
 // 라벨이 상태를 말한다 — 넷(수업·시험·특강·대여)을 색으로 나누지 않는다
@@ -136,11 +149,15 @@ const who = (p: Placed) =>
             :role="clickable(p) ? 'button' : undefined"
             :tabindex="clickable(p) ? 0 : undefined"
             :aria-label="clickable(p) ? blockName(p) : undefined"
-            :title="blockTitle(p)"
+            :title="titleOf(p)"
             @click="emit('block', p)"
             @keydown.enter.self.prevent="emit('block', p)"
             @keydown.space.self.prevent="emit('block', p)"
           >
+            <!-- 색만으로 읽히지 않게 기호 + 글자 -->
+            <span v-if="marks(p)" class="wk__tag" :class="`wk__tag--${marks(p)!.op}`">{{
+              TAG[marks(p)!.op]
+            }}</span>
             <span class="wk__label">{{ blockLabel(p) }}</span>
             <!-- 높이가 모자라면 교수부터 지운다 -->
             <span v-if="box.height >= 40" class="wk__subject">{{
@@ -292,6 +309,38 @@ const who = (p: Placed) =>
 }
 .wk__block--failed {
   border: var(--border-thick) solid var(--danger);
+}
+/* AI 비서 변경 표시 — 바탕은 상태 색 그대로, 테두리 2px + 머리 태그만 (tokens.md diff.*) */
+.wk__block--diff-add {
+  border: var(--border-thick) solid var(--diff-add-line);
+}
+.wk__block--diff-remove {
+  border: var(--border-thick) dashed var(--diff-remove-line);
+}
+.wk__block--diff-remove .wk__subject {
+  text-decoration: line-through;
+}
+.wk__block--diff-change {
+  border: var(--border-thick) solid var(--diff-change-line);
+}
+.wk__tag {
+  align-self: flex-start;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+.wk__tag--add {
+  background: var(--diff-add-fill);
+  color: var(--diff-add-text);
+}
+.wk__tag--remove {
+  background: var(--diff-remove-fill);
+  color: var(--diff-remove-text);
+}
+.wk__tag--change {
+  background: var(--diff-change-fill);
+  color: var(--diff-change-text);
 }
 .wk__label {
   font-size: var(--font-size-xs);
