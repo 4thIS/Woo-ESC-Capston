@@ -23,6 +23,7 @@ RUN pnpm build
 FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY security-headers.conf /etc/nginx/snippets/security-headers.conf
+COPY security-headers-admin.conf /etc/nginx/snippets/security-headers-admin.conf
 COPY --from=build /web/dist /usr/share/nginx/html
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

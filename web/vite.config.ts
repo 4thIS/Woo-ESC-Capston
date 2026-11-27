@@ -31,6 +31,16 @@ export default defineConfig({
       },
     },
   },
+  // AI 비서 Worker(모델 실행) 청크를 따로 모은다 — nginx 가 /assets/worker/ 에만 넓힌 CSP 를 붙인다
+  worker: {
+    format: 'es',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/worker/[name]-[hash].js',
+        chunkFileNames: 'assets/worker/[name]-[hash].js',
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': API,
