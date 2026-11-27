@@ -80,3 +80,13 @@ def test_longest_tokens_counts_prompt_and_completion():
 
     rows = [{"prompt": "ab", "completion": "c"}, {"prompt": "abcd", "completion": "ef"}]
     assert longest_tokens(LenTok(), rows) == 6
+
+
+def test_args_jsonable_handles_path_lists():
+    import json
+    from pathlib import Path
+
+    from esc_ml.train import jsonable
+
+    got = jsonable({"train": [Path("a/b.jsonl")], "out": Path("runs/x"), "lr": 2e-4})
+    assert json.loads(json.dumps(got)) == {"train": ["a/b.jsonl"], "out": "runs/x", "lr": 2e-4}

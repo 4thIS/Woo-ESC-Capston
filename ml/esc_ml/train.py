@@ -40,6 +40,19 @@ def longest_tokens(tok, rows) -> int:
     )
 
 
+def jsonable(args: dict) -> dict:
+    """run_config 의 args — 경로·경로 목록(--train a b)을 글자로."""
+
+    def conv(v):
+        if isinstance(v, Path):
+            return v.as_posix()
+        if isinstance(v, list):
+            return [conv(x) for x in v]
+        return v
+
+    return {k: conv(v) for k, v in args.items()}
+
+
 def data_digest(paths) -> str:
     h = hashlib.sha256()
     for p in paths:
@@ -143,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
     import trl
 
     run = {
-        "args": {k: str(v) if isinstance(v, Path) else v for k, v in vars(a).items()},
+        "args": jsonable(vars(a)),
         "train_n": len(train_rows),
         "val_n": len(val_rows),
         "train_digest": data_digest(a.train),
