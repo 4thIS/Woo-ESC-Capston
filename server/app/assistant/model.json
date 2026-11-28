@@ -2,7 +2,7 @@
   "enabled": true,
   "runtime": "webllm",
   "repo": "leemonta9482/esc-assistant-e2b",
-  "revision": "f376f8822658d63d114f3ae61aff6ec1593089a9",
+  "revision": "8094afe07c39b96ff16e3ef64f53204a5a632f1d",
   "files": [
     {
       "name": "lib.wasm",
@@ -232,17 +232,17 @@
     {
       "name": "params_shard_47.bin",
       "size": 26238978,
-      "sha256": "1ab4b58cf67b052dea34759edb38494aab2e54dc0df3a9db5b550b3614a9b849"
+      "sha256": "b89e95fedad7f9fb33b967f6f748e76219860ac1028bd048b50704d522aa93a7"
     },
     {
       "name": "params_shard_48.bin",
       "size": 32788994,
-      "sha256": "c31a2c381f495ded9bcd20ec09949f5e8f53354e2afcd268ee0301752c45df21"
+      "sha256": "da57486f9b5c26bf242b6cb1593879d1f3816d58e296ecbf404a73b71e93076c"
     },
     {
       "name": "params_shard_49.bin",
       "size": 30002692,
-      "sha256": "4b3bc50604436ac76bc4d4eb82d32bf09f4d64fe3f948131bde9130dbb9dffb5"
+      "sha256": "dbe8d54989f3f91d42ebe9c7d6ab01875f08a24cf990e7dc8068ec4cfda93318"
     },
     {
       "name": "params_shard_5.bin",
@@ -252,52 +252,52 @@
     {
       "name": "params_shard_50.bin",
       "size": 32788994,
-      "sha256": "43b46e4b3e8e4711cdd4e72c089b439402dc537842cf113a41a111ba9e2b2630"
+      "sha256": "c98b87e4d2c6eafaf7b51845fdea02e98a39f4cacd1fc457ba132293515514e0"
     },
     {
       "name": "params_shard_51.bin",
       "size": 28676612,
-      "sha256": "4bd21a5e152327d286fef9b5a18365385812a35b192cb3a0dcbd3694d0d7f533"
+      "sha256": "d6d55fa0d5c13d0a3623259365ee2caefcf92c018a59cf66c1b50c47327c60f9"
     },
     {
       "name": "params_shard_52.bin",
       "size": 32870400,
-      "sha256": "762cf43e038c0378a3f23cc5a8ba891763333289a31bb801114ad2c2a24ec870"
+      "sha256": "bcfadfec035652cc81e3b902230b170444eaa6d910b95e3a72e30a51dd46f0fd"
     },
     {
       "name": "params_shard_53.bin",
       "size": 33033730,
-      "sha256": "0bc7514a94cb1d0d678455f5564f2d56a6cd6d112c6e268e4d7158106825e505"
+      "sha256": "d15e1d587054f7fa852b43462bc203ab58dd728c81eabe5db7f2da63cd4eaf59"
     },
     {
       "name": "params_shard_54.bin",
       "size": 18874368,
-      "sha256": "f19e870e7f262eb8a934fdeeb974fb8bc573d2c97757cbf20baec23b897c51dd"
+      "sha256": "d6a67389964a0338b4825e4da957591845a7a1e65dc36630ce3b45f0341783c1"
     },
     {
       "name": "params_shard_55.bin",
       "size": 24460292,
-      "sha256": "b9e57d52273d47a6d141a238a62d1c5e06bd30ff36421908e09b020a8db0ab8b"
+      "sha256": "3c57c734bd66984799a5aa5c1b6d514a899f7ae803326e52055d13211f936b11"
     },
     {
       "name": "params_shard_56.bin",
       "size": 32870400,
-      "sha256": "0ad7e175dbc4c7aadea47fe622821eb3810f25fb61b43c1fc34b80e12915ed8c"
+      "sha256": "de45e4dc0bf3f93578b436c766cb4f733b3665473c957501980a673881b6f17c"
     },
     {
       "name": "params_shard_57.bin",
       "size": 33033730,
-      "sha256": "e13d124205a59d8a1b3209684961a622ac114c984f597827fa296ade66889ecd"
+      "sha256": "480366e2ae4bc54bb76941b22a04485fe43268f50080fe34c4c3e05a4e0ae039"
     },
     {
       "name": "params_shard_58.bin",
       "size": 31391748,
-      "sha256": "d2c9818485dd16ab6bed21fdd3e196bcc59f1e24a8cf08eed96e19b6a354b5eb"
+      "sha256": "c0cb2f9ec716a730ffdfb5703a52b5469d612f83a10a3db5b1df91dec0415e71"
     },
     {
       "name": "params_shard_59.bin",
       "size": 32870400,
-      "sha256": "42a7e89071dc4ce915c4f4b442d03375d99f94046c8efbb0204b14c63da72c37"
+      "sha256": "b9edb8e7c8dc790c39942d726b03954c421fb5043db75837a57ecb65c2266638"
     },
     {
       "name": "params_shard_6.bin",
@@ -307,52 +307,52 @@
     {
       "name": "params_shard_60.bin",
       "size": 33033730,
-      "sha256": "0ebcf3dbe83205bacdc705d219564eb9e87f94f28276de2795a8acab3233b351"
+      "sha256": "1eb1b38008334a5a79e35831cd2b26bf7f9b85e8e7ba68ad4a6a8489bc9c0116"
     },
     {
       "name": "params_shard_61.bin",
       "size": 18874368,
-      "sha256": "ca5baedd242d5bf183b6defbec70d9dc19ce00aa9a0fb8510de289b9acf1767f"
+      "sha256": "d354f8bb5035f94374f285fa6bb17c27f4074b49456078debb9d0595718517bf"
     },
     {
       "name": "params_shard_62.bin",
       "size": 24460292,
-      "sha256": "5ee9b1a9c8942f43f5194d808f39ad131c9f97ec610298229b77f67dcd9714f6"
+      "sha256": "799ff42c4370bb8f586acf7c48fd5d8c13e335877dc80bdad2b695ad57f2a6bb"
     },
     {
       "name": "params_shard_63.bin",
       "size": 32870400,
-      "sha256": "1e1acca11da9a6a672761a2d3177292d368b6552f39846348b1664b43d29b789"
+      "sha256": "48a1bd8e55b5b894f5c56c4a51381eda41131210d6dfa0eefab2a9955817c68a"
     },
     {
       "name": "params_shard_64.bin",
       "size": 33033730,
-      "sha256": "8c41073468e51ae087f09fa07abeac2e9c99d1f0590b434701534353970ce994"
+      "sha256": "7b3fecd0e0761f008d18f8294654fb870079b91ef546294b86392dab9941db3c"
     },
     {
       "name": "params_shard_65.bin",
       "size": 18874368,
-      "sha256": "626c5a7fb24fb14d2a2700ec51174bce61ce5271877067079bde5326d2d42b7f"
+      "sha256": "dbced4d651d1d4bf9b16e3f89ff75c13c44bbc7e23c3e3e5d5813fa36c253ca2"
     },
     {
       "name": "params_shard_66.bin",
       "size": 27999748,
-      "sha256": "5b19bab3719efec3d049c72ddb0ac82111017f249370f421df82706a1013b18a"
+      "sha256": "6e4343470a57d89652f94aef47053902999692ba390a6ec98689dea06e8e09c5"
     },
     {
       "name": "params_shard_67.bin",
       "size": 32870400,
-      "sha256": "3bd9a269bcacd674727fb439bc894e1d70004790f9681421a2976a53fcc2deaf"
+      "sha256": "41ff7d18554b5b61cadebe0dbcb88a459277f3efd81b6058bbf13f30466bfc6e"
     },
     {
       "name": "params_shard_68.bin",
       "size": 33033730,
-      "sha256": "ab3be258bf83f3953ab7f79b2ed0ab7a93842c36bdf045e9747b1b67224af49c"
+      "sha256": "5e9601fc1bd7b337268d6740930273b57d07457f765cbfd1486519ea0b93e05a"
     },
     {
       "name": "params_shard_69.bin",
       "size": 18874368,
-      "sha256": "74aff38362ab5168cb4d681807dd727bc51a3201dac12519c9d6871f89fa32af"
+      "sha256": "78d4edd711f429c40dc3e422b98229acbf5305c68babbe1895b78debf3e91266"
     },
     {
       "name": "params_shard_7.bin",
@@ -362,52 +362,52 @@
     {
       "name": "params_shard_70.bin",
       "size": 24460292,
-      "sha256": "855a726f4c8ab57321212292cd13775ec1019ea1ae203bf50ee84955d8aad858"
+      "sha256": "873304b580e1365017ffa4f50d708a93d657604e410b828376463b902bb679bf"
     },
     {
       "name": "params_shard_71.bin",
       "size": 32870400,
-      "sha256": "2ce42ede8f20258b5e19032b31292d4ea6314c51fdc3c33e2ce869c53c5af6b6"
+      "sha256": "8a3a3dc995dafa2f13cf77a93fafb9ad2fd3f7a8aae06cf1a20a90b06919e8fd"
     },
     {
       "name": "params_shard_72.bin",
       "size": 28012548,
-      "sha256": "aa3cf328af0c89a24d27cf43cbb55f3ade97561afb0c281c2940161ffc66034a"
+      "sha256": "acefa25c04cc4b0dd6abefd582c1deec33e9b19e5ae0d67ac7420369d7fba0e1"
     },
     {
       "name": "params_shard_73.bin",
       "size": 32870400,
-      "sha256": "3e3ffc6de445c88c46051a97bcd00d88cd2d4e2f605e82a36d8af3ae9185626a"
+      "sha256": "618b794b7a90adf5f44fc1e76c738443ceacfa1ea8dab09af5146fa209deb13b"
     },
     {
       "name": "params_shard_74.bin",
       "size": 33033730,
-      "sha256": "18376efc1aab7438909bdf3d5a9715eb65e85aca95e62c2cb73f78fe981606de"
+      "sha256": "d4dff7bb5dfb2ed52be5231da78f1514c4514d35ebd59fb54a0e9ead98537f20"
     },
     {
       "name": "params_shard_75.bin",
       "size": 18874368,
-      "sha256": "92693f0280cc7c43a8d7e95fe61434fad80620eaab6406175c32b78cb18798fe"
+      "sha256": "2332c9869bd327158330637dc1f25d600dcf8d3af3b528345edaeda0f728ed75"
     },
     {
       "name": "params_shard_76.bin",
       "size": 24460292,
-      "sha256": "4c4e9131afb552cb68e01614f36b7c32d8944f5f3fd7e702c24363a8872419fa"
+      "sha256": "72f0558b3d73d5bef394ce7143be2b62e690ff8a2a8a0417dffaf16be14ff54d"
     },
     {
       "name": "params_shard_77.bin",
       "size": 32870400,
-      "sha256": "2a02c461a089027d10a91576590a283fb32838bfe42a60f56d8c8a6e88df7d0f"
+      "sha256": "8ed267c140180045de6fbef2409dd3b05065dbc09e4e9c6e71d778ad1608e58a"
     },
     {
       "name": "params_shard_78.bin",
       "size": 33033730,
-      "sha256": "6e89782d5238123584946178bf1bfb79c481a747b66e10d837f888d4fbf3fb0e"
+      "sha256": "d477a173622250e687a458bc464275b401079fbdb6cae39b5eb1d003ce23f204"
     },
     {
       "name": "params_shard_79.bin",
       "size": 31389698,
-      "sha256": "d89e95de7f0e6364c6cb4911cbaf1ff93140656f8de4b395c4f2ce5a84fc4627"
+      "sha256": "8c779db922fc925d77cd0549daca9227494dd335c44ef4c6f5e098f935bfec4c"
     },
     {
       "name": "params_shard_8.bin",
@@ -417,22 +417,22 @@
     {
       "name": "params_shard_80.bin",
       "size": 30223364,
-      "sha256": "d48fefa2d4f5ee3bcc2a8d99395866421e687e282211df9e4c79173100285dfe"
+      "sha256": "f7b346c8da49543047228de4962070f3a18b8177317b0c3189263d4e874879d0"
     },
     {
       "name": "params_shard_81.bin",
       "size": 32788994,
-      "sha256": "000d980ba68b8cdaf845d85498842231c1118852f0c1da9650ff1442a52b52fe"
+      "sha256": "7e6c3884470829218acfa43e19cec31aa5af710f91ac82476e4ef809aeb09541"
     },
     {
       "name": "params_shard_82.bin",
       "size": 30002692,
-      "sha256": "47548f605291f049a248f447ed75da8eb1335808c33b90f39bf287fb8a258f5b"
+      "sha256": "b4b4a9c5c29676c0b612c2b9df67667520419365cb56aa63b0551ff30a1fd881"
     },
     {
       "name": "params_shard_83.bin",
       "size": 27346432,
-      "sha256": "bcce8ab12404377bb6964b94deb4c8587dd2c8e34a1e233c447224708815d81c"
+      "sha256": "da4786bf9f386db925492a69ad79c68e0cfb626b26b7e34cb1f8b467689454e2"
     },
     {
       "name": "params_shard_9.bin",
@@ -442,7 +442,7 @@
     {
       "name": "tensor-cache.json",
       "size": 653037,
-      "sha256": "688512064302e638938cf4adb66db49ca46ef9db042213c533bf0f54820dbc88"
+      "sha256": "ab047d054562ca82710e294b8c57f601e791b9b1b10665f0ffc3393b1a4f92d8"
     },
     {
       "name": "tokenizer.json",
