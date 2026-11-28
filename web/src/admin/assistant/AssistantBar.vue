@@ -277,9 +277,9 @@ const VIEWS = [
             @click="a.choose(c)"
             >{{ c.label }}</Button
           >
-          <Button variant="ghost" size="sm" @click="a.close()">요청 취소</Button>
         </div>
-        <div v-else class="ai__answer">
+        <!-- 버튼이 있어도 말로 답할 수 있다 (예: 목록에 없는 강의실을 다시 말하기) -->
+        <div class="ai__answer">
           <label for="ai-answer" class="sr-only">답</label>
           <input
             id="ai-answer"
@@ -533,6 +533,7 @@ const VIEWS = [
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 .ai__table {
   max-height: 50vh;

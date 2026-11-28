@@ -218,7 +218,10 @@ def test_other_day_or_room_not_matched(app, school):
     resv(app, ids["E803"], dt.date(2026, 11, 28), (17, 0), (18, 0), id_=24, subject="알고리즘 특강")
     resv(app, ids["E802"], FRI, (17, 0), (18, 0), id_=25, subject="알고리즘 특강")
     t = {**CH, "subject": "알고리즘 특강"}
-    assert isinstance(adv(app, st("event.remove", target=t)), D.Fail)
+    d = adv(app, st("event.remove", target=t))
+    # 다른 날은 대상으로 잡지 않는다 — 못 찾았다며 그 강의실(803) 일정만 버튼으로 내놓는다(802 것은 없다)
+    assert isinstance(d, D.Ask) and d.state["asked"] == "target.any"
+    assert [c["id"] for c in d.choices] == [f"fix:{ids['E803']}:r24"]
 
 
 def test_past_reservation_not_candidate(app, school):

@@ -2,7 +2,9 @@
 프로세스 메모리에 두지 않는다(워커 1개라도 재시작에 안전).
 
 상태 키: intent · target · set(표현 그대로) · room_pick · pick · asked · pending · utterances ·
-q(직전에 접두어에 넣은 질문 — 오류 턴이 이어 쓴다, service 가 채운다)
+q(직전에 접두어에 넣은 질문 — 오류 턴이 이어 쓴다, service 가 채운다) ·
+room_menu(강의실 목록에서 고른 건물 {칸: 건물 id}) · fixed(못 찾은 대상 대신 목록에서 고른 것
+{방 id: 후보 key}) — 둘은 나중에 더한 키라 옛 상태에는 없다(.get 으로 읽는다)
 
 접두어 질문 줄(Ask.question·PICK_QUESTION·PREVIEW_QUESTION)은 항상 assistant_proto.rules 의 글자다.
 사람에게 보여 줄 설명(날짜를 '12/3'처럼…, 여러 곳에 있습니다…)은 Ask.message 에만 둔다."""
@@ -27,6 +29,15 @@ from sqlalchemy.orm import Session
 
 from app.assistant import changes, rooms
 from app.auth.scope import Scope
+
+ROOM_LIST_MAX = 24  # 범위 안 강의실이 이보다 많고 건물이 여럿이면 건물을 먼저 고른다
+FIX_MAX = 20  # 대상을 못 찾았을 때 보여 줄 그 강의실 일정·수업 수
+ROOM_HINT = "현재 있는 강의실은 아래와 같습니다. 고르거나 직접 알려 주세요."
+BLD_HINT = "건물을 먼저 골라 주세요."
+FIX_HINT = {
+    "event": "이 강의실의 2주 안 일정은 아래와 같습니다. 고르거나 다시 알려 주세요.",
+    "class": "이 강의실의 정규 수업은 아래와 같습니다. 고르거나 다시 알려 주세요.",
+}
 
 TYPE_CHOICES = [{"id": f"type:{x}", "label": x} for x in ("특강", "대여", "휴강", "수업", "시험")]
 
@@ -105,6 +116,8 @@ def absorb(state: dict | None, form: Form, utterance: str) -> tuple[dict | None,
         _merge(st["target"], d["target"])
         st["utterances"].append(utterance)
         st["asked"], st["pending"], st["pick"] = None, None, {}
+        st.pop("room_menu", None)
+        st.pop("fixed", None)
         return st, ""
     lead = "앞의 요청은 그만두고 새로 시작합니다. " if state is not None else ""
     return new_state(d, utterance), lead
@@ -116,7 +129,21 @@ def choose(state: dict | None, choice: str, utterance: str) -> dict:
         raise NeedContext
     st = copy.deepcopy(state)
     kind, _, val = choice.partition(":")
-    if kind == "room":
+    if (
+        p["kind"] == "room_list"
+    ):  # 강의실 목록 — 고른 방을 그 라벨로 더하고, 그 라벨은 고른 방으로 못 박는다
+        sec = p["section"]
+        if kind == "room":
+            label = p["labels"][val]
+            st[sec]["rooms"] = list(dict.fromkeys([*st[sec].get("rooms", []), label]))
+            st["room_pick"][f"{sec}:{label}"] = {"ids": [int(val)]}
+            (st.get("room_menu") or {}).pop(sec, None)
+        else:
+            st.setdefault("room_menu", {})[sec] = int(val)
+    elif kind == "fix":
+        room_id, _, key = val.partition(":")
+        st.setdefault("fixed", {})[room_id] = key
+    elif kind == "room":
         st["room_pick"][p["key"]] = {"ids": [int(val)]}
     elif kind == "bld":
         st["room_pick"][p["key"]] = {"building": int(val)}
@@ -160,6 +187,42 @@ def _reask(state: dict, sec: str, f: str, message: str) -> Ask:
     return _ask(st, f"{sec}.{f}", _slot_q(st, f"{sec}.{f}"), message=message)
 
 
+def _room_menu(s: Session, sc: Scope, state: dict, slot: str, message: str = "") -> Ask:
+    """강의실을 묻는 질문 + 범위 안 강의실 버튼. 많고 건물이 여럿이면 건물 버튼부터."""
+    sec = slot.split(".")[0]
+    q = _slot_q(state, slot)
+    refs = rooms.scoped_rooms(s, sc)
+    bld = (state.get("room_menu") or {}).get(sec)
+    if bld is not None:
+        refs = [r for r in refs if r.building_id == bld] or refs
+    blds = list(dict.fromkeys(r.building_id for r in refs))
+    if len(refs) > ROOM_LIST_MAX and len(blds) > 1:
+        names = {r.building_id: r.building for r in refs}
+        opts = [
+            {"id": f"bld:{b}", "label": f"{names[b]} ({sum(r.building_id == b for r in refs)}개)"}
+            for b in blds
+        ]
+        hint, labels = BLD_HINT, {}
+    else:
+        opts = [{"id": f"room:{r.id}", "label": r.label} for r in refs]
+        hint, labels = ROOM_HINT, {str(r.id): r.label for r in refs}
+    if not opts:
+        return _ask(state, slot, q, message=message)
+    return _ask(
+        state,
+        slot,
+        q,
+        message=f"{message or q} {hint}",
+        choices=opts,
+        pending={
+            "kind": "room_list",
+            "section": sec,
+            "options": [o["id"] for o in opts],
+            "labels": labels,
+        },
+    )
+
+
 def _rooms(s: Session, sc: Scope, state: dict, sec: str, expr: str) -> list[int] | Ask:
     key = f"{sec}:{expr}"
     pick = state["room_pick"].get(key) or {}
@@ -190,12 +253,7 @@ def _rooms(s: Session, sc: Scope, state: dict, sec: str, expr: str) -> list[int]
     st[sec]["rooms"] = [x for x in st[sec]["rooms"] if x != expr]
     if not st[sec]["rooms"]:
         del st[sec]["rooms"]
-    return _ask(
-        st,
-        f"{sec}.rooms",
-        _slot_q(st, f"{sec}.rooms"),
-        message=f"'{expr}' 강의실을 찾지 못했습니다. 강의실을 다시 알려 주세요. (예: 803, 공학관 803)",
-    )
+    return _room_menu(s, sc, st, f"{sec}.rooms", message=f"'{expr}' 강의실을 찾지 못했습니다.")
 
 
 def _when(intent: str, sec: str, expr: str, now_local: dt.datetime) -> dict | str:
@@ -242,6 +300,8 @@ def advance(
 ) -> Ask | Fail | Ready | Answer:
     """빈 칸 → 강의실 → 날짜·시각 → (휴강 펼치기) → 대상 찾기 순으로 막히는 곳에서 묻는다."""
     intent = state["intent"]
+    for sec in state.get("room_menu") or {}:  # 건물을 골랐다 — 그 건물 강의실을 보여 준다
+        return _room_menu(s, sc, state, f"{sec}.rooms")
     slot = rules.missing(intent, state["target"], state["set"])
     if slot:
         sec, f = slot.split(".")
@@ -258,6 +318,8 @@ def advance(
                     "options": [c["id"] for c in TYPE_CHOICES],
                 },
             )
+        if f == "rooms":
+            return _room_menu(s, sc, state, slot)
         return _ask(state, slot, q)
     res: dict = {"target": {}, "set": {}}
     for sec in ("target", "set"):
@@ -291,6 +353,8 @@ def advance(
         "pick": dict(state["pick"]),
         "utterances": list(state["utterances"]),
     }
+    if state.get("fixed"):
+        draft["fixed"] = dict(state["fixed"])
     if intent.startswith("ask."):
         return Answer(draft)
     if intent == "event.add" and (need := changes.fill_from_slots(s, draft, now_local)):
@@ -304,6 +368,24 @@ def advance(
     if not any(cands.values()):
         st = copy.deepcopy(state)  # 다음 답은 '대상'을 고쳐 말하는 것 — target 칸으로 합친다
         st["asked"], st["pending"] = "target.any", None
+        grp = intent.split(".")[0]
+        if grp in FIX_HINT:  # 그 강의실에 있는 일정·수업을 버튼으로 — 고르면 그것이 대상이다
+            loose = changes.loose_candidates(s, draft, now_local)
+            labels = changes.room_labels(s, list(loose))
+            opts = [
+                {"id": f"fix:{rid}:{c['key']}", "label": f"{labels[rid]} · {c['label']}"}
+                for rid, lst in loose.items()
+                for c in lst
+            ][:FIX_MAX]
+            if opts:
+                return _ask(
+                    st,
+                    "target.any",
+                    rules.question(intent, "target.any"),
+                    message=f"{changes.not_found_message(intent)} {FIX_HINT[grp]}",
+                    choices=opts,
+                    pending={"kind": "fix", "options": [o["id"] for o in opts]},
+                )
         return Fail(changes.not_found_message(intent), st)
     labels = changes.room_labels(s, [r for r in cands if r])
     for room_id, lst in cands.items():

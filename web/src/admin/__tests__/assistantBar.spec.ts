@@ -5,10 +5,11 @@ import type { PreviewOut, TurnOut } from '@/api/types'
 
 // 명령창이 보는 상태 — 확인(preview) 단계에 있는 대화 하나
 const turn = ref<TurnOut | null>(null)
+const phase = ref('preview')
 vi.mock('@/admin/assistant/store', () => ({
   canType: computed(() => true),
   assistantStore: () => ({
-    phase: ref('preview'),
+    phase,
     text: ref(''),
     sent: ref('801 매주월요일 9시~12시 자료구조 김교수 추가'),
     turn,
@@ -73,6 +74,7 @@ const weekly: PreviewOut = {
 
 describe('AssistantBar — 정규 시간표 확인 화면', () => {
   it('week_start 가 null 이어도 그린다 — 날짜 대신 "매주"', async () => {
+    phase.value = 'preview'
     turn.value = {
       conversation_id: 'c1',
       kind: 'preview',
@@ -90,6 +92,33 @@ describe('AssistantBar — 정규 시간표 확인 화면', () => {
     expect(text).toContain('매주 (정규 시간표)')
     expect(text).toContain('월요일')
     expect(text).not.toContain('NaN')
+    w.unmount()
+  })
+})
+
+describe('AssistantBar — 되묻기 선택 버튼', () => {
+  it('버튼이 있어도 직접 답할 입력칸을 함께 보인다', async () => {
+    phase.value = 'ask'
+    turn.value = {
+      conversation_id: 'c1',
+      kind: 'ask',
+      message: "'999' 강의실을 찾지 못했습니다. 현재 있는 강의실은 아래와 같습니다.",
+      choices: [
+        { id: 'room:1', label: '공학관 801' },
+        { id: 'room:2', label: '공학관 803' },
+      ],
+      next_prefix: null,
+      closed: false,
+      preview: null,
+      answer: null,
+    }
+    const w = mount(AssistantBar, { attachTo: document.body })
+    await w.vm.$nextTick()
+    const labels = w.findAll('button').map((b) => b.text())
+    expect(labels).toContain('공학관 801')
+    expect(labels).toContain('공학관 803')
+    expect(w.find('#ai-answer').exists()).toBe(true)
+    expect(labels.filter((x) => x === '요청 취소')).toHaveLength(1)
     w.unmount()
   })
 })

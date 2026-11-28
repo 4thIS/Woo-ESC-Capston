@@ -374,3 +374,29 @@ def test_apply_closes_conversation(client, app, monkeypatch):
         from app.assistant.models import AssistantPreview
 
         assert len(s.scalars(select(AssistantPreview)).all()) == 1  # 새 미리보기를 만들지 않았다
+
+
+def test_flow_unknown_room_menu_then_not_found_menu(client, app, monkeypatch):
+    """강의실을 못 찾으면 강의실 버튼 → 고르면 진행. 지울 일정을 못 찾으면 그 강의실 일정 버튼 → 고르면 확인 화면."""
+    fix_clock(monkeypatch)
+    ids = campus(app)
+    f = form(
+        "class.add",
+        set_={"rooms": ["999"], "when": "월", "time": "13시~15시", "subject": "운영체제"},
+    )
+    j = turn(client, "999 월 13시~15시 운영체제 추가", f)
+    assert j["kind"] == "ask" and "현재 있는 강의실" in j["message"]
+    assert j["choices"][0]["label"] == "공학관 301"
+    j = turn(client, "공학관 801", conv=j["conversation_id"], choice=f"room:{ids['E801']}")
+    assert j["kind"] == "preview" and j["preview"]["blockers"] == []
+    assert "강의실 공학관 801" in j["next_prefix"]
+    f = form("class.remove", target={"rooms": ["공학관 803"], "when": "화", "subject": "운영체제"})
+    j = turn(client, "803 화요일 운영체제 지워줘", f)
+    assert j["kind"] == "ask" and j["message"].startswith("말씀하신 정규 수업을 찾지 못했습니다")
+    assert [c["label"] for c in j["choices"]] == [
+        "공학관 803 · 월 09:00–12:00 알고리즘",
+        "공학관 803 · 금 15:00–16:15 자료구조",
+    ]
+    j = turn(client, "자료구조", conv=j["conversation_id"], choice=j["choices"][1]["id"])
+    assert j["kind"] == "preview" and j["preview"]["blockers"] == []
+    assert any("자료구조" in x for x in j["preview"]["summary"])
