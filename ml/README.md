@@ -15,5 +15,8 @@
 | HF 예측 | `uv run --extra train python -m esc_ml.predict_hf …` |
 | 채점 | `uv run python -m esc_ml.score …` |
 | 하네스 | `python spike/serve.py` → http://localhost:8080 |
+| 수치 그림 다시 그리기 | `uv run --with matplotlib python reports/figures/make_figures.py plot` |
 
 데이터 원본·모델·변환 산출물은 커밋하지 않는다(`.gitignore`). 공개는 Hugging Face 에만.
+
+학습·검증 수치 그림(버전별 점수·손실 곡선·저장본 비교·요청 종류별): [`reports/figures/`](reports/figures/README.md)
