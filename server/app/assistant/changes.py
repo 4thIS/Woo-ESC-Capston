@@ -265,7 +265,34 @@ def find_candidates(
     if grp == "request":
         return {0: _request_cands(s, sc, tg, now_local)}
     fn = {"event": _event_cands, "class": _class_cands, "exam": _exam_cands}[grp]
-    return {rid: fn(s, rid, tg, now_local) for rid in tg["rooms"]}
+    fixed = draft.get("fixed") or {}
+    out = {}
+    for rid in tg["rooms"]:
+        key = fixed.get(str(rid))
+        if key is None:
+            out[rid] = fn(s, rid, tg, now_local)
+        else:  # 못 찾은 뒤 목록에서 고른 것 — 말한 조건 대신 그 하나
+            loose = fn(s, rid, _loose_tg(grp, now_local), now_local)
+            out[rid] = [c for c in loose if c["key"] == key]
+    return out
+
+
+LOOSE_DAYS = 14  # 대상을 못 찾았을 때 보여 줄 일정 기간(오늘부터)
+
+
+def _loose_tg(grp: str, now_local: dt.datetime) -> dict:
+    if grp == "class":
+        return {"weekdays": list(range(1, 8))}
+    today = now_local.date()
+    return {"dates": [(today + dt.timedelta(days=i)).isoformat() for i in range(LOOSE_DAYS)]}
+
+
+def loose_candidates(s: Session, draft: dict, now_local: dt.datetime) -> dict[int, list[dict]]:
+    """말한 조건(요일·날짜·시각·이름)을 빼고 그 강의실의 일정(2주 안)·정규 수업 전부 — event·class 만."""
+    grp = draft["intent"].split(".")[0]
+    fn = {"event": _event_cands, "class": _class_cands}[grp]
+    tg = _loose_tg(grp, now_local)
+    return {rid: fn(s, rid, tg, now_local) for rid in draft["target"]["rooms"]}
 
 
 def chosen(cands: dict[int, list[dict]], picks: dict[str, str]) -> dict[int, dict]:
