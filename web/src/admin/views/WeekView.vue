@@ -26,7 +26,7 @@ import { nightPref, picked, weekMonday, weekRoom, weekendPref } from '../selecti
 import { needsNight, needsWeekend, weekBlocks, type Placed } from '../weekView'
 import RowDot from './rooms/RowDot.vue'
 import WeekGrid from './week/WeekGrid.vue'
-import { appliedTick } from '../assistant/store'
+import { appliedTick } from '../assistant/applied'
 
 const props = defineProps<{ roomId?: string }>()
 const router = useRouter()
