@@ -12,6 +12,7 @@ import { loraApi } from '@/api/lora'
 import { roomsApi } from '@/api/rooms'
 import type { RoomOut } from '@/api/types'
 import { useResource } from '@/lib/useResource'
+import { appliedTick } from '../assistant/applied'
 import { useOutboxTracker } from '../outboxTrack'
 import { defaultPick, roomLabeler } from '../roomsView'
 import { picked } from '../selection'
@@ -98,6 +99,8 @@ function reloadAll() {
   void scope.reload()
   void pending.reload()
 }
+// AI 비서가 시간표·일정·신청을 바꾸면 이 화면도 새로 — 명령창은 어느 화면 위에서나 열린다
+watch(appliedTick, reloadAll)
 
 // 오류 — Toast + 재시도. 표는 이전 내용을 지우지 않는다 (useResource 가 data 를 지킨다)
 for (const r of [master, scope, pending])

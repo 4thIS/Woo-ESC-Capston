@@ -384,3 +384,19 @@ describe('강의실 설정 — 트리와 시간표', () => {
     })
   })
 })
+
+describe('강의실 설정 — AI 비서 적용 뒤', () => {
+  it('AI 비서가 변경을 적용하면 시간표·신청을 다시 불러온다', async () => {
+    const { appliedTick } = await import('@/admin/assistant/applied')
+    const { adminApi } = await import('@/api/admin')
+    await mountView()
+    expect(slotRows()[0].text()).toContain('캡스톤디자인')
+    const pend = vi.mocked(adminApi.pendingResv).mock.calls.length
+    api.buildingSlots.mockResolvedValue([S(11, 1, 9, '자료구조')])
+    appliedTick.value++
+    await flushPromises()
+    expect(api.buildingSlots).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(adminApi.pendingResv).mock.calls.length).toBe(pend + 1)
+    expect(slotRows()[0].text()).toContain('자료구조')
+  })
+})

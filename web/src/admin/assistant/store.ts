@@ -1,12 +1,12 @@
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { assistantApi } from '@/api/assistant'
 import { STUB_MANIFEST } from './adapters/stub'
 import { DevRuleRunner } from './dev/devRule'
 import { engine, model } from './model'
 import { useAssistant } from './useAssistant'
+import { appliedTick } from './applied'
 
-/** 적용이 끝날 때마다 1 씩 — 뒤 화면(주간 시간표 등)이 지켜보다 다시 불러온다 */
-export const appliedTick = ref(0)
+export { appliedTick }
 
 /** 개발 서버에서 배포된 모델이 없을 때(enabled:false) — 규칙 해석기로 대화 흐름을 만든다 */
 const devFallback = computed(
